@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fund Comparison — {{DATE}}</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2129; --text:#e6e8ea; --muted:#8b949e; --green:#3fb950; --red:#f85149; --amber:#d29922; --accent:#58a6ff; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,'Segoe UI',sans-serif; padding:24px; max-width:1000px; margin:0 auto; }
+  h1 { font-size:20px; } h2 { font-size:15px; margin:24px 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .meta { color:var(--muted); margin-bottom:20px; font-size:13px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border-radius:8px; overflow:hidden; margin-bottom:8px; }
+  th { text-align:left; padding:9px 12px; font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid #2d333b; }
+  td { padding:9px 12px; border-bottom:1px solid #21262d; }
+  tr:last-child td { border-bottom:none; }
+  .best { color:var(--green); font-weight:700; }   /* best value in each comparison row/col */
+  .worst { color:var(--red); }
+  .benchmark td { background:#161b22; font-style:italic; } /* the index-fund benchmark row */
+  .verdict { padding:2px 10px; border-radius:10px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .v-hold { background:#1d3a24; color:var(--green); }
+  .v-watch { background:#3a2f1d; color:var(--amber); }
+  .v-avoid { background:#3a1d1d; color:var(--red); }
+  .note { font-size:12px; color:var(--muted); margin-bottom:16px; }
+  .gaps { margin-top:20px; background:var(--card); border-left:3px solid var(--amber); border-radius:6px; padding:12px 16px; font-size:13px; color:var(--muted); }
+  .footer { margin-top:20px; font-size:12px; color:var(--muted); font-style:italic; }
+</style>
+</head>
+<body>
+  <h1>Mutual Fund Comparison — {{CATEGORY}}</h1>
+  <div class="meta">{{DATE}} · Direct-Growth plans · NAV history: AMFI via mfapi.in · benchmark: {{BENCHMARK_FUND}}</div>
+
+  <h2>Rolling returns (the metric that matters)</h2>
+  <div class="note">Rolled daily across full NAV history. "Consistency" = % of windows beating the benchmark.</div>
+  <table>
+    <thead><tr><th>Fund</th><th>3Y roll — mean</th><th>3Y roll — median</th><th>3Y roll — worst</th><th>5Y roll — mean</th><th>5Y roll — worst</th><th>Consistency (3Y)</th></tr></thead>
+    <tbody>
+      <!-- ROW per fund; benchmark fund gets class="benchmark"; best per column class="best" -->
+      <tr><td><strong>{{FUND_NAME}}</strong></td><td>{{R3_MEAN}}%</td><td>{{R3_MED}}%</td><td>{{R3_MIN}}%</td><td>{{R5_MEAN}}%</td><td>{{R5_MIN}}%</td><td>{{CONSISTENCY}}%</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Risk & cost</h2>
+  <!-- Sharpe uses 6% risk-free; only meaningful within one category — leave the cell "—" for a
+       cross-category benchmark row. Benchmark fund's own Consistency cell above is also "—". -->
+  <table>
+    <thead><tr><th>Fund</th><th>Max drawdown</th><th>Worst 1Y window</th><th>Std dev</th><th>Sharpe</th><th>TER</th><th>AUM</th><th>Manager tenure</th></tr></thead>
+    <tbody>
+      <tr><td><strong>{{FUND_NAME}}</strong></td><td>{{MAX_DD}}%</td><td>{{WORST_1Y}}%</td><td>{{SD}}</td><td>{{SHARPE}}</td><td>{{TER}}%</td><td>₹{{AUM}} Cr</td><td>{{TENURE}}</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Point-to-point CAGR (for familiarity — endpoint-sensitive, trust rolling returns above)</h2>
+  <table>
+    <thead><tr><th>Fund</th><th>1Y</th><th>3Y</th><th>5Y</th></tr></thead>
+    <tbody>
+      <tr><td><strong>{{FUND_NAME}}</strong></td><td>{{P1}}%</td><td>{{P3}}%</td><td>{{P5}}%</td></tr>
+    </tbody>
+  </table>
+
+  <!-- OPTIONAL section: include only when comparing 2+ active equity funds AND holdings data was obtained -->
+  <h2>Portfolio overlap</h2>
+  <table>
+    <thead><tr><th>Fund pair</th><th>Top-holdings overlap</th><th>Read</th></tr></thead>
+    <tbody>
+      <tr><td>{{FUND_A}} × {{FUND_B}}</td><td>{{OVERLAP_PCT}}%</td><td>{{OVERLAP_READ}}</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Verdicts</h2>
+  <table>
+    <thead><tr><th>Fund</th><th>Verdict</th><th>Deciding factors</th></tr></thead>
+    <tbody>
+      <!-- verdict class: v-hold | v-watch | v-avoid -->
+      <tr><td><strong>{{FUND_NAME}}</strong></td><td><span class="verdict v-hold">{{VERDICT}}</span></td><td>{{FACTORS}}</td></tr>
+    </tbody>
+  </table>
+
+  <div class="gaps"><strong>Data gaps:</strong> {{DATA_GAPS}}</div>
+  <div class="footer">Past rolling returns describe behavior, not promises. Not investment advice — personal research tool.</div>
+</body>
+</html>

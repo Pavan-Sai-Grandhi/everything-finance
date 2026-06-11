@@ -1,0 +1,96 @@
+# Strategy spec — the contract the everything-finance skills consume.
+# strategy-manager owns this file's whole lifecycle (generate -> validate -> select -> optimize).
+# It is written from the REFERENCE ARTICLE(S) the user supplied (trade logic) + the system
+# framework (risk layer), then validated by backtest and tuned by live trade outcomes.
+#   swing-trading  reads universe/entry/exit/sizing of an ACTIVE, regime-fitting spec.
+#   backtest       reads entry/exit/sizing and writes results into expectancy_assumptions.
+#   trade-tracker  reads regime_required of a trade's linked strategy; feeds closed trades back.
+# Every field must be present.
+
+name: nifty500-momentum-swing        # kebab-case id, also the filename
+version: 1                           # bump on each optimization that changes the rules
+created: 2026-06-11                   # YYYY-MM-DD
+archetype: momentum                   # free-form label for the method, taken from the source article
+goal: "Positional momentum on liquid large/mid-caps"
+source_references:                    # where the trade logic came from — REQUIRED, never empty
+  - "https://example.com/the-article-the-user-gave"   # URL or local file path
+
+# ---- LIFECYCLE (strategy-manager owns these) -------------------------------
+status: draft                         # draft | active | inactive
+# draft    = generated; NOT yet validated by backtest (or visual study pending). Not tradeable.
+# active   = backtest PASSED (expectancy_R > 0.2 over >= ~30 trades). Eligible to be SELECTED
+#            when the live regime fits regime_required. swing-trading runs only active+fitting specs.
+# inactive = retired: failed backtest, OR deactivated by optimization (live edge gone), OR manual.
+# NOTE: regime-fit is decided at SELECTION time (mode: pick) against the live regime — it is NOT a
+# status. A spec stays "active" through regimes; it simply isn't selected while the tape doesn't fit.
+lifecycle:
+  generated_at: 2026-06-11            # when mode:generate produced it
+  validated_at: null                  # when backtest first passed -> status active
+  activated_at: null                  # when it became eligible to trade
+  deactivated_at: null
+  deactivated_reason: null            # e.g. "live expectancy -0.3R over 14 trades"
+
+regime_required:                      # the conditions the SOURCE ARTICLE claims it works in;
+  market_trend: up                    # checked against live regime.json at selection (mode: pick)
+  nifty_above: ema200                 # up | range | down
+  vix_max: 20                         # stand down / resize above this
+  breadth_min_pct: 50                 # % of sectoral indices above their 50-EMA
+  macro_notes: "risk-on; repo on hold/cutting; FII flows neutral-or-positive"
+
+universe:
+  source: nifty500                    # nifty50 | nifty500 | largecap20 | [explicit tickers]
+  fundamental_gate:                   # optional; consumed by swing-trading Stage 1
+    roce_min: 12
+    de_max: 1
+  liquidity_min_adv_cr: 5             # min avg daily turnover in ₹ Cr
+
+ranking:                              # used by basket/ranked methods (else null)
+  metric: return_12m                  # return_12m | return_6m | rs_vs_nifty
+  top_n: 12
+  equal_weight: true
+
+entry:
+  trigger: "close > prior_20d_high AND volume > 1.5 * vol10"
+  confirm_indicators: [ema50_rising, rsi_40_60]
+  timeframe: daily
+
+exit:
+  stop: recent_swing_low              # recent_swing_low | ema50_minus_2atr | range_low
+  target: "next_resistance; for blue-sky use measured_move"
+  min_rrr: 1.5
+  time_stop_sessions: 20
+
+sizing:
+  method: fixed_fractional
+  risk_per_trade_pct: 1.0             # qty = capital*1% / (entry-stop)
+  max_positions: 8
+  max_sector_pct: 25
+
+risk:
+  max_portfolio_heat_pct: 6           # sum of open per-trade risk
+  rebalance: monthly                  # monthly | weekly | none
+
+indicator_study:                      # filled by the mandatory TradingView step
+  tradingview_symbols: []             # e.g. [NSE:RELIANCE, NSE:TCS]
+  applied_indicators: [EMA50, EMA200, RSI, Volume]
+  screenshots: []                     # artifacts/YYYY-MM-DD/tv/*.png
+  visual_confirms: ""                 # one line: did the live charts agree with the rules?
+
+expectancy_assumptions:               # BACKTEST results — null until validate passes
+  win_rate: null                      # 0..1
+  avg_win_R: null
+  expectancy_R: null                  # the activation gate: > 0.2 with >= ~30 trades
+  profit_factor: null
+  n_trades: null
+  validated_by: null                  # path to the backtest summary artifact
+
+live_performance:                     # REALIZED from trade-tracker closed trades — null until trades exist
+  trades_closed: 0
+  win_rate: null
+  expectancy_R: null                  # compare to expectancy_assumptions.expectancy_R for drift
+  profit_factor: null
+  last_updated: null
+  drift_note: null                    # one line: live vs backtest (e.g. "live 0.05R vs backtest 0.35R — decaying")
+
+optimization_log: []                  # dated entries appended by mode:optimize, e.g.
+  # - {date: 2026-08-01, change: "tightened time_stop 20->15", reason: "TIME exits 60% of losers", revalidated: true}

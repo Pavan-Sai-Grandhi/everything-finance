@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Budget — {{MONTH}}</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2129; --text:#e6e8ea; --muted:#8b949e; --green:#3fb950; --red:#f85149; --amber:#d29922; --accent:#58a6ff; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,'Segoe UI',sans-serif; padding:24px; max-width:960px; margin:0 auto; }
+  h1 { font-size:20px; } h2 { font-size:15px; margin:24px 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .meta { color:var(--muted); margin-bottom:20px; font-size:13px; }
+  .headline { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
+  .stat { background:var(--card); border-radius:8px; padding:14px 20px; flex:1; min-width:140px; }
+  .stat .num { font-size:22px; font-weight:700; }
+  .stat .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .good { color:var(--green); } .bad { color:var(--red); } .warn { color:var(--amber); }
+  .bucket { background:var(--card); border-radius:8px; padding:14px 16px; margin-bottom:10px; }
+  .bucket-head { display:flex; justify-content:space-between; font-weight:600; margin-bottom:8px; }
+  .bucket-head .vs { font-size:12px; color:var(--muted); font-weight:400; }
+  .bar { height:10px; border-radius:5px; background:#21262d; position:relative; overflow:hidden; }
+  .bar .fill { height:100%; border-radius:5px; }
+  .bar .target { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text); opacity:.6; }
+  /* fill width = actual % of inflow; .target left = target % of inflow.
+     fill color: green within band, amber near edge (90-100% of target), red breached */
+  .cats td { padding:7px 10px; border-bottom:1px solid #21262d; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border-radius:8px; overflow:hidden; }
+  th { text-align:left; padding:9px 10px; font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid #2d333b; }
+  .catbar { display:inline-block; height:8px; border-radius:4px; background:var(--accent); vertical-align:middle; }
+  .flag { background:var(--card); border-left:3px solid var(--red); border-radius:6px; padding:10px 14px; margin-bottom:8px; font-size:13px; }
+  .flag.warn-flag { border-left-color:var(--amber); }
+  .footer { margin-top:20px; font-size:12px; color:var(--muted); font-style:italic; }
+</style>
+</head>
+<body>
+  <h1>Budget Discipline — {{MONTH}}</h1>
+  <div class="meta">Inflow ₹{{TOTAL_INFLOW}} · Outflow ₹{{TOTAL_OUTFLOW}} · statements: {{SOURCES}}</div>
+
+  <div class="headline">
+    <div class="stat"><div class="num {{SAVINGS_CLASS}}">{{SAVINGS_RATE}}%</div><div class="lbl">Savings + investments rate</div></div>
+    <div class="stat"><div class="num">₹{{INVESTED}}</div><div class="lbl">Invested</div></div>
+    <div class="stat"><div class="num {{LEFTOUT_CLASS}}">₹{{LEFTOUT}}</div><div class="lbl">Leftout</div></div>
+    <div class="stat"><div class="num">{{TXN_COUNT}}</div><div class="lbl">Transactions</div></div>
+  </div>
+
+  <h2>Buckets vs plan</h2>
+  <!-- BUCKET TEMPLATE: one block per bucket (Essential / Lifestyle / EMIs / Investments) -->
+  <div class="bucket">
+    <div class="bucket-head">
+      <span>{{BUCKET_NAME}} {{BUCKET_EMOJI}}</span>
+      <span class="vs">₹{{BUCKET_ACTUAL}} · {{BUCKET_PCT}}% of inflow <em>(target {{BUCKET_TARGET}})</em></span>
+    </div>
+    <div class="bar">
+      <div class="fill" style="width:{{BUCKET_PCT}}%; background:var(--green);"></div>
+      <div class="target" style="left:{{BUCKET_TARGET_PCT}}%;"></div>
+    </div>
+  </div>
+
+  <h2>Categories</h2>
+  <table class="cats">
+    <thead><tr><th>Category</th><th>Spend</th><th></th><th>vs last month</th></tr></thead>
+    <tbody>
+      <!-- ROW per category, sorted desc; catbar width proportional to max category -->
+      <tr><td>{{CATEGORY}}</td><td>₹{{AMOUNT}}</td><td><span class="catbar" style="width:{{REL_WIDTH}}px"></span></td><td class="{{MOM_CLASS}}">{{MOM_DELTA}}</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Top merchants</h2>
+  <table>
+    <thead><tr><th>Merchant</th><th>Count</th><th>Total</th><th>Category</th></tr></thead>
+    <tbody>
+      <tr><td>{{MERCHANT}}</td><td>{{COUNT}}</td><td>₹{{TOTAL}}</td><td>{{CATEGORY}}</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Flags</h2>
+  <!-- one .flag per breach (red) or near-edge (warn-flag), with top driver transactions -->
+  <div class="flag">{{FLAG_TEXT}}</div>
+
+  <div class="footer">Targets from Monthly Budget Planning workbook ({{TARGET_SOURCE}}). Uncategorized: ₹{{UNCAT_AMOUNT}} across {{UNCAT_COUNT}} transactions.</div>
+</body>
+</html>

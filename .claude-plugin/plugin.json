@@ -1,0 +1,58 @@
+{
+  "name": "everything-finance",
+  "version": "0.1.0",
+  "description": "Personal India-focused financial intelligence: swing trading pipeline on the Nifty 500, multi-agent deep stock analysis, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, and live trade tracking against your broker (Zerodha/Upstox).",
+  "author": {
+    "name": "Pavan Sai Grandhi"
+  },
+  "keywords": [
+    "finance",
+    "india",
+    "swing-trading",
+    "nifty500",
+    "mutual-funds",
+    "budgeting",
+    "nse",
+    "bse",
+    "zerodha",
+    "upstox",
+    "trade-tracker"
+  ],
+  "skills": [
+    "./skills/swing-trading",
+    "./skills/deep-analysis",
+    "./skills/sector-pulse",
+    "./skills/mf-research",
+    "./skills/insurance-check",
+    "./skills/budget-tracker",
+    "./skills/filings-watch",
+    "./skills/daily-brief",
+    "./skills/portfolio-review",
+    "./skills/backtest",
+    "./skills/strategy-manager",
+    "./skills/trade-tracker"
+  ],
+  "agents": [
+    "./agents/technical-analyst",
+    "./agents/fundamental-analyst",
+    "./agents/news-sentiment",
+    "./agents/bull-researcher",
+    "./agents/bear-researcher",
+    "./agents/portfolio-manager"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    },
+    "kite": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://mcp.kite.trade/mcp"]
+    },
+    "upstox": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://mcp.upstox.com/mcp"]
+    }
+  }
+}
