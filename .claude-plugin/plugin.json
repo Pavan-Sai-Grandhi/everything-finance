@@ -33,12 +33,12 @@
     "./skills/trade-tracker"
   ],
   "agents": [
-    "./agents/technical-analyst",
-    "./agents/fundamental-analyst",
-    "./agents/news-sentiment",
-    "./agents/bull-researcher",
-    "./agents/bear-researcher",
-    "./agents/portfolio-manager"
+    "./agents/technical-analyst.md",
+    "./agents/fundamental-analyst.md",
+    "./agents/news-sentiment.md",
+    "./agents/bull-researcher.md",
+    "./agents/bear-researcher.md",
+    "./agents/portfolio-manager.md"
   ],
   "hooks": "./hooks/hooks.json",
   "mcpServers": {

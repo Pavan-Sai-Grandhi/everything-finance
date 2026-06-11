@@ -1,8 +1,7 @@
 ---
 name: bear-researcher
 description: Forked devil's-advocate subagent that builds the strongest evidence-based BEAR case for a stock from the technical, fundamental, and news reports it is given. Invoked by deep-analysis as one side of the debate.
-context: fork
-allowed-tools: Read
+tools: Read
 ---
 
 # Bear Researcher (subagent)

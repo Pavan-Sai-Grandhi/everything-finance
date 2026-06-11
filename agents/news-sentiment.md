@@ -1,8 +1,7 @@
 ---
 name: news-sentiment
 description: Forked news-and-sentiment subagent — gathers the last ~60 days of news, exchange announcements, and analyst commentary for one company and scores sentiment with sourced evidence. Invoked by deep-analysis; usable directly for a news scan.
-context: fork
-allowed-tools: WebFetch, Bash, mcp__playwright__*
+tools: WebFetch, Bash
 ---
 
 # News & Sentiment Analyst (subagent)

@@ -1,8 +1,7 @@
 ---
 name: portfolio-manager
 description: Forked synthesizer subagent — weighs the technical, fundamental, news, bull, and bear reports and issues the final verdict with sizing and invalidation. The last word in the deep-analysis debate; also usable to adjudicate any prepared set of opposing analyses.
-context: fork
-allowed-tools: Read
+tools: Read
 ---
 
 # Portfolio Manager (subagent)
