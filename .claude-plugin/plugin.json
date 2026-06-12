@@ -16,7 +16,10 @@
     "bse",
     "zerodha",
     "upstox",
-    "trade-tracker"
+    "trade-tracker",
+    "dcf",
+    "valuation",
+    "governance"
   ],
   "skills": [
     "./skills/swing-trading",
@@ -30,7 +33,9 @@
     "./skills/portfolio-review",
     "./skills/backtest",
     "./skills/strategy-manager",
-    "./skills/trade-tracker"
+    "./skills/trade-tracker",
+    "./skills/dcf-valuation",
+    "./skills/management-quality"
   ],
   "agents": [
     "./agents/technical-analyst.md",

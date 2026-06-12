@@ -1,0 +1,40 @@
+# DCF inputs — every value must trace to a primary source (screener.in / annual report /
+# exchange filing). The engine computes only what you put here; it cannot detect a guess.
+# Use ₹ Crore for ALL money fields and ₹ Crore for shares, so per-share lands in ₹.
+# Copy this file, fill with sourced numbers, drop the unused alternative of each pair.
+
+currency_unit: "INR Crore"
+years: 10                       # explicit-forecast horizon
+
+# --- base (sourced from the latest consolidated financials) ----------------------------
+base_revenue: 90000.0           # latest FY / TTM revenue          [src: screener FY24 P&L]
+shares_outstanding: 700.0       # diluted share count, ₹ Cr units  [src: screener shareholding]
+net_debt: 12000.0               # total debt − cash                [src: screener balance sheet]
+non_operating_cash: 0.0         # cash/investments not in FCFF      [src: balance sheet]
+minority_interest: 0.0          # minority interest to subtract     [src: balance sheet]
+current_price: 1500.0           # market price/share, ₹             [src: yfinance/NSE]
+
+# --- revenue growth: EITHER an explicit path OR a high->fade glide ----------------------
+# revenue_growth: [0.15, 0.15, 0.13, 0.11, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04]
+growth_glide:                   # 15% for 3y, then linear fade to 4% by year 10
+  initial: 0.15                 #   [story: TAM + share gains from <edge>]
+  fade_to: 0.04                 #   [<= long-run GDP/risk-free]
+  years_high: 3
+
+# --- operating margin (pre-tax EBIT margin): explicit path OR a glide -------------------
+# operating_margin: [0.18, 0.19, 0.20, 0.21, 0.22, 0.22, 0.22, 0.22, 0.22, 0.22]
+margin_glide:                   # ramp 18% -> 22% by year 5, hold
+  start: 0.18                   #   [src: current EBIT margin]
+  target: 0.22                  #   [benchmark: peer steady-state margins]
+  year_target: 5
+
+tax_rate: 0.25                  # effective -> statutory            [src: P&L tax/PBT, India ~25%]
+sales_to_capital: 2.5           # ₹ sales per ₹ invested (scalar or list) [hist: ΔRev/ΔInvCapital]
+wacc: 0.11                      # discount rate (scalar or declining list) [CoE+CoD weighted]
+
+# --- terminal (stable-growth firm) -----------------------------------------------------
+terminal_growth: 0.04           # MUST be <= risk_free              [~ long-run nominal GDP]
+terminal_wacc: 0.10             # mature-firm discount rate (defaults to last wacc)
+terminal_margin: 0.22           # steady-state margin (defaults to last margin)
+terminal_roic: 0.13             # return on new capital in perpetuity; > wacc only if moat persists
+risk_free: 0.07                 # 10y G-sec; used only for the g_T sanity flag

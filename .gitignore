@@ -2,6 +2,9 @@
 artifacts/
 *.log
 
+# Local source material distilled into skills (kept for provenance, not shipped)
+.refs/
+
 # Python — caches/bytecode from running the bundled scripts & tests
 __pycache__/
 *.py[cod]

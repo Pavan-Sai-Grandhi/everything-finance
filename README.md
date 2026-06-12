@@ -34,7 +34,7 @@ Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfina
 | Skill | What it does |
 |---|---|
 | `/swing-trading` | Screen the Nifty 500 (screener.in fundamentals gate + technical rules) → swing candidates with entry / SL / target; on your "yes" persists a trade-idea artifact for `/trade-tracker` |
-| `/deep-analysis TICKER` | Multi-agent debate: technical, fundamental (reads annual reports + concalls), news, bull vs bear, portfolio-manager verdict. Artifact auto-archived + Telegram brief via Stop hook |
+| `/deep-analysis TICKER` | Multi-agent debate: technical, fundamental (reads annual reports + concalls, grades management integrity & skill, computes a story-driven DCF intrinsic value), news, bull vs bear, portfolio-manager verdict. Artifact auto-archived + Telegram brief via Stop hook |
 | `/sector-pulse` | Sector rotation snapshot from NSE sectoral indices + top picks per leading sector |
 | `/mf-research` | Mutual fund research: NAV history, rolling returns, category comparison, fund quality verdict |
 | `/insurance-check` | Life + health coverage adequacy vs need, gap list, action items |
@@ -45,6 +45,8 @@ Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfina
 | `/backtest` | Validate swing setups on historical NSE data (bundled pandas backtester — expectancy, profit factor, drawdown vs buy-and-hold) |
 | `/strategy-manager` | Full strategy lifecycle: **generate** a complete rule-based system from a reference article you supply → **validate** it by backtest and mark it active when it passes → **pick** the active strategy that fits the current regime → **optimize** or retire strategies from live trade outcomes fed back by `/trade-tracker` |
 | `/trade-tracker` | Connect Zerodha/Upstox (read-only MCP), match each open position to its rationale (a swing-trading idea, deep-analysis, strategy spec, or one you type), and re-validate the thesis — stop / target / time stop / broken setup / regime change → hold or early-exit call |
+| `/dcf-valuation TICKER` | Story-driven DCF (Damodaran FCFF): project revenue growth + operating margin, fund growth via the sales-to-capital ratio, discount FCFF at WACC, add a disciplined terminal value → intrinsic value/share with margin of safety, a WACC×terminal-growth sensitivity grid, and reality-check flags. Bundled offline-tested engine; every input must be sourced |
+| `/management-quality TICKER` | Management integrity (a hard gate) + skill grade: remuneration vs profit, related-party transactions, criminal/regulatory record, media-savvy, CFO/auditor churn & fees, owning mistakes, pledging — then qualification/experience, mindset, capital allocation, succession |
 
 ## Agents (`agents/`, all `context: fork`)
 
