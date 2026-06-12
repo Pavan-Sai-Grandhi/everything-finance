@@ -1,0 +1,97 @@
+# SEED STRATEGY — draft, must be validated before trading. Source: .refs/swing-strategies.txt §3 Strategy 4.
+name: inside-bar-nr7-swing
+version: 1
+created: 2026-06-12
+archetype: volatility-breakout
+goal: "Trade the expansion after a volatility squeeze (inside bar / NR4 / NR7) in trending names"
+source_references:
+  - ".refs/swing-strategies.txt §3 Strategy 4 — Inside Candle (NR4/NR7) Breakout"
+
+status: draft
+lifecycle:
+  generated_at: 2026-06-12
+  validated_at: null
+  activated_at: null
+  deactivated_at: null
+  deactivated_reason: null
+
+regime_required:
+  market_trend: up
+  nifty_above: ema200
+  vix_max: 22
+  breadth_min_pct: 45
+  macro_notes: "volatility-contraction setup; avoid right before known binary events (results) unless that IS the catalyst"
+
+universe:
+  source: nifty500
+  liquidity_min_adv_cr: 5
+
+screening:
+  fundamental:
+    provider: screener.in
+    query: >
+      Market Capitalization > 1000 AND Return on capital employed > 10
+      AND Debt to equity < 1.5
+    max_survivors: 60
+  technical:
+    # NR4/NR7 + inside-bar are computed locally (lib/ta.py nr()/inside_bar()) — TradingView's
+    # screener has no native NR filter, so the compute path is primary here.
+    provider: compute
+    market: india
+    tradingview_filters:
+      - "Simple Moving Average (50) > Simple Moving Average (200)"   # coarse trend pre-cut on TV if used
+      - "Average Day Range (14) is decreasing"
+    compute_filters:
+      - "ema50_rising"
+      - "Close > ema50"
+  fallback_compute: true
+
+ranking:
+  metric: return_6m
+  top_n: 12
+  equal_weight: true
+
+entry:
+  trigger: "break above the high of the inside-bar / NR7 candle (long) on expanding volume, in an uptrend"
+  confirm_indicators: [nr7_or_inside_bar, ema50_rising]
+  timeframe: daily
+
+exit:
+  stop: range_low                                         # below the NR/inside candle low
+  target: "measured_move (the squeeze typically expands ~1-2x the prior range)"
+  min_rrr: 1.8
+  time_stop_sessions: 10                                  # squeezes resolve fast; short leash
+
+sizing:
+  method: fixed_fractional
+  risk_per_trade_pct: 1.0
+  max_positions: 8
+  max_sector_pct: 25
+
+risk:
+  max_portfolio_heat_pct: 6
+  rebalance: none
+
+indicator_study:
+  tradingview_symbols: []
+  applied_indicators: [EMA50, EMA200, "NR7/inside-bar", Volume]
+  screenshots: []
+  visual_confirms: ""
+
+expectancy_assumptions:
+  win_rate: null
+  avg_win_R: null
+  expectancy_R: null
+  profit_factor: null
+  n_trades: null
+  validated_by: null
+
+live_performance:
+  trades_closed: 0
+  win_rate: null
+  expectancy_R: null
+  profit_factor: null
+  last_updated: null
+  drift_note: null
+
+optimization_log: []

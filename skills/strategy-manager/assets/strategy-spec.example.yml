@@ -2,10 +2,10 @@
 # strategy-manager owns this file's whole lifecycle (generate -> validate -> select -> optimize).
 # It is written from the REFERENCE ARTICLE(S) the user supplied (trade logic) + the system
 # framework (risk layer), then validated by backtest and tuned by live trade outcomes.
-#   swing-trading  reads universe/entry/exit/sizing of an ACTIVE, regime-fitting spec.
+#   find-trade     reads universe/screening/entry/exit/sizing of an ACTIVE, regime-fitting spec.
 #   backtest       reads entry/exit/sizing and writes results into expectancy_assumptions.
 #   trade-tracker  reads regime_required of a trade's linked strategy; feeds closed trades back.
-# Every field must be present.
+# Every field must be present.  (Full schema doc: <plugin>/lib/contracts.md)
 
 name: nifty500-momentum-swing        # kebab-case id, also the filename
 version: 1                           # bump on each optimization that changes the rules
@@ -19,7 +19,7 @@ source_references:                    # where the trade logic came from — REQU
 status: draft                         # draft | active | inactive
 # draft    = generated; NOT yet validated by backtest (or visual study pending). Not tradeable.
 # active   = backtest PASSED (expectancy_R > 0.2 over >= ~30 trades). Eligible to be SELECTED
-#            when the live regime fits regime_required. swing-trading runs only active+fitting specs.
+#            when the live regime fits regime_required. find-trade runs only active+fitting specs.
 # inactive = retired: failed backtest, OR deactivated by optimization (live edge gone), OR manual.
 # NOTE: regime-fit is decided at SELECTION time (mode: pick) against the live regime — it is NOT a
 # status. A spec stays "active" through regimes; it simply isn't selected while the tape doesn't fit.
@@ -39,10 +39,40 @@ regime_required:                      # the conditions the SOURCE ARTICLE claims
 
 universe:
   source: nifty500                    # nifty50 | nifty500 | largecap20 | [explicit tickers]
-  fundamental_gate:                   # optional; consumed by swing-trading Stage 1
-    roce_min: 12
-    de_max: 1
   liquidity_min_adv_cr: 5             # min avg daily turnover in ₹ Cr
+
+# ---- SCREENING: how find-trade cuts the universe down to a candidate shortlist ----
+# This is the COARSE filter (whole universe -> ~dozens), distinct from `entry` below
+# (the FINE, per-stock trigger find-trade then constructs from OHLCV on the shortlist).
+# Each stage names the PROVIDER that runs it and is OPTIONAL. find-trade runs the stages
+# top-to-bottom, each narrowing the survivors of the last:
+#   fundamental -> screener.in   (business-quality cut: market cap, ROCE, D/E, growth)
+#   technical   -> tradingview   (chart-state cut: trend/RSI/volume, screened server-side)
+# Provider unreachable + fallback_compute:true -> find-trade reproduces the cut locally
+# from yfinance OHLCV via lib/ta.py (the `compute_*` predicates), and flags the degrade.
+screening:
+  fundamental:
+    provider: screener.in             # screener.in | none  (none = skip the quality gate)
+    query: >                          # screener.in query-language; run on the screen builder (auth cookies)
+      Market Capitalization > 1000 AND Return on capital employed > 12
+      AND Debt to equity < 1 AND Profit growth > 0 AND Sales growth 3Years > 8
+    max_survivors: 60                 # cap; tighten the query (e.g. ROCE > 15) if exceeded
+  technical:
+    provider: tradingview             # tradingview | compute  (compute = local yfinance + lib/ta.py)
+    market: india                     # TradingView scanner market (POST scanner.tradingview.com/india/scan)
+    # find-trade runs these via the scanner JSON API (no browser/login needed for standard filters);
+    # it maps each row to a scanner filter — column names: SMA50, SMA200, RSI, close, volume, market_cap_basic;
+    # cross-column tests become {"left":"SMA50","operation":"greater","right":"SMA200"}.
+    tradingview_filters:              # human-readable rows (also used for the browser fallback)
+      - "Simple Moving Average (50) > Simple Moving Average (200)"   # uptrend structure
+      - "Price > Simple Moving Average (50)"
+      - "Relative Strength Index (14) between 40 and 60"             # healthy-continuation zone
+      - "Volume > 1.5 * Average Volume (10)"                          # participation
+    compute_filters:                  # equivalent local predicates (lib/ta.py columns) for the fallback path
+      - "ema50_rising"
+      - "Close > ema50"
+      - "rsi14 between 40 and 60"
+  fallback_compute: true              # provider down -> screen locally with lib/ta.py instead of aborting
 
 ranking:                              # used by basket/ranked methods (else null)
   metric: return_12m                  # return_12m | return_6m | rs_vs_nifty

@@ -1,7 +1,7 @@
 {
   "name": "everything-finance",
-  "version": "0.2.0",
-  "description": "Personal India-focused financial intelligence: swing trading pipeline on the Nifty 500, multi-agent deep stock analysis, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, and live trade tracking against your broker (Zerodha/Upstox).",
+  "version": "0.3.0",
+  "description": "Personal India-focused financial intelligence: strategy-driven trade finding on the Nifty 500, multi-agent deep stock analysis, DCF valuation, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, and live trade tracking against your broker (Zerodha/Upstox).",
   "author": {
     "name": "Pavan Sai Grandhi"
   },
@@ -9,6 +9,7 @@
     "finance",
     "india",
     "swing-trading",
+    "find-trade",
     "nifty500",
     "mutual-funds",
     "budgeting",
@@ -22,7 +23,7 @@
     "governance"
   ],
   "skills": [
-    "./skills/swing-trading",
+    "./skills/find-trade",
     "./skills/deep-analysis",
     "./skills/sector-pulse",
     "./skills/mf-research",

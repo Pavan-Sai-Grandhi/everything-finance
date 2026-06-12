@@ -7,21 +7,25 @@ allowed-tools: WebFetch, Read, Write, Bash, mcp__playwright__*
 
 # Exchange Filings Watch
 
-Read `references/reference.md` for the materiality classification and source endpoints.
+Read `references/reference.md` for the materiality classification and source endpoints. The mechanical fetch+classify core is the bundled **`scripts/filings.py`** — a shared module (daily-brief calls it too) so the BSE endpoints and the materiality taxonomy live in one place. This skill is the judgement layer on top: the browser-only shareholding/pledge read and the "so what" narrative.
 
-**Sites for this skill only:** NSE and BSE (primary, via Playwright — both block plain HTTP clients), screener.in Documents section (fallback mirror for announcements/shareholding). No news sites — this skill reports *filings*, the news-sentiment agent handles press.
+**Sites for this skill only:** NSE and BSE (primary, via the script's BSE JSON + Playwright for NSE — both block plain HTTP HTML), screener.in Documents section (fallback mirror for announcements/shareholding). No news sites — this skill reports *filings*, the news-sentiment agent handles press.
 
 ## Workflow
 
-1. **Resolve symbol** on both exchanges (NSE symbol + BSE scrip code; screener.in company page header lists both).
+1. **Resolve symbol** on both exchanges (NSE symbol + BSE scrip code; screener.in company page header lists both). The script needs the **BSE scrip code**.
 
-2. **Fetch — try in this order** (verified 2026-06: the BSE *JSON API* works over plain HTTP; only the exchanges' HTML pages block non-browser clients):
-   - (a) **BSE public JSON APIs via WebFetch/curl** — announcements and corporate actions endpoints pinned in reference.md; no browser needed
-   - (b) **NSE pages via Playwright** (cookie bootstrap from the homepage first) — needed for the SHP pledge detail
-   - (c) **screener.in via WebFetch** — Documents/Announcements mirror + shareholding table
-   De-duplicate announcements filed on both exchanges (same subject ± minutes apart). **Single-exchange rule**: if only one exchange is reachable, skip de-dup and state in the data-gaps note that the other is assumed to mirror it — near-lossless for dual-listed large caps; for NSE-only/BSE-only listings, name what's missing.
+2. **Fetch + classify the BSE feed with the script** (first rung — works over plain HTTP when BSE isn't fingerprint-blocking):
+   ```bash
+   python3 <skill-dir>/scripts/filings.py --scrip <BSE_CODE> --days <lookback> \
+       --out artifacts/YYYY-MM-DD/<TICKER>-filings.json
+   ```
+   It returns announcements already classified into act-on / monitor / routine (+ forthcoming corporate actions), and a `notes` field. **If `notes` flags an empty/blocked BSE pull** ("No Record Found!" = fingerprint block, per reference.md), fall to the next rungs — don't assume the company was silent:
+   - (b) **NSE pages via Playwright** (cookie bootstrap from the homepage first) — and the **only** reliable source for the **SHP pledge %** detail.
+   - (c) **screener.in via WebFetch** — Documents/Announcements mirror + shareholding table.
+   De-duplicate announcements filed on both exchanges (same subject ± minutes apart). **Single-exchange rule**: if only one exchange is reachable, skip de-dup and state in data-gaps that the other is assumed to mirror it — near-lossless for dual-listed large caps; for single-listed names, name what's missing.
 
-3. **Classify by materiality** (taxonomy in reference.md): 🔴 act-on (results, M&A, pledge increase, resignation of auditor/KMP, fraud/regulatory action, buyback) / 🟡 monitor (capex, order wins, credit-rating notes, investor-meet PPTs) / ⚪ routine (trading windows, ESOP allotments, newspaper-ad copies). Most filings are noise — the value of this skill is the filter.
+3. **Review the script's classification** (taxonomy in reference.md): 🔴 act-on (results, M&A, pledge increase, resignation of auditor/KMP, fraud/regulatory action, buyback) / 🟡 monitor (capex, order wins, credit-rating notes, investor-meet PPTs) / ⚪ routine (trading windows, ESOP allotments, newspaper copies). The script is the first-pass filter; **apply judgement on top** — an "unclassified → monitor" item, or an order win whose size you can size against revenue, may move tiers. Most filings are noise; the value of this skill is the filter plus that judgement.
 
 4. **Shareholding delta**: fixed table format — `Quarter | Promoter % | Pledge % | FII % | DII % | Public %`, ≥ 4 quarters. If no SHP was filed inside the lookback window, show the latest quarterly anyway and say so in the section header. Pledge rising while stock falls is the classic red flag — call it out explicitly; if pledge data is unreachable (it often needs the browser path), state that as a gap rather than implying nil.
 

@@ -1,0 +1,97 @@
+# SEED STRATEGY — draft, must be validated before trading. Source: .refs/swing-strategies.txt §3 Strategy 3.
+name: rsi-trendline-reversal-swing
+version: 1
+created: 2026-06-12
+archetype: pullback
+goal: "Buy trendline touches in an uptrend where RSI holds the 38-45 bullish-support zone"
+source_references:
+  - ".refs/swing-strategies.txt §3 Strategy 3 — RSI + Trendline Reversal"
+
+status: draft
+lifecycle:
+  generated_at: 2026-06-12
+  validated_at: null
+  activated_at: null
+  deactivated_at: null
+  deactivated_reason: null
+
+regime_required:
+  market_trend: up
+  nifty_above: ema200
+  vix_max: 20
+  breadth_min_pct: 45
+  macro_notes: "trend-continuation entry; the trendline is discretionary — flag for manual chart confirm"
+
+universe:
+  source: nifty500
+  liquidity_min_adv_cr: 5
+
+screening:
+  fundamental:
+    provider: screener.in
+    query: >
+      Market Capitalization > 1000 AND Return on capital employed > 12
+      AND Debt to equity < 1
+    max_survivors: 60
+  technical:
+    provider: tradingview
+    market: india
+    tradingview_filters:
+      - "Simple Moving Average (50) > Simple Moving Average (200)"
+      - "Price > Simple Moving Average (50)"
+      - "Relative Strength Index (14) between 38 and 48"   # RSI pulled into the trend-support zone
+    compute_filters:
+      - "ema50_rising"
+      - "Close > ema50"
+      - "rsi14 between 38 and 48"
+  fallback_compute: true
+
+ranking:
+  metric: rs_vs_nifty
+  top_n: 10
+  equal_weight: true
+
+entry:
+  trigger: "bullish candle at an upward trendline (connecting recent swing lows) with RSI(14) in 38-45; trendline is a manual confirm"
+  confirm_indicators: [rsi_38_45, ema50_rising]
+  timeframe: daily
+
+exit:
+  stop: recent_swing_low                                  # just below the trendline / swing low
+  target: "recent swing high; min 2R"
+  min_rrr: 2.0
+  time_stop_sessions: 15
+
+sizing:
+  method: fixed_fractional
+  risk_per_trade_pct: 1.0
+  max_positions: 8
+  max_sector_pct: 25
+
+risk:
+  max_portfolio_heat_pct: 6
+  rebalance: none
+
+indicator_study:
+  tradingview_symbols: []
+  applied_indicators: [EMA50, EMA200, RSI, "manual trendline"]
+  screenshots: []
+  visual_confirms: ""
+
+expectancy_assumptions:
+  win_rate: null
+  avg_win_R: null
+  expectancy_R: null
+  profit_factor: null
+  n_trades: null
+  validated_by: null
+
+live_performance:
+  trades_closed: 0
+  win_rate: null
+  expectancy_R: null
+  profit_factor: null
+  last_updated: null
+  drift_note: null
+
+optimization_log: []

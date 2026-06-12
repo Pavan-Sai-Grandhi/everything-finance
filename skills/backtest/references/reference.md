@@ -30,6 +30,6 @@ The bundled pandas script is deliberately dependency-light and transparent — e
 
 ## What this backtest does NOT test (state in every report)
 
-- The swing-trading **fundamental gate** (point-in-time fundamentals aren't freely available — historical screens can't be reproduced)
+- The strategy's **fundamental screen** (point-in-time fundamentals aren't freely available — historical screens can't be reproduced)
 - Discretionary S/R zone quality and candlestick pattern reading (only mechanical triggers are coded)
 - Liquidity/impact for position sizes beyond retail scale

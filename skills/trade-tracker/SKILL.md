@@ -1,6 +1,6 @@
 ---
 name: trade-tracker
-description: Track your live broker positions against the rationale that put you in them, and flag when to hold or exit early. Connects to Zerodha (Kite MCP) or Upstox (Upstox MCP) read-only, matches each open position to its trade-idea artifact (from swing-trading), a deep-analysis report, a strategy spec, or a rationale you type, then re-validates the thesis — stop hit, target hit, time stop, broken setup, or regime change — and recommends hold / trim / exit. Use whenever the user asks to check open trades, review positions, "is my thesis still valid", "should I exit X", track a trade, or sync the broker.
+description: Track your live broker positions against the rationale that put you in them, and flag when to hold or exit early. Connects to Zerodha (Kite MCP) or Upstox (Upstox MCP) read-only, matches each open position to its trade-idea artifact (from find-trade), a deep-analysis report, a strategy spec, or a rationale you type, then re-validates the thesis — stop hit, target hit, time stop, broken setup, or regime change — and recommends hold / trim / exit. Use whenever the user asks to check open trades, review positions, "is my thesis still valid", "should I exit X", track a trade, or sync the broker.
 argument-hint: "[optional: SYMBOL to check one position | 'all' | broker:kite|upstox]"
 allowed-tools: Read, Write, Bash, WebFetch, Skill, mcp__kite__*, mcp__upstox__*
 ---
@@ -28,9 +28,9 @@ Extract only the fields you need (symbol, qty, avg, ltp); don't dump the whole p
 ## 2. Pair each position with its rationale
 
 For every open position, find the "why" in this order:
-1. **Trade-idea artifact** — `artifacts/trades/<SYMBOL>-*.yml` (persisted by `swing-trading` on confirmation). Most recent open one wins. This is the richest source: it carries `plan` (entry/stop/target/time-stop), `thesis_invalidation`, `strategy` link, and `regime_at_creation`.
+1. **Trade-idea artifact** — `artifacts/trades/<SYMBOL>-*.yml` (persisted by `find-trade` on confirmation). Most recent open one wins. This is the richest source: it carries `plan` (entry/stop/target/time-stop), `thesis_invalidation`, `strategy` link, and `regime_at_creation`.
 2. **Deep-analysis / strategy artifact** — a `deep-analysis` report for the ticker, or a `strategy-manager` spec named in the idea's `strategy` field.
-3. **Custom rationale** — if no artifact exists, ask the user for the thesis (stop, target, and what would prove it wrong) and **write a fresh artifact** to `artifacts/trades/<SYMBOL>-<today>.yml` (same schema as swing-trading's) so the position is tracked from now on. A position with no recorded rationale is the exact problem this skill exists to fix — capture it.
+3. **Custom rationale** — if no artifact exists, ask the user for the thesis (stop, target, and what would prove it wrong) and **write a fresh artifact** to `artifacts/trades/<SYMBOL>-<today>.yml` (same trade-idea schema find-trade uses — see `<plugin>/lib/contracts.md`) so the position is tracked from now on. A position with no recorded rationale is the exact problem this skill exists to fix — capture it.
 
 When a broker fill matches an artifact still at `status: idea`, **promote it to `status: open`** and write the real fill back into `sizing.qty` and a new `fill_avg` field (don't overwrite the planned `entry`; record both). When a position is gone from the broker (or you recommend and the user confirms an exit), mark its artifact `status: closed` and write the `result` block described in §5 — that block is what `strategy-manager optimize` later aggregates, so closing a trade without it breaks the learning loop.
 

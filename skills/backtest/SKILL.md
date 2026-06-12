@@ -1,6 +1,6 @@
 ---
 name: backtest
-description: Backtest swing trading rules on historical NSE daily data — runs the bundled pandas backtester on the swing-trading setups (breakout, EMA pullback) or custom rules, reporting win rate, expectancy, profit factor, max drawdown vs buy-and-hold. Use whenever the user asks to backtest, validate, or "check if this strategy actually works", wants historical performance of a setup, or after swing-trading produces signals and the user questions the strategy's edge.
+description: Backtest swing trading rules on historical NSE daily data — runs the bundled pandas backtester (built on the shared lib/ta.py indicators) on its reference breakout / EMA-pullback setups or a strategy-manager spec's rules, reporting win rate, expectancy, profit factor, max drawdown vs buy-and-hold. Use whenever the user asks to backtest, validate, or "check if this strategy actually works", wants historical performance of a setup, or after find-trade produces signals and the user questions the strategy's edge.
 argument-hint: "TICKER(s) or 'largecap20' [strategy: breakout|pullback|both] [years, default 5]"
 allowed-tools: Read, Write, Bash
 ---
@@ -25,7 +25,7 @@ python3 <skill-dir>/scripts/backtest.py --symbols RELIANCE,TCS,HDFCBANK --strate
 
 (`--symbols largecap20` expands to a built-in **20-stock** liquid large-cap basket — it is *not* the full Nifty 50; name it as "20-stock large-cap basket" in the report. `nifty50` is accepted as a deprecated alias. The script auto-installs `yfinance`/`pandas` if missing.)
 
-Strategies implemented (faithful, simplified versions of the swing-trading setups — the simplifications are listed in reference.md and must be mentioned in output):
+Strategies implemented (the reference breakout/pullback setups, computed via the shared `lib/ta.py` so they match find-trade's live screen exactly — the simplifications are listed in reference.md and must be mentioned in output):
 - **breakout**: close above the prior 20-session high after ≥20 sessions of consolidation, volume > 1.5× 10-day average; entry next open
 - **pullback**: price above rising 50-EMA, low touches the EMA zone, close back above it; entry next open
 - Exits for both: structural SL (pattern low / EMA−2×ATR), 2R target, 20-session time stop. Costs default 0.25% round trip.
@@ -37,6 +37,6 @@ The script writes a **JSON summary and a trade-log CSV only** — the markdown s
 1. **Verdict per strategy**, mapped explicitly from expectancy: < 0R = **no edge**; 0–0.2R = **no tradeable edge (fragile)**; > 0.2R with ≥ 30 trades = **edge**; < 30 trades = **inconclusive — insufficient sample** regardless of expectancy.
 2. **Honesty checks** (from reference.md): in-sample only? survivorship (current constituents)? regime concentration (did all profit come from one bull year — check the yearly breakdown)? Say these out loud in the report.
 3. **Compare vs buy-and-hold** of the same symbols — but note that return-on-capital under 1%-risk sizing leaves most capital idle and is *not* directly comparable to fully-invested B&H; lean on expectancy and drawdown for the comparison and say so in the report. Also check `exit_breakdown`: if TIME exits dominate (> 50%), the target/time-stop pairing is mis-specified for the universe — report that as the diagnosis, don't tune parameters in-sample.
-4. If the user came from swing-trading: state clearly what was and wasn't tested (the backtest tests the technical trigger mechanics, not the fundamental gate or discretionary S/R reading).
+4. If the user came from find-trade: state clearly what was and wasn't tested (the backtest tests the technical trigger mechanics, not the fundamental screen or discretionary S/R reading).
 
 Save the summary to `artifacts/YYYY-MM-DD/backtest-<strategy>.md` alongside the script's CSV outputs. End with: backtests describe the past; live edge degrades — position sizing discipline is what survives.

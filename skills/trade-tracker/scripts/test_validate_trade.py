@@ -61,7 +61,7 @@ def bars_to_csv(name, closes, start="2026-01-01"):
 TRADE_LONG = textwrap.dedent("""\
     symbol: TESTCO
     exchange: NSE
-    source_skill: swing-trading
+    source_skill: find-trade
     strategy: null
     created: 2026-01-01
     status: idea
@@ -165,7 +165,7 @@ check("unrealized_R = (110-100)/(100-90)=1.0", out["metrics"]["unrealized_R"] ==
 TRADE_SHORT = textwrap.dedent("""\
     symbol: SHORTCO
     exchange: NSE
-    source_skill: swing-trading
+    source_skill: find-trade
     strategy: momentum-x
     created: 2026-01-01
     status: idea

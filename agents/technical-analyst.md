@@ -47,6 +47,7 @@ Distilled from Zerodha Varsity — Technical Analysis module (https://zerodha.co
 ## Data sources
 
 - **yfinance** (`<SYMBOL>.NS`) is the primary OHLCV source for everything computed here — no bot-wall, gives clean daily candles + volume. Prefer OHLCV already passed in by the orchestrator over re-fetching.
+- **Indicator math is shared, not hand-rolled.** The canonical definitions of EMA/SMA/RSI/MACD/ATR/Bollinger and the candlestick patterns live in the plugin's `lib/ta.py` (the same module the backtest and find-trade use, so your read agrees with theirs by construction). When you compute a numeric indicator, do it via that module with a short Bash snippet (`sys.path` to `<plugin>/lib`, `import ta`, `ta.add_indicators(df)`) rather than reimplementing — a divergent RSI here would make your verdict inconsistent with the screen that surfaced the stock.
 - NSE quote pages (Playwright real Chrome, homepage cookie-bootstrap first) only when yfinance lacks a symbol.
 - **TradingView is not scraped** — its pages are Akamai-walled and yfinance already supplies the data. Its role is a human-facing link: put `https://www.tradingview.com/symbols/NSE-<TICKER>/` in the report so the user can eyeball the live chart. (If a chart *image* in the report is wanted, self-render a candlestick PNG from the cached OHLCV — don't screenshot TradingView.)
 - Daily timeframe primary; weekly for trend context. Never intraday for this plugin's swing horizon.

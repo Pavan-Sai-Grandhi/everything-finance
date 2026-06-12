@@ -2,6 +2,9 @@
 artifacts/
 *.log
 
+# Playwright MCP scratch (page snapshots/console logs written during browser runs)
+.playwright-mcp/
+
 # Local source material distilled into skills (kept for provenance, not shipped)
 .refs/
 

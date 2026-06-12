@@ -1,0 +1,99 @@
+# SEED STRATEGY — draft, must be validated before trading. Source: .refs/swing-strategies.txt §3 Strategy 1.
+# Distinct from the breakout example spec: this enters on a PULLBACK to a rising EMA, not a breakout.
+name: ema-pullback-swing
+version: 1
+created: 2026-06-12
+archetype: pullback
+goal: "Buy healthy pullbacks to a rising EMA in liquid trending stocks (PSU/banks/large-caps)"
+source_references:
+  - ".refs/swing-strategies.txt §3 Strategy 1 — Moving Average Pullback (20 EMA aggressive / 50 EMA conservative)"
+
+status: draft
+lifecycle:
+  generated_at: 2026-06-12
+  validated_at: null
+  activated_at: null
+  deactivated_at: null
+  deactivated_reason: null
+
+regime_required:
+  market_trend: up
+  nifty_above: ema200
+  vix_max: 20
+  breadth_min_pct: 45
+  macro_notes: "trend-following; works in risk-on, trending tapes; stand down in high-VIX chop"
+
+universe:
+  source: nifty500
+  liquidity_min_adv_cr: 5
+
+screening:
+  fundamental:
+    provider: screener.in
+    query: >
+      Market Capitalization > 1000 AND Return on capital employed > 12
+      AND Debt to equity < 1 AND Sales growth 3Years > 8
+    max_survivors: 60
+  technical:
+    provider: tradingview
+    market: india
+    tradingview_filters:
+      - "Simple Moving Average (50) > Simple Moving Average (200)"
+      - "Price > Simple Moving Average (50)"
+      - "Price < Simple Moving Average (20) * 1.03"     # near/just-above the fast EMA = pullback zone
+      - "Relative Strength Index (14) between 40 and 60"
+    compute_filters:
+      - "ema50_rising"
+      - "Close > ema50"
+      - "rsi14 between 40 and 60"
+  fallback_compute: true
+
+ranking:
+  metric: rs_vs_nifty
+  top_n: 10
+  equal_weight: true
+
+entry:
+  trigger: "bullish confirmation candle (hammer/engulfing) at the 20-EMA (aggressive) or 50-EMA (conservative) in an uptrend"
+  confirm_indicators: [ema50_rising, rsi_40_60]
+  timeframe: daily
+
+exit:
+  stop: recent_swing_low
+  target: "next_resistance; min 2R"
+  min_rrr: 2.0
+  time_stop_sessions: 15
+
+sizing:
+  method: fixed_fractional
+  risk_per_trade_pct: 1.0
+  max_positions: 8
+  max_sector_pct: 25
+
+risk:
+  max_portfolio_heat_pct: 6
+  rebalance: none
+
+indicator_study:
+  tradingview_symbols: []
+  applied_indicators: [EMA20, EMA50, EMA200, RSI, Volume]
+  screenshots: []
+  visual_confirms: ""
+
+expectancy_assumptions:
+  win_rate: null
+  avg_win_R: null
+  expectancy_R: null
+  profit_factor: null
+  n_trades: null
+  validated_by: null
+
+live_performance:
+  trades_closed: 0
+  win_rate: null
+  expectancy_R: null
+  profit_factor: null
+  last_updated: null
+  drift_note: null
+
+optimization_log: []

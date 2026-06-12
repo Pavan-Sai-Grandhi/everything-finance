@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Swing-rule backtester for NSE daily data (everything-finance plugin).
 
-Tests the swing-trading technical triggers historically with no-lookahead
+Tests the find-trade technical triggers historically with no-lookahead
 execution: signal on bar t close -> entry at bar t+1 open. Pessimistic
 intrabar tie-break (SL before target). Conservative all-in costs.
 
@@ -13,18 +13,17 @@ Usage:
 import argparse
 import json
 import os
-import subprocess
 import sys
 from datetime import date
 
-try:
-    import pandas as pd
-    import numpy as np
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet",
-                           "--break-system-packages", "pandas", "numpy"])
-    import pandas as pd
-    import numpy as np
+# Shared TA primitives (indicators, OHLCV loader) live at <plugin>/lib/ta.py so
+# the backtest and the live find-trade screen compute every indicator identically
+# — see lib/ta.py. From skills/backtest/scripts/ the plugin root is three up.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "lib"))
+import ta  # noqa: E402
+
+pd = ta.pd
 
 # 20 liquid large-caps — NOT the full Nifty 50; reports must call it a 20-stock basket
 LARGECAP20_BASKET = [
@@ -44,46 +43,13 @@ TARGET_R = 2.0
 
 
 def load_ohlcv(symbol: str, years: int, cache_dir: str) -> pd.DataFrame:
-    """Daily OHLCV via yfinance (.NS), cached as CSV per symbol+span."""
-    os.makedirs(cache_dir, exist_ok=True)
-    cache = os.path.join(cache_dir, f"{symbol}_{years}y.csv")
-    if os.path.exists(cache):
-        df = pd.read_csv(cache, index_col=0, parse_dates=True)
-        if len(df) > 200:
-            return df
-    try:
-        import yfinance as yf
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet",
-                               "--break-system-packages", "yfinance"])
-        import yfinance as yf
-    yf_symbol = SYMBOL_ALIASES.get(symbol, symbol)
-    df = yf.download(f"{yf_symbol}.NS", period=f"{years}y", interval="1d",
-                     auto_adjust=True, progress=False)
-    if df is None or df.empty:
-        raise RuntimeError(
-            f"no data for {symbol} ({yf_symbol}.NS) — likely delisted/renamed "
-            f"(demerger?); check the current yfinance symbol and add it to SYMBOL_ALIASES")
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
-    df.to_csv(cache)
-    return df
+    """Daily OHLCV via the shared loader, resolving demerger/rename aliases."""
+    return ta.load_ohlcv(SYMBOL_ALIASES.get(symbol, symbol), years, cache_dir)
 
 
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df["ema50"] = df["Close"].ewm(span=50, adjust=False).mean()
-    df["vol10"] = df["Volume"].rolling(10).mean()
-    df["hh20"] = df["High"].rolling(20).max().shift(1)  # prior 20-session high
-    tr = pd.concat([
-        df["High"] - df["Low"],
-        (df["High"] - df["Close"].shift(1)).abs(),
-        (df["Low"] - df["Close"].shift(1)).abs(),
-    ], axis=1).max(axis=1)
-    df["atr14"] = tr.rolling(14).mean()
-    df["ema50_rising"] = df["ema50"] > df["ema50"].shift(5)
-    return df
+    """The shared indicator bundle (ema50, vol10, hh20, atr14, ema50_rising, …)."""
+    return ta.add_indicators(df)
 
 
 def signals_breakout(df: pd.DataFrame) -> pd.Series:

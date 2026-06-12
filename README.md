@@ -27,13 +27,15 @@ The plugin registers three MCP servers:
 - **Playwright** (`npx @playwright/mcp@latest`, **real Chrome channel** — needed to beat the Akamai walls on Moneycontrol/NSE) for JS-heavy/authenticated pages.
 - **Kite** (Zerodha, `mcp-remote https://mcp.kite.trade/mcp`) and **Upstox** (`mcp-remote https://mcp.upstox.com/mcp`) — read-only broker access for `/trade-tracker`. Both are hosted and OAuth-gated: log in through the MCP (Kite per session, Upstox once per day) before tracking; neither can place orders. You only need the broker you actually use.
 
-Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfinance for OHLCV, Moneycontrol's `priceapi` JSON and the BSE/mfapi JSON APIs over plain curl, screener.in with auth cookies. WebFetch handles the static, non-blocking pages; Claude in Chrome is the CAPTCHA fallback. (TradingView is referenced only as a human-facing chart link — all computed data comes from yfinance.)
+Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfinance for OHLCV, Moneycontrol's `priceapi` JSON and the BSE/mfapi JSON APIs over plain curl, screener.in with auth cookies. WebFetch handles the static, non-blocking pages; Claude in Chrome is the CAPTCHA fallback. TradingView's **stock screener** is driven via the Playwright browser for find-trade's technical cut (its chart pages remain a human-facing link); all computed OHLCV still comes from yfinance.
+
+Shared code lives in **`lib/`**: `ta.py` (one definition of every technical indicator/pattern, imported by `backtest` and `find-trade`) and `contracts.md` (the data-handoff contracts between skills). See [CLAUDE.md](CLAUDE.md) → *Shared code*.
 
 ## Skills
 
 | Skill | What it does |
 |---|---|
-| `/swing-trading` | Screen the Nifty 500 (screener.in fundamentals gate + technical rules) → swing candidates with entry / SL / target; on your "yes" persists a trade-idea artifact for `/trade-tracker` |
+| `/find-trade` | Run a chosen, validated strategy against the Nifty 500 — screen the universe (screener.in fundamentals + TradingView/local technical cut), build entry / SL / target / size signals; on your "yes" persists a trade-idea artifact for `/trade-tracker`. Strategy-agnostic: names a strategy or asks `/strategy-manager pick`; no hardcoded default |
 | `/deep-analysis TICKER` | Multi-agent debate: technical, fundamental (reads annual reports + concalls, grades management integrity & skill, computes a story-driven DCF intrinsic value), news, bull vs bear, portfolio-manager verdict. Artifact auto-archived + Telegram brief via Stop hook |
 | `/sector-pulse` | Sector rotation snapshot from NSE sectoral indices + top picks per leading sector |
 | `/mf-research` | Mutual fund research: NAV history, rolling returns, category comparison, fund quality verdict |
@@ -42,9 +44,9 @@ Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfina
 | `/filings-watch TICKER` | NSE + BSE announcements, corporate actions, shareholding pattern changes |
 | `/daily-brief` | Morning one-pager: indices, sector tone, watchlist filings, open-position health — Telegram-ready |
 | `/portfolio-review` | Holdings audit: exit signals, allocation drift, risk concentration |
-| `/backtest` | Validate swing setups on historical NSE data (bundled pandas backtester — expectancy, profit factor, drawdown vs buy-and-hold) |
+| `/backtest` | Validate swing setups on historical NSE data (bundled pandas backtester on the shared `lib/ta.py` indicators — expectancy, profit factor, drawdown vs buy-and-hold) |
 | `/strategy-manager` | Full strategy lifecycle: **generate** a complete rule-based system from a reference article you supply → **validate** it by backtest and mark it active when it passes → **pick** the active strategy that fits the current regime → **optimize** or retire strategies from live trade outcomes fed back by `/trade-tracker` |
-| `/trade-tracker` | Connect Zerodha/Upstox (read-only MCP), match each open position to its rationale (a swing-trading idea, deep-analysis, strategy spec, or one you type), and re-validate the thesis — stop / target / time stop / broken setup / regime change → hold or early-exit call |
+| `/trade-tracker` | Connect Zerodha/Upstox (read-only MCP), match each open position to its rationale (a find-trade idea, deep-analysis, strategy spec, or one you type), and re-validate the thesis — stop / target / time stop / broken setup / regime change → hold or early-exit call |
 | `/dcf-valuation TICKER` | Story-driven DCF (Damodaran FCFF): project revenue growth + operating margin, fund growth via the sales-to-capital ratio, discount FCFF at WACC, add a disciplined terminal value → intrinsic value/share with margin of safety, a WACC×terminal-growth sensitivity grid, and reality-check flags. Bundled offline-tested engine; every input must be sourced |
 | `/management-quality TICKER` | Management integrity (a hard gate) + skill grade: remuneration vs profit, related-party transactions, criminal/regulatory record, media-savvy, CFO/auditor churn & fees, owning mistakes, pledging — then qualification/experience, mindset, capital allocation, succession |
 

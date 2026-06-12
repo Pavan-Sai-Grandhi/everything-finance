@@ -16,6 +16,7 @@ All credentials live in `~/.claude/.env` — never hardcode, never echo values i
 
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram briefs
 - `SCREENER_SESSION_ID`, `SCREENER_CSRF_TOKEN` — screener.in authenticated screens (optional; public pages work without them). Session id goes in the `sessionid` cookie; the CSRF token is needed as the `csrftoken` cookie + `X-CSRFToken` header for POST endpoints.
+- `TRADINGVIEW_SESSIONID`, `TRADINGVIEW_SESSIONID_SIGN` — TradingView session **cookies** for find-trade's technical cut (optional; only needed for saved/personal screens — the anonymous/public screener covers the built-in filters the seeds use). **Do NOT store a TradingView username/password** — TradingView login is Google SSO here, which can't be scripted (Google blocks automation + 2FA). Instead: log in to TradingView in your normal browser via Google, open DevTools → Application → Cookies → `tradingview.com`, copy the `sessionid` and `sessionid_sign` values into these env vars. The browser/curl injects them as cookies; they expire periodically — re-copy when a screen starts coming back logged-out. Never echoed.
 
 Load with `set -a; source ~/.claude/.env; set +a` inside hook/automation scripts. If a secret is missing, skip the step that needs it and note the gap in the output — do not fail the whole skill.
 
@@ -34,6 +35,7 @@ Always take the cheapest path that works for a given source — the **verified a
 | BSE (announcements, actions) | **BSE JSON API over curl** with browser UA + `Referer: https://www.bseindia.com/` | a 200 + "No Record Found!" everywhere = fingerprint-block → move on |
 | AMFI / mutual-fund NAV | `api.mfapi.in` JSON over curl | |
 | OHLCV / index price math | **yfinance** (`<SYMBOL>.NS`, `^NSEI`, `^CNX*`) via Python | primary for everything computed; no bot-wall |
+| TradingView — **stock screener** | **Playwright (real Chrome)** | `tradingview.com/screener/` loads with **no Akamai wall** (verified 2026-06) — unlike TV chart/symbol pages. Set the market to India, apply the spec's filter rows, read the result table via `browser_snapshot`/`browser_evaluate`. **Anonymous covers the built-in filters the seeds use** (no login needed for the common case). Saved/personal screens need auth — and TV login is **Google SSO** which can't be scripted, so inject `TRADINGVIEW_SESSIONID`/`_SIGN` cookies from your logged-in browser (see Secrets) rather than automating a sign-in; or do a one-time interactive login in a persistent browser profile. TV **chart** pages remain a human-facing link only. |
 
 - **WebFetch** is fine for static, non-blocking pages (screener public, Varsity, mfapi, BSE JSON) but is blocklisted by Moneycontrol and ET — use curl/Playwright there instead.
 - **Playwright** (`npx @playwright/mcp@latest`, or `npx playwright` driven from Bash) must use the **real Chrome channel** to beat Akamai-protected sites (Moneycontrol, NSE). Headless bundled chromium is the most-blocked config.
@@ -44,6 +46,13 @@ Always take the cheapest path that works for a given source — the **verified a
 ## Graceful degradation
 
 A scrape failure never aborts a skill. Continue with the remaining sources, and include a "Data gaps" line in the output naming what's missing and why (e.g., "BSE shareholding: fetch blocked, skipped"). Partial truth labeled as partial beats silent failure.
+
+## Shared code (`lib/`)
+
+Cross-skill code lives in `lib/` at the plugin root, so the same logic isn't re-implemented (and allowed to drift) in several skills:
+
+- **`lib/ta.py`** — the one definition of every technical indicator + candlestick pattern. `backtest` and `find-trade` both import it (idiom: `sys.path.insert` three dirs up from `skills/<name>/scripts/` to `lib/`), so a stock can't pass the live screen on an EMA the backtest computes differently. Tests: `lib/test_ta.py`. **Add a new indicator here, not inside a skill.**
+- **`lib/contracts.md`** — the data-handoff contracts between skills (strategy spec, trade-idea, regime.json, deep-analysis report, and the `filings.py` outputs). **Read it before changing any artifact schema** — it names the producer and every consumer of each field, so you change both sides together.
 
 ## Output conventions
 

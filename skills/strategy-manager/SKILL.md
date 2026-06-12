@@ -15,7 +15,7 @@ This skill owns a strategy's whole life. A strategy lives as a spec at `artifact
    ┌────────┐  draft   ┌────────┐  active   ┌───────────────┐  inactive
    │ DRAFT  ├─────────▶│ ACTIVE │◀─────────▶│ OPTIMIZE/RETIRE│
    └────────┘          └───┬────┘           └───────────────┘
-                           │ mode: pick (runtime regime-fit) → hand to swing-trading
+                           │ mode: pick (runtime regime-fit) → hand to find-trade
 ```
 
 `status` is the lifecycle state (`draft | active | inactive`); **regime-fit is NOT a status** — it's decided fresh each time in `pick` mode against the live tape. Read `references/reference.md` first for the system framework, the activation thresholds, the selection logic, and the optimization rules this skill enforces.
@@ -34,11 +34,11 @@ This skill owns a strategy's whole life. A strategy lives as a spec at `artifact
 
 ## Mode 1 — GENERATE (from a reference article)
 
-This skill ships **no strategies of its own** — the trade logic always comes from the article. It supplies the *system framework* (completeness, expectancy, %-risk sizing, regime gate).
+This skill invents **no trade logic of its own** — it always comes from the article. It supplies the *system framework* (completeness, expectancy, %-risk sizing, regime gate). A **seed library of pre-generated drafts** (common swing methods distilled from a reference article) lives in `assets/seed-strategies/` — these are starting points the user copies into `artifacts/strategies/` and must still VALIDATE; they are `status: draft`, never a shortcut around the backtest gate.
 
 1. **Ingest the reference(s) — REQUIRED.** URL → `WebFetch`/curl; local file → `Read`. If the user gives none, **stop and ask** for a URL/file/pasted rules. Extract — and quote the source for — the strategy's universe, entry, exit, ranking/rebalance, indicators, and the regime it claims (reference.md extraction table). Never invent trade logic.
 2. **Read the regime as context.** `python3 <skill-dir>/scripts/regime.py --out artifacts/YYYY-MM-DD/regime.json` (Nifty trend, India VIX, breadth, risk posture). Layer macro if the user wants it; call `sector-pulse` for leadership. This informs `regime_required`, not the entry trigger.
-3. **Complete the system.** Fill every component the article omits from the framework — sizing (default 1% risk), risk caps (heat 6%), and `regime_required` from the article's claimed conditions (minimum structural gate if it's silent). A spec missing universe/entry/exit/sizing/risk/regime is incomplete; don't emit it.
+3. **Complete the system.** Fill every component the article omits from the framework — sizing (default 1% risk), risk caps (heat 6%), `regime_required` from the article's claimed conditions (minimum structural gate if it's silent), and the **`screening` block** (how find-trade cuts the universe): the `fundamental` cut (provider `screener.in` + a query) and the `technical` cut (provider `tradingview` with server-side filter rows, or `compute` with local `lib/ta.py` predicates when TradingView can't express the filter — e.g. NR-bars, fib zones). A spec missing universe/screening/entry/exit/sizing/risk/regime is incomplete; don't emit it.
 4. **TradingView visual study — REQUIRED.** Confirm the article's rules on 2–3 representative symbols via the connected browser (Claude in Chrome / Cowork computer-use / Playwright real Chrome), apply the article's indicators on its timeframe, screenshot into `artifacts/YYYY-MM-DD/tv/`. If no browser is connected, **stop and ask the user to connect one**; leave `indicator_study` `PENDING`. Never fabricate screenshots or enter the user's TradingView credentials.
 5. **Emit the spec as `status: draft`.** Fill `assets/strategy-spec.example.yml` → `artifacts/strategies/<name>.yml` with `source_references` populated, `lifecycle.generated_at` set, `expectancy_assumptions`/`live_performance` null. Write the rationale doc → `artifacts/YYYY-MM-DD/strategy-<name>.md` citing the article for each trade rule and the framework for the risk layer. **A draft is not tradeable** — immediately offer VALIDATE.
 
@@ -58,7 +58,7 @@ Answer "what should I trade in this market" from the **validated library**, not 
 1. Refresh the regime: `python3 <skill-dir>/scripts/regime.py --out artifacts/YYYY-MM-DD/regime.json`.
 2. Select: `python3 <skill-dir>/scripts/select_strategy.py --strategies artifacts/strategies --regime artifacts/YYYY-MM-DD/regime.json --out artifacts/YYYY-MM-DD/selection.json`. It keeps only `status: active` specs, tests each `regime_required` against the live regime, and ranks the fitting ones by edge (live expectancy if available, else backtest).
 3. Present the **selected** strategy (and the ranked runners-up), plus the ones rejected for regime-fit and why. If **none fit** (exit 11) say so plainly — the disciplined move is to stand aside, not to force a misfit strategy; suggest GENERATE/OPTIMIZE if the library is thin. If there are **no active specs** (exit 12), there's nothing validated to run — point to GENERATE→VALIDATE.
-4. Hand off: tell the user to run `/swing-trading strategy:<selected>` to screen live candidates against it.
+4. Hand off: tell the user to run `/find-trade strategy:<selected>` to screen live candidates against it (or just `/find-trade`, which calls this pick itself when no strategy is named).
 
 ## Mode 4 — OPTIMIZE (learn from live trades; retire what's broken)
 
@@ -72,6 +72,6 @@ Close the loop with reality. `trade-tracker` writes a `result` block (realized R
    - **KEEP** → record the live numbers, no change.
 
 ## How other skills consume this
-`swing-trading` runs only an **active, regime-fitting** spec (use PICK to choose it); `backtest` is the validation engine this skill drives; `deep-analysis` checks a ticker against an active strategy's regime/archetype; `trade-tracker` reads a trade's linked strategy `regime_required` for its regime-exit check and feeds closed trades back here for OPTIMIZE.
+`find-trade` runs only an **active, regime-fitting** spec — and when the user names none, it calls this skill's PICK mode to choose one (it has no default of its own); it reads the spec's `screening`/`entry`/`exit`/`sizing`. `backtest` is the validation engine this skill drives; `deep-analysis` checks a ticker against an active strategy's regime/archetype; `trade-tracker` reads a trade's linked strategy `regime_required` for its regime-exit check and feeds closed trades back here for OPTIMIZE.
 
 End every mode with the standard risk note. A strategy is a hypothesis at generate, a survivor at validate, a fit at pick, and a living thing at optimize — never a guaranteed edge.
