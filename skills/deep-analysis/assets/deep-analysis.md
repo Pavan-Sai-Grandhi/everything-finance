@@ -12,12 +12,15 @@ Review: {{REVIEW_TRIGGER}}
 
 <!-- The Stop hook extracts exactly the section above and sends it to Telegram.
      Keep it ≤ 10 lines, no markdown tables, no links.
-     Orchestrator fills CMP/TOP_BULL_POINT/TOP_BEAR_POINT/KEY_LEVEL/DATA_GAPS/AGENT_COUNT itself.
+     Orchestrator fills CMP/TOP_BULL_POINT/TOP_BEAR_POINT/KEY_LEVEL/COMPANY_OVERVIEW/DATA_GAPS/AGENT_COUNT itself.
      When pasting agent reports below, strip each agent's own "## ..." title line —
      these H2 section headers replace them. -->
 
 ## Portfolio Manager Verdict
 {{PM_VERDICT_FULL}}
+
+## Company Overview
+{{COMPANY_OVERVIEW}}
 
 ## Bull Case
 {{BULL_REPORT}}

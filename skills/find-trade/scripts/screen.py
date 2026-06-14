@@ -13,10 +13,8 @@ spec's screening + signal rules on price data:
   2. build_signal()    — turns a surviving stock into entry / stop / target / RRR /
                          qty from the spec's entry/exit/sizing blocks.
 
-The auth'd provider fetches (screener.in fundamental screen, TradingView technical
-screen via the browser) live in the SKILL workflow, which feeds their survivor list
-into this script. Keeping the math here means the live screen and the backtest agree
-by construction (both import lib/ta.py) and the logic is unit-testable with no network.
+The evaluator + signal math live in `lib/strategy.py`, shared verbatim with the
+backtest; this file is just the live-screen orchestration around it.
 
 Usage:
   python3 screen.py --spec <strategy>.yml --symbols RELIANCE,TCS[,...] \
@@ -27,132 +25,22 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import sys
 from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "lib"))
-import ta  # noqa: E402
+import ta        # noqa: E402
+import strategy  # noqa: E402
 
 pd = ta.pd
 
-
-# --------------------------------------------------------------------------- #
-# compute-path predicate evaluator                                            #
-# --------------------------------------------------------------------------- #
-# A tiny, SAFE mini-language for spec.screening.technical.compute_filters — NOT
-# Python eval. Supported forms, evaluated on the latest bar of an indicator frame:
-#   "<col>"                       bare column -> truthy (e.g. "ema50_rising")
-#   "<term> > <term>"             comparison  (e.g. "Close > ema50")
-#   "<term> < <term>"
-#   "<col> between <x> and <y>"   range       (e.g. "rsi14 between 40 and 60")
-# where <term> is a column name, a number, or "<number> * <col>" (e.g. "1.5 * vol10").
-def _term(token, row):
-    token = token.strip()
-    if "*" in token:
-        a, b = (t.strip() for t in token.split("*", 1))
-        return float(a) * _term(b, row)
-    try:
-        return float(token)
-    except ValueError:
-        if token not in row:
-            raise KeyError(f"unknown column in filter: {token!r}")
-        return float(row[token])
-
-
-def eval_filter(expr, row):
-    """Evaluate one compute_filter string against a Series `row` (latest bar)."""
-    e = expr.strip()
-    low = e.lower()
-    if " between " in low and " and " in low:
-        col, rest = e.split(" between ", 1) if " between " in e else e.split(" BETWEEN ", 1)
-        lo, hi = rest.replace(" AND ", " and ").split(" and ", 1)
-        v = _term(col, row)
-        return _term(lo, row) <= v <= _term(hi, row)
-    for op in (">=", "<=", ">", "<"):
-        if op in e:
-            a, b = e.split(op, 1)
-            va, vb = _term(a, row), _term(b, row)
-            return {">": va > vb, "<": va < vb, ">=": va >= vb, "<=": va <= vb}[op]
-    # bare column -> truthy
-    return bool(row[e.strip()])
-
-
-def passes_technical(df, filters):
-    """True if the latest bar of `df` satisfies every compute_filter. Returns
-    (ok, reasons) where reasons lists any failed/again-unevaluable filter."""
-    row = df.iloc[-1]
-    reasons = []
-    for f in filters or []:
-        try:
-            if not eval_filter(f, row):
-                reasons.append(f"fail: {f}")
-        except (KeyError, ValueError) as exc:
-            reasons.append(f"uneval: {f} ({exc})")
-    return (len(reasons) == 0), reasons
-
-
-# --------------------------------------------------------------------------- #
-# signal construction                                                          #
-# --------------------------------------------------------------------------- #
-def _resolve_stop(df, kind):
-    """Stop level from spec.exit.stop on the latest bar."""
-    last = df.iloc[-1]
-    if kind == "ema50_minus_2atr":
-        return float(last["ema50"] - 2 * last["atr14"])
-    if kind == "range_low":
-        return float(last["ll20"])
-    # default: recent_swing_low — lowest low of the last 10 sessions
-    return float(df["Low"].rolling(10).min().iloc[-1])
-
-
-def build_signal(df, spec, capital, entry_override=None):
-    """Construct a trade signal for one stock from the spec. Returns a dict, or
-    {skip: reason} when the RRR gate or a malformed stop rejects it."""
-    last = df.iloc[-1]
-    exitb = spec.get("exit", {}) or {}
-    sizing = spec.get("sizing", {}) or {}
-    min_rrr = float(exitb.get("min_rrr", 1.5))
-
-    # entry: an explicit trigger if the setup defines one (breakout -> prior high),
-    # else the latest close (pullback/reversal setups enter at/near current price).
-    entry = float(entry_override) if entry_override is not None else float(last["Close"])
-    stop = _resolve_stop(df, exitb.get("stop", "recent_swing_low"))
-    if not (stop < entry) or (entry - stop) / entry > 0.15:
-        return {"skip": f"malformed/too-wide stop (entry {entry:.2f}, stop {stop:.2f})"}
-    risk = entry - stop
-
-    target_spec = str(exitb.get("target", "")).lower()
-    if "measured_move" in target_spec or "measured" in target_spec:
-        target = entry + float(last["hh20"] - last["ll20"])   # consolidation height
-        target_basis = "measured-move"
-    else:
-        target = entry + min_rrr * risk                       # next-resistance proxy
-        target_basis = "min-RRR (next resistance to be confirmed on chart)"
-    rrr = (target - entry) / risk
-    if rrr < min_rrr:
-        return {"skip": f"RRR {rrr:.2f} < min {min_rrr}"}
-
-    risk_pct = float(sizing.get("risk_per_trade_pct", 1.0))
-    qty = max(int((capital * risk_pct / 100) / risk), 0)
-    if qty == 0:
-        return {"skip": "qty rounds to 0 at this risk budget"}
-
-    return {
-        "entry": round(entry, 2), "stop": round(stop, 2), "target": round(target, 2),
-        "rrr": round(rrr, 2), "qty": qty, "risk_per_share": round(risk, 2),
-        "target_basis": target_basis,
-        "stop_basis": exitb.get("stop", "recent_swing_low"),
-        "indicators": {
-            "close": round(float(last["Close"]), 2),
-            "ema50": round(float(last["ema50"]), 2),
-            "rsi14": round(float(last["rsi14"]), 1),
-            "vol_vs_10d": round(float(last["Volume"] / last["vol10"]), 2),
-            "ema50_rising": bool(last["ema50_rising"]),
-        },
-    }
+# The screen engine IS lib/strategy.py — re-export the pieces the SKILL workflow and
+# the tests reference, so there is exactly one implementation of each.
+eval_filter = strategy.eval_filter
+passes_technical = strategy.passes_technical
+build_signal = strategy.build_signal
 
 
 # --------------------------------------------------------------------------- #
@@ -164,14 +52,16 @@ def screen_compute(symbols, spec, years, capital, cache_dir, loader=None):
     load = loader or (lambda s: ta.load_ohlcv(s, years, cache_dir))
     tech = (spec.get("screening", {}) or {}).get("technical", {}) or {}
     filters = tech.get("compute_filters", [])
+    features = strategy.referenced_features(spec)
     breakout = "breakout" in str(spec.get("archetype", "")).lower() \
         or "prior_20d_high" in str((spec.get("entry") or {}).get("trigger", "")).lower() \
-        or "20d_high" in str((spec.get("entry") or {}).get("trigger", "")).lower()
+        or "20d_high" in str((spec.get("entry") or {}).get("trigger", "")).lower() \
+        or "Close > hh20" in filters
 
     candidates, rejected, gaps = [], [], []
     for sym in symbols:
         try:
-            df = ta.add_indicators(load(sym))
+            df = ta.materialize(ta.add_indicators(load(sym)), features)
         except Exception as exc:
             gaps.append(f"{sym}: {exc}")
             continue

@@ -284,8 +284,7 @@ def sensitivity(spec, wacc_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01),
             trial = dict(spec)
             trial["terminal_wacc"] = base_wacc_T + wd
             trial["terminal_growth"] = base_g_T + gd
-            # keep the whole explicit-period wacc path anchored to its last point? No —
-            # only shift the terminal discount rate; explicit years use their own path.
+            # only the terminal discount rate shifts; explicit years keep their own path
             try:
                 row.append(round(value(trial)["intrinsic_value_per_share"], 2))
             except ValueError:

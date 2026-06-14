@@ -29,7 +29,7 @@ The plugin registers three MCP servers:
 
 Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfinance for OHLCV, Moneycontrol's `priceapi` JSON and the BSE/mfapi JSON APIs over plain curl, screener.in with auth cookies. WebFetch handles the static, non-blocking pages; Claude in Chrome is the CAPTCHA fallback. TradingView's **stock screener** is driven via the Playwright browser for find-trade's technical cut (its chart pages remain a human-facing link); all computed OHLCV still comes from yfinance.
 
-Shared code lives in **`lib/`**: `ta.py` (one definition of every technical indicator/pattern, imported by `backtest` and `find-trade`) and `contracts.md` (the data-handoff contracts between skills). See [CLAUDE.md](CLAUDE.md) → *Shared code*.
+Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/pattern — TA-Lib-backed — plus the `FEATURES` registry), `strategy.py` (the one spec→signal engine both the live `find-trade` screen and the `backtest` sit on, so they can't drift), and `contracts.md` (the data-handoff contracts between skills). See [CLAUDE.md](CLAUDE.md) → *Shared code*.
 
 ## Skills
 
@@ -44,7 +44,7 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every technical indi
 | `/filings-watch TICKER` | NSE + BSE announcements, corporate actions, shareholding pattern changes |
 | `/daily-brief` | Morning one-pager: indices, sector tone, watchlist filings, open-position health — Telegram-ready |
 | `/portfolio-review` | Holdings audit: exit signals, allocation drift, risk concentration |
-| `/backtest` | Validate swing setups on historical NSE data (bundled pandas backtester on the shared `lib/ta.py` indicators — expectancy, profit factor, drawdown vs buy-and-hold) |
+| `/backtest` | Validate a strategy spec on historical NSE data (strategy-agnostic **Backtesting.py** engine driven by the shared `lib/strategy.py` interpreter on **TA-Lib** indicators — expectancy, profit factor, drawdown vs buy-and-hold) |
 | `/strategy-manager` | Full strategy lifecycle: **generate** a complete rule-based system from a reference article you supply → **validate** it by backtest and mark it active when it passes → **pick** the active strategy that fits the current regime → **optimize** or retire strategies from live trade outcomes fed back by `/trade-tracker` |
 | `/trade-tracker` | Connect Zerodha/Upstox (read-only MCP), match each open position to its rationale (a find-trade idea, deep-analysis, strategy spec, or one you type), and re-validate the thesis — stop / target / time stop / broken setup / regime change → hold or early-exit call |
 | `/dcf-valuation TICKER` | Story-driven DCF (Damodaran FCFF): project revenue growth + operating margin, fund growth via the sales-to-capital ratio, discount FCFF at WACC, add a disciplined terminal value → intrinsic value/share with margin of safety, a WACC×terminal-growth sensitivity grid, and reality-check flags. Bundled offline-tested engine; every input must be sourced |

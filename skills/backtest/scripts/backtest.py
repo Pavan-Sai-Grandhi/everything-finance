@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
-"""Swing-rule backtester for NSE daily data (everything-finance plugin).
+"""Spec-driven swing backtester for NSE daily data (everything-finance plugin).
 
-Tests the find-trade technical triggers historically with no-lookahead
-execution: signal on bar t close -> entry at bar t+1 open. Pessimistic
-intrabar tie-break (SL before target). Conservative all-in costs.
+Validates any STRATEGY SPEC, not a hardcoded archetype: entry, stop, target,
+time-stop and sizing all come from the spec via `lib/strategy.py` — the same
+module the live find-trade screen uses, so a new strategy is backtestable by
+existing, with no per-archetype code here.
+
+Engine: **Backtesting.py** (MIT). Its defaults give the discipline a real-money
+test needs: no lookahead (signal on bar t -> fill at t+1 open) and pessimistic
+intrabar exits (both stop and target touched in one bar -> the STOP is taken).
+Indicators come from TA-Lib via lib/ta.py. Commission is charged per side, set so
+the round trip ~= 0.25% all-in (charges + slippage).
 
 Usage:
-  python3 backtest.py --symbols RELIANCE,TCS --strategy both --years 5 \
-      --capital 500000 --risk-pct 1.0 --out artifacts/2026-06-10/backtest
+  python3 backtest.py --spec artifacts/strategies/ema-pullback-swing.yml \
+      --symbols RELIANCE,TCS --years 5 --capital 500000 \
+      --out artifacts/2026-06-12/backtest
+  python3 backtest.py --selftest        # synthetic data, no network
 """
 
 import argparse
@@ -16,12 +25,11 @@ import os
 import sys
 from datetime import date
 
-# Shared TA primitives (indicators, OHLCV loader) live at <plugin>/lib/ta.py so
-# the backtest and the live find-trade screen compute every indicator identically
-# — see lib/ta.py. From skills/backtest/scripts/ the plugin root is three up.
+# Shared engine: lib/ta.py (indicators) + lib/strategy.py (spec -> signals).
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "lib"))
-import ta  # noqa: E402
+import ta          # noqa: E402
+import strategy    # noqa: E402
 
 pd = ta.pd
 
@@ -37,111 +45,66 @@ SYMBOL_ALIASES = {
     "TATAMOTORS": "TATAMOTORS",  # post-2025 demerger: verify CV/PV split symbol on yfinance
 }
 
-ROUND_TRIP_COST = 0.0025  # 0.25% all-in (charges + slippage), applied on exit
-TIME_STOP_SESSIONS = 20
-TARGET_R = 2.0
+# Per-side commission; ~0.00125/side ≈ 0.25% round trip (all-in charges + slippage).
+COMMISSION_PER_SIDE = 0.00125
 
 
-def load_ohlcv(symbol: str, years: int, cache_dir: str) -> pd.DataFrame:
+def load_ohlcv(symbol, years, cache_dir):
     """Daily OHLCV via the shared loader, resolving demerger/rename aliases."""
     return ta.load_ohlcv(SYMBOL_ALIASES.get(symbol, symbol), years, cache_dir)
 
 
-def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """The shared indicator bundle (ema50, vol10, hh20, atr14, ema50_rising, …)."""
-    return ta.add_indicators(df)
-
-
-def signals_breakout(df: pd.DataFrame) -> pd.Series:
-    """Close above prior 20-session high on volume > 1.5x 10d avg,
-    after a quiet base (range of prior 20 sessions < 10%)."""
-    base_range = (df["High"].rolling(20).max().shift(1)
-                  - df["Low"].rolling(20).min().shift(1)) / df["Close"]
-    return (
-        (df["Close"] > df["hh20"])
-        & (df["Volume"] > 1.5 * df["vol10"])
-        & (base_range < 0.10)
-        & df["ema50_rising"]
-    )
-
-
-def signals_pullback(df: pd.DataFrame) -> pd.Series:
-    """Uptrend (price above rising 50-EMA), low tags the EMA zone,
-    close recovers above the EMA."""
-    return (
-        df["ema50_rising"]
-        & (df["Low"] <= df["ema50"] * 1.01)
-        & (df["Close"] > df["ema50"])
-        & (df["Close"].shift(1) > df["ema50"].shift(1) * 0.97)
-    )
-
-
-def run_symbol(df: pd.DataFrame, signal: pd.Series, symbol: str,
-               strategy: str, capital: float, risk_pct: float) -> list[dict]:
-    """Event loop: one open position at a time per symbol; entry next open."""
+def run_symbol(df, spec, symbol, capital, risk_pct):
+    """Backtest one symbol's enriched frame against the spec. Returns a list of
+    trade dicts with cost-inclusive R multiples (R = net PnL / risk-at-entry)."""
+    from backtesting import Backtest
+    frame = strategy.prepare_backtest_frame(df, spec)
+    strat = strategy.build_bt_strategy(spec, capital, risk_pct)
+    bt = Backtest(frame, strat, cash=capital, commission=COMMISSION_PER_SIDE,
+                  exclusive_orders=True, trade_on_close=False, finalize_trades=True)
+    stats = bt.run()
     trades = []
-    i = 60  # warm-up for indicators
-    n = len(df)
-    while i < n - 2:
-        if not bool(signal.iloc[i]):
-            i += 1
-            continue
-        # entry at next bar's open (no lookahead)
-        e = i + 1
-        entry = float(df["Open"].iloc[e])
-        if strategy == "breakout":
-            sl = float(df["Low"].rolling(10).min().iloc[i])  # base low
-        else:
-            sl = float(df["ema50"].iloc[i] - 2 * df["atr14"].iloc[i])
-        if sl >= entry or (entry - sl) / entry > 0.15:
-            i += 1  # malformed or too-wide stop: skip
-            continue
-        risk = entry - sl
-        target = entry + TARGET_R * risk
-        qty = max(int((capital * risk_pct / 100) / risk), 0)
-        if qty == 0:
-            i += 1
-            continue
-
-        exit_px, exit_reason, exit_idx = None, None, None
-        for j in range(e, min(e + TIME_STOP_SESSIONS, n)):
-            bar = df.iloc[j]
-            # pessimistic: SL checked before target within the same bar
-            if bar["Low"] <= sl:
-                exit_px, exit_reason, exit_idx = sl, "SL", j
-                break
-            if bar["High"] >= target:
-                exit_px, exit_reason, exit_idx = target, "TARGET", j
-                break
-        if exit_px is None:
-            exit_idx = min(e + TIME_STOP_SESSIONS, n - 1)
-            exit_px, exit_reason = float(df["Close"].iloc[exit_idx]), "TIME"
-
-        gross = (exit_px - entry) * qty
-        cost = ROUND_TRIP_COST * entry * qty
-        pnl = gross - cost
+    for _, t in stats["_trades"].iterrows():
+        risk = t.get("Tag")
+        if risk is None or pd.isna(risk):                       # fallback if untagged
+            risk = float(t["EntryPrice"]) - float(t["SL"]) if not pd.isna(t.get("SL")) else None
+        size = abs(float(t["Size"]))
+        pnl = float(t["PnL"])
+        r = (pnl / (float(risk) * size)) if risk and size else 0.0   # net, cost-inclusive
+        exit_reason = _exit_reason(t)
         trades.append({
-            "symbol": symbol, "strategy": strategy,
-            "entry_date": str(df.index[e].date()), "entry": round(entry, 2),
-            "sl": round(sl, 2), "target": round(target, 2), "qty": qty,
-            "exit_date": str(df.index[exit_idx].date()),
-            "exit": round(exit_px, 2), "reason": exit_reason,
-            "pnl": round(pnl, 2),
-            "r_multiple": round((exit_px - entry) / risk - ROUND_TRIP_COST * entry / risk, 3),
-            "year": df.index[e].year,
+            "symbol": symbol, "strategy": spec.get("name"),
+            "entry_date": str(pd.Timestamp(t["EntryTime"]).date()),
+            "entry": round(float(t["EntryPrice"]), 2),
+            "sl": round(float(t["SL"]), 2) if not pd.isna(t.get("SL")) else None,
+            "target": round(float(t["TP"]), 2) if not pd.isna(t.get("TP")) else None,
+            "qty": int(size),
+            "exit_date": str(pd.Timestamp(t["ExitTime"]).date()),
+            "exit": round(float(t["ExitPrice"]), 2), "reason": exit_reason,
+            "pnl": round(pnl, 2), "r_multiple": round(r, 3),
+            "year": pd.Timestamp(t["EntryTime"]).year,
         })
-        i = exit_idx + 1  # no overlapping positions per symbol
     return trades
 
 
-def buy_and_hold(df: pd.DataFrame) -> dict:
+def _exit_reason(t):
+    """Best-effort label for why a trade closed (SL / TARGET / TIME-or-other)."""
+    ex = float(t["ExitPrice"])
+    if not pd.isna(t.get("SL")) and abs(ex - float(t["SL"])) < 1e-6:
+        return "SL"
+    if not pd.isna(t.get("TP")) and abs(ex - float(t["TP"])) < 1e-6:
+        return "TARGET"
+    return "TIME/OTHER"
+
+
+def buy_and_hold(df):
     ret = float(df["Close"].iloc[-1] / df["Close"].iloc[0] - 1)
     peak = df["Close"].cummax()
     mdd = float(((df["Close"] - peak) / peak).min())
     return {"total_return_pct": round(100 * ret, 1), "max_dd_pct": round(100 * mdd, 1)}
 
 
-def summarize(trades: list[dict], capital: float) -> dict:
+def summarize(trades, capital):
     if not trades:
         return {"trades": 0, "note": "no signals generated"}
     t = pd.DataFrame(trades)
@@ -172,54 +135,98 @@ def summarize(trades: list[dict], capital: float) -> dict:
     }
 
 
-def main() -> None:
+def _synth(kind):
+    """Deterministic OHLCV: a clean uptrend (signals fire) vs a downtrend."""
+    np = ta.np
+    n = 400
+    idx = pd.date_range("2022-01-03", periods=n, freq="B")
+    if kind == "up":
+        base = ta.np.linspace(100, 240, n)
+    else:
+        base = ta.np.linspace(240, 100, n)
+    close = pd.Series(base + np.sin(np.arange(n) / 7) * 4, index=idx)
+    high = close + 2.0
+    low = close - 2.0
+    op = close.shift(1).fillna(close.iloc[0])
+    vol = pd.Series([1000] * n, index=idx)
+    return pd.DataFrame({"Open": op, "High": high, "Low": low,
+                         "Close": close, "Volume": vol}, index=idx)
+
+
+SELFTEST_SPEC = {
+    "name": "selftest-ema-pullback", "archetype": "pullback",
+    "screening": {"technical": {"compute_filters": [
+        "ema50_rising", "Close > ema50"]}},
+    "entry": {"signal": ["ema50_rising", "Close > ema50", "rsi14 between 40 and 80"]},
+    "exit": {"stop": "ema50_minus_2atr", "target": "next_resistance",
+             "min_rrr": 1.5, "time_stop_sessions": 15},
+    "sizing": {"risk_per_trade_pct": 1.0},
+}
+
+
+def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--symbols", required=True,
+    p.add_argument("--spec", help="path to a strategy <name>.yml (the rules to test)")
+    p.add_argument("--symbols",
                    help="comma-separated NSE symbols, or 'largecap20' "
-                        "(20-stock liquid large-cap basket; 'nifty50' is a deprecated alias)")
-    p.add_argument("--strategy", default="both",
-                   choices=["breakout", "pullback", "both"])
+                        "(20-stock liquid large-cap basket)")
     p.add_argument("--years", type=int, default=5)
     p.add_argument("--capital", type=float, default=500000)
-    p.add_argument("--risk-pct", type=float, default=1.0)
+    p.add_argument("--risk-pct", type=float, default=None,
+                   help="override the spec's sizing.risk_per_trade_pct")
     p.add_argument("--out", default=f"artifacts/{date.today()}/backtest")
+    p.add_argument("--selftest", action="store_true")
     args = p.parse_args()
 
+    if args.selftest:
+        up = run_symbol(_synth("up"), SELFTEST_SPEC, "UPTREND", 500000, None)
+        down = run_symbol(_synth("down"), SELFTEST_SPEC, "DOWNTREND", 500000, None)
+        s_up = summarize(up, 500000)
+        print(json.dumps({"up": s_up, "down_trades": len(down)}, indent=2, default=str))
+        ok = len(up) > 0 and len(down) == 0   # fires in an uptrend, stands down in a downtrend
+        print(f"\nselftest: {'PASS' if ok else 'FAIL'}", file=sys.stderr)
+        sys.exit(0 if ok else 1)
+
+    if not args.spec or not args.symbols:
+        print("error: --spec and --symbols required (or use --selftest)", file=sys.stderr)
+        sys.exit(2)
+    spec = strategy_load(args.spec)
+
     basket_key = args.symbols.lower()
-    if basket_key == "nifty50":
-        print("warning: 'nifty50' is a deprecated alias for 'largecap20' "
-              "(20 symbols, not the full index)", file=sys.stderr)
-    symbols = (LARGECAP20_BASKET if basket_key in ("largecap20", "nifty50")
+    symbols = (LARGECAP20_BASKET if basket_key == "largecap20"
                else [s.strip().upper() for s in args.symbols.split(",")])
-    strategies = ["breakout", "pullback"] if args.strategy == "both" else [args.strategy]
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     cache_dir = "artifacts/.cache/ohlcv"
 
     all_trades, bh, failures = [], {}, []
     for sym in symbols:
         try:
-            df = add_indicators(load_ohlcv(sym, args.years, cache_dir))
+            df = load_ohlcv(sym, args.years, cache_dir)
         except Exception as exc:  # data gap: skip symbol, keep going
             failures.append(f"{sym}: {exc}")
             continue
         bh[sym] = buy_and_hold(df)
-        for strat in strategies:
-            sig = signals_breakout(df) if strat == "breakout" else signals_pullback(df)
-            all_trades += run_symbol(df, sig, sym, strat, args.capital, args.risk_pct)
+        try:
+            all_trades += run_symbol(df, spec, sym, args.capital, args.risk_pct)
+        except Exception as exc:
+            failures.append(f"{sym}: backtest error: {exc}")
 
     result = {
-        "config": vars(args) | {"symbols_resolved": symbols,
-                                "cost_round_trip": ROUND_TRIP_COST,
-                                "time_stop_sessions": TIME_STOP_SESSIONS,
-                                "target_R": TARGET_R},
-        "by_strategy": {s: summarize([t for t in all_trades if t["strategy"] == s],
-                                     args.capital) for s in strategies},
+        "config": {"spec": spec.get("name"), "spec_path": args.spec,
+                   "symbols_resolved": symbols, "years": args.years,
+                   "capital": args.capital,
+                   "risk_pct": args.risk_pct or spec.get("sizing", {}).get("risk_per_trade_pct"),
+                   "commission_per_side": COMMISSION_PER_SIDE,
+                   "engine": "Backtesting.py + lib/strategy.py (spec-driven)"},
+        "summary": summarize(all_trades, args.capital),
         "buy_and_hold": bh,
         "data_gaps": failures,
         "caveats": [
             "survivorship bias: current symbols only (delisted losers absent)",
-            "in-sample, fixed Varsity parameters (not optimized, but also not walk-forward validated)",
-            "tests mechanical triggers only - not the fundamental gate or discretionary S/R reads",
+            "in-sample, spec parameters as written (not optimized; not walk-forward validated)",
+            "per-symbol expectancy test (each symbol sized off full capital), not a portfolio sim",
+            "tests the spec's mechanical entry/exit only — not the fundamental gate "
+            "or discretionary S/R reads",
         ],
     }
     if all_trades:
@@ -229,6 +236,13 @@ def main() -> None:
     print(json.dumps(result, indent=2, default=str))
     print(f"\nwrote {args.out}-summary.json"
           + (f" and {args.out}-trades.csv ({len(all_trades)} trades)" if all_trades else ""))
+
+
+def strategy_load(path):
+    """Load a strategy spec YAML (shares find-trade's loader convention)."""
+    yaml = ta._need("yaml", "pyyaml")
+    with open(path) as f:
+        return yaml.safe_load(f)
 
 
 if __name__ == "__main__":

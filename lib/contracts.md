@@ -28,11 +28,35 @@ import ta
 
 **Contract — `ta.add_indicators(df)`** attaches these columns (the names every consumer
 keys off): `ema20, ema50, sma200, ema50_rising, rsi14, vol10, atr14, hh20, ll20`.
-Input is OHLCV (`Open/High/Low/Close/Volume`, DatetimeIndex). Changing a column name
-here breaks the backtest signals and the find-trade compute filters together — update
-both. `ta.load_ohlcv(symbol, years, cache_dir)` is the shared yfinance loader (cache
-key `<symbol>_<years>y.csv`), so the backtest and the live screen hit the same cache.
+Input is OHLCV (`Open/High/Low/Close/Volume`, DatetimeIndex). Numeric indicators delegate
+to **TA-Lib** (EMA is SMA-seeded, ATR is Wilder — the reference forms). Changing a column
+name here breaks the backtest signals and the find-trade compute filters together — update
+both. Everything else a spec can name is attached **on demand** by `ta.materialize(df, names)`:
+parameterized indicator tokens `<kind><N>[_rising]` (`ema21, sma100, rsi9, atr20, adx14, hh50,
+ll20, vol30, nr5`) resolved by `ta.feature_series` via regex, plus the registered patterns/signals
+in **`ta.FEATURES`** (`inside_bar, outside_bar, engulfing, hammer, doji, coil_breakout, golden_cross,
+macd_bullish_cross, rsi_oversold, bb_squeeze, volume_surge, new_high_20, ...`). `ta.is_feature(name)`
+says whether a token resolves. A new period or standard signal needs no code change; only a genuinely
+new primitive is registered in `FEATURES` once. `ta.load_ohlcv(symbol, years, cache_dir)` is the shared yfinance loader (cache key
+`<symbol>_<years>y.csv`), so the backtest and the live screen hit the same cache. TA-Lib's
+wheel needs the native lib (`brew install ta-lib`); `ta._need_talib()` bootstraps it.
 Covered by `lib/test_ta.py`.
+
+### `lib/strategy.py` — spec → signal engine
+*How a spec + indicator columns becomes trades.* Consumers: `find-trade/scripts/screen.py`
+(live, latest bar) and `backtest/scripts/backtest.py` (historical, every bar) — both import
+it so they cannot disagree about what a strategy means. Key contract:
+- `eval_series(expr, df) -> bool Series` — the ONE safe filter-language evaluator (NOT python
+  eval). Grammar: `"<col>"`, `"A > B"` / `<`/`>=`/`<=`, `"A between X and Y"`, `"k * col"`,
+  `"A or B"`; case-insensitive AND/OR/BETWEEN. `eval_filter(expr, row)` is the latest-bar wrapper.
+- `entry_filters(spec)` — prefers `entry.signal` (machine trigger), falls back to
+  `screening.technical.compute_filters`. `referenced_features(spec)` lists every `ta.is_feature`
+  token a spec mentions (registered features + parameterized indicators) so the engine
+  materializes exactly those.
+- `build_signal(df, spec, capital)` — the live entry/stop/target/RRR/qty dict.
+- `prepare_backtest_frame(df, spec)` + `build_bt_strategy(spec, capital, risk_pct)` — the spec
+  as a Backtesting.py `Strategy` (next-open fills, pessimistic intrabar exits, time-stop, risk
+  sizing). Engine: **Backtesting.py** (auto-pip). Covered by `find-trade/scripts/test_screen.py`.
 
 ### `filings-watch/scripts/filings.py` — exchange-filing fetch + materiality
 Consumers: `filings-watch` (skill) and `daily-brief`. Key contract:
@@ -60,7 +84,7 @@ Key blocks and who reads them:
 | `regime_required` | generate | select_strategy.py, trade-tracker | conditions checked against live regime.json at PICK time |
 | `screening.fundamental` | generate | find-trade Stage 1 | `provider: screener.in` + `query` + `max_survivors` |
 | `screening.technical` | generate | find-trade Stage 2 | `provider: tradingview` (+`tradingview_filters`) or `compute` (+`compute_filters` for lib/ta.py) |
-| `entry`/`exit`/`sizing` | generate | find-trade Stage 3, backtest | the trigger, stop/target/min_rrr/time_stop, %-risk |
+| `entry`/`exit`/`sizing` | generate | find-trade Stage 3, backtest (via lib/strategy.py) | `entry.signal` (machine trigger; else `compute_filters`), stop/target/min_rrr/time_stop, %-risk |
 | `expectancy_assumptions` | **backtest** | select_strategy.py | the activation gate (`expectancy_R > 0.2`, ≥~30 trades) |
 | `live_performance` | trade-tracker → optimize | select_strategy.py | realized edge; preferred over backtest when present |
 

@@ -53,6 +53,11 @@ ranking:
 
 entry:
   trigger: "break above the high of the inside-bar / NR7 candle (long) on expanding volume, in an uptrend"
+  # coil_breakout = close breaks above a recent inside-bar/NR7 high (the squeeze break), gated by uptrend
+  signal:
+    - "coil_breakout"
+    - "ema50_rising"
+    - "Close > ema50"
   confirm_indicators: [nr7_or_inside_bar, ema50_rising]
   timeframe: daily
 

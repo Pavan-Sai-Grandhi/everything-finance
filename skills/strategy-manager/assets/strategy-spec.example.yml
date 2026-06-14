@@ -80,7 +80,23 @@ ranking:                              # used by basket/ranked methods (else null
   equal_weight: true
 
 entry:
-  trigger: "close > prior_20d_high AND volume > 1.5 * vol10"
+  trigger: "close > prior_20d_high AND volume > 1.5 * vol10"   # human-readable description
+  # MACHINE-READABLE trigger — the list of filter expressions lib/strategy.py evaluates
+  # bar-by-bar (backtest) and on the latest bar (live screen), so both fire identically.
+  # Same SAFE mini-language as compute_filters: "<col>", "A > B", "A between X and Y",
+  # "k * col", "A or B"; the list is ANDed. Columns can be any lib/ta.py feature:
+  #   - parameterized indicators <kind><N>[_rising]: ema21, sma100, rsi9, atr20, adx14,
+  #     hh50, ll20, vol30, nr5, ema21_rising  (any period — no plugin change needed)
+  #   - registered patterns/signals: inside_bar, outside_bar, engulfing, hammer, doji,
+  #     coil_breakout, golden_cross, macd_bullish_cross, rsi_oversold, bb_squeeze,
+  #     volume_surge, gap_up, new_high_20, new_high_52w, ...  (see lib/ta.py FEATURES)
+  # This is the FINE per-bar trigger; compute_filters above is the COARSE universe cut. If omitted, the
+  # backtest falls back to compute_filters (fine for pullback/reversal setups whose state IS
+  # the entry); breakout/coil setups need it (e.g. coil_breakout) to fire on the real trigger.
+  signal:
+    - "Close > hh20"
+    - "Volume > 1.5 * vol10"
+    - "ema50_rising"
   confirm_indicators: [ema50_rising, rsi_40_60]
   timeframe: daily
 

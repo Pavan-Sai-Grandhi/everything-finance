@@ -19,14 +19,16 @@ Compiled 2026-06-10 from web research and Varsity Trading Systems framing. Sourc
 - **Yearly breakdown** — an edge that exists only in 2024's bull leg is a bull-market detector, not a strategy. Use `by_year_expectancy_R` (regime check in R beats rupee PnL); the current year is flagged "(partial)".
 - **Return-on-capital vs buy-and-hold**: under 1%-risk sizing most capital sits idle, so return_on_capital_pct is *not* comparable to fully-invested B&H — compare expectancy and drawdown instead, and state this in the report.
 - **exit_breakdown**: TIME exits > 50% means the 2R-target/20-session pairing doesn't fit the universe's volatility — that diagnosis goes in the report; do not tune parameters in-sample to fix it.
-- **Resuming a crashed run**: outputs are deterministic given the OHLCV cache — validate the existing summary JSON (has by_strategy/buy_and_hold/caveats) instead of re-running.
+- **Resuming a crashed run**: outputs are deterministic given the OHLCV cache — validate the existing summary JSON (has `summary`/`buy_and_hold`/`caveats`) instead of re-running.
 
-## Library landscape (if the user outgrows the bundled script)
+## Engine (what runs under the hood)
 
-- `backtesting.py` — simplest, great reports, single-asset focus.
-- `vectorbt` — fastest for parameter sweeps across many symbols; steep, opinionated API.
-- `backtrader` — most featureful event-driven engine; aging but battle-tested.
-The bundled pandas script is deliberately dependency-light and transparent — every rule is readable in ~50 lines. Prefer extending it over adding a framework until parameter optimization is genuinely needed.
+The backtester is **strategy-agnostic** and built on credible libraries, not a hand-rolled loop:
+- **Backtesting.py** runs the simulation. Its defaults are the discipline a real-money test needs: no lookahead (signal on bar *t* → fill at *t+1* open) and **pessimistic intrabar exits** (when stop and target are both touched in one bar, the **stop** is taken). Verified against synthetic bars where the answer is known.
+- **`lib/strategy.py`** turns the spec into entry/stop/target/size — the *same* module find-trade's live screen uses, so a stock can't pass the live screen on logic the backtest computes differently.
+- **TA-Lib** (via `lib/ta.py`) computes the indicators — the industry-standard reference (EMA is SMA-seeded, ATR is Wilder).
+
+If the user later needs **parameter sweeps** across many symbols/params, `vectorbt` is the right addition (vectorized, fast) — reserve it for `strategy-manager optimize`, keeping Backtesting.py as the auditable validation engine. `backtrader` is featureful but maintenance has slowed; avoid for new work.
 
 ## What this backtest does NOT test (state in every report)
 
