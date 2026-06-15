@@ -102,9 +102,20 @@ entry:
 
 exit:
   stop: recent_swing_low              # recent_swing_low | ema50_minus_2atr | range_low
+                                      # (auto-floored at max(0.5*ATR, 1% of price) so a
+                                      #  squeeze candle's low can't collapse the risk denominator)
   target: "next_resistance; for blue-sky use measured_move"
+                                      # measured_move | next_resistance | none/trailing/signal
+                                      #   -> use none/trailing when trail_atr or exit_signal
+                                      #      governs the close (no fixed take-profit)
   min_rrr: 1.5
   time_stop_sessions: 20
+  # Optional — match these to the source's ACTUAL exit instead of approximating it:
+  # trail_atr: 2.5                    # ATR trailing stop — let momentum/trend winners run
+  #                                   #   (don't fake it with a long time-stop)
+  # exit_signal: "Close > sma5"       # close on a condition (same grammar as entry.signal):
+  #                                   #   mean-reversion exit (Connors: revert above 5-SMA),
+  #                                   #   trend-break exit ("Close < ema20"), etc.
 
 sizing:
   method: fixed_fractional

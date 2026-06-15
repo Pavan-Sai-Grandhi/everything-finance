@@ -1,6 +1,6 @@
 ---
 name: deep-analysis
-description: Full multi-agent investment debate on a single Indian stock — technical analyst, fundamental analyst (reads annual reports and concall transcripts from screener.in), news sentiment, bull vs bear researchers, and a portfolio-manager verdict. Use whenever the user asks to analyze, research, deep-dive, evaluate, or form a view on a specific ticker or company name ("should I buy X?", "what do you think of Tata Motors?"), even if they don't say "deep analysis".
+description: Full multi-agent investment debate on a single Indian stock — technical analyst, fundamental analyst (reads annual reports and concall transcripts from screener.in), news sentiment, sector analyst (where the stock sits in its sector), bull vs bear researchers, and a portfolio-manager verdict, synthesized into one readable report. Use whenever the user asks to analyze, research, deep-dive, evaluate, or form a view on a specific ticker or company name ("should I buy X?", "what do you think of Tata Motors?"), even if they don't say "deep analysis".
 argument-hint: "TICKER (NSE symbol or company name)"
 allowed-tools: WebFetch, Read, Write, Bash, Agent, mcp__playwright__*
 ---
@@ -13,23 +13,29 @@ Read `references/reference.md` for the fundamental-analysis grounding and the de
 
 ## Orchestration
 
-Run the six plugin agents as forked subagents. Phases 1–3 launch in parallel; 4–5 consume their output; 6 decides.
+Run the seven plugin agents as forked subagents. Phases 1–3 launch in parallel; 4–5 consume their output; 6 decides.
 
 | Phase | Agent | Input |
 |---|---|---|
 | 1 (parallel) | `technical-analyst` | ticker + cached OHLCV if you already fetched any (saves the agent a fetch) |
 | 1 (parallel) | `fundamental-analyst` | ticker — must pull the latest annual report PDF + most recent concall transcript/PPT from the screener.in "Documents" section |
 | 1 (parallel) | `news-sentiment` | ticker + company name |
-| 2 (parallel) | `bull-researcher` | all three phase-1 reports |
-| 2 (parallel) | `bear-researcher` | all three phase-1 reports |
+| 1 (parallel) | `sector-analyst` | ticker + company name **as the focus stock**, so it positions the stock inside its sector (it maps the company → sector itself) |
+| 2 (parallel) | `bull-researcher` | all four phase-1 reports |
+| 2 (parallel) | `bear-researcher` | all four phase-1 reports |
 | 3 | `portfolio-manager` | everything — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level |
 
 Pass each agent only the data it needs, as text — agents are forked and share no context. If any phase-1 agent fails (scrape block, missing documents), continue the debate with the gap explicitly stated; the portfolio-manager must weigh missing evidence as uncertainty, not as neutral.
 
-## Artifact + hook contract
+## Store the work papers, then synthesize
 
-Write the full report to `artifacts/.staging/<TICKER>.md` using `assets/deep-analysis.md` (bundled with this skill). **You (the orchestrator) fill the template's summary placeholders yourself** — CMP, TOP_BULL_POINT (bull's argument 1), TOP_BEAR_POINT (bear's argument 1), KEY_LEVEL (the nearest decision level from the technical read), COMPANY_OVERVIEW (lift the fundamental analyst's "Business overview" block — what the company does, its major verticals/segments and revenue mix, geography, key products, and the moat; so a reader meeting the company here is oriented before the debate), DATA_GAPS (union of all agents' gaps), AGENT_COUNT = 6 — agents only supply their section bodies. When pasting an agent's report into its template section, drop the agent's own `## ...` title line so headings don't double up. The report **must contain a `## Telegram Brief` section** (≤ 10 lines: verdict, one bull point, one bear point, key level, invalidation). The plugin's Stop hook archives the file to `artifacts/YYYY-MM-DD/<TICKER>.md` and sends that section to Telegram — do not send Telegram messages yourself and do not move the file.
+As each agent returns, write its **raw, unedited report** to `artifacts/.staging/<TICKER>/agents/<role>.md` — one file per agent: `technical.md`, `fundamental.md`, `news.md`, `sector.md`, `bull.md`, `bear.md`, `verdict.md`. These are the work papers; the comprehensive report is built **from** them, not by pasting them.
 
-If an active `strategy-manager` spec exists in `artifacts/strategies/`, note whether this ticker fits its `universe` and whether the current regime matches the strategy's `regime_required` — a great company in the wrong regime for the active system is still a "not now" for that book.
+Then write the synthesized report to `artifacts/.staging/<TICKER>.md` using `assets/deep-analysis.md` (bundled with this skill). The template is a **readable synthesis** — you (the orchestrator) author every section in plain prose from the work papers, not by dumping agent output:
 
-In chat, give the verdict, the two strongest opposing arguments, and the invalidation level — not the whole report. End with the standard risk note.
+- **Summary placeholders you fill yourself:** CMP, COMPANY_NAME_SUFFIX (" · <Company>" or empty), ONE_LINE_THESIS, CALL_NARRATIVE, the verdict table (ENTRY_SL_TARGET/RRR/ALLOC_CAP/INVALIDATION/REVIEW_TRIGGER from the portfolio-manager), the five-lens At-a-Glance table (each lens's stance + one-line read), COMPANY_OVERVIEW (the fundamental analyst's "Business overview" block — what the company does, segments & revenue mix, geography, products, moat), TOP_BULL_POINT (bull's argument 1), TOP_BEAR_POINT (bear's argument 1), SECTOR_STANCE_ONELINE, KEY_LEVEL (nearest decision level from the technical read), DATA_GAPS (union of all agents' gaps), AGENT_COUNT = 7.
+- **Synthesized sections:** BULL_SYNTHESIS / BEAR_SYNTHESIS (distil each side's 2–3 strongest evidence-tied points), DECISIVE_POINTS (what the PM kept/discarded + dissent worth keeping), SECTOR_CONTEXT (the sector read + where the stock sits in its sector), and the three Evidence-by-Lens blocks (condense each agent report to its load-bearing facts and levels — keep the numbers and cites, drop the boilerplate).
+
+The report **must contain a `## Telegram Brief` section** (≤ 10 lines: verdict, one bull point, one bear point, sector one-liner, key level, invalidation). The plugin's Stop hook archives `artifacts/.staging/<TICKER>.md` → `artifacts/YYYY-MM-DD/<TICKER>-deep-analysis.md`, moves the work papers to `artifacts/YYYY-MM-DD/<TICKER>-deep-analysis/agents/`, and sends the brief to Telegram — do not send Telegram messages yourself and do not move the files.
+
+In chat, give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — not the whole report. End with the standard risk note.

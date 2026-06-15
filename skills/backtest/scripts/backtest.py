@@ -60,6 +60,7 @@ def run_symbol(df, spec, symbol, capital, risk_pct):
     from backtesting import Backtest
     frame = strategy.prepare_backtest_frame(df, spec)
     strat = strategy.build_bt_strategy(spec, capital, risk_pct)
+    time_stop = int((spec.get("exit", {}) or {}).get("time_stop_sessions", 20) or 20)
     bt = Backtest(frame, strat, cash=capital, commission=COMMISSION_PER_SIDE,
                   exclusive_orders=True, trade_on_close=False, finalize_trades=True)
     stats = bt.run()
@@ -71,7 +72,7 @@ def run_symbol(df, spec, symbol, capital, risk_pct):
         size = abs(float(t["Size"]))
         pnl = float(t["PnL"])
         r = (pnl / (float(risk) * size)) if risk and size else 0.0   # net, cost-inclusive
-        exit_reason = _exit_reason(t)
+        exit_reason = _exit_reason(t, time_stop)
         trades.append({
             "symbol": symbol, "strategy": spec.get("name"),
             "entry_date": str(pd.Timestamp(t["EntryTime"]).date()),
@@ -87,14 +88,21 @@ def run_symbol(df, spec, symbol, capital, risk_pct):
     return trades
 
 
-def _exit_reason(t):
-    """Best-effort label for why a trade closed (SL / TARGET / TIME-or-other)."""
+def _exit_reason(t, time_stop=None):
+    """Label why a trade closed: SL (incl. a trailed stop — which can be a *win*),
+    TARGET, TIME (held to the time-stop), or SIGNAL/OTHER (a discretionary
+    exit_signal close). Distinguishing TIME from SIGNAL matters because
+    strategy-manager's optimize step reads the exit mix as its diagnostic."""
     ex = float(t["ExitPrice"])
     if not pd.isna(t.get("SL")) and abs(ex - float(t["SL"])) < 1e-6:
         return "SL"
     if not pd.isna(t.get("TP")) and abs(ex - float(t["TP"])) < 1e-6:
         return "TARGET"
-    return "TIME/OTHER"
+    if (time_stop is not None and not pd.isna(t.get("ExitBar"))
+            and not pd.isna(t.get("EntryBar"))
+            and int(t["ExitBar"]) - int(t["EntryBar"]) >= time_stop):
+        return "TIME"
+    return "SIGNAL/OTHER"
 
 
 def buy_and_hold(df):

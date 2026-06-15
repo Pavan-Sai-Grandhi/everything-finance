@@ -84,7 +84,7 @@ Key blocks and who reads them:
 | `regime_required` | generate | select_strategy.py, trade-tracker | conditions checked against live regime.json at PICK time |
 | `screening.fundamental` | generate | find-trade Stage 1 | `provider: screener.in` + `query` + `max_survivors` |
 | `screening.technical` | generate | find-trade Stage 2 | `provider: tradingview` (+`tradingview_filters`) or `compute` (+`compute_filters` for lib/ta.py) |
-| `entry`/`exit`/`sizing` | generate | find-trade Stage 3, backtest (via lib/strategy.py) | `entry.signal` (machine trigger; else `compute_filters`), stop/target/min_rrr/time_stop, %-risk |
+| `entry`/`exit`/`sizing` | generate | find-trade Stage 3, backtest (via lib/strategy.py) | `entry.signal` (machine trigger; else `compute_filters`); `exit`: stop (auto-floored at max(0.5·ATR, 1% price)) / target (`measured_move`\|`next_resistance`\|`none`) / min_rrr / time_stop / **`trail_atr`** (ATR trailing stop) / **`exit_signal`** (close-on-condition, entry grammar); %-risk |
 | `expectancy_assumptions` | **backtest** | select_strategy.py | the activation gate (`expectancy_R > 0.2`, ≥~30 trades) |
 | `live_performance` | trade-tracker → optimize | select_strategy.py | realized edge; preferred over backtest when present |
 
@@ -114,17 +114,21 @@ spec — never null now that find-trade always runs a named/picked strategy),
 a trade without it breaks the learning loop.
 
 ## Artifact: deep-analysis report
-**Producer:** `deep-analysis` → `artifacts/YYYY-MM-DD/<TICKER>-deep-analysis.md` (+ a staging
-copy for the Stop-hook Telegram brief). **Consumer:** `trade-tracker` (as a rationale source
-when no trade-idea artifact exists). The fundamental leg embeds the `dcf-valuation` intrinsic
-range and the `management-quality` grade.
+**Producer:** `deep-analysis` → `artifacts/YYYY-MM-DD/<TICKER>-deep-analysis.md`, the synthesized
+report, with each forked agent's raw report archived beside it under
+`artifacts/YYYY-MM-DD/<TICKER>-deep-analysis/agents/<role>.md` (the work papers the synthesis is
+built from). The Stop hook does the archival from `artifacts/.staging/<TICKER>.md` (final report)
+and `artifacts/.staging/<TICKER>/agents/` (work papers), and sends the `## Telegram Brief` section.
+**Consumer:** `trade-tracker` (as a rationale source when no trade-idea artifact exists). The
+fundamental leg embeds the `dcf-valuation` intrinsic range and the `management-quality` grade; the
+sector leg embeds the `sector-analyst` read positioning the stock in its sector.
 
 ---
 
 ## The pipeline these contracts wire together
 
 ```
-sector-pulse ─┐
+sector-analysis ─┐
               ▼
 strategy-manager  ──generate→ spec(draft) ──validate(backtest)→ spec(active)
               │                                   ▲                  │

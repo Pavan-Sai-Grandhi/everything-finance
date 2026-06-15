@@ -33,6 +33,10 @@ Priority order when time-boxed: MD&A (management's own story + risks) → audito
 
 The technical-analyst agent carries its own Varsity TA method (bundled in that agent's `references/`): trend stage (Dow), S/R map, pattern, volume, RSI/MACD as confirmation. For a deep-dive its job is broader than a trade signal: where is the stock in its primary trend, what are the levels that would invalidate a bullish or bearish thesis.
 
+## Sector layer
+
+The `sector-analyst` agent (its own bundled Varsity sector method) places the stock in its sector: the sector's relative strength and rotation state, the signature KPIs, the live tailwinds/headwinds, and whether the stock is a leader or laggard within it. A great company in a lagging sector, or a laggard inside a leading one, changes the call — so the bull/bear researchers and the portfolio-manager weigh this read alongside the technical, fundamental, and news legs, not as decoration.
+
 ## Debate protocol
 
 - Bull and bear researchers must each produce: 3 strongest arguments, each tied to evidence from phase-1 reports; 1 explicit rebuttal of the opposing side's likely best point; what would change their mind.

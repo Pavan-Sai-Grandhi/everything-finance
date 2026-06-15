@@ -109,9 +109,12 @@ def referenced_features(spec):
     so the engine materializes exactly those columns and nothing more."""
     tech = (spec.get("screening", {}) or {}).get("technical", {}) or {}
     entry = spec.get("entry", {}) or {}
+    exitb = spec.get("exit", {}) or {}
     exprs = list(tech.get("compute_filters", []) or [])
     exprs += list(entry.get("signal", []) or [])
     exprs += list(entry.get("confirm_indicators", []) or [])
+    exit_sig = exitb.get("exit_signal")           # e.g. "Close > sma5" (mean-reversion exit)
+    exprs += (exit_sig if isinstance(exit_sig, list) else [exit_sig]) if exit_sig else []
     names = set()
     for expr in exprs:
         for tok in re.findall(r"[A-Za-z_]\w*", str(expr)):
@@ -141,9 +144,34 @@ def entry_signal_series(df, spec):
     return out.fillna(False)
 
 
+def exit_signal_series(df, spec):
+    """Boolean Series where the spec's `exit.exit_signal` holds — entry's grammar,
+    for exits a price target can't express (a mean-reversion close back above the
+    5-SMA, a trend break below the 20-EMA). Empty when the spec names none, leaving
+    stop/target/time-stop to govern the close."""
+    sig = (spec.get("exit", {}) or {}).get("exit_signal")
+    if not sig:
+        return pd.Series(False, index=df.index)
+    exprs = sig if isinstance(sig, list) else [sig]
+    out = pd.Series(True, index=df.index)
+    for f in exprs:
+        out &= eval_series(f, df)
+    return out.fillna(False)
+
+
 # --------------------------------------------------------------------------- #
 # Stop / target / size — the risk layer, shared by live and historical         #
 # --------------------------------------------------------------------------- #
+def floor_stop(entry, stop, atr):
+    """Floor a stop's distance from entry at the wider of 0.5*ATR and 1% of price.
+    A narrow-range entry (NR/inside bar, a squeeze low) can sit a hair under the
+    close, collapsing `risk = entry - stop` toward zero and exploding every
+    R-multiple; no one trades a sub-1% stop anyway. Applied on both paths so live
+    and backtest price risk identically."""
+    floor = max(0.5 * float(atr), 0.01 * float(entry))
+    return min(float(stop), float(entry) - floor)
+
+
 def resolve_stop(df, kind):
     """Stop level from spec.exit.stop on the latest bar."""
     last = df.iloc[-1]
@@ -173,7 +201,8 @@ def build_signal(df, spec, capital, entry_override=None):
     min_rrr = float(exitb.get("min_rrr", 1.5))
 
     entry = float(entry_override) if entry_override is not None else float(last["Close"])
-    stop = resolve_stop(df, exitb.get("stop", "recent_swing_low"))
+    stop = floor_stop(entry, resolve_stop(df, exitb.get("stop", "recent_swing_low")),
+                      last["atr14"])
     if not (stop < entry) or (entry - stop) / entry > 0.15:
         return {"skip": f"malformed/too-wide stop (entry {entry:.2f}, stop {stop:.2f})"}
     risk = entry - stop
@@ -211,21 +240,31 @@ def prepare_backtest_frame(df, spec):
     enriched = ta.add_indicators(df)
     enriched = ta.materialize(enriched, referenced_features(spec))
     enriched["entry_signal"] = entry_signal_series(enriched, spec).astype(float)
+    enriched["exit_signal"] = exit_signal_series(enriched, spec).astype(float)
     return enriched
 
 
 def build_bt_strategy(spec, capital, risk_pct=None):
     """Return a Backtesting.py Strategy subclass that trades `spec` exactly: enter
-    next-open when entry_signal fires (one position at a time), stop from
-    exit.stop, target from exit.target gated at min_rrr, exit on time_stop, size
-    by risk_per_trade_pct. The frame must come from prepare_backtest_frame()."""
+    next-open when entry_signal fires (one position at a time); manage the close via
+    exit.stop (floored), a fixed target gated at min_rrr, an optional ATR trailing
+    stop, an optional discretionary exit_signal, and the time_stop; size by
+    risk_per_trade_pct. The frame must come from prepare_backtest_frame()."""
     ta._need("backtesting")
     from backtesting import Strategy
 
     exitb = spec.get("exit", {}) or {}
     sizing = spec.get("sizing", {}) or {}
     stop_kind = exitb.get("stop", "recent_swing_low")
-    measured = "measured" in str(exitb.get("target", "")).lower()
+    target_spec = str(exitb.get("target", "")).lower()
+    measured = "measured" in target_spec
+    trail_atr = float(exitb.get("trail_atr", 0) or 0)
+    use_exit_signal = bool(exitb.get("exit_signal"))
+    # When a trail or an exit_signal governs the close, a `trailing`/`none`/`signal`
+    # target drops the take-profit so a winner runs to the trail instead of capping
+    # at min_rrr. A spec with neither keeps the default target.
+    no_target = (("trail" in target_spec or target_spec in ("", "none", "signal"))
+                 and (trail_atr or use_exit_signal))
     min_rrr = float(exitb.get("min_rrr", 1.5))
     time_stop = int(exitb.get("time_stop_sessions", 20) or 20)
     rpct = float(risk_pct if risk_pct is not None
@@ -237,10 +276,20 @@ def build_bt_strategy(spec, capital, risk_pct=None):
 
         def next(self):
             i = len(self.data) - 1
-            # time stop on any open trade (held >= time_stop sessions)
             for tr in list(self.trades):
-                if i - tr.entry_bar >= time_stop:
+                held = i - tr.entry_bar
+                # discretionary exit (e.g. close back above the 5-SMA) takes priority
+                if use_exit_signal and bool(self.data.exit_signal[-1]):
                     tr.close()
+                    continue
+                if held >= time_stop:
+                    tr.close()
+                    continue
+                if trail_atr:   # ratchet the stop up under the high since entry
+                    hi = float(max(self.data.High[-(held + 1):]))
+                    new_sl = hi - trail_atr * float(self.data.atr14[-1])
+                    if (tr.sl is None or new_sl > tr.sl) and new_sl < float(self.data.Close[-1]):
+                        tr.sl = new_sl
             if self.position or not bool(self.data.entry_signal[-1]):
                 return
             # stop from the spec, resolved on the signal bar (matches live)
@@ -251,15 +300,18 @@ def build_bt_strategy(spec, capital, risk_pct=None):
             else:                                   # recent_swing_low
                 stop = float(min(self.data.Low[-10:]))
             entry = float(self.data.Close[-1])      # sizing proxy; fill is next open
+            stop = floor_stop(entry, stop, self.data.atr14[-1])
             if not (stop < entry) or (entry - stop) / entry > 0.15:
                 return
             risk = entry - stop
-            if measured:
-                target = entry + float(self.data.hh20[-1] - self.data.ll20[-1])
-            else:
-                target = entry + min_rrr * risk
-            if (target - entry) / risk < min_rrr:
-                return
+            target = None
+            if not no_target:
+                if measured:
+                    target = entry + float(self.data.hh20[-1] - self.data.ll20[-1])
+                else:
+                    target = entry + min_rrr * risk
+                if (target - entry) / risk < min_rrr:
+                    return
             qty = int((capital * rpct / 100) / risk)
             qty = min(qty, int(self.equity * 0.95 / entry))   # never over-commit cash
             if qty < 1:

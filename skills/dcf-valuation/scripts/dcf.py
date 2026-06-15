@@ -116,6 +116,57 @@ def resolve_margin(spec, n):
     raise ValueError("inputs need either `operating_margin` or `margin_glide`")
 
 
+def resolve_wacc(spec, n):
+    """Discount-rate path. Either an explicit `wacc` (scalar/list) OR a `wacc_buildup` block
+    that builds the cost of equity the way Damodaran does — and, crucially, lets the country
+    risk attach to the company's *operating exposure*, not to where it is incorporated. His
+    melded form:
+
+        cost_of_equity = risk_free + beta*mature_erp + lambda_country*country_risk_premium
+        wacc           = w_e*cost_of_equity + w_d*cost_of_debt_pretax*(1 - tax)
+
+    `lambda_country` (λ) is the firm's exposure to the country's risk ≈ its share of revenue/
+    operations there relative to the average firm. An Indian IT exporter earning abroad has a
+    LOW λ (TCS ≈ 0.09) and should barely carry India's CRP; a purely domestic FMCG/lender has
+    λ ≈ 1 and carries it fully. Defaulting λ to 1.0 keeps a domestic firm fully exposed; set it
+    from the revenue mix rather than assuming every "Indian" company is equally India-risky.
+    Building this up here (not hand-typing one wacc) also stops the double-count where risk is
+    loaded into BOTH a high discount rate AND a deliberately timid growth path."""
+    if spec.get("wacc") is not None:
+        return _as_path(spec["wacc"], n, 0.11), None
+    b = spec.get("wacc_buildup")
+    if not b:
+        return _as_path(0.11, n, 0.11), None
+    rf = float(b["risk_free"])
+    beta = float(b.get("beta", 1.0))
+    mature_erp = float(b["mature_erp"])
+    crp = float(b.get("country_risk_premium", 0.0))
+    lam = float(b.get("lambda_country", 1.0))
+    coe = rf + beta * mature_erp + lam * crp
+    erp_total = mature_erp + lam * crp
+    cod = float(b.get("cost_of_debt_pretax", coe))
+    tax = float(b.get("tax_rate", spec.get("tax_rate", 0.25)) if not isinstance(
+        spec.get("tax_rate"), (list, tuple)) else b.get("tax_rate", 0.25))
+    we = float(b.get("equity_weight", 1.0))
+    wd = float(b.get("debt_weight", 1.0 - we))
+    wacc = we * coe + wd * cod * (1.0 - tax)
+    detail = {"cost_of_equity": round(coe, 6), "after_tax_cost_of_debt": round(cod * (1 - tax), 6),
+              "lambda_country": round(lam, 6), "country_risk_loaded": round(lam * crp, 6),
+              "equity_risk_premium": round(erp_total, 6), "wacc": round(wacc, 6)}
+    return _as_path(wacc, n, wacc), detail
+
+
+YOUNG_STAGES = {"idea", "start_up", "startup", "young", "young_growth", "high_growth"}
+
+
+def lifecycle_stage(spec):
+    """Where on the corporate life cycle this company sits — the master diagnosis that decides
+    which inputs are hard, where value should sit, and which adjustments are warranted (the
+    6-stage Damodaran framing: start_up / young_growth / high_growth / mature_growth /
+    mature_stable / decline). Defaults to mature when unspecified."""
+    return str(spec.get("lifecycle_stage") or "mature").lower()
+
+
 def _cum_discount(wacc_path):
     """Cumulative discount factors: df[t] = prod_{i<=t}(1+wacc_i)."""
     factors, running = [], 1.0
@@ -139,7 +190,7 @@ def value(spec):
     tax = _as_path(spec.get("tax_rate", 0.25), n, 0.25)
     s2c = _as_path(spec.get("sales_to_capital"), n, None) if spec.get("sales_to_capital") is not None \
         else _as_path(spec.get("sales_to_capital", 2.0), n, 2.0)
-    wacc = _as_path(spec.get("wacc", 0.11), n, 0.11)
+    wacc, wacc_detail = resolve_wacc(spec, n)
 
     # terminal assumptions
     g_T = float(spec.get("terminal_growth", 0.04))
@@ -193,7 +244,29 @@ def value(spec):
     net_debt = float(spec.get("net_debt", 0.0))
     non_op_cash = float(spec.get("non_operating_cash", 0.0))
     minority = float(spec.get("minority_interest", 0.0))
-    equity = ev - net_debt + non_op_cash - minority
+    equity_going_concern = ev - net_debt + non_op_cash - minority
+
+    # Two adjustments Damodaran keeps SEPARATE from the operating story, each applied only when
+    # the diagnosis calls for it — never as a default knob:
+    #   (1) failure/distress haircut — value the going concern, then accept it is worth only a
+    #       recovery fraction (usually ~0) in the branch where the firm doesn't survive. Warranted
+    #       when distress signals are present (negative earnings + heavy debt + reliance on external
+    #       capital early in the life cycle, or a decline-phase firm). ~0 for a mature, cash-generative
+    #       firm — leave failure_probability unset there.
+    #   (2) complexity/governance discount — value operations cleanly, THEN haircut for things a DCF
+    #       can't see: opaque cross-holdings, family-control wealth-transfer risk, pledging, political
+    #       dependence (Adani: clean operating value first, then "a significant discount on intrinsic
+    #       value"). Kept separate so the operating story is never quietly poisoned to express it.
+    p_fail = float(spec.get("failure_probability", 0.0))
+    recovery = float(spec.get("failure_recovery", 0.0))  # fraction of going-concern equity in failure
+    cx = float(spec.get("complexity_discount", 0.0))     # governance/cross-holding/control haircut
+    if not 0.0 <= p_fail <= 1.0:
+        raise ValueError("failure_probability must be between 0 and 1")
+    if not 0.0 <= cx < 1.0:
+        raise ValueError("complexity_discount must be between 0 and 1")
+    equity_after_failure = equity_going_concern * ((1.0 - p_fail) + recovery * p_fail)
+    equity = equity_after_failure * (1.0 - cx)
+
     shares = float(spec["shares_outstanding"])
     if shares <= 0:
         raise ValueError("shares_outstanding must be > 0")
@@ -221,6 +294,8 @@ def value(spec):
             "terminal_roic": roic_T,
             "terminal_reinvestment_rate": round(reinvest_rate_T, 6),
             "risk_free": risk_free,
+            "wacc_buildup": wacc_detail,
+            "lifecycle_stage": lifecycle_stage(spec),
         },
         "yearly": rows,
         "terminal_value": round(tv, 4),
@@ -230,6 +305,10 @@ def value(spec):
         "net_debt": net_debt,
         "non_operating_cash": non_op_cash,
         "minority_interest": minority,
+        "equity_value_going_concern": round(equity_going_concern, 4),
+        "failure_probability": p_fail,
+        "failure_recovery": recovery,
+        "complexity_discount": cx,
         "equity_value": round(equity, 4),
         "shares_outstanding": shares,
         "intrinsic_value_per_share": round(per_share, 4),
@@ -237,35 +316,66 @@ def value(spec):
         "margin_of_safety": round(mos, 6) if mos is not None else None,
         "terminal_value_fraction": round(tv_fraction, 6) if tv_fraction is not None else None,
         "flags": _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_sum, pv_tv,
-                               risk_free, growth, margin),
+                               risk_free, growth, margin, equity_going_concern, p_fail, cx),
     }
 
 
-def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, growth, margin):
-    """Damodaran's reality checks — surfaced, not silently swallowed."""
+def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, growth, margin,
+                  equity_going_concern=None, p_fail=0.0, cx=0.0):
+    """Damodaran's reality checks — surfaced, not silently swallowed. Several are
+    stage-aware: the same fact (e.g. value concentrated in the terminal year) is the
+    *expected* shape for a young company and a *red flag* for a mature or declining one, so a
+    fixed threshold mislabels exactly the cases that most need judgement."""
     flags = []
+    stage = lifecycle_stage(spec)
+    young = stage in YOUNG_STAGES
+    declining = "declin" in stage
     if risk_free is not None and g_T > float(risk_free) + 1e-9:
         flags.append(f"TERMINAL_GROWTH_ABOVE_RISKFREE: g_T={g_T:.3%} > risk_free={float(risk_free):.3%} "
-                     "— no mature firm outgrows the economy forever; cap g_T at the risk-free rate.")
+                     "— no mature firm outgrows the economy forever; cap g_T at the risk-free rate. "
+                     "(In a ₹ model the binding number is the ~6.5–7% rupee G-sec, not 4%.)")
     if ev <= 0:
         flags.append(f"NEGATIVE_ENTERPRISE_VALUE: EV={ev:.1f} — the explicit-period cash flows are deeply "
                      "negative (reinvestment too heavy / margins too thin for the growth assumed). The model "
                      "is not usable as-is; revisit sales-to-capital and the margin path before trusting any price.")
-    elif pv_explicit < 0 or (pv_tv / ev) > 0.75:
-        # terminal dominates: either explicit FCFF is net-negative (all value is terminal) or >75% of a
-        # positive EV sits in the terminal value.
+    else:
         frac = pv_tv / ev
-        flags.append(f"TERMINAL_VALUE_HEAVY: {frac:.0%} of EV is terminal value "
-                     "— the valuation rests on year-10+ assumptions; distrust and stress-test it.")
+        thresh = 0.90 if young else 0.75
+        if pv_explicit < 0 or frac > thresh:
+            if young:
+                flags.append(f"TERMINAL_VALUE_HEAVY: {frac:.0%} of EV is terminal value — for a young company "
+                             "this is EXPECTED (the cash flows live in the future, not today), not a defect; the "
+                             "thing to stress-test is the growth duration and steady-state margin that build that "
+                             "terminal, which the story-driver sensitivity does — not the WACC×g grid.")
+            elif declining:
+                flags.append(f"TERMINAL_VALUE_HEAVY: {frac:.0%} of EV is terminal value — for a DECLINING firm this "
+                             "is a red flag: a declining business should derive value from near-term cash extraction "
+                             "and asset/liquidation value, not a rich perpetuity. Re-check that terminal growth isn't "
+                             "positive for a shrinking firm, and consider a liquidation/break-up cross-check.")
+            else:
+                flags.append(f"TERMINAL_VALUE_HEAVY: {frac:.0%} of EV is terminal value "
+                             "— for a mature firm the valuation rests too much on year-N+ assumptions; "
+                             "stress-test growth duration and the steady-state margin.")
+    if declining and g_T > 0:
+        flags.append(f"DECLINE_POSITIVE_TERMINAL_GROWTH: terminal growth {g_T:.1%} > 0 for a firm you classified as "
+                     "declining — a shrinking business usually warrants g_T ≤ 0 and a liquidation cross-check.")
     if roic_T <= wacc_T + 1e-9:
         flags.append(f"NO_TERMINAL_EXCESS_RETURN: terminal_roic={roic_T:.2%} <= terminal_wacc={wacc_T:.2%} "
                      "— the firm creates no value in perpetuity (fine for a no-moat business; flag if you assumed a moat).")
     if max(margin) > 0.40:
         flags.append(f"HIGH_MARGIN_ASSUMPTION: peak operating margin {max(margin):.0%} "
-                     "— confirm a real peer has sustained this; few do.")
+                     "— confirm a real peer has sustained this; few do. And remember a bigger target market "
+                     "usually comes WITH lower margins + heavier reinvestment, not higher margins (SpaceX).")
     if max(growth) > 0.30:
         flags.append(f"HIGH_GROWTH_ASSUMPTION: peak revenue growth {max(growth):.0%} "
-                     "— check it against TAM and that reinvestment (sales-to-capital) funds it.")
+                     "— check it against TAM×share (not just history), and that reinvestment funds it. Don't add "
+                     "a separate premium 'because India is a big market' — that belongs in growth, and is already here.")
+    if equity_going_concern is not None and equity_going_concern <= 0 and (p_fail > 0 or cx > 0):
+        flags.append("DISCOUNT_ON_NONPOSITIVE_EQUITY: a failure probability or complexity discount was applied "
+                     "to a going-concern equity that is already ≤ 0 — multiplying a negative value makes it look "
+                     "'less bad', which is meaningless. When operating value is negative the story itself is the "
+                     "verdict (growth is destroying value / debt swamps thin operations); drop the haircuts and "
+                     "cross-check against asset/liquidation or sum-of-parts value instead.")
     return flags
 
 
@@ -290,6 +400,62 @@ def sensitivity(spec, wacc_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01),
             except ValueError:
                 row.append(None)  # wacc<=g cell
         grid["cells"].append(row)
+    return grid
+
+
+def story_sensitivity(spec, growth_shifts=(-0.04, -0.02, 0.0, 0.02, 0.04),
+                      margin_shifts=(-0.03, 0.0, 0.03)):
+    """Per-share value across the levers that actually move a growth company: the whole
+    revenue-growth path shifted by Δ (rate AND, because the shape is preserved, how long
+    growth lasts) × the steady-state operating margin shifted by Δ.
+
+    This is the headline range for a young/growth firm. The WACC×terminal-growth grid
+    (`sensitivity`) perturbs the two LOWEST-leverage levers — in a rupee model a full ±1%
+    on terminal growth barely moves value — so leading with it reports a falsely narrow band
+    and hides that a premature growth fade is what's driving a low number. Damodaran's actual
+    uncertainty tool for Zomato was a distribution over exactly these story drivers (market
+    size/share → growth, and steady-state margin); this is the deterministic version of it.
+
+    Also returns a `duration` read: holding the growth RATE, extend the high-growth phase —
+    the single most common reason a quality Indian compounder prints far below price is that
+    its demonstrated growth was faded to a mature rate years too early."""
+    n = int(spec.get("years", 10))
+    base_g = resolve_growth(spec, n)
+    base_m = resolve_margin(spec, n)
+
+    def trial(gd, md):
+        s = dict(spec)
+        s.pop("growth_glide", None)
+        s.pop("margin_glide", None)
+        s["revenue_growth"] = [g + gd for g in base_g]
+        s["operating_margin"] = [max(0.0, m + md) for m in base_m]
+        try:
+            return round(value(s)["intrinsic_value_per_share"], 2)
+        except ValueError:
+            return None
+
+    grid = {
+        "growth_shift_axis": [round(g, 4) for g in growth_shifts],
+        "margin_shift_axis": [round(m, 4) for m in margin_shifts],
+        "cells": [[trial(gd, md) for md in margin_shifts] for gd in growth_shifts],
+        "note": "rows = revenue-growth-path shift, cols = steady-state-margin shift; "
+                "these are the levers a growth stock's value actually turns on.",
+    }
+
+    # Duration read: keep the rate, lengthen how long the high-growth phase lasts.
+    g = spec.get("growth_glide")
+    if g:
+        dur = []
+        base_yh = int(g.get("years_high", 1))
+        for extra in (0, 2, 4):
+            s = dict(spec)
+            s["growth_glide"] = dict(g, years_high=min(n, base_yh + extra))
+            try:
+                dur.append({"extra_high_growth_years": extra,
+                            "per_share": round(value(s)["intrinsic_value_per_share"], 2)})
+            except ValueError:
+                dur.append({"extra_high_growth_years": extra, "per_share": None})
+        grid["duration"] = dur
     return grid
 
 
@@ -422,6 +588,9 @@ def main():
     ap.add_argument("--inputs", help="YAML/JSON input file (see assets/dcf-inputs.example.yml)")
     ap.add_argument("--out", help="write result JSON here")
     ap.add_argument("--sensitivity", action="store_true", help="also emit a WACC x g grid")
+    ap.add_argument("--story", action="store_true",
+                    help="also emit the story-driver grid (growth x steady-state margin) — the "
+                         "headline range for a growth company; far higher leverage than WACC x g")
     ap.add_argument("--reverse", action="store_true",
                     help="also solve the DCF backwards: what assumption does current_price imply?")
     ap.add_argument("--reverse-solve", choices=["growth", "margin"], default="growth",
@@ -442,6 +611,8 @@ def main():
         result = value(spec)
         if args.sensitivity or args.selftest:
             result["sensitivity"] = sensitivity(spec)
+        if args.story or args.selftest:
+            result["story_sensitivity"] = story_sensitivity(spec)
         if args.reverse or args.selftest:
             result["reverse_dcf"] = reverse_dcf(spec, target_per_share=args.reverse_target,
                                                 solve=args.reverse_solve)
@@ -461,10 +632,24 @@ def main():
     ps = result["intrinsic_value_per_share"]
     cu = result["currency_unit"].split()[0]
     print(f"\nIntrinsic value/share: {cu} {ps:,.2f}", file=sys.stderr)
+    if result.get("failure_probability") or result.get("complexity_discount"):
+        gc = result["equity_value_going_concern"] / result["shares_outstanding"]
+        bits = []
+        if result.get("failure_probability"):
+            bits.append(f"{result['failure_probability']:.0%} failure prob")
+        if result.get("complexity_discount"):
+            bits.append(f"{result['complexity_discount']:.0%} complexity/governance discount")
+        print(f"  (going concern {cu} {gc:,.2f}/sh, haircut for {', '.join(bits)})", file=sys.stderr)
     if result["margin_of_safety"] is not None:
         print(f"Margin of safety vs price: {result['margin_of_safety']:+.1%}", file=sys.stderr)
     if result["terminal_value_fraction"] is not None:
         print(f"Terminal value = {result['terminal_value_fraction']:.0%} of EV", file=sys.stderr)
+    st = result.get("story_sensitivity")
+    if st and st["cells"]:
+        flat = [c for row in st["cells"] for c in row if c is not None]
+        if flat:
+            print(f"Story-driver range (growth×margin): {cu} {min(flat):,.0f} – {cu} {max(flat):,.0f} "
+                  "(the levers that actually move a growth stock)", file=sys.stderr)
     rev = result.get("reverse_dcf")
     if rev:
         if rev.get("solved"):

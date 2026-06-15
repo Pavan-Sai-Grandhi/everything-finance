@@ -2,6 +2,10 @@
 
 > Story-driven FCFF DCF (Damodaran). A model, not a price target. Every input is sourced below.
 
+## Stage diagnosis
+- **Life-cycle stage:** <start_up | young_growth | high_growth | mature_growth | mature_stable | decline> — <one line on why, and what it implies: where value should sit, whether failure risk applies, story-vs-numbers balance>.
+- **Country-risk exposure (λ):** <~1 fully domestic | ~0.x for a firm earning <…>% abroad> — so India's CRP is loaded at <…>%, not in full.
+
 ## The story
 <3–4 sentences: the narrative the numbers encode — what drives growth, why margins land where they do, what it costs to grow. The numbers below must be consistent with this story.>
 
@@ -9,30 +13,32 @@
 | Lever | Value / path | Source / justification |
 |---|---|---|
 | Base revenue | ₹<…> Cr | screener FY<…> P&L (consolidated) |
-| Revenue growth | <…>% → fade to <…>% by Y<N> | TAM + guidance + history |
-| Operating margin | <…>% → <…>% by Y<…> | current margin; peer steady-state |
+| Revenue growth | <…>% → fade to <…>% by Y<N> | TAM×share×take-rate / guidance / history |
+| Operating margin | <…>% → <…>% by Y<…> | current margin; peer steady-state (normalised through-cycle if cyclical) |
 | Tax rate | <…>% | effective → statutory |
 | Sales-to-capital | <…> | historical ΔRev/ΔInvCapital; peer benchmark |
-| WACC | <…>% | CoE (rf <…>% + β<…>×ERP <…>%) + after-tax CoD |
-| Terminal growth | <…>% | ≤ risk-free <…>% |
+| WACC | <…>% | CoE (rf <…>% + β<…>×mature-ERP <…>% + λ<…>×CRP <…>%) + after-tax CoD |
+| Terminal growth | <…>% | ≤ risk-free <…>% in the cash-flow currency |
 | Terminal ROIC | <…>% | moat persistence assumption |
 | Net debt / cash / shares | ₹<…> Cr / ₹<…> Cr / <…> Cr | latest balance sheet + shareholding |
+| Post-operating adjustments | failure prob <…>% / complexity discount <…>% | <only if warranted — distress signals / governance-complexity; else "none">|
 
 Lease / R&D capitalisation: <applied | not material | data gap — explain>.
 
 ## Intrinsic value
 - **Intrinsic value/share: ₹<…>** (equity ₹<…> Cr; EV ₹<…> Cr)
+- <If haircuts applied: going-concern ₹<…>/sh → ₹<…>/sh after <failure/complexity> adjustment.>
 - Current price: ₹<…> → **margin of safety: <±…>%**
 - Terminal value = <…>% of EV
 
-### Sensitivity — intrinsic value/share (WACC × terminal growth)
-| WACC ↓ / g → | <g−1%> | <g−0.5%> | **<g>** | <g+0.5%> | <g+1%> |
-|---|---|---|---|---|---|
-| <w−1%> | … | … | … | … | … |
-| **<w>** | … | … | **<base>** | … | … |
-| <w+1%> | … | … | … | … | … |
+### Sensitivity — the levers that move value (story-driver grid: growth × steady-state margin)
+| growth shift ↓ / margin → | <m−3%> | **<m>** | <m+3%> |
+|---|---|---|---|
+| <g−4%> | … | … | … |
+| **<g>** | … | **<base>** | … |
+| <g+4%> | … | … | … |
 
-Lead with this **range**, not the single midpoint.
+Lead with this **range** (and the `duration` read: does extending the *demonstrated* growth a couple of years close the gap to price?). The WACC × terminal-growth grid is a secondary check — for a growth firm it perturbs the lowest-leverage levers.
 
 ## Reverse DCF — what ₹<price> already assumes
 - To justify ₹<price>, the market is pricing in **~<implied>% revenue growth** (year 1) ≈ **~<implied CAGR>% over <N> years** — vs your base story of <base>% and the company's <history>% history / <guidance> guidance.

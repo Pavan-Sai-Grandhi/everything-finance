@@ -18,7 +18,7 @@ Compiled 2026-06-10 from web research and Varsity Trading Systems framing. Sourc
 - **Sample size**: < 30 trades = anecdote, not statistics. Widen symbols/years before concluding.
 - **Yearly breakdown** — an edge that exists only in 2024's bull leg is a bull-market detector, not a strategy. Use `by_year_expectancy_R` (regime check in R beats rupee PnL); the current year is flagged "(partial)".
 - **Return-on-capital vs buy-and-hold**: under 1%-risk sizing most capital sits idle, so return_on_capital_pct is *not* comparable to fully-invested B&H — compare expectancy and drawdown instead, and state this in the report.
-- **exit_breakdown**: TIME exits > 50% means the 2R-target/20-session pairing doesn't fit the universe's volatility — that diagnosis goes in the report; do not tune parameters in-sample to fix it.
+- **exit_breakdown**: labels are SL / TARGET / TIME (held to the time-stop) / SIGNAL/OTHER (an `exit_signal` close). Two diagnoses: **TIME > 50%** with a fixed target = the target/time-stop pairing doesn't fit the universe's volatility — if the source actually *trails*, that's a sign the spec should use `trail_atr`, not a longer time-stop (a long time-stop is a kludge for a trailing exit, and lengthening it in-sample to chase a number is curve-fitting). **Note when `trail_atr` is set, an SL exit is often a trailing-stop exit on a *winner*, not a loss** — read SL alongside the per-trade R, don't assume SL = loss.
 - **Resuming a crashed run**: outputs are deterministic given the OHLCV cache — validate the existing summary JSON (has `summary`/`buy_and_hold`/`caveats`) instead of re-running.
 
 ## Engine (what runs under the hood)

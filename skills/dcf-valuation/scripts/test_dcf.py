@@ -222,6 +222,111 @@ if rm["solved"]:
     repm = dcf.value(dict(rspec, margin_glide=None, operating_margin=rm["implied_path"]))["intrinsic_value_per_share"]
     check("reverse: solved margin reprices to target", approx(repm, base_intrinsic * 1.3, 1e-3), (repm,))
 
+# 18) Failure-probability haircut: equity scales by (1-p_fail) when recovery=0; p>1 rejected.
+fp = dcf.value(dict(spec1, failure_probability=0.10))
+check("failure haircut: equity = going_concern*(1-p)",
+      approx(fp["equity_value"], fp["equity_value_going_concern"] * 0.90, 1e-6),
+      (fp["equity_value"], fp["equity_value_going_concern"]))
+check("failure haircut: per-share below going concern",
+      fp["intrinsic_value_per_share"] < dcf.value(spec1)["intrinsic_value_per_share"])
+fpr = dcf.value(dict(spec1, failure_probability=0.20, failure_recovery=0.5))
+check("failure recovery: equity = gc*((1-p)+rec*p)",
+      approx(fpr["equity_value"], fpr["equity_value_going_concern"] * (0.80 + 0.5 * 0.20), 1e-6),
+      fpr["equity_value"])
+try:
+    dcf.value(dict(spec1, failure_probability=1.5))
+    check("failure_probability>1 raises", False)
+except ValueError:
+    check("failure_probability>1 raises", True)
+
+# 19) WACC build-up (melded): CoE = rf + beta*mature_erp + lambda*crp; country risk scales with exposure.
+wb = {"risk_free": 0.07, "beta": 1.1, "mature_erp": 0.045, "country_risk_premium": 0.03,
+      "cost_of_debt_pretax": 0.09, "equity_weight": 0.95, "tax_rate": 0.25}
+rwb = dcf.value(dict(spec1, wacc=None, wacc_buildup=wb))
+det = rwb["assumptions"]["wacc_buildup"]
+coe_full = 0.07 + 1.1 * 0.045 + 1.0 * 0.03  # lambda defaults to 1.0 (fully domestic)
+check("wacc buildup: melded CoE = rf+beta*mature_erp+lambda*crp", approx(det["cost_of_equity"], coe_full, 1e-9), det)
+exp_wacc = 0.95 * coe_full + 0.05 * 0.09 * 0.75
+check("wacc buildup: weighted wacc", approx(det["wacc"], exp_wacc, 1e-9), (det["wacc"], exp_wacc))
+check("wacc buildup: applied to discounting", approx(rwb["assumptions"]["wacc_path"][0], exp_wacc, 1e-6))
+check("explicit wacc overrides buildup",
+      approx(dcf.value(dict(spec1, wacc=0.12, wacc_buildup=wb))["assumptions"]["wacc_path"][0], 0.12, 1e-9))
+# lambda scales the country premium with operating exposure: a low-lambda exporter pays less CRP.
+exporter = dcf.value(dict(spec1, wacc=None, wacc_buildup=dict(wb, lambda_country=0.1)))
+check("low lambda (exporter) lowers cost of equity",
+      exporter["assumptions"]["wacc_buildup"]["cost_of_equity"] < det["cost_of_equity"],
+      (exporter["assumptions"]["wacc_buildup"]["cost_of_equity"], det["cost_of_equity"]))
+check("lambda reported", approx(exporter["assumptions"]["wacc_buildup"]["lambda_country"], 0.1, 1e-9))
+
+# 20) Story-driver sensitivity: center cell == base; value rises with growth and with margin.
+ss = dcf.story_sensitivity(rspec)
+center_ss = ss["cells"][2][1]  # zero growth-shift, zero margin-shift
+check("story grid: center == base intrinsic", approx(center_ss, round(base_intrinsic, 2), 1e-2),
+      (center_ss, base_intrinsic))
+check("story grid: higher growth -> higher value", ss["cells"][4][1] > ss["cells"][0][1],
+      (ss["cells"][4][1], ss["cells"][0][1]))
+check("story grid: higher margin -> higher value", ss["cells"][2][2] > ss["cells"][2][0])
+check("story grid: duration read present for a glide spec", "duration" in ss and len(ss["duration"]) == 3)
+check("story grid: more high-growth years -> higher value",
+      ss["duration"][2]["per_share"] > ss["duration"][0]["per_share"], ss["duration"])
+# The point of the fix: the story range is WIDER than the WACC×g range (it moves the levers that matter).
+story_flat = [c for row in ss["cells"] for c in row if c is not None]
+wacc_g = dcf.sensitivity(rspec)
+wg_flat = [c for row in wacc_g["cells"] for c in row if c is not None]
+check("story range wider than WACC×g range",
+      (max(story_flat) - min(story_flat)) > (max(wg_flat) - min(wg_flat)),
+      (max(story_flat) - min(story_flat), max(wg_flat) - min(wg_flat)))
+
+# 21) Young-stage flag: terminal-heavy is suppressed (expected) up to 90%, worded as expected.
+young = dict(dcf.SELFTEST_SPEC, lifecycle_stage="high_growth",
+             growth_glide={"initial": 0.30, "fade_to": 0.06, "years_high": 4},
+             terminal_growth=0.06, terminal_roic=0.14, sales_to_capital=3.0)
+ry = dcf.value(young)
+tvheavy = [f for f in ry["flags"] if "TERMINAL_VALUE_HEAVY" in f]
+if tvheavy:
+    check("young-stage terminal-heavy worded as expected", "EXPECTED" in tvheavy[0], tvheavy)
+else:
+    check("young-stage terminal-heavy suppressed below 90%", ry["terminal_value_fraction"] <= 0.90,
+          ry["terminal_value_fraction"])
+check("lifecycle_stage reported", ry["assumptions"]["lifecycle_stage"] == "high_growth")
+
+# 22) Complexity/governance discount: separate explicit haircut on equity, after the failure branch.
+cxr = dcf.value(dict(spec1, complexity_discount=0.20))
+check("complexity discount: equity = going_concern*(1-cx)",
+      approx(cxr["equity_value"], cxr["equity_value_going_concern"] * 0.80, 1e-6),
+      (cxr["equity_value"], cxr["equity_value_going_concern"]))
+cxf = dcf.value(dict(spec1, failure_probability=0.10, complexity_discount=0.20))
+check("failure and complexity compose multiplicatively",
+      approx(cxf["equity_value"], cxf["equity_value_going_concern"] * 0.90 * 0.80, 1e-6), cxf["equity_value"])
+try:
+    dcf.value(dict(spec1, complexity_discount=1.0))
+    check("complexity_discount>=1 raises", False)
+except ValueError:
+    check("complexity_discount>=1 raises", True)
+
+# 23) Decline-stage flags: positive terminal growth flagged; terminal-heavy worded as a red flag.
+decl = dcf.value({
+    "years": 5, "base_revenue": 1000.0, "lifecycle_stage": "decline",
+    "growth_glide": {"initial": -0.05, "fade_to": -0.02, "years_high": 2},
+    "margin_glide": {"start": 0.10, "target": 0.08, "year_target": 5},
+    "tax_rate": 0.25, "sales_to_capital": 4.0, "wacc": 0.12,
+    "terminal_growth": 0.03, "terminal_roic": 0.13, "terminal_wacc": 0.12, "shares_outstanding": 10.0,
+})
+check("decline + positive terminal growth flagged",
+      any("DECLINE_POSITIVE_TERMINAL_GROWTH" in f for f in decl["flags"]), decl["flags"])
+
+# 24) Guard: discount applied to already-negative going-concern equity is flagged as meaningless.
+negcx = dcf.value({
+    "years": 10, "base_revenue": 90000.0, "revenue_growth": 0.25, "operating_margin": 0.06,
+    "tax_rate": 0.25, "sales_to_capital": 0.9, "wacc": 0.13, "terminal_growth": 0.05,
+    "terminal_roic": 0.04, "terminal_wacc": 0.13, "shares_outstanding": 110.0, "net_debt": 70000.0,
+    "complexity_discount": 0.4, "failure_probability": 0.2,
+})
+check("guard: discount on non-positive equity flagged",
+      any("DISCOUNT_ON_NONPOSITIVE_EQUITY" in f for f in negcx["flags"]), negcx["flags"])
+check("guard: no false fire when going-concern equity positive",
+      not any("DISCOUNT_ON_NONPOSITIVE_EQUITY" in f for f in dcf.value(dict(spec1, complexity_discount=0.2))["flags"]))
+
 # 17) Selftest spec runs end-to-end and is internally consistent.
 rs = dcf.value(dcf.SELFTEST_SPEC)
 check("selftest EV = pv_fcff + pv_tv",

@@ -113,6 +113,30 @@ def test_build_signal_rejects_low_rrr():
     check("at/above min_rrr passes", "skip" not in screen.build_signal(df, spec, 500000))
 
 
+def test_build_signal_floors_tight_stop():
+    # A swing-low stop a hair under entry (a squeeze/NR candle) must floor so the
+    # risk denominator can't collapse toward zero and blow up the R-multiple.
+    df = _ind_frame(close=100, ema50=95, atr14=3.0)
+    df["Low"] = [99.9] * len(df)            # swing low only 0.1% under entry
+    spec = {"exit": {"stop": "recent_swing_low", "target": "next_resistance", "min_rrr": 1.5},
+            "sizing": {"risk_per_trade_pct": 1.0}}
+    sig = screen.build_signal(df, spec, capital=500000)
+    # floor = max(0.5*atr=1.5, 1% of 100=1.0) = 1.5 -> stop 98.5, risk 1.5 (not 0.1)
+    check("tight stop floored to entry-0.5atr", sig["stop"] == 98.5, str(sig))
+    check("risk_per_share floored, not ~0", sig["risk_per_share"] == 1.5, str(sig))
+
+
+def test_exit_signal_series():
+    # The discretionary-exit grammar (entry's), e.g. a mean-reversion close back
+    # above the 5-SMA — fires only on the bars where the condition holds.
+    df = _ind_frame(close=100, ema50=95)
+    df["sma5"] = [98, 99, 101, 102] + [100] * 8     # Close 100 > sma5 only at bars 0,1
+    fires = list(screen.strategy.exit_signal_series(df, {"exit": {"exit_signal": "Close > sma5"}}))
+    check("exit_signal fires where Close>sma5", fires[:4] == [True, True, False, False], str(fires[:4]))
+    check("no exit_signal -> never fires",
+          not screen.strategy.exit_signal_series(df, {"exit": {}}).any())
+
+
 def test_build_signal_rejects_wide_stop():
     df = _ind_frame(close=100, ema50=80, atr14=20)  # stop 40 -> 60% risk, too wide
     spec = {"exit": {"stop": "ema50_minus_2atr", "target": "measured_move", "min_rrr": 1.0},

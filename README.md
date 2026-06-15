@@ -36,8 +36,8 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 | Skill | What it does |
 |---|---|
 | `/find-trade` | Run a chosen, validated strategy against the Nifty 500 — screen the universe (screener.in fundamentals + TradingView/local technical cut), build entry / SL / target / size signals; on your "yes" persists a trade-idea artifact for `/trade-tracker`. Strategy-agnostic: names a strategy or asks `/strategy-manager pick`; no hardcoded default |
-| `/deep-analysis TICKER` | Multi-agent debate: technical, fundamental (reads annual reports + concalls, grades management integrity & skill, computes a story-driven DCF intrinsic value), news, bull vs bear, portfolio-manager verdict. Artifact auto-archived + Telegram brief via Stop hook |
-| `/sector-pulse` | Sector rotation snapshot from NSE sectoral indices + top picks per leading sector |
+| `/deep-analysis TICKER` | Multi-agent debate: technical, fundamental (reads annual reports + concalls, grades management integrity & skill, computes a story-driven DCF intrinsic value), news, sector context, bull vs bear, portfolio-manager verdict — synthesized into a readable report with the raw agent work papers archived alongside. Artifact auto-archived + Telegram brief via Stop hook |
+| `/sector-analysis [sector]` | Deep-dive the sector(s) you name, or rank NSE sectoral indices and deep-dive the top three — RS, sector KPIs, tailwinds/headwinds, top picks (runs the `sector-analyst` agent) |
 | `/mf-research` | Mutual fund research: NAV history, rolling returns, category comparison, fund quality verdict |
 | `/insurance-check` | Life + health coverage adequacy vs need, gap list, action items |
 | `/budget-tracker` | Parse bank/CC statements (PDF/CSV), categorize, compare against the Monthly Budget Planning framework, discipline report |
@@ -52,16 +52,16 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 
 ## Agents (`agents/`, all `context: fork`)
 
-`technical-analyst`, `fundamental-analyst`, `news-sentiment`, `bull-researcher`, `bear-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis`, reusable individually.
+`technical-analyst`, `fundamental-analyst`, `news-sentiment`, `sector-analyst`, `bull-researcher`, `bear-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis`, reusable individually. `sector-analyst` also powers `/sector-analysis`.
 
 ## Hooks
 
-- **Stop → `post-deep-analysis.sh`**: moves staged reports to `artifacts/YYYY-MM-DD/TICKER.md`, sends the Telegram brief.
+- **Stop → `post-deep-analysis.sh`**: archives the staged report to `artifacts/YYYY-MM-DD/TICKER-deep-analysis.md` (plus its agent work papers), sends the Telegram brief. Anchors to the session cwd from the hook's stdin so it fires reliably regardless of where the hook process starts.
 - **SessionStart → `session-context.sh`**: injects today's date + market open/closed status.
 
 ## Templates
 
-Bundled per skill in `skills/<name>/assets/` — HTML where visuals help (signal report, budget dashboard, sector heatmap, fund comparison), markdown for text-first outputs (deep-analysis artifact, daily brief, Telegram format).
+Bundled per skill in `skills/<name>/assets/` — HTML where visuals help (signal report, budget dashboard, sector-analysis grid, fund comparison), markdown for text-first outputs (deep-analysis artifact, daily brief, Telegram format).
 
 ## Artifacts
 

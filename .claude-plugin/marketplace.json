@@ -10,7 +10,7 @@
     {
       "name": "everything-finance",
       "source": "./",
-      "description": "India-focused financial intelligence: swing pipeline on the Nifty 500, multi-agent deep stock analysis, sector pulse, MF research, insurance gap analysis, budget tracking, exchange filings, strategy backtesting, reference-article-driven strategy design, and live trade tracking against your Zerodha/Upstox positions.",
+      "description": "India-focused financial intelligence: swing pipeline on the Nifty 500, multi-agent deep stock analysis, sector analysis, MF research, insurance gap analysis, budget tracking, exchange filings, strategy backtesting, reference-article-driven strategy design, and live trade tracking against your Zerodha/Upstox positions.",
       "category": "finance"
     }
   ]
