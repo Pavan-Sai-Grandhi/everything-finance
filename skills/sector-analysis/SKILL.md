@@ -30,7 +30,7 @@ Guards: thin/narrow indices (Media, and anything with < 10 constituents) can cla
 
 ## Step 2 — Deep-dive each chosen sector via the agent
 
-For each sector to analyze (the named ones, or the top three), launch the **`sector-analyst` agent** in parallel — one call per sector, passing the sector name (no focus stock here; that mode is for deep-analysis). Each agent returns the structured Sector Read: RS classification, KPI snapshot, tailwinds/headwinds, leaders/laggards, and a sector stance. Save each agent's raw report to `artifacts/YYYY-MM-DD/sector-analysis/<sector>.md`, then synthesize from those files — do not just paste the agent outputs back.
+For each sector to analyze (the named ones, or the top three), launch the **`sector-analyst` agent** in parallel — one call per sector, passing the sector name (no focus stock here; that mode is for deep-analysis) **and its output path `artifacts/YYYY-MM-DD/sector-analysis/<sector>.md`**. Each agent writes its own raw report to that path and returns the structured Sector Read: RS classification, KPI snapshot, tailwinds/headwinds, leaders/laggards, and a sector stance. Synthesize from those files — do not just paste the agent outputs back.
 
 ## Output
 
