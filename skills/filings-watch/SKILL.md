@@ -18,7 +18,7 @@ Read `references/reference.md` for the materiality classification and source end
 2. **Fetch + classify the BSE feed with the script** (first rung — works over plain HTTP when BSE isn't fingerprint-blocking):
    ```bash
    python3 <skill-dir>/scripts/filings.py --scrip <BSE_CODE> --days <lookback> \
-       --out artifacts/YYYY-MM-DD/<TICKER>-filings.json
+       --out artifacts/stocks/<TICKER>/YYYY-MM-DD/filings.json
    ```
    It returns announcements already classified into act-on / monitor / routine (+ forthcoming corporate actions), and a `notes` field. **If `notes` flags an empty/blocked BSE pull** ("No Record Found!" = fingerprint block, per reference.md), fall to the next rungs — don't assume the company was silent:
    - (b) **NSE pages via Playwright** (cookie bootstrap from the homepage first) — and the **only** reliable source for the **SHP pledge %** detail.
@@ -31,4 +31,8 @@ Read `references/reference.md` for the materiality classification and source end
 
 ## Output
 
-Markdown report (text-first, no HTML template): materiality-grouped filing list with dates and one-line summaries, corporate-actions calendar (ex-dates), shareholding delta table, and a 2–3 sentence "so what". Save to `artifacts/YYYY-MM-DD/<TICKER>-filings.md`. If one exchange blocks even Playwright, continue with the other + screener.in and note the gap.
+Markdown report (text-first, no HTML template): materiality-grouped filing list with dates and one-line summaries, corporate-actions calendar (ex-dates), shareholding delta table, and a 2–3 sentence "so what". Save to `artifacts/stocks/<TICKER>/YYYY-MM-DD/filings.md` (`paths.stock_dir(ticker, date)`). On a re-run, `paths.latest_prior("filings", TICKER)` finds the previous scan — add a one-line `prior run: <path> (<date>)` link and report only what's new since then. If one exchange blocks even Playwright, continue with the other + screener.in and note the gap.
+
+## Alerts this skill raises (via `lib/alerts.py`)
+
+For every **🔴 act-on** filing found, raise a **`filing_act_on`** alert so `daily-brief` surfaces it (`subject: {type: stock, id: <TICKER>}`, `created_by: filings-watch`, `severity: act`, `action.text` = the one-line filing summary, `action.suggest: "/filings-watch <TICKER>"` or `/deep-analysis <TICKER>`, `trigger: {check: filings-watch, args: {symbol: <TICKER>}}`, `dedup_key: filing-<TICKER>-<filing-date>`). 🟡 monitor / ⚪ routine items do **not** raise alerts — keep the inbox act-worthy only.

@@ -29,7 +29,7 @@ The plugin registers three MCP servers:
 
 Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfinance for OHLCV, Moneycontrol's `priceapi` JSON and the BSE/mfapi JSON APIs over plain curl, screener.in with auth cookies. WebFetch handles the static, non-blocking pages; Claude in Chrome is the CAPTCHA fallback. TradingView's **stock screener** is driven via the Playwright browser for find-trade's technical cut (its chart pages remain a human-facing link); all computed OHLCV still comes from yfinance.
 
-Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/pattern — TA-Lib-backed — plus the `FEATURES` registry), `strategy.py` (the one spec→signal engine both the live `find-trade` screen and the `backtest` sit on, so they can't drift), and `contracts.md` (the data-handoff contracts between skills). See [CLAUDE.md](CLAUDE.md) → *Shared code*.
+Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/pattern — TA-Lib-backed — plus the `FEATURES` registry), `strategy.py` (the one spec→signal engine both the live `find-trade` screen and the `backtest` sit on, so they can't drift), `paths.py` (the single artifact-path authority + `latest_prior` prior-run lookup; one-time migration in `migrate_artifacts.py`), `alerts.py` (the alert contract the skills feed and `daily-brief` reads), and `contracts.md` (the data-handoff contracts between skills). See [CLAUDE.md](CLAUDE.md) → *Shared code*.
 
 ## Skills
 
@@ -42,7 +42,8 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 | `/insurance-check` | Life + health coverage adequacy vs need, gap list, action items |
 | `/budget-tracker` | Parse bank/CC statements (PDF/CSV), categorize, compare against the Monthly Budget Planning framework, discipline report |
 | `/filings-watch TICKER` | NSE + BSE announcements, corporate actions, shareholding pattern changes |
-| `/daily-brief` | Morning one-pager: indices, sector tone, watchlist filings, open-position health — Telegram-ready |
+| `/daily-brief` | Morning one-pager: indices, a market-moving news digest, sector tone, the open-alert inbox + actions due, a strictly-capped opportunities shortlist (vetted from the alert inbox + ≤1 labelled news flag), watchlist filings & news, open-position health — Telegram-ready. Surfaces and recommends; never auto-runs a skill or places an order |
+| `/alert-manager` | The inbox for the plugin's alerts (stop levels, act-on filings, thesis rechecks due, vetted opportunities) that the other skills raise: list, add a manual watch-item, dismiss, snooze, or sweep expired. `/daily-brief` reads these every morning |
 | `/portfolio-review` | Holdings audit: exit signals, allocation drift, risk concentration |
 | `/backtest` | Validate a strategy spec on historical NSE data (strategy-agnostic **Backtesting.py** engine driven by the shared `lib/strategy.py` interpreter on **TA-Lib** indicators — expectancy, profit factor, drawdown vs buy-and-hold) |
 | `/strategy-manager` | Full strategy lifecycle: **generate** a complete rule-based system from a reference article you supply → **validate** it by backtest and mark it active when it passes → **pick** the active strategy that fits the current regime → **optimize** or retire strategies from live trade outcomes fed back by `/trade-tracker` |
@@ -56,7 +57,7 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 
 ## Hooks
 
-- **Stop → `post-deep-analysis.sh`**: archives the staged report to `artifacts/YYYY-MM-DD/TICKER-deep-analysis.md` (plus its agent work papers), sends the Telegram brief. Anchors to the session cwd from the hook's stdin so it fires reliably regardless of where the hook process starts.
+- **Stop → `post-deep-analysis.sh`**: archives the staged report to `artifacts/stocks/<TICKER>/<date>/deep-analysis.md` (plus its agent work papers), sends the Telegram brief. Anchors to the session cwd from the hook's stdin so it fires reliably regardless of where the hook process starts.
 - **SessionStart → `session-context.sh`**: injects today's date + market open/closed status.
 
 ## Templates

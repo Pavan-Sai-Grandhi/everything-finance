@@ -9,6 +9,16 @@
 
 🔄 Sectors: ↑ {{TOP_SECTORS}} | ↓ {{BOTTOM_SECTORS}}
 
+📰 Market: {{MARKET_NET_READ}}
+
+⏰ Alerts:
+{{ALERT_LINES}}
+<!-- only severity act/watch; lead with act. "— none" if empty. {check:} alerts show the suggested command. -->
+
+💡 Opportunities:
+{{OPPORTUNITY_LINES}}
+<!-- vetted first, then one unvetted labelled "(unvetted)". "— none" if nothing clears the bar. -->
+
 📋 Watchlist:
 {{WATCHLIST_LINES}}
 <!-- one line per ticker with a 🔴/🟡 item; if none: "— nothing material" -->

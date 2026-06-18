@@ -113,7 +113,7 @@ If you cannot make these adjustments precisely, **say so in the report as a data
 ```bash
 # fill assets/dcf-inputs.example.yml with sourced numbers, then:
 python3 <skill-dir>/scripts/dcf.py --inputs <your-inputs>.yml \
-    --sensitivity --story --out artifacts/YYYY-MM-DD/dcf-<SYMBOL>.json
+    --sensitivity --story --out artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf.json
 # --story emits the growth×margin grid (the headline range for a growth company)
 # or a quick worked example:
 python3 <skill-dir>/scripts/dcf.py --selftest

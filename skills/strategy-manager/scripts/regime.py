@@ -13,10 +13,14 @@ its strategy needs. It does NOT pick or recommend a strategy/archetype; the
 trade logic always comes from the article. Macro (repo/CPI/USD-INR/FII-DII) is
 layered on by the skill; this script is the objective, repeatable floor.
 
-Usage: python3 regime.py --out artifacts/2026-06-11/regime.json
+Usage: python3 regime.py            # writes artifacts/regime/<today>.json
 """
-import argparse, json, sys, subprocess
+import argparse, json, os, sys, subprocess
 from datetime import date
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "lib"))
+import paths
 
 try:
     import pandas as pd
@@ -52,8 +56,11 @@ def ema(s, span):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--out", default=f"artifacts/{date.today()}/regime.json")
+    p.add_argument("--out", default=None,
+                   help="output path (default: artifacts/regime/<today>.json)")
     args = p.parse_args()
+    if args.out is None:
+        args.out = paths.report_path("regime", ext="json")
     gaps = []
 
     # --- Nifty trend ---

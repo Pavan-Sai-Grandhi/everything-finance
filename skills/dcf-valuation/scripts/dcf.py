@@ -36,7 +36,7 @@ the same count unit (Crore) so per_share comes out in ₹. Run with --selftest f
 worked check, or feed a YAML/JSON input file (see assets/dcf-inputs.example.yml).
 
 Usage:
-  python3 dcf.py --inputs dcf-inputs.yml --out artifacts/2026-06-12/dcf-RELIANCE.json
+  python3 dcf.py --inputs dcf-inputs.yml --out artifacts/stocks/RELIANCE/2026-06-12/dcf.json
   python3 dcf.py --selftest
 Exit: 0 = valued, 2 = input/usage error, 3 = model-invalid (e.g. wacc<=g).
 """

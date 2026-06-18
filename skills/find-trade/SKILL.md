@@ -13,7 +13,7 @@ find-trade is the **executor**, not the strategy. It carries **no setups of its 
 
 A screen is only as good as the validated edge behind it, so find-trade refuses to invent one:
 
-- **User named a strategy** (`strategy:<name>`, or referenced a managed strategy) → load `artifacts/strategies/<name>.yml`. Two gates, in order:
+- **User named a strategy** (`strategy:<name>`, or referenced a managed strategy) → load `artifacts/state/strategies/<name>.yml`. Two gates, in order:
   1. **Status** must be `active` (`draft` = not yet backtested, `inactive` = retired). A non-active strategy isn't validated to trade — return zero candidates and point to `/strategy-manager validate <name>`.
   2. **Regime fit** — even when active, only run while the tape fits its `regime_required`. If unsure, defer to `/strategy-manager pick`. If the user *force-runs* a named strategy, you may proceed but flag any `regime_required` conflict with the live regime.
 - **No strategy named** → **call `strategy-manager` in `pick` mode** (via the `Skill` tool) to select the active strategy that fits the current regime, then run that one. 
@@ -25,7 +25,7 @@ Once a spec is resolved, its `screening`, `entry`, `exit`, and `sizing` blocks A
 
 ## Stage 1 — Fundamental screen → cut the universe (`screening.fundamental`)
 
-Run the spec's `screening.fundamental` only if its `provider` is `screener.in` (else skip this stage). Build the query at `https://www.screener.in/screens/new/` — **auth required** (the screen-builder 302-redirects anonymous clients): use `SCREENER_SESSION_ID`/`SCREENER_CSRF_TOKEN` from `~/.claude/.env`. Use the spec's `query` verbatim. Cap at `max_survivors`; if exceeded, tighten per the spec's note (e.g. ROCE > 15). Extract only the results table (name, NSE code, CMP, ROCE, D/E). Save survivors to `artifacts/.cache/gate_survivors.json`.
+Run the spec's `screening.fundamental` only if its `provider` is `screener.in` (else skip this stage). Build the query at `https://www.screener.in/screens/new/` — **auth required** (the screen-builder 302-redirects anonymous clients): use `SCREENER_SESSION_ID`/`SCREENER_CSRF_TOKEN` from `~/.claude/.env`. Use the spec's `query` verbatim. Cap at `max_survivors`; if exceeded, tighten per the spec's note (e.g. ROCE > 15). Extract only the results table (name, NSE code, CMP, ROCE, D/E). Save survivors to `artifacts/cache/gate_survivors.json`.
 
 If cookies are missing/expired: reuse the most recent `gate_survivors.json` if < 7 days old (fundamentals move slowly), else skip the fundamental cut, pre-rank the Nifty 500 by 6-month momentum instead, and flag "fundamental screen skipped — screener auth unavailable" in data gaps.
 
@@ -51,9 +51,9 @@ This is the **coarse chart-state cut** (whole universe → a shortlist), distinc
   Notes that make this work: cross-column tests use `"right":"<COLUMN>"` (e.g. `SMA50 > SMA200`); the response `data[].s` is `"NSE:SYMBOL"` / `"BSE:SYMBOL"` — **keep `NSE:` and strip the prefix, dropping the BSE duplicate of each name**; `data[].d` is the columns array in request order. This is the shortlist Stage 3 builds signals on. Only when a filter genuinely can't be expressed in the scanner (rare) fall to the Playwright browser screener (`tradingview.com/screener/` → market India → read the table), and only a personal saved screen needs the `TRADINGVIEW_SESSIONID`/`_SIGN` cookies. If TradingView is unreachable, fall through to compute.
 - **`provider: compute`**, OR any provider unreachable with `fallback_compute: true` — reproduce the cut **locally** from yfinance OHLCV via the shared `lib/ta.py`, using the spec's `compute_filters`. This is what `scripts/screen.py` does; it is deterministic and needs no auth:
   ```bash
-  python3 <skill-dir>/scripts/screen.py --spec artifacts/strategies/<name>.yml \
+  python3 <skill-dir>/scripts/screen.py --spec artifacts/state/strategies/<name>.yml \
       --symbols <survivors-csv-or-file> --capital <₹> \
-      --out artifacts/YYYY-MM-DD/find-trade-<name>.json
+      --out artifacts/find-trade/YYYY-MM-DD.json
   ```
   (Feed it the Stage-1 survivors; with no fundamental stage, feed the Nifty 500 list.) When you fall back, **say so** in data gaps — a local compute of "SMA50>SMA200 & RSI 40-60" approximates TradingView's server-side screen, it doesn't equal it.
 
@@ -67,7 +67,7 @@ Volume confirmation is mandatory (the engine reports `vol_vs_10d`); a candidate 
 
 ## Output
 
-Render `assets/signal-report.html` filled with the candidate table (ticker, setup/strategy, entry, SL, target, RRR, volume confirmation, fundamental snapshot, indicator read), the **strategy name + how it was chosen** (named vs picked, and the regime it fits), save to `artifacts/YYYY-MM-DD/find-trade.html`, and summarize the top 3 in chat. Include a **Data gaps** section for any failed fetch or compute-fallback, and a **TradingView chart link** (`tradingview.com/symbols/NSE-<SYMBOL>/`) per candidate for the user's own eyeball check.
+Render `assets/signal-report.html` filled with the candidate table (ticker, setup/strategy, entry, SL, target, RRR, volume confirmation, fundamental snapshot, indicator read), the **strategy name + how it was chosen** (named vs picked, and the regime it fits), save to `artifacts/find-trade/YYYY-MM-DD.html` (`paths.report_path("find-trade", date, "html")`), and summarize the top 3 in chat. Include a **Data gaps** section for any failed fetch or compute-fallback, and a **TradingView chart link** (`tradingview.com/symbols/NSE-<SYMBOL>/`) per candidate for the user's own eyeball check.
 
 ## Stage 4 — Suggest & commit (hand-off to trade-tracker)
 
@@ -75,7 +75,14 @@ Suggest the single highest-conviction candidate (or top 2–3 if genuinely tied)
 
 **Only on an explicit "yes"** (or the user naming which to track) persist a **trade-idea artifact** — the contract `trade-tracker` reads (schema + every field documented in `<plugin>/lib/contracts.md`):
 
-- Path: `artifacts/trades/<SYMBOL>-<YYYY-MM-DD>.yml` (SYMBOL = NSE trading symbol, no `.NS`). Create `artifacts/trades/` if needed; if a file for the same symbol+date exists, append `-2` etc. rather than overwriting.
+- Path: `artifacts/state/trades/<SYMBOL>-<YYYY-MM-DD>.yml` (`paths.state_dir("trades")`; SYMBOL = NSE trading symbol, no `.NS`). Create the dir if needed; if a file for the same symbol+date exists, append `-2` etc. rather than overwriting.
 - Set `source_skill: find-trade` and `strategy: <name>` (the strategy you ran — never null now, since find-trade always runs a named/picked strategy). Fill **every** field from the screen you just ran — especially `rationale` and `thesis_invalidation`, which are exactly what `trade-tracker` re-checks.
 
 Confirm the saved path in chat and tell the user to run `/trade-tracker` once they execute. If the user says no, persist nothing. End with the standard risk note: not investment advice — personal research tool.
+
+## Alerts this skill raises (via `lib/alerts.py`)
+
+As a side-effect of a confirmed run, write watch-items so `daily-brief` can surface them later (set `dedup_key` so re-runs update in place, never pile up):
+
+- **`price_cross` entry-trigger** — for a high-conviction candidate the user wants but that hasn't filled yet, raise a `price_cross` alert at the entry trigger level (`subject: {type: stock, id: <SYMBOL>}`, `created_by: find-trade`, `severity: watch`, `action.suggest: "/find-trade strategy:<name>"`, `dedup_key: entry-<SYMBOL>`).
+- **`opportunity` (vetted)** — when a candidate clears both gates off an *active* strategy, raise an `opportunity` alert (`severity: watch`, `action.text` = the one-line basis, `action.suggest: "/deep-analysis <SYMBOL>"`, `dedup_key: opp-<SYMBOL>`). This is the vetted feed daily-brief's Opportunities section reads — and a vetted opportunity is what daily-brief auto-adds to the watchlist.

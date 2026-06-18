@@ -13,9 +13,9 @@ Indicators come from TA-Lib via lib/ta.py. Commission is charged per side, set s
 the round trip ~= 0.25% all-in (charges + slippage).
 
 Usage:
-  python3 backtest.py --spec artifacts/strategies/ema-pullback-swing.yml \
-      --symbols RELIANCE,TCS --years 5 --capital 500000 \
-      --out artifacts/2026-06-12/backtest
+  python3 backtest.py --spec artifacts/state/strategies/ema-pullback-swing.yml \
+      --symbols RELIANCE,TCS --years 5 --capital 500000
+  # --out defaults to artifacts/backtest/<spec>/<today>/report
   python3 backtest.py --selftest        # synthetic data, no network
 """
 
@@ -25,11 +25,13 @@ import os
 import sys
 from datetime import date
 
-# Shared engine: lib/ta.py (indicators) + lib/strategy.py (spec -> signals).
+# Shared engine: lib/ta.py (indicators) + lib/strategy.py (spec -> signals) +
+# lib/paths.py (artifact locations).
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "lib"))
 import ta          # noqa: E402
 import strategy    # noqa: E402
+import paths       # noqa: E402
 
 pd = ta.pd
 
@@ -182,7 +184,8 @@ def main():
     p.add_argument("--capital", type=float, default=500000)
     p.add_argument("--risk-pct", type=float, default=None,
                    help="override the spec's sizing.risk_per_trade_pct")
-    p.add_argument("--out", default=f"artifacts/{date.today()}/backtest")
+    p.add_argument("--out", default=None,
+                   help="output path prefix (default: artifacts/backtest/<spec>/<today>/report)")
     p.add_argument("--selftest", action="store_true")
     args = p.parse_args()
 
@@ -200,11 +203,15 @@ def main():
         sys.exit(2)
     spec = strategy_load(args.spec)
 
+    if args.out is None:
+        spec_name = spec.get("name") or os.path.splitext(os.path.basename(args.spec))[0]
+        args.out = os.path.join(paths.backtest_dir(spec_name), "report")
+
     basket_key = args.symbols.lower()
     symbols = (LARGECAP20_BASKET if basket_key == "largecap20"
                else [s.strip().upper() for s in args.symbols.split(",")])
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    cache_dir = "artifacts/.cache/ohlcv"
+    cache_dir = paths.cache_dir("ohlcv")
 
     all_trades, bh, failures = [], {}, []
     for sym in symbols:

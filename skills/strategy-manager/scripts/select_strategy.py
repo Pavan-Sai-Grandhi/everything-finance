@@ -9,10 +9,15 @@ RUNTIME decision — an active spec is simply not selected while the tape doesn'
 status does not change here.
 
 Usage:
-  python3 select_strategy.py --strategies artifacts/strategies --regime artifacts/2026-06-11/regime.json
+  python3 select_strategy.py --regime artifacts/regime/2026-06-11.json
+  # --strategies defaults to artifacts/state/strategies
 Exit: 0 = a strategy selected, 11 = none fit, 12 = no active specs, 2 = error.
 """
 import argparse, glob, json, os, sys, subprocess
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "lib"))
+import paths
 
 
 def _need(mod, pip_name=None):
@@ -74,11 +79,13 @@ def edge_score(spec):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--strategies", default="artifacts/strategies",
-                   help="dir of <name>.yml specs")
+    p.add_argument("--strategies", default=None,
+                   help="dir of <name>.yml specs (default: artifacts/state/strategies)")
     p.add_argument("--regime", required=True, help="regime.json from regime.py")
     p.add_argument("--out")
     args = p.parse_args()
+    if args.strategies is None:
+        args.strategies = paths.state_dir("strategies")
 
     try:
         regime = json.load(open(args.regime))

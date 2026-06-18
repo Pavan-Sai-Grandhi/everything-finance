@@ -27,4 +27,8 @@ Holdings from (in priority order): user-pasted list, a CSV they point to (broker
 
 ## Output
 
-Markdown report: holdings table with verdict column (KEEP / TRIM / EXIT / REVIEW + one-line reason each), the flags from passes 1–5, and a prioritized action list (max 5 items). Save to `artifacts/YYYY-MM-DD/portfolio-review.md`. Holdings values are sensitive — full table in the artifact; in chat, only the verdicts and actions. End with the standard risk note.
+Markdown report: holdings table with verdict column (KEEP / TRIM / EXIT / REVIEW + one-line reason each), the flags from passes 1–5, and a prioritized action list (max 5 items). Save to `artifacts/portfolio-review/YYYY-MM-DD.md` (`paths.report_path("portfolio-review")`). Holdings values are sensitive — full table in the artifact; in chat, only the verdicts and actions. End with the standard risk note.
+
+## Alerts this skill raises (via `lib/alerts.py`)
+
+When the review concludes the book has drifted from target (concentration breach, large cash drag, an allocation well off plan), raise a **`rebalance_due`** alert (`subject: {type: portfolio}`, `created_by: portfolio-review`, `severity: watch`, `action.text` = the drift in one line, `action.suggest: "/portfolio-review"`, `dedup_key: rebalance`). It is a date/standing reminder, not a cheap price trigger — `daily-brief` lists it among due actions until the next review clears it.

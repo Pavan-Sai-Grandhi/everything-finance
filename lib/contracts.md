@@ -13,6 +13,22 @@ read by another) and **shared code** (`lib/` modules imported by several scripts
 
 ## Shared code: `lib/`
 
+### `lib/paths.py` — the artifact-path authority
+Every skill script asks this module where to read and write instead of hardcoding strings, so
+the layout cannot drift between skills (the same reason `ta.py`/`strategy.py` are one engine
+each). Root is `$EVERYTHING_FINANCE_ARTIFACTS` or `./artifacts` (cwd). Three lifecycle tiers:
+**dated output** (`stocks/<TICKER>/<date>/`, `funds/<SCHEME>/<date>/`, and skill-first
+singletons like `daily-brief/<date>.md`), **durable state** (`state/strategies/`, `state/trades/`,
+`state/alerts/`, `state/watchlist.json`), and **disposable** (`cache/`, `tmp/`). Helpers:
+`root, stock_dir, fund_dir, report_path, report_dir, backtest_dir, state_dir, alerts_dir,
+watchlist_path, cache_dir, tmp_dir` (all create dirs as needed) and **`latest_prior(skill,
+subject, before=None)`** — the prior-run lookup that powers "refer the earlier run"
+(deep-analysis, dcf, management, filings, mf-research). Import via the same three-dirs-up
+`sys.path.insert` idiom as `ta`/`strategy`. `lib/migrate_artifacts.py` does a one-time
+(dry-run-by-default) move of an old flat tree into this layout. Covered by `lib/test_paths.py`.
+
+### `lib/alerts.py` — the alert contract (see "Artifact: alert" below)
+
 ### `lib/ta.py` — technical-analysis primitives
 One definition of every indicator + candlestick pattern, imported by every script
 that computes them. Consumers: `backtest/scripts/backtest.py`, `find-trade/scripts/screen.py`
@@ -72,7 +88,7 @@ routine}` (emoji 🔴/🟡/⚪). `summarize(scrip, days)` returns
 **Producer:** `strategy-manager` (owns the whole lifecycle).
 **Consumers:** `find-trade` (screening/entry/exit/sizing), `backtest` (entry/exit/sizing →
 writes back `expectancy_assumptions`), `trade-tracker` (`regime_required`).
-**Location:** `artifacts/strategies/<name>.yml`. **Schema:**
+**Location:** `artifacts/state/strategies/<name>.yml` (`paths.state_dir("strategies")`). **Schema:**
 `strategy-manager/assets/strategy-spec.example.yml` (fully commented). Seed drafts:
 `strategy-manager/assets/seed-strategies/`.
 
@@ -92,7 +108,7 @@ Key blocks and who reads them:
 `regime_required` fits the live regime. It has no default — no fitting active spec ⇒ no trade.
 
 ## Artifact: regime read
-**Producer:** `strategy-manager/scripts/regime.py` → `artifacts/YYYY-MM-DD/regime.json`.
+**Producer:** `strategy-manager/scripts/regime.py` → `artifacts/regime/YYYY-MM-DD.json`.
 **Consumers:** `select_strategy.py` (PICK), `trade-tracker` (regime-exit check), `find-trade`
 (indirectly, via pick). Fields read by the selector: `market_trend`, `trend_detail.above_ema200`,
 `volatility.vix`, `breadth.pct_sectors_above_ema50`, `risk_posture`, `as_of`. (See
@@ -102,7 +118,7 @@ Key blocks and who reads them:
 **Producer:** `find-trade` (on user confirmation), or `trade-tracker` (when it captures a
 position with no prior rationale). **Consumer:** `trade-tracker` (re-validates the thesis);
 `strategy-manager optimize` reads the `result` block of closed ideas.
-**Location:** `artifacts/trades/<SYMBOL>-<YYYY-MM-DD>.yml`. **Schema:** documented inline in
+**Location:** `artifacts/state/trades/<SYMBOL>-<YYYY-MM-DD>.yml` (`paths.state_dir("trades")`). **Schema:** documented inline in
 `find-trade/SKILL.md` (Stage 4) and `trade-tracker/scripts/validate_trade.py`.
 
 Lifecycle of `status`: `idea` → (broker fill matched) `open` → (exit) `closed`. Fields
@@ -114,14 +130,49 @@ spec — never null now that find-trade always runs a named/picked strategy),
 a trade without it breaks the learning loop.
 
 ## Artifact: deep-analysis report
-**Producer:** `deep-analysis` → `artifacts/YYYY-MM-DD/<TICKER>-deep-analysis.md`, the synthesized
-report, with each forked agent's raw report archived beside it under
-`artifacts/YYYY-MM-DD/<TICKER>-deep-analysis/agents/<role>.md` (the work papers the synthesis is
-built from). The Stop hook does the archival from `artifacts/.staging/<TICKER>.md` (final report)
-and `artifacts/.staging/<TICKER>/agents/` (work papers), and sends the `## Telegram Brief` section.
+**Producer:** `deep-analysis` → `artifacts/stocks/<TICKER>/<date>/deep-analysis.md` (`paths.stock_dir`),
+the synthesized report, with each forked agent's raw report archived beside it under
+`artifacts/stocks/<TICKER>/<date>/deep-analysis/agents/<role>.md` (the work papers the synthesis is
+built from). The Stop hook does the archival from `artifacts/tmp/staging/<TICKER>.md` (final report)
+and `artifacts/tmp/staging/<TICKER>/agents/` (work papers), and sends the `## Telegram Brief` section.
 **Consumer:** `trade-tracker` (as a rationale source when no trade-idea artifact exists). The
-fundamental leg embeds the `dcf-valuation` intrinsic range and the `management-quality` grade; the
-sector leg embeds the `sector-analyst` read positioning the stock in its sector.
+fundamental leg embeds the `dcf-valuation` intrinsic range and the `management-quality` grade and
+**also persists them as discrete files** (`dcf.md`/`dcf.json`, `management.md`) in the same
+`stocks/<TICKER>/<date>/` folder; the sector leg embeds the `sector-analyst` read. Because every
+artifact for a stock+run-day lives in one folder, `paths.latest_prior(skill, TICKER)` finds the
+prior run of any leg (deep-analysis, dcf, management, filings) on a re-run.
+
+## Artifact: alert
+**Producer:** many — `trade-tracker` (`price_cross`/`time_stop`/`regime_change`), `filings-watch`
+(`filing_act_on`), `strategy-manager` (`revalidate_due`), `deep-analysis` (`reanalyze_due` +
+`price_cross` invalidation + `opportunity`), `find-trade` (`price_cross` entry + `opportunity`),
+`portfolio-review` (`rebalance_due`), `mf-research` (`sip_due`), and `alert-manager` (manual).
+**Consumer:** `daily-brief` (surfaces and recommends — never auto-runs); `alert-manager` curates.
+**Owner of the schema/logic:** `lib/alerts.py`. **Location:** one file per alert at
+`artifacts/state/alerts/<id>.yml` (`paths.alerts_dir()`).
+
+| Field | Meaning |
+|---|---|
+| `id` | `<kind>-<subject>-<shorthash>` (generated) |
+| `created_by` | producing skill |
+| `subject` | `{type: stock\|fund\|strategy\|portfolio, id}` |
+| `kind` | `price_cross\|filing_act_on\|time_stop\|regime_change\|revalidate_due\|reanalyze_due\|rebalance_due\|sip_due\|opportunity\|investigate\|custom` |
+| `trigger` | exactly one of `{metric,op,level}` (cheap), `{due}` (date), `{check, args}` (needs a skill run) |
+| `action` | `{text, suggest}` — human recommendation + optional command to surface |
+| `severity` | `info\|watch\|act` |
+| `status` | `open\|triggered\|snoozed\|done\|expired` |
+| `dedup_key` | producers set this so re-runs update in place, never pile up |
+
+**Functions:** `create` (dedups on `dedup_key`), `load_open(subject=None)`, `evaluate_cheap(alerts,
+market_data)` (fires `metric`/`due` triggers from data the caller already fetched; ignores
+`{check}`), `set_status`, `snooze`, `sweep`. **Invariant:** alerts are only evaluated when a skill
+runs (no cron); `daily-brief` and `alert-manager` never place an order or auto-run a `{check}` alert.
+
+## Artifact: watchlist
+**Producer/consumer:** `daily-brief` (auto-adds *vetted* opportunities, recommends pruning; never
+auto-removes). **Location:** `artifacts/state/watchlist.json` (`paths.watchlist_path()`). Shape:
+`{"watchlist": [{ticker, added, source, note}], "positions": [{ticker, entry, sl, target, qty,
+entry_date, bse_code}]}`. A bare-string legacy watchlist is still read.
 
 ---
 

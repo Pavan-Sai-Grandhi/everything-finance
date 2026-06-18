@@ -19,6 +19,17 @@ Review: {{REVIEW_TRIGGER}}
 
 ---
 
+<!-- WHAT_CHANGED: include this whole block ONLY when paths.latest_prior found an earlier run;
+     delete it entirely on a first-ever analysis. -->
+## What changed since {{PRIOR_DATE}}
+Prior run: `{{PRIOR_PATH}}`
+- Verdict: {{PRIOR_CALL}} → {{CALL}}
+- DCF fair value: {{PRIOR_FAIR_VALUE}} → {{FAIR_VALUE}}
+- Thesis intact? {{THESIS_DELTA}}
+- New risk: {{NEW_RISK_SINCE_PRIOR}}
+
+---
+
 ## 1 · The Call
 {{CALL_NARRATIVE}}
 <!-- One tight paragraph: what decided the verdict, which lenses agreed (confluence) and which

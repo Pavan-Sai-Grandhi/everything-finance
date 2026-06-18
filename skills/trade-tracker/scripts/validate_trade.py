@@ -22,7 +22,7 @@ testing). Actual broker fill can be injected with --entry / --qty / --ltp so the
 reflects the real position, not the planned one.
 
 Usage:
-  python3 validate_trade.py --trade artifacts/trades/TITAN-2026-06-11.yml
+  python3 validate_trade.py --trade artifacts/state/trades/TITAN-2026-06-11.yml
   python3 validate_trade.py --trade t.yml --ohlcv bars.csv --ltp 3650 --entry 3300 --qty 41
 Exit code: 0 = HOLD, 10 = an EXIT_* verdict, 2 = error.
 """

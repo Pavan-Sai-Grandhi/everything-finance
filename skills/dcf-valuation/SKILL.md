@@ -13,6 +13,7 @@ Read `references/reference.md` first — it carries the method, the levers, the 
 
 ## Workflow
 
+0. **Check for a prior run.** Call `paths.latest_prior("dcf", SYMBOL)` — if an earlier `dcf.md` exists, read it for context so this valuation stays consistent with the last story, and open the report with a one-line `prior run: <path> (<date>)` link noting what changed (fair value then→now, which assumption moved). No prior run is the normal first-time case.
 1. **Gather the sourced base inputs** (from `https://www.screener.in/company/<SYMBOL>/consolidated/` and the latest annual report — the same primary sources the fundamental-analyst uses):
    - base revenue (latest FY/TTM), historical revenue growth and operating-margin trend, effective tax rate, net debt, cash & non-operating assets, minority interest, diluted shares outstanding.
    - historical **sales-to-capital** ≈ ΔRevenue ÷ Δ(net fixed assets + working capital) over recent years.
@@ -21,18 +22,18 @@ Read `references/reference.md` first — it carries the method, the levers, the 
    - **Growth & its duration** — don't fade a *demonstrated* high grower to GDP on a fixed schedule; fade to the durable rate the edge supports. Use `years: 15` for a genuinely young firm. Build revenue top-down from **TAM × share × take-rate** where you can.
    - **Country risk by exposure, not incorporation** — prefer `wacc_buildup` with `lambda_country` set from the company's India revenue share (an IT exporter barely carries India's CRP; a domestic lender carries it fully). This avoids both over-discounting exporters and double-counting risk into growth.
    - **Post-operating adjustments only if the diagnosis calls for them** — `failure_probability` for a firm with genuine distress signals (loss-making + heavy debt, or decline-phase), ≈ 0 for a profitable mature firm; `complexity_discount` for governance/cross-holding/promoter-control opacity (the Adani move: value operations clean, then haircut); normalise margins/commodity prices for cyclicals. Apply lease/R&D capitalisation where material.
-3. **Write the inputs file** from `assets/dcf-inputs.example.yml` → `artifacts/YYYY-MM-DD/dcf-<SYMBOL>-inputs.yml`, every value carrying a source comment.
+3. **Write the inputs file** from `assets/dcf-inputs.example.yml` → `artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml` (`paths.stock_dir(symbol, date)`), every value carrying a source comment.
 4. **Run the engine** (forward valuation + both sensitivity grids + reverse DCF):
    ```bash
-   python3 <skill-dir>/scripts/dcf.py --inputs artifacts/YYYY-MM-DD/dcf-<SYMBOL>-inputs.yml \
-       --sensitivity --story --reverse --out artifacts/YYYY-MM-DD/dcf-<SYMBOL>.json
+   python3 <skill-dir>/scripts/dcf.py --inputs artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml \
+       --sensitivity --story --reverse --out artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf.json
    ```
    Exit 3 = model-invalid (e.g. WACC ≤ terminal growth) — fix the input, never override the guard. The script auto-installs `pyyaml` if missing. `--reverse` defaults to solving for **growth** against `current_price`; add `--reverse-solve margin` for the implied-margin version, or `--reverse-target <price>` to test a different price.
 5. **Read the flags, BOTH grids, and the reverse DCF.** Address every flag in your write-up (terminal-heavy, growth/margin too high, negative EV, no terminal excess return). **Lead with the range from the `story_sensitivity` grid (growth × steady-state margin), not the WACC×g grid.** For a growth company the WACC×g grid is a false-narrow band around the wrong levers — in a rupee model a full ±1% on terminal growth barely moves value, while the growth rate, how long it lasts, and the steady-state margin move it enormously. The `story_sensitivity.duration` read answers the single most common Indian-compounder failure: was demonstrated growth faded to a mature rate years too early? The **reverse DCF** is the other half of the read: it inverts the model — instead of "what is it worth?", it answers "what does today's price already assume?" — and reports the revenue growth (or margin) the market is implicitly pricing in. Compare that implied number against the company's history, management guidance, and the TAM: if the price requires growth no one in the sector has sustained, that *is* the verdict. But equally: if the reverse-DCF demand is roughly the growth the company has *already demonstrated*, the gap is your base case fading too hard, not the stock being expensive — say so. If the reverse DCF comes back `solved: false`, read its `reason`.
 
 ## Produce this report
 
-Fill `assets/dcf-report.example.md` → `artifacts/YYYY-MM-DD/dcf-<SYMBOL>.md`:
+Fill `assets/dcf-report.example.md` → `artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf.md`:
 
 - **Stage diagnosis** (one line): the life-cycle stage and the country-risk exposure (λ) — these set everything below.
 - **The story** (3–4 sentences): the narrative the numbers encode.

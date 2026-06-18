@@ -18,7 +18,7 @@ backtest; this file is just the live-screen orchestration around it.
 
 Usage:
   python3 screen.py --spec <strategy>.yml --symbols RELIANCE,TCS[,...] \
-      --capital 500000 --years 2 --out artifacts/2026-06-12/find-trade.json
+      --capital 500000 --years 2 --out artifacts/find-trade/2026-06-12.json
   python3 screen.py --selftest         # synthetic data, no network
 """
 from __future__ import annotations
@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "lib"))
 import ta        # noqa: E402
 import strategy  # noqa: E402
+import paths     # noqa: E402
 
 pd = ta.pd
 
@@ -151,7 +152,7 @@ def main():
     else:
         symbols = [s.strip().upper() for s in args.symbols.split(",")]
 
-    cache_dir = "artifacts/.cache/ohlcv"
+    cache_dir = paths.cache_dir("ohlcv")
     res = screen_compute(symbols, spec, args.years, args.capital, cache_dir)
     res["config"] = {"spec": spec.get("name"), "symbols": len(symbols),
                      "capital": args.capital, "as_of": str(date.today()),

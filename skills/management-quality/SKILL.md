@@ -13,6 +13,8 @@ The core idea (Fisher): most of what separates two companies with the same oppor
 
 ## Data gathering (primary sources only)
 
+First, **check for a prior run** with `paths.latest_prior("management", SYMBOL)` — if an earlier `management.md` exists, read it for context and open this scorecard with a one-line `prior run: <path> (<date>)` link noting any change in the integrity gate or skill grade.
+
 The evidence lives in disclosures, not opinions. Gather, in order:
 
 1. **screener.in** — `https://www.screener.in/company/<SYMBOL>/consolidated/`: promoter holding & **pledge %** (add the column if logged in), shareholding trend, and the **Documents** section for annual reports and concall transcripts.
@@ -31,7 +33,7 @@ If a source fails, proceed on what you have and mark the **data gap** — never 
 
 ## Produce this report
 
-Fill `assets/management-scorecard.example.md` → `artifacts/YYYY-MM-DD/management-<SYMBOL>.md`:
+Fill `assets/management-scorecard.example.md` → `artifacts/stocks/<SYMBOL>/YYYY-MM-DD/management.md` (`paths.stock_dir(symbol, date)`):
 
 - **Integrity scorecard** — each of the 7 sub-checks: PASS / FLAG / FAIL with the specific number / AR note / filing behind it.
 - **Integrity verdict**: PASS / FLAG / FAIL. Any hard failure (siphoning RPTs, criminal/regulatory record, remuneration above MCA limit or rising as profit falls, abnormal unexplained pledging, demonstrable dishonesty) ⇒ FAIL.

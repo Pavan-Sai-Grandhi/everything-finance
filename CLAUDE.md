@@ -62,7 +62,7 @@ Cross-skill code lives in `lib/` at the plugin root, so the same logic isn't re-
 
 - Currency in INR: `₹1,23,456` (Indian digit grouping). Large values as `₹4.2 Cr`, `₹12 L`.
 - Dates as `YYYY-MM-DD`. Market-relative phrasing ("3 sessions ago") only alongside an absolute date.
-- **Artifacts always go under `./artifacts/` of the directory the session is running in** (cwd), never inside the plugin and never to absolute paths elsewhere. Layout: `artifacts/YYYY-MM-DD/<skill-output>` for dated reports, `artifacts/.cache/` for reusable downloads (NAV JSON, OHLCV), `artifacts/.staging/` only for the deep-analysis→hook handoff. Create directories as needed.
+- **Artifacts always go under `./artifacts/` of the directory the session is running in** (cwd, or `$EVERYTHING_FINANCE_ARTIFACTS` if set), never inside the plugin and never to absolute paths elsewhere. **`lib/paths.py` is the single path authority — ask it, don't hardcode strings** (the same discipline as `lib/ta.py`/`lib/strategy.py`). Three lifecycle tiers: dated output (`stocks/<TICKER>/<date>/` and `funds/<SCHEME>/<date>/` group a subject's whole run-day; skill-first singletons like `daily-brief/<date>.md`), durable state (`state/strategies/`, `state/trades/`, `state/alerts/`, `state/watchlist.json`), and disposable (`cache/` for reusable downloads, `tmp/` for the deep-analysis→hook handoff and logs). On a re-run of a stock/fund skill, call `paths.latest_prior(...)` to find and build on the prior run. Helpers create directories as needed.
 - Every stock/fund recommendation ends with: risk note + "Not investment advice — personal research tool."
 - Report templates are bundled with each skill in `skills/<name>/assets/` — fill data, keep structure.
 

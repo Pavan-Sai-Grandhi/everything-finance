@@ -9,6 +9,8 @@ allowed-tools: WebFetch, Read, Write, Bash, Agent, mcp__playwright__*
 
 Read `references/reference.md` for the fundamental-analysis grounding and the debate protocol. Resolve the argument to an NSE symbol first (screener.in search if ambiguous).
 
+**Refer the earlier run first.** Call `paths.latest_prior("deep-analysis", TICKER)` — if a prior report exists, read it before launching the debate so this run builds on it rather than starting cold, and pass the prior verdict/levels to the agents as context. The synthesized report then opens with a **"What changed since `<date>`"** block (see Synthesize). No prior run is the normal first-time case.
+
 **Sites for this skill only:** screener.in (financials, annual reports, concalls), yfinance + NSE (price), ET via Playwright/curl + Moneycontrol via real-Chrome Playwright or its `priceapi` JSON (news/quotes — WebFetch tool is blocked by both, browsers/curl work). TradingView not scraped (yfinance covers data; optional human chart link only).
 
 ## Orchestration
@@ -25,17 +27,28 @@ Run the seven plugin agents as forked subagents. Phases 1–3 launch in parallel
 | 2 (parallel) | `bear-researcher` | all four phase-1 reports |
 | 3 | `portfolio-manager` | everything — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level |
 
-Pass each agent only the data it needs, as text — agents are forked and share no context. **Give each agent its output path** as part of the input: `artifacts/.staging/<TICKER>/agents/<role>.md` — one file per agent: `technical.md`, `fundamental.md`, `news.md`, `sector.md`, `bull.md`, `bear.md`, `verdict.md`. Each agent writes its **own raw report** to that path and returns the same text. If any phase-1 agent fails (scrape block, missing documents), continue the debate with the gap explicitly stated; the portfolio-manager must weigh missing evidence as uncertainty, not as neutral.
+Pass each agent only the data it needs, as text — agents are forked and share no context. **Give each agent its output path** as part of the input: `artifacts/tmp/staging/<TICKER>/agents/<role>.md` (`paths.tmp_dir("staging")`) — one file per agent: `technical.md`, `fundamental.md`, `news.md`, `sector.md`, `bull.md`, `bear.md`, `verdict.md`. Each agent writes its **own raw report** to that path and returns the same text. If any phase-1 agent fails (scrape block, missing documents), continue the debate with the gap explicitly stated; the portfolio-manager must weigh missing evidence as uncertainty, not as neutral.
 
 ## Synthesize from the work papers
 
 The work papers above are the agents' own output — you do **not** write them. The comprehensive report is built **from** them (the returned text, or re-read the staged files), not by pasting them.
 
-Write the synthesized report to `artifacts/.staging/<TICKER>.md` using `assets/deep-analysis.md` (bundled with this skill). The template is a **readable synthesis** — you (the orchestrator) author every section in plain prose from the work papers, not by dumping agent output:
+Write the synthesized report to `artifacts/tmp/staging/<TICKER>.md` (`paths.tmp_dir("staging")`) using `assets/deep-analysis.md` (bundled with this skill). The template is a **readable synthesis** — you (the orchestrator) author every section in plain prose from the work papers, not by dumping agent output:
 
 - **Summary placeholders you fill yourself:** CMP, COMPANY_NAME_SUFFIX (" · <Company>" or empty), ONE_LINE_THESIS, CALL_NARRATIVE, the verdict table (ENTRY_SL_TARGET/RRR/ALLOC_CAP/INVALIDATION/REVIEW_TRIGGER from the portfolio-manager), the five-lens At-a-Glance table (each lens's stance + one-line read), COMPANY_OVERVIEW (the fundamental analyst's "Business overview" block — what the company does, segments & revenue mix, geography, products, moat), TOP_BULL_POINT (bull's argument 1), TOP_BEAR_POINT (bear's argument 1), SECTOR_STANCE_ONELINE, KEY_LEVEL (nearest decision level from the technical read), DATA_GAPS (union of all agents' gaps), AGENT_COUNT = 7.
 - **Synthesized sections:** BULL_SYNTHESIS / BEAR_SYNTHESIS (distil each side's 2–3 strongest evidence-tied points), DECISIVE_POINTS (what the PM kept/discarded + dissent worth keeping), SECTOR_CONTEXT (the sector read + where the stock sits in its sector), and the three Evidence-by-Lens blocks (condense each agent report to its load-bearing facts and levels — keep the numbers and cites, drop the boilerplate).
+- **"What changed since `<date>`" block (only when a prior run was found):** verdict then→now, the DCF fair-value shift, whether the thesis is intact, and any notable new risk. Omit the block entirely on a first-ever run.
 
-The report **must contain a `## Telegram Brief` section** (≤ 10 lines: verdict, one bull point, one bear point, sector one-liner, key level, invalidation). The plugin's Stop hook archives `artifacts/.staging/<TICKER>.md` → `artifacts/YYYY-MM-DD/<TICKER>-deep-analysis.md`, moves the work papers to `artifacts/YYYY-MM-DD/<TICKER>-deep-analysis/agents/`, and sends the brief to Telegram — do not send Telegram messages yourself and do not move the files.
+The report **must contain a `## Telegram Brief` section** (≤ 10 lines: verdict, one bull point, one bear point, sector one-liner, key level, invalidation). The plugin's Stop hook archives `artifacts/tmp/staging/<TICKER>.md` → `artifacts/stocks/<TICKER>/YYYY-MM-DD/deep-analysis.md`, moves the work papers to `artifacts/stocks/<TICKER>/YYYY-MM-DD/deep-analysis/agents/`, and sends the brief to Telegram — do not send Telegram messages yourself and do not move the files.
+
+**Persist the embedded leg artifacts.** The fundamental leg already computes a DCF and a management grade internally; write them out as discrete files in the same run-day folder — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (+ `dcf.json`) and `management.md` — so the stock's history is unified whether the artifact came from a standalone `/dcf-valuation` run or from inside this debate, and `paths.latest_prior("dcf", TICKER)` / `latest_prior("management", TICKER)` find both.
 
 In chat, give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — not the whole report. End with the standard risk note.
+
+## Alerts this skill raises (via `lib/alerts.py`)
+
+On a completed analysis, write watch-items for `daily-brief` (set `dedup_key` so a re-analysis updates in place):
+
+- **`reanalyze_due`** — a date reminder to revisit the thesis (`trigger: {due: <today + N days>}`, N from the verdict's review cadence; `subject: {type: stock, id: <TICKER>}`, `created_by: deep-analysis`, `severity: watch`, `action.suggest: "/deep-analysis <TICKER>"`, `dedup_key: reanalyze-<TICKER>`).
+- **`price_cross` invalidation** — the PM's invalidation level as a cheap trigger (`trigger: {metric: close, op: "<", level: <invalidation>}` for a long thesis; `severity: act`, `action.text` = "thesis invalidation level", `dedup_key: invalidate-<TICKER>`).
+- On a **BUY** verdict, also raise an **`opportunity`** alert (the vetted feed daily-brief reads): `severity: watch`, `action.text` = the one-line thesis, `action.suggest: "/find-trade"` or `/trade-tracker <TICKER>`, `dedup_key: opp-<TICKER>`.

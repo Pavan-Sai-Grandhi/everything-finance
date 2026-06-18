@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Stop hook: publish any deep-analysis reports staged during this turn.
 #
-# The deep-analysis skill writes a finished report to artifacts/.staging/<TICKER>.md and the
-# raw agent work papers to artifacts/.staging/<TICKER>/agents/*.md (relative to the SESSION cwd).
-# This hook:
-#   1. archives each staged report to  artifacts/YYYY-MM-DD/<TICKER>-deep-analysis.md
-#   2. archives its work papers to      artifacts/YYYY-MM-DD/<TICKER>-deep-analysis/agents/
+# The deep-analysis skill writes a finished report to <root>/tmp/staging/<TICKER>.md and the
+# raw agent work papers to <root>/tmp/staging/<TICKER>/agents/*.md (relative to the SESSION cwd),
+# where <root> = $EVERYTHING_FINANCE_ARTIFACTS or ./artifacts (matching lib/paths.py). This hook:
+#   1. archives each staged report to  <root>/stocks/<TICKER>/YYYY-MM-DD/deep-analysis.md
+#   2. archives its work papers to      <root>/stocks/<TICKER>/YYYY-MM-DD/deep-analysis/agents/
 #   3. extracts the "## Telegram Brief" section (or the first 12 lines as fallback)
 #   4. sends it via the Telegram bot API
 # No staged files -> exit 0 silently, so the hook is a no-op on ordinary turns.
 #
 # RELIABILITY: Stop hooks do not always run with their process cwd equal to the session cwd, so a
-# bare relative "artifacts/.staging" can silently miss the files. We read `cwd` from the hook's
-# stdin JSON (Claude Code passes it) and cd there before looking — making the publish deterministic
-# regardless of where the hook process starts. Every run appends to artifacts/.deep-analysis-hook.log
-# so a miss is diagnosable instead of silent.
+# bare relative "tmp/staging" can silently miss the files. We read `cwd` from the hook's stdin JSON
+# (Claude Code passes it) and cd there before looking — making the publish deterministic regardless
+# of where the hook process starts. Every run appends to <root>/tmp/deep-analysis-hook.log so a miss
+# is diagnosable instead of silent.
 
 set -u
 
@@ -24,8 +24,10 @@ if [ ! -t 0 ]; then input=$(cat); fi
 cwd=$(printf '%s' "$input" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
 [ -n "$cwd" ] && [ -d "$cwd" ] && cd "$cwd" 2>/dev/null || true
 
-STAGING="artifacts/.staging"
-log() { printf '%s %s\n' "$(date '+%F %T')" "$1" >> artifacts/.deep-analysis-hook.log 2>/dev/null; }
+ROOT="${EVERYTHING_FINANCE_ARTIFACTS:-artifacts}"
+STAGING="$ROOT/tmp/staging"
+mkdir -p "$ROOT/tmp"
+log() { printf '%s %s\n' "$(date '+%F %T')" "$1" >> "$ROOT/tmp/deep-analysis-hook.log" 2>/dev/null; }
 
 [ -d "$STAGING" ] || exit 0
 shopt -s nullglob
@@ -37,8 +39,6 @@ if [ ${#staged[@]} -eq 0 ]; then
 fi
 
 today=$(date +%F)
-outdir="artifacts/$today"
-mkdir -p "$outdir"
 log "stop hook fired in $(pwd); ${#staged[@]} staged report(s)"
 
 # Secrets: optional. Missing token => archive only, note the gap.
@@ -51,14 +51,16 @@ fi
 
 for f in "${staged[@]}"; do
   ticker=$(basename "$f" .md)
-  dest="$outdir/$ticker-deep-analysis.md"
+  outdir="$ROOT/stocks/$ticker/$today"
+  mkdir -p "$outdir"
+  dest="$outdir/deep-analysis.md"
   mv "$f" "$dest"
   log "archived report -> $dest"
   echo "everything-finance: archived deep-analysis report -> $dest" >&2
 
-  # Work papers: artifacts/.staging/<TICKER>/  ->  artifacts/YYYY-MM-DD/<TICKER>-deep-analysis/
+  # Work papers: <root>/tmp/staging/<TICKER>/  ->  <root>/stocks/<TICKER>/<date>/deep-analysis/
   if [ -d "$STAGING/$ticker" ]; then
-    papers="$outdir/$ticker-deep-analysis"
+    papers="$outdir/deep-analysis"
     rm -rf "$papers"
     mv "$STAGING/$ticker" "$papers"
     log "archived work papers -> $papers/"

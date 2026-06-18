@@ -30,4 +30,4 @@ Aggregate per category and per bucket (Essential / Lifestyle / EMIs / Investment
 
 ## Output
 
-Render `assets/budget-dashboard.html` (bundled with this skill) (bucket gauges vs targets, category bars, top merchants, month-over-month if prior artifacts exist in `artifacts/`), save to `artifacts/YYYY-MM-DD/budget-<month>.html`. In chat: savings rate (defined as (investments + leftout) / total inflow — state the formula), the single biggest leak, and one specific corrective action. Keep transaction-level data out of chat unless asked — it's sensitive; it lives in the artifact only.
+Render `assets/budget-dashboard.html` (bundled with this skill) (bucket gauges vs targets, category bars, top merchants, month-over-month if prior artifacts exist under `artifacts/budget/`), save to `artifacts/budget/<YYYY-MM>.html` (`paths.report_path("budget", "<YYYY-MM>", "html")`). In chat: savings rate (defined as (investments + leftout) / total inflow — state the formula), the single biggest leak, and one specific corrective action. Keep transaction-level data out of chat unless asked — it's sensitive; it lives in the artifact only.

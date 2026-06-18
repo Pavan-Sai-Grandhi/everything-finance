@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, WebFetch, Skill, mcp__kite__*, mcp__upstox__*
 
 This skill answers one question per open position: **is the original rationale still intact, or is an early exit warranted?** It reads what you actually hold from the broker, pairs it with *why* you took the trade, and re-checks that "why" against today's price and regime. It never places orders — the hosted Kite/Upstox MCPs are read-only by design, and so is this plugin (CLAUDE.md). You execute exits yourself.
 
-**Sources for this skill only:** the broker MCP (Kite or Upstox — positions/holdings/orders), the trade artifacts under `artifacts/trades/` and `artifacts/YYYY-MM-DD/` (rationale), `scripts/validate_trade.py` + yfinance (price/indicator re-check), and `strategy-manager`'s `regime.py` for strategy-linked regime checks. Read `references/reference.md` first — it defines the exit-decision framework this skill enforces.
+**Sources for this skill only:** the broker MCP (Kite or Upstox — positions/holdings/orders), the trade artifacts under `artifacts/state/trades/` and a stock's deep-analysis under `artifacts/stocks/<TICKER>/<date>/` (rationale), `scripts/validate_trade.py` + yfinance (price/indicator re-check), and `strategy-manager`'s `regime.py` for strategy-linked regime checks. Read `references/reference.md` first — it defines the exit-decision framework this skill enforces.
 
 ## 1. Connect the broker (read-only)
 
@@ -28,9 +28,9 @@ Extract only the fields you need (symbol, qty, avg, ltp); don't dump the whole p
 ## 2. Pair each position with its rationale
 
 For every open position, find the "why" in this order:
-1. **Trade-idea artifact** — `artifacts/trades/<SYMBOL>-*.yml` (persisted by `find-trade` on confirmation). Most recent open one wins. This is the richest source: it carries `plan` (entry/stop/target/time-stop), `thesis_invalidation`, `strategy` link, and `regime_at_creation`.
+1. **Trade-idea artifact** — `artifacts/state/trades/<SYMBOL>-*.yml` (persisted by `find-trade` on confirmation). Most recent open one wins. This is the richest source: it carries `plan` (entry/stop/target/time-stop), `thesis_invalidation`, `strategy` link, and `regime_at_creation`.
 2. **Deep-analysis / strategy artifact** — a `deep-analysis` report for the ticker, or a `strategy-manager` spec named in the idea's `strategy` field.
-3. **Custom rationale** — if no artifact exists, ask the user for the thesis (stop, target, and what would prove it wrong) and **write a fresh artifact** to `artifacts/trades/<SYMBOL>-<today>.yml` (same trade-idea schema find-trade uses — see `<plugin>/lib/contracts.md`) so the position is tracked from now on. A position with no recorded rationale is the exact problem this skill exists to fix — capture it.
+3. **Custom rationale** — if no artifact exists, ask the user for the thesis (stop, target, and what would prove it wrong) and **write a fresh artifact** to `artifacts/state/trades/<SYMBOL>-<today>.yml` (same trade-idea schema find-trade uses — see `<plugin>/lib/contracts.md`) so the position is tracked from now on. A position with no recorded rationale is the exact problem this skill exists to fix — capture it.
 
 When a broker fill matches an artifact still at `status: idea`, **promote it to `status: open`** and write the real fill back into `sizing.qty` and a new `fill_avg` field (don't overwrite the planned `entry`; record both). When a position is gone from the broker (or you recommend and the user confirms an exit), mark its artifact `status: closed` and write the `result` block described in §5 — that block is what `strategy-manager optimize` later aggregates, so closing a trade without it breaks the learning loop.
 
@@ -39,9 +39,9 @@ When a broker fill matches an artifact still at `status: idea`, **promote it to 
 Run the bundled validator with the broker's actual numbers so the verdict reflects the real position, not the plan:
 ```bash
 python3 <skill-dir>/scripts/validate_trade.py \
-  --trade artifacts/trades/<SYMBOL>-<date>.yml \
+  --trade artifacts/state/trades/<SYMBOL>-<date>.yml \
   --entry <broker_avg> --qty <broker_qty> --ltp <broker_ltp> \
-  --out artifacts/YYYY-MM-DD/validate-<SYMBOL>.json
+  --out artifacts/trade-tracker/YYYY-MM-DD/validate-<SYMBOL>.json
 ```
 It fetches OHLCV (yfinance) and returns a verdict in priority order — **EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD** — plus unrealized R, P&L, and any conditions it could not parse under `manual_review`. (For offline/testing or when yfinance lacks the symbol, pass `--ohlcv <csv>` instead.)
 
@@ -49,13 +49,21 @@ It fetches OHLCV (yfinance) and returns a verdict in priority order — **EXIT_S
 
 The script handles price-mechanical checks. You handle the rest:
 - **`manual_review` conditions** — qualitative invalidations like "earnings miss", "promoter pledge increase", "sector downgrade". Check them with the plugin's allowed news/filings paths (WebFetch / a quick `/filings-watch` or `/deep-analysis` if the user wants depth) and decide if the thesis is broken.
-- **Regime change (strategy-linked trades)** — if the artifact has a `strategy`, load that spec's `regime_required`, re-read the live regime (`python3 <strategy-manager-dir>/scripts/regime.py --out artifacts/YYYY-MM-DD/regime.json`), and if the regime now **fails** the strategy's conditions, flag a regime-exit even when price hasn't hit the stop — the edge that justified the trade is gone.
+- **Regime change (strategy-linked trades)** — if the artifact has a `strategy`, load that spec's `regime_required`, re-read the live regime (`python3 <strategy-manager-dir>/scripts/regime.py --out artifacts/regime/YYYY-MM-DD.json`), and if the regime now **fails** the strategy's conditions, flag a regime-exit even when price hasn't hit the stop — the edge that justified the trade is gone.
 
 Fold these into the final call: the script's verdict is the floor; a broken qualitative thesis or a failed regime can turn a mechanical HOLD into a recommended exit (say why).
 
 ## 5. Report
 
-Render `assets/tracker-report.md` (bundled) — one row per position with: symbol, qty, avg/LTP, unrealized R & P&L, the verdict, the one-line reason, and the **action** (Hold / Trim / Exit + the level to watch). Save to `artifacts/YYYY-MM-DD/trade-tracker.md` and summarize in chat, leading with anything that needs action today. Include a **Data gaps** line for positions with no rationale found or no price data.
+Render `assets/tracker-report.md` (bundled) — one row per position with: symbol, qty, avg/LTP, unrealized R & P&L, the verdict, the one-line reason, and the **action** (Hold / Trim / Exit + the level to watch). Save to `artifacts/trade-tracker/YYYY-MM-DD.md` (`paths.report_path("trade-tracker")`; per-position `validate-<SYMBOL>.json` work papers go under `artifacts/trade-tracker/YYYY-MM-DD/` via `paths.report_dir`) and summarize in chat, leading with anything that needs action today. Include a **Data gaps** line for positions with no rationale found or no price data.
+
+## Alerts this skill raises (via `lib/alerts.py`)
+
+As it re-validates each open position, write watch-items for `daily-brief` (set `dedup_key` per symbol so a re-run updates in place):
+
+- **`price_cross` exit-watch** — the active stop and target as cheap triggers (`trigger: {metric: close, op: "<", level: <stop>}` and a `>=` target watch; `subject: {type: stock, id: <SYMBOL>}`, `created_by: trade-tracker`, `severity: act` for the stop, `action.suggest: "/trade-tracker <SYMBOL>"`, `dedup_key: stop-<SYMBOL>` / `target-<SYMBOL>`).
+- **`time_stop`** — a date alert at the plan's time-stop (`trigger: {due: <entry + time_stop_sessions>}`, `severity: watch`, `dedup_key: timestop-<SYMBOL>`).
+- **`regime_change`** (strategy-linked trades) — when the live regime fails the linked strategy's `regime_required`, raise a `regime_change` alert (`trigger: {check: trade-tracker, args: {symbol: <SYMBOL>}}`, `severity: watch`, `action.text` = "regime no longer supports this strategy", `dedup_key: regime-<SYMBOL>`). On exit, dismiss the position's alerts via `alert-manager` (status `done`).
 
 Update each artifact's `status` and append a dated `tracker_log` note (verdict + date) so the next run sees the history.
 

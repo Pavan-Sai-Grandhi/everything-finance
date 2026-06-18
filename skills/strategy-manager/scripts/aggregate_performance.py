@@ -15,12 +15,16 @@ DEACTIVATE recommendation, flips status->inactive with a lifecycle reason (the o
 this script makes; everything else is read-only reporting the skill acts on).
 
 Usage:
-  python3 aggregate_performance.py --trades artifacts/trades --strategies artifacts/strategies
-  python3 aggregate_performance.py --trades artifacts/trades --strategy nifty500-momentum-swing --update-spec
+  python3 aggregate_performance.py          # defaults to artifacts/state/{trades,strategies}
+  python3 aggregate_performance.py --strategy nifty500-momentum-swing --update-spec
 Exit: 0 ok, 2 error.
 """
 import argparse, glob, json, os, sys, subprocess
 from datetime import date
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "lib"))
+import paths
 
 MIN_SAMPLE = 10           # below this, never act — too few trades to judge
 DECAY_FLOOR_R = 0.1       # live expectancy below this (but >=0) with backtest edge -> OPTIMIZE
@@ -78,13 +82,17 @@ def recommend(m, backtest_R):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--trades", default="artifacts/trades")
-    p.add_argument("--strategies", default="artifacts/strategies")
+    p.add_argument("--trades", default=None, help="default: artifacts/state/trades")
+    p.add_argument("--strategies", default=None, help="default: artifacts/state/strategies")
     p.add_argument("--strategy", help="limit to one strategy name")
     p.add_argument("--update-spec", action="store_true",
                    help="write live_performance back; deactivate on DEACTIVATE rec")
     p.add_argument("--out")
     args = p.parse_args()
+    if args.trades is None:
+        args.trades = paths.state_dir("trades")
+    if args.strategies is None:
+        args.strategies = paths.state_dir("strategies")
 
     # gather closed trades grouped by strategy
     groups, exit_reasons = {}, {}
