@@ -48,7 +48,6 @@
     "./agents/bear-researcher.md",
     "./agents/portfolio-manager.md"
   ],
-  "hooks": "./hooks/hooks.json",
   "mcpServers": {
     "playwright": {
       "command": "npx",
