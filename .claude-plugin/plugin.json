@@ -1,6 +1,6 @@
 {
   "name": "everything-finance",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Personal India-focused financial intelligence: strategy-driven trade finding on the Nifty 500, multi-agent deep stock analysis, DCF valuation, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, and live trade tracking against your broker (Zerodha/Upstox).",
   "author": {
     "name": "Pavan Sai Grandhi"
@@ -54,12 +54,12 @@
       "args": ["@playwright/mcp@latest"]
     },
     "kite": {
-      "command": "npx",
-      "args": ["mcp-remote", "https://mcp.kite.trade/mcp"]
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
+      "args": ["https://mcp.kite.trade/mcp"]
     },
     "upstox": {
-      "command": "npx",
-      "args": ["mcp-remote", "https://mcp.upstox.com/mcp"]
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
+      "args": ["https://mcp.upstox.com/mcp"]
     }
   }
 }
