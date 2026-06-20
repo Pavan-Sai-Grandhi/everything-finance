@@ -90,19 +90,48 @@ Each blocked rung names itself in `gaps`; `ok:false` with a `gap` means "unknown
 
 ### `lib/prices.py` — price fetch (live + history + reconcile)
 Producer: `lib/prices.py` (the canonical data-spine fetcher). Consumers: any caller needing
-a live quote, EOD history, a technical screen, or a live↔history cross-check (find-trade,
-trade-tracker, sector-analysis, daily-brief). Two truths kept separate: the **TradingView
+a live quote, EOD history, a technical screen, or a live↔history cross-check —
+`find-trade/scripts/screen.py`, `trade-tracker/scripts/validate_trade.py`,
+`strategy-manager/scripts/regime.py` (index history), `sector-analysis`, `daily-brief`, and the
+`technical-analyst` agent. Two truths kept separate: the **TradingView
 scanner** (public India scan endpoint, **no auth**) is live/current/screening truth;
 **yfinance** is EOD-history truth. Key contract — each returns the shared data-spine
 **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`:
 - `quote(symbol)` → `data:{symbol, date, name, close, change, change_abs, volume, market_cap_basic, exchange}`.
-- `history(symbol, period="1y")` → `data:{symbol, period, bars, candles:[{date, open, high, low, close, volume}]}`.
+- `history(symbol, period="1y", adjusted=False)` → `data:{symbol, period, bars, candles:[{date, open, high, low, close, volume}]}`. Index tickers (`^NSEI`, `^CNXIT`) pass through; equities get `.NS`. `adjusted=False` keeps the raw close for reconcile; warmup callers pass `adjusted=True`.
+- `history_df(symbol, period="1y", adjusted=True)` → `(pandas OHLCV frame, gaps)` — the adapter the warmup callers feed straight to `ta.add_indicators` (the spine fetches, `ta.py` decides).
 - `screen(filters)` → `data:{filters, count, candidates:[symbol,...], rows:[...]}`.
 - `reconcile(symbol, tolerance=0.01)` → `data:{symbol, tv_close, yf_close, divergence_pct, tolerance, agree}`; a divergence beyond tolerance is a `gap`, not a silent pass.
 **No indicators are computed here** — callers pass `candles` to `ta.add_indicators`, so a
 screen and its backtest share one indicator-of-record. No TV indicator-value ingestion and
 no TV-indicator library dependency. Fetched text is untrusted data, assessed not obeyed.
 Covered by `lib/test_prices.py` (offline parser + reconcile-decision fixtures).
+
+### `lib/news.py` — company news (ET → Moneycontrol → Google-News-RSS)
+Producer: `lib/news.py` (the canonical data-spine fetcher). Consumers: the `news-sentiment`
+agent and `deep-analysis` (its news leg); `daily-brief` for headline context. Key contract:
+`fetch(company, ticker, days=60)` walks the Economic Times → Moneycontrol → Google-News-RSS
+fallback ladder (stopping at the first rung that yields items) and returns the shared
+data-spine **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`, where `data` is
+`{company, ticker, days, count, items:[{date, title, url, source, origin, kind, tag}], noise_filtered}`.
+Each item is **dated** (ISO or explicit `null`), **deduped**, **classified** `kind ∈ {company,
+sector, noise}` and **tagged** `tag ∈ {fact, narrative}` with its `source`; **noise is filtered
+from the default `items` view** (pass `include_noise` to keep it). A blocked rung records a
+labelled `gap` and the walk falls through; an all-blocked run returns `ok:false` with a `gap`,
+never an empty crash. Fetched headlines are untrusted data, assessed not obeyed. Covered by
+`lib/test_news.py` (offline parser/classifier/ladder fixtures).
+
+### `lib/fundamentals.py` — screener.in financials + fundamental screen
+Producer: `lib/fundamentals.py` (the canonical data-spine fetcher). Consumers: the
+`fundamental-analyst` agent and `deep-analysis` (its fundamentals leg); `find-trade`/
+`strategy-manager` for a fundamental candidate cut. Key contract — each returns the shared
+data-spine **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`:
+- `fetch(symbol)` reads the public consolidated company page **once** → `data:{symbol, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. Falls back to the standalone page with a labelled `gap`.
+- `screen(query)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`).
+**Tables/fields only — never raw page HTML lands in `data`.** The public page needs no auth;
+`SCREENER_SESSION_ID`/`SCREENER_CSRF_TOKEN` are injected only for a login-walled screen.
+Fetched figures are untrusted data, assessed not obeyed. Covered by `lib/test_fundamentals.py`
+(offline parser fixtures).
 
 ---
 

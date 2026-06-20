@@ -230,11 +230,22 @@ def _df_to_candles(df):
     return out
 
 
-def history(symbol, period="1y", fresh=False):
-    """EOD OHLCV history for an NSE symbol via yfinance — the backtest/reconcile truth.
-    OHLCV only; no indicators (A3). Returns the data-spine envelope."""
+def _yf_ticker(sym):
+    """yfinance market form of a symbol: indices (`^NSEI`, `^CNXIT`) pass through; an NSE
+    equity gets the `.NS` suffix. Keeps the spine usable for both equities and the indices
+    the regime gate reads."""
+    return sym if sym.startswith("^") else f"{sym}.NS"
+
+
+def history(symbol, period="1y", fresh=False, adjusted=False):
+    """EOD OHLCV history via yfinance — the backtest/reconcile truth. OHLCV only; no
+    indicators (A3). `adjusted` toggles split/bonus adjustment: reconcile wants the raw close
+    (default) to match the live TV bar; warmup callers want `adjusted=True` to share the
+    backtest's adjusted series. Indices (`^NSEI`) are fetched as-is. Returns the envelope."""
     sym = _norm(symbol)
-    cache_file = os.path.join(paths.cache_dir("prices"), f"history_{sym}_{period}.json")
+    yf_t = _yf_ticker(sym)
+    suffix = "_adj" if adjusted else ""
+    cache_file = os.path.join(paths.cache_dir("prices"), f"history_{sym}_{period}{suffix}.json")
     cached = _read_cache(cache_file, fresh)
     if cached is not None:
         return cached
@@ -245,18 +256,36 @@ def history(symbol, period="1y", fresh=False):
         return _envelope(False, None, {"symbol": sym, "period": period, "candles": []},
                          [f"yfinance unavailable: {exc}"])
     try:
-        df = yf.download(f"{sym}.NS", period=period, interval="1d",
-                         progress=False, auto_adjust=False)
+        df = yf.download(yf_t, period=period, interval="1d",
+                         progress=False, auto_adjust=adjusted)
     except Exception as exc:  # noqa: BLE001
         return _envelope(False, "yfinance", {"symbol": sym, "period": period, "candles": []},
-                         [f"yfinance download failed for {sym}.NS: {exc}"])
+                         [f"yfinance download failed for {yf_t}: {exc}"])
     candles = _df_to_candles(df)
     data = {"symbol": sym, "period": period, "bars": len(candles), "candles": candles}
-    gaps = [] if candles else [f"yfinance returned no bars for {sym}.NS (delisted/renamed?)"]
+    gaps = [] if candles else [f"yfinance returned no bars for {yf_t} (delisted/renamed?)"]
     env = _envelope(bool(candles), "yfinance", data, gaps)
     if candles:
         _write_cache(cache_file, env)
     return env
+
+
+def history_df(symbol, period="1y", adjusted=True, fresh=False):
+    """`history()` as a pandas OHLCV frame (DatetimeIndex; Open/High/Low/Close/Volume) — the
+    shape `ta.add_indicators` consumes. The adapter that lets the warmup callers (find-trade
+    screen, trade re-validation, the regime gate) fetch through the spine yet keep the
+    indicator-of-record in `ta.py`. `adjusted=True` keeps them on the backtest's series so
+    live≡backtest holds. Returns (frame_or_None, gaps)."""
+    import pandas as pd
+    env = history(symbol, period=period, adjusted=adjusted, fresh=fresh)
+    candles = env.get("data", {}).get("candles", [])
+    if not candles:
+        return None, env.get("gaps", [])
+    df = pd.DataFrame(candles)
+    df.index = pd.to_datetime(df.pop("date"))
+    df = df.rename(columns={"open": "Open", "high": "High", "low": "Low",
+                            "close": "Close", "volume": "Volume"})
+    return df[["Open", "High", "Low", "Close", "Volume"]], env.get("gaps", [])
 
 
 # --------------------------------------------------------------------------- #

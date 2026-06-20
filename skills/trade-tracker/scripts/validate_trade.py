@@ -26,8 +26,12 @@ Usage:
   python3 validate_trade.py --trade t.yml --ohlcv bars.csv --ltp 3650 --entry 3300 --qty 41
 Exit code: 0 = HOLD, 10 = an EXIT_* verdict, 2 = error.
 """
-import argparse, json, re, sys, subprocess
+import argparse, json, os, re, sys, subprocess
 from datetime import date, datetime
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "lib"))
+import prices  # noqa: E402  (data spine — EOD history fetch in one place)
 
 
 def _need(mod, pip_name=None):
@@ -64,20 +68,14 @@ def load_ohlcv_csv(path):
 
 
 def fetch_ohlcv_yf(symbol, period="1y"):   # 1y (~248 bars) so 200-DMA conditions resolve
-    yf = _need("yfinance")
-    df = yf.download(symbol + ".NS", period=period, interval="1d",
-                     auto_adjust=True, progress=False)
-    if df is None or df.empty:
+    """EOD rows via the data spine (prices.history, yfinance under the hood). Adjusted so the
+    re-validation reads the same series the trade was screened/backtested on. None on block."""
+    env = prices.history(symbol, period=period, adjusted=True)
+    candles = env.get("data", {}).get("candles", [])
+    if not candles:
         return None
-    pd = _need("pandas")
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    rows = []
-    for idx, row in df.iterrows():
-        rows.append({"date": str(idx.date()), "open": float(row["Open"]),
-                     "high": float(row["High"]), "low": float(row["Low"]),
-                     "close": float(row["Close"]), "volume": float(row["Volume"])})
-    return rows
+    return [{"date": c["date"], "open": c["open"], "high": c["high"], "low": c["low"],
+             "close": c["close"], "volume": c["volume"]} for c in candles]
 
 
 def ema(values, span):

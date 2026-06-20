@@ -127,11 +127,11 @@ risk:
   max_portfolio_heat_pct: 6           # sum of open per-trade risk
   rebalance: monthly                  # monthly | weekly | none
 
-indicator_study:                      # filled by the mandatory TradingView step
+indicator_study:                      # filled by the mandatory numeric study (ta.py read)
   tradingview_symbols: []             # e.g. [NSE:RELIANCE, NSE:TCS]
   applied_indicators: [EMA50, EMA200, RSI, Volume]
-  screenshots: []                     # artifacts/YYYY-MM-DD/tv/*.png
-  visual_confirms: ""                 # one line: did the live charts agree with the rules?
+  chart_links: []                     # static human-facing links: tradingview.com/symbols/NSE-<T>/
+  numeric_confirms: ""                # one line: did the ta.py indicator values agree with the rules?
 
 expectancy_assumptions:               # BACKTEST results — null until validate passes
   win_rate: null                      # 0..1

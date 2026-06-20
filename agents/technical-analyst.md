@@ -48,10 +48,10 @@ Distilled from Zerodha Varsity — Technical Analysis module (https://zerodha.co
 
 ## Data sources
 
-- **yfinance** (`<SYMBOL>.NS`) is the primary OHLCV source for everything computed here — no bot-wall, gives clean daily candles + volume. Prefer OHLCV already passed in by the orchestrator over re-fetching.
-- **Indicator math is shared, not hand-rolled.** The canonical definitions of EMA/SMA/RSI/MACD/ATR/Bollinger and the candlestick patterns live in the plugin's `lib/ta.py` (the same module the backtest and find-trade use, so your read agrees with theirs by construction). When you compute a numeric indicator, do it via that module with a short Bash snippet (`sys.path` to `<plugin>/lib`, `import ta`, `ta.add_indicators(df)`) rather than reimplementing — a divergent RSI here would make your verdict inconsistent with the screen that surfaced the stock.
-- NSE quote pages (Playwright real Chrome, homepage cookie-bootstrap first) only when yfinance lacks a symbol.
-- **TradingView is not scraped** — its pages are Akamai-walled and yfinance already supplies the data. Its role is a human-facing link: put `https://www.tradingview.com/symbols/NSE-<TICKER>/` in the report so the user can eyeball the live chart. (If a chart *image* in the report is wanted, self-render a candlestick PNG from the cached OHLCV — don't screenshot TradingView.)
+- **Prices come from the data spine, not an ad-hoc fetch.** `lib/prices.py` is the one price fetcher: `prices.history(symbol)` for EOD candles (yfinance, no bot-wall), `prices.quote(symbol)` for the live bar (TradingView scanner, no auth), and `prices.reconcile(symbol)` to confirm the live and EOD closes agree before you trust a level. A short Bash snippet (`sys.path` to `<plugin>/lib`, `import prices`) is all it takes. Prefer OHLCV already passed in by the orchestrator over re-fetching.
+- **Indicator math is shared, not hand-rolled.** The canonical definitions of EMA/SMA/RSI/MACD/ATR/Bollinger and the candlestick patterns live in the plugin's `lib/ta.py` (the same module the backtest and find-trade use, so your read agrees with theirs by construction). Feed it the spine's candles — `ta.add_indicators(prices.history_df(symbol)[0])` — rather than reimplementing; a divergent RSI here would make your verdict inconsistent with the screen that surfaced the stock.
+- NSE quote pages (Playwright real Chrome, homepage cookie-bootstrap first) only when the spine can't resolve a symbol.
+- **TradingView is not scraped** — its chart pages are Akamai-walled and the spine already supplies the data. Its role is a human-facing link: put `https://www.tradingview.com/symbols/NSE-<TICKER>/` in the report so the user can eyeball the live chart. No chart rendering, no screenshots, no self-rendered PNGs — the machine substance is the numeric `ta.py` read.
 - Daily timeframe primary; weekly for trend context. Never intraday for this plugin's swing horizon.
 
 ## Report discipline

@@ -10,7 +10,7 @@ strategy-manager's discipline still binds: a draft is a hypothesis, not an edge.
 ```bash
 # 1. copy a seed into your live library (session cwd)
 mkdir -p artifacts/state/strategies && cp ema-pullback-swing.yml artifacts/state/strategies/
-# 2. do the mandatory TradingView visual study + backtest, then validate
+# 2. do the mandatory numeric indicator study (ta.py read) + backtest, then validate
 /strategy-manager validate ema-pullback-swing
 # 3. once active, find-trade can run it (or pick it for the regime)
 /find-trade strategy:ema-pullback-swing      # or just /find-trade -> pick

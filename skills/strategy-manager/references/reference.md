@@ -12,7 +12,7 @@ When the user hands you an article/blog/PDF/screenshot, extract — and **quote 
 | **Entry trigger** | The exact, testable condition (price/level event + indicator/volume confirm) | Cannot be inferred — ask; a system with no defined entry is not a system |
 | **Exit** | Stop rule **and** target rule; trailing/rebalance if stated | Add a framework stop (structure-based) + min-RRR target + time stop; flag as added |
 | **Ranking/rebalance** | For basket systems: the ranking metric, hold count, weighting, cadence | null for single-name setups |
-| **Indicators / timeframe** | Exactly the indicators and timeframe the article names (for the TradingView study) | Use what the entry/exit imply; state the assumption |
+| **Indicators / timeframe** | Exactly the indicators and timeframe the article names (for the `ta.py` numeric study) | Use what the entry/exit imply; state the assumption |
 | **Regime it claims** | The market conditions it says it works in ("trending up", "range-bound", …) | Apply the minimum structural gate and say you did |
 
 Quote-trace every **trade rule** back to the source. The framework only ever supplies the **risk layer** (sizing, caps, regime gate) — keep that boundary explicit in the rationale.
@@ -63,12 +63,12 @@ A spec moves through three states. `status` is the lifecycle; regime-fit is deci
 
 | status | meaning | set by | tradeable? |
 |---|---|---|---|
-| **draft** | generated from an article; backtest not yet passed (or visual study pending) | `generate` | No |
+| **draft** | generated from an article; backtest not yet passed (or numeric indicator study pending) | `generate` | No |
 | **active** | backtest passed the activation gate; eligible to be selected when the tape fits | `validate` (or re-`validate` after optimize) | Only via `pick` when regime fits |
 | **inactive** | retired — failed backtest, deactivated by live performance, or manual | `validate` (fail) / `optimize` (deactivate) | No |
 
 ### Activation gate (validate)
-Promote `draft → active` **only if** the backtest gives `expectancy_R > 0.2` over **≥ ~30 trades** with the visual study done. Mapping (same as the backtest skill): `< 0R` = no edge → `inactive`; `0–0.2R` = fragile → stays `draft`; `> 0.2R, ≥30 trades` = edge → `active`; `< 30 trades` = inconclusive → stays `draft` regardless of the number. Record `expectancy_assumptions` + `lifecycle.validated_at`/`activated_at`. Win rate alone never activates anything — expectancy and sample size decide.
+Promote `draft → active` **only if** the backtest gives `expectancy_R > 0.2` over **≥ ~30 trades** with the numeric indicator study done. Mapping (same as the backtest skill): `< 0R` = no edge → `inactive`; `0–0.2R` = fragile → stays `draft`; `> 0.2R, ≥30 trades` = edge → `active`; `< 30 trades` = inconclusive → stays `draft` regardless of the number. Record `expectancy_assumptions` + `lifecycle.validated_at`/`activated_at`. Win rate alone never activates anything — expectancy and sample size decide.
 
 ### Selection (pick)
 Among `status: active` specs, keep those whose `regime_required` the live `regime.json` satisfies (trend match, Nifty vs 200-EMA, VIX ≤ cap, breadth ≥ floor — `select_strategy.py`), then rank by edge: **live `expectancy_R` if the strategy has closed trades, else backtest `expectancy_R`**, tie-broken by profit factor. The best fit is the verdict. Zero fits → stand aside (don't force a misfit). Zero active specs → nothing validated to run.

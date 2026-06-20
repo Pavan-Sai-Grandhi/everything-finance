@@ -21,6 +21,7 @@ from datetime import date
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "lib"))
 import paths
+import prices  # data spine — EOD history (yfinance, index-aware) in one place
 
 try:
     import pandas as pd
@@ -40,13 +41,11 @@ SECTORS = {  # verified yfinance NSE sectoral tickers (see sector-pulse referenc
 
 
 def dl(ticker, period="1y"):
-    import yfinance as yf
-    df = yf.download(ticker, period=period, interval="1d",
-                     auto_adjust=True, progress=False)
-    if df is None or df.empty:
+    """Adjusted close series for an index/ticker via the data spine (prices.history_df,
+    yfinance under the hood). Returns a pandas Series, or None on a blocked/empty fetch."""
+    df, _gaps = prices.history_df(ticker, period, adjusted=True)
+    if df is None or len(df) == 0:
         return None
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
     return df["Close"].dropna()
 
 

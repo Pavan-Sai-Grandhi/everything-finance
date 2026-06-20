@@ -20,7 +20,7 @@ This skill owns a strategy's whole life. A strategy lives as a spec at `artifact
 
 `status` is the lifecycle state (`draft | active | inactive`); **regime-fit is NOT a status** — it's decided fresh each time in `pick` mode against the live tape. Read `references/reference.md` first for the system framework, the activation thresholds, the selection logic, and the optimization rules this skill enforces.
 
-**Sources for this skill only:** the **reference article(s) the user provides** (URL via WebFetch/curl, or a local file via Read — the strategy source, REQUIRED for `generate`), yfinance via the bundled scripts (`regime.py`, `select_strategy.py`, `aggregate_performance.py`), TradingView via computer-use (mandatory visual study in `generate`), `Skill` calls to `backtest` (validation) and `sector-analysis` (leadership), and the trade-idea artifacts under `artifacts/state/trades/` (closed-trade outcomes for `optimize`).
+**Sources for this skill only:** the **reference article(s) the user provides** (URL via WebFetch/curl, or a local file via Read — the strategy source, REQUIRED for `generate`), the data spine (`lib/prices.py` EOD history, `lib/ta.py` indicator read) via the bundled scripts (`regime.py`, `select_strategy.py`, `aggregate_performance.py`), the mandatory numeric indicator study in `generate` (ta.py read + a static TradingView link), `Skill` calls to `backtest` (validation) and `sector-analysis` (leadership), and the trade-idea artifacts under `artifacts/state/trades/` (closed-trade outcomes for `optimize`).
 
 ## Route to a mode
 
@@ -40,15 +40,17 @@ This skill invents **no trade logic of its own** — it always comes from the ar
 2. **Read the regime as context.** `python3 <skill-dir>/scripts/regime.py --out artifacts/regime/YYYY-MM-DD.json` (Nifty trend, India VIX, breadth, risk posture). Layer macro if the user wants it; call `sector-analysis` for leadership. This informs `regime_required`, not the entry trigger.
 3. **Complete the system.** Fill every component the article omits from the framework — sizing (default 1% risk), risk caps (heat 6%), `regime_required` from the article's claimed conditions (minimum structural gate if it's silent), and the **`screening` block** (how find-trade cuts the universe): the `fundamental` cut (provider `screener.in` + a query) and the `technical` cut (provider `tradingview` with server-side filter rows, or `compute` with local `lib/ta.py` predicates when TradingView can't express the filter — e.g. NR-bars, fib zones). A spec missing universe/screening/entry/exit/sizing/risk/regime is incomplete; don't emit it.
    - **Map the article's exit to the engine's exit vocabulary — don't approximate it.** The engine expresses more than a fixed target, so encode the source's *actual* exit: a **trailing stop** → `trail_atr: <mult>` with `target: trailing` (a long `time_stop` is not a substitute — it caps winners and the optimizer misreads it); a **moving-average / indicator exit** (a "close back above the 5-SMA" mean-reversion exit, a "close below the 20-EMA" trend break) → `exit_signal: "<expr>"` in `entry.signal`'s grammar. Reserve `measured_move`/`min_rrr` targets for setups whose source names a fixed objective. If the source's exit genuinely can't be expressed, say so in the rationale — but reach for `trail_atr`/`exit_signal` first.
-4. **TradingView visual study — REQUIRED.** Confirm the article's rules on 2–3 representative symbols on real TradingView charts, screenshot into `artifacts/strategy-manager/YYYY-MM-DD/tv/`. Never fabricate screenshots.
-   - **Use the bundled authenticated path: `scripts/tv_study.cjs`.** It logs into TradingView with the **same cookies find-trade uses** (`TRADINGVIEW_SESSIONID` / `TRADINGVIEW_SESSIONID_SIGN` from `~/.claude/.env`) so the chart loads already-signed-in — no "Join for free" wall blocking indicator add, no per-session login. The script reads the cookies straight from the sourced env; **the values never pass through a tool call** (CLAUDE.md: never echo secrets). Run:
-     ```bash
-     set -a; source ~/.claude/.env; set +a
-     node <skill-dir>/scripts/tv_study.cjs --check                      # verify the session is live
-     node <skill-dir>/scripts/tv_study.cjs --symbol NTPC --date 2023-06-30 --out artifacts/strategy-manager/YYYY-MM-DD/tv
+4. **Indicator study — REQUIRED, numeric not screenshot.** Confirm the article's entry/exit on 2–3 representative symbols using the **`ta.py` numeric read** (the indicator-of-record), and carry a **static TradingView link** for the human to eyeball. There is no chart rendering and no logged-in screenshot automation — that fragile cookie/render path is gone; the substance is the numbers, the chart is a courtesy link.
+   - **Read the indicators from `lib/ta.py`** for each representative symbol+date and check the rule holds — fetch candles through the data spine and compute the standard set, e.g.:
+     ```python
+     import prices, ta
+     df, _ = prices.history_df("NTPC", "3y", adjusted=True)   # spine fetch (yfinance)
+     df = ta.materialize(ta.add_indicators(df), ["ema20", "ema50", "sma200", "rsi14"])
+     # assert the article's rule on df.loc["2023-06-30"] — EMA alignment, RSI band, etc.
      ```
-   - **Apply EMA20/EMA50/SMA200 once to your TradingView *default layout* and save it** — a logged-in chart loads that layout, so every study inherits the MAs without automating the indicator dialog per run (which is brittle). Pick representative *winning* setups from the backtest trade log (TARGET/trailing exits) so the study confirms the rule on real signals, not arbitrary dates.
-   - **If `--check` reports `logged_in:false`** the cookies are stale — ask the user to recopy `sessionid`/`sessionid_sign` from a browser they're logged into (DevTools → Application → Cookies → tradingview.com). Leave `indicator_study` `PENDING` until the study is done; never fabricate it.
+     TA-Lib matches TradingView on the standard indicators over the same candles, so the numeric read agrees with the chart. Pick representative *winning* setups from the backtest trade log (TARGET/trailing exits) so the study confirms the rule on real signals.
+   - **Put a human-facing chart link in the rationale:** `https://www.tradingview.com/symbols/NSE-<TICKER>/` for the user to eyeball. No PNGs are written.
+   - Record the numeric confirmation as `indicator_study`; leave it `PENDING` until done — never fabricate it.
 5. **Emit the spec as `status: draft`.** Fill `assets/strategy-spec.example.yml` → `artifacts/state/strategies/<name>.yml` with `source_references` populated, `lifecycle.generated_at` set, `expectancy_assumptions`/`live_performance` null. Write the rationale doc → `artifacts/strategy-manager/YYYY-MM-DD/<name>.md` citing the article for each trade rule and the framework for the risk layer. **A draft is not tradeable** — immediately offer VALIDATE.
    - **Quote every free-text value, then round-trip the file before trusting it.** Any string that can contain a `:`, `#`, parentheses, or a path — `validated_by`, `target`, `deactivated_reason`, `optimization_log` notes — must be double-quoted, or a `key: value` fragment inside it reads as a nested map and the spec silently becomes unloadable (backtest/find-trade then crash on it). After writing, verify it parses: `python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" artifacts/state/strategies/<name>.yml`.
 
@@ -58,7 +60,7 @@ Turn a draft into an active strategy *only if it earns it*.
 
 1. Run the backtest engine via `Skill` → `backtest` against the spec (`strategy:<name>`): it reads `entry`/`exit`/`sizing`, tests the mechanical rules on historical NSE data, and writes results into the spec's `expectancy_assumptions` (`win_rate`, `expectancy_R`, `profit_factor`, `n_trades`, `validated_by`).
 2. **Apply the activation gate (reference.md):** mark `status: active` **only if** `expectancy_R > 0.2` over **≥ ~30 trades**. Otherwise it stays `draft` (0–0.2R = fragile/no edge) or you mark it `inactive` (< 0R = no edge) — say which and why. On activation set `lifecycle.validated_at` and `activated_at`.
-3. If the visual study never ran (`indicator_study` PENDING) it cannot go active — finish the TradingView step first.
+3. If the numeric indicator study never ran (`indicator_study` PENDING) it cannot go active — finish the `ta.py` read first.
 4. Report the verdict honestly with the backtest's own caveats (in-sample, survivorship, regime concentration). A passed backtest is a hypothesis that survived history, not a guaranteed edge.
 
 ## Mode 3 — PICK (select the active strategy that fits now)

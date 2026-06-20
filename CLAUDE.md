@@ -22,7 +22,14 @@ Load with `set -a; source ~/.claude/.env; set +a` inside hook/automation scripts
 
 ## Data sources & browser automation
 
-Always take the cheapest path that works for a given source — the **verified access matrix below (tested 2026-06-11)** is authoritative; don't assume "blocked" without checking which tool was tried:
+**Canonical path = the data-spine module, not an ad-hoc fetch.** Each source's UA/cookie/endpoint handling now lives in exactly one `lib/` module — call the module instead of re-deriving the access path by hand. The matrix below is the low-level detail those modules encapsulate (and the documented fallback for the rare case a module can't cover a source); the module is the default:
+
+- **OHLCV / index price · live quote · technical screen · live↔history reconcile** → `lib/prices.py` (yfinance EOD history, index-aware; TradingView India scanner for live/screen, no auth). Indicators are then computed by `lib/ta.py` on the candles it returns — never re-implemented.
+- **Company news** (Economic Times → Moneycontrol → Google-News-RSS ladder) → `lib/news.py`.
+- **Exchange filings** (BSE JSON API, NSE announcements/SHP, materiality) → `lib/filings.py`.
+- **screener.in financials + fundamental screen** → `lib/fundamentals.py`.
+
+Within a module, always take the cheapest path that works for a given source — the **verified access matrix below (tested 2026-06-11)** is authoritative; don't assume "blocked" without checking which tool was tried:
 
 | Source | Cheapest working path | Notes |
 |---|---|---|

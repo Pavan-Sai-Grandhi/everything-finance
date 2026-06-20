@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 import ta        # noqa: E402
 import strategy  # noqa: E402
 import paths     # noqa: E402
+import prices    # noqa: E402  (data spine — EOD history fetch; indicators still via ta.py)
 
 pd = ta.pd
 
@@ -47,10 +48,23 @@ build_signal = strategy.build_signal
 # --------------------------------------------------------------------------- #
 # orchestration                                                               #
 # --------------------------------------------------------------------------- #
+def _spine_loader(years):
+    """Default price loader: EOD history through the data spine (`prices.history_df`,
+    yfinance under the hood), adjusted so the live screen shares the backtest's series.
+    Indicators are still computed by `ta.add_indicators` — the spine fetches, ta.py decides."""
+    def load(sym):
+        df, gaps = prices.history_df(sym, f"{years}y", adjusted=True)
+        if df is None or len(df) == 0:
+            raise RuntimeError(gaps[0] if gaps else "no price history")
+        return df
+    return load
+
+
 def screen_compute(symbols, spec, years, capital, cache_dir, loader=None):
     """Run the local technical cut + signal build over `symbols`. `loader` lets
-    tests inject synthetic frames; production uses lib/ta.load_ohlcv."""
-    load = loader or (lambda s: ta.load_ohlcv(s, years, cache_dir))
+    tests inject synthetic frames; production fetches via the data spine (`prices.history_df`,
+    which self-caches through paths.py — `cache_dir` is kept for the injected-loader API)."""
+    load = loader or _spine_loader(years)
     tech = (spec.get("screening", {}) or {}).get("technical", {}) or {}
     filters = tech.get("compute_filters", [])
     features = strategy.referenced_features(spec)

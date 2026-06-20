@@ -77,8 +77,8 @@ risk:
 indicator_study:
   tradingview_symbols: []
   applied_indicators: [EMA20, EMA50, EMA200, RSI, Volume]
-  screenshots: []
-  visual_confirms: ""
+  chart_links: []                    # static tradingview.com/symbols/NSE-<T>/ links
+  numeric_confirms: ""
 
 expectancy_assumptions:
   win_rate: null

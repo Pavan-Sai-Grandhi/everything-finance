@@ -9,7 +9,7 @@ allowed-tools: WebFetch, Read, Write, Bash, Agent, mcp__playwright__*
 
 Read `references/reference.md` for the sector KPI map (Varsity sector-analysis module) and the relative-strength method. The per-sector analytical read is done by the **`sector-analyst` agent** (forked, self-contained) — this skill decides *which* sectors to analyze, runs that agent on each, then assembles the rotation grid and the comprehensive writeup.
 
-**Sites for this skill only:** yfinance index tickers via Python (sectoral index RS — primary), NSE (sectoral index data), Moneycontrol (sector pages, index returns), screener.in (stock-level KPIs). The agent uses the same set. Do not use other sites.
+**Sources for this skill only:** the data spine `lib/prices.py` for index OHLCV (sectoral index RS — primary; index-aware yfinance in one place), NSE (sectoral index data), Moneycontrol (sector pages, index returns) as cross-checks, and `lib/fundamentals.py` / screener.in for stock-level KPIs. The agent uses the same set. Do not use other sites.
 
 ## Decide which sectors to analyze
 
@@ -18,7 +18,7 @@ Read `references/reference.md` for the sector KPI map (Varsity sector-analysis m
 
 ## Step 1 — Rank the rotation (only when no sector was named)
 
-Pull 1-month, 3-month, and 6-month returns (**21 / 63 / 126 trading days** — fixed so runs are comparable) for the NSE sectoral indices plus Nifty 50 as the benchmark. Source order (verified 2026-06): **yfinance index tickers via Python** (map in reference.md — works in any session, primary), Moneycontrol Nifty JSON `curl 'https://priceapi.moneycontrol.com/pricefeed/notapplicable/inidicesindia/in%3BNSX'` (cross-check, no browser; `;` must be `%3B`), NSE index pages or Moneycontrol HTML via Playwright **real Chrome** (the WebFetch tool is blocked by both, browsers/curl work).
+Pull 1-month, 3-month, and 6-month returns (**21 / 63 / 126 trading days** — fixed so runs are comparable) for the NSE sectoral indices plus Nifty 50 as the benchmark. Source order (verified 2026-06): **the data spine `lib/prices.py`** — `prices.history("^NSEI", "1y")` and the sectoral index tickers (map in reference.md; index-aware yfinance under the hood, works in any session, primary), Moneycontrol Nifty JSON `curl 'https://priceapi.moneycontrol.com/pricefeed/notapplicable/inidicesindia/in%3BNSX'` (cross-check, no browser; `;` must be `%3B`), NSE index pages or Moneycontrol HTML via Playwright **real Chrome** (the WebFetch tool is blocked by both, browsers/curl work).
 
 Compute relative strength = sector return − Nifty 50 return for each window. Classify:
 - **Leading**: positive RS on both 1M and 3M
