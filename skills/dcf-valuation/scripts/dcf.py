@@ -151,7 +151,8 @@ def resolve_wacc(spec, n):
     wd = float(b.get("debt_weight", 1.0 - we))
     wacc = we * coe + wd * cod * (1.0 - tax)
     detail = {"cost_of_equity": round(coe, 6), "after_tax_cost_of_debt": round(cod * (1 - tax), 6),
-              "lambda_country": round(lam, 6), "country_risk_loaded": round(lam * crp, 6),
+              "beta": round(beta, 6), "lambda_country": round(lam, 6),
+              "country_risk_loaded": round(lam * crp, 6),
               "equity_risk_premium": round(erp_total, 6), "wacc": round(wacc, 6)}
     return _as_path(wacc, n, wacc), detail
 
@@ -197,7 +198,10 @@ def value(spec):
     wacc_T = float(spec.get("terminal_wacc", wacc[-1]))
     margin_T = float(spec.get("terminal_margin", margin[-1]))
     tax_T = float(spec.get("terminal_tax_rate", tax[-1]))
-    roic_T = float(spec.get("terminal_roic", wacc_T + 0.02))  # default: modest value-add
+    # Default: convergence — no perpetual excess return. Damodaran's base case for a going concern is
+    # ROIC -> cost of capital (competition erodes excess returns); set terminal_roic > WACC only when a
+    # durable moat earns it. The excess return (ROIC - WACC), not g_T, is what actually moves terminal value.
+    roic_T = float(spec.get("terminal_roic", wacc_T))
     risk_free = spec.get("risk_free")  # optional, for the g<=rf sanity flag
 
     if wacc_T <= g_T:
@@ -292,6 +296,7 @@ def value(spec):
             "terminal_wacc": wacc_T,
             "terminal_margin": margin_T,
             "terminal_roic": roic_T,
+            "terminal_excess_return": round(roic_T - wacc_T, 6),
             "terminal_reinvestment_rate": round(reinvest_rate_T, 6),
             "risk_free": risk_free,
             "wacc_buildup": wacc_detail,
@@ -316,12 +321,13 @@ def value(spec):
         "margin_of_safety": round(mos, 6) if mos is not None else None,
         "terminal_value_fraction": round(tv_fraction, 6) if tv_fraction is not None else None,
         "flags": _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_sum, pv_tv,
-                               risk_free, growth, margin, equity_going_concern, p_fail, cx),
+                               risk_free, growth, margin, equity_going_concern, p_fail, cx,
+                               wacc_detail),
     }
 
 
 def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, growth, margin,
-                  equity_going_concern=None, p_fail=0.0, cx=0.0):
+                  equity_going_concern=None, p_fail=0.0, cx=0.0, wacc_detail=None):
     """Damodaran's reality checks — surfaced, not silently swallowed. Several are
     stage-aware: the same fact (e.g. value concentrated in the terminal year) is the
     *expected* shape for a young company and a *red flag* for a mature or declining one, so a
@@ -353,15 +359,22 @@ def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, 
                              "and asset/liquidation value, not a rich perpetuity. Re-check that terminal growth isn't "
                              "positive for a shrinking firm, and consider a liquidation/break-up cross-check.")
             else:
-                flags.append(f"TERMINAL_VALUE_HEAVY: {frac:.0%} of EV is terminal value "
-                             "— for a mature firm the valuation rests too much on year-N+ assumptions; "
-                             "stress-test growth duration and the steady-state margin.")
+                flags.append(f"TERMINAL_VALUE_HEAVY: {frac:.0%} of EV is terminal value — for a going concern "
+                             "this is normal, not a defect (most equity value is future cash flow). It means look "
+                             "HARDER at the assumptions that BUILD the terminal: the high-growth path leading into "
+                             "it and the terminal excess return (ROIC−WACC — the real driver; g_T barely moves it). "
+                             "Stress-test those, don't distrust the model.")
     if declining and g_T > 0:
         flags.append(f"DECLINE_POSITIVE_TERMINAL_GROWTH: terminal growth {g_T:.1%} > 0 for a firm you classified as "
                      "declining — a shrinking business usually warrants g_T ≤ 0 and a liquidation cross-check.")
     if roic_T <= wacc_T + 1e-9:
         flags.append(f"NO_TERMINAL_EXCESS_RETURN: terminal_roic={roic_T:.2%} <= terminal_wacc={wacc_T:.2%} "
                      "— the firm creates no value in perpetuity (fine for a no-moat business; flag if you assumed a moat).")
+    if wacc_detail and wacc_detail.get("beta", 0.0) > 1.3:
+        flags.append(f"BETA_LOOKS_LIKE_REGRESSION: beta={wacc_detail['beta']:.2f} — a beta this high is usually a raw "
+                     "regression beta that a volatile share price inflates, not the business's risk. Damodaran uses a "
+                     "bottom-up/sector beta (unlevered industry beta, relevered for this firm's debt). Confirm that's "
+                     "what this is; a regression beta over-discounts and depresses value for no business reason.")
     if max(margin) > 0.40:
         flags.append(f"HIGH_MARGIN_ASSUMPTION: peak operating margin {max(margin):.0%} "
                      "— confirm a real peer has sustained this; few do. And remember a bigger target market "

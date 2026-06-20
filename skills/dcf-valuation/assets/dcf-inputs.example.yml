@@ -38,7 +38,8 @@ sales_to_capital: 2.5           # ₹ sales per ₹ invested (scalar or list) [h
 # wacc: 0.13                     # CoE+CoD weighted, ₹ terms — OR build it up (preferred):
 wacc_buildup:
   risk_free: 0.07               # G-sec in the cash-flow currency  [src: live yield, moves]
-  beta: 1.1                     # bottom-up / sector beta          [src: peer betas]
+  beta: 1.1                     # BOTTOM-UP / sector beta (business risk), NOT the stock's regression beta
+                                #   [src: unlevered peer betas, relevered; >1.3 trips a flag — recheck]
   mature_erp: 0.045             # Damodaran mature-market ERP      [src: his ERP page, moves yearly]
   country_risk_premium: 0.03    # India CRP                        [src: Damodaran country tables, moves]
   lambda_country: 1.0           # India OPERATING exposure: ~1 domestic; ~0.1 for an IT exporter (see reference)
@@ -52,7 +53,9 @@ wacc_buildup:
 terminal_growth: 0.065
 terminal_wacc: 0.12             # mature-firm discount rate (defaults to last wacc)
 terminal_margin: 0.22           # steady-state margin (defaults to last margin)
-terminal_roic: 0.15             # return on new capital in perpetuity; > wacc only if moat persists
+terminal_roic: 0.15             # return on new capital in perpetuity. The excess return (this − terminal_wacc)
+                                #   IS the terminal value; defaults to convergence (= wacc) if omitted —
+                                #   set > wacc ONLY for a named, durable moat. This is the model's biggest lever.
 risk_free: 0.07                 # G-sec in cash-flow currency; bounds terminal growth + the g_T flag
 
 # --- post-operating adjustments: apply ONLY when the diagnosis calls for them (see reference) ---

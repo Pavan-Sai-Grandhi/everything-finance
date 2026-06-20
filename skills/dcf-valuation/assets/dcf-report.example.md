@@ -17,9 +17,9 @@
 | Operating margin | <…>% → <…>% by Y<…> | current margin; peer steady-state (normalised through-cycle if cyclical) |
 | Tax rate | <…>% | effective → statutory |
 | Sales-to-capital | <…> | historical ΔRev/ΔInvCapital; peer benchmark |
-| WACC | <…>% | CoE (rf <…>% + β<…>×mature-ERP <…>% + λ<…>×CRP <…>%) + after-tax CoD |
+| WACC | <…>% | CoE (rf <…>% + β<…> bottom-up/sector ×mature-ERP <…>% + λ<…>×CRP <…>%) + after-tax CoD |
 | Terminal growth | <…>% | ≤ risk-free <…>% in the cash-flow currency |
-| Terminal ROIC | <…>% | moat persistence assumption |
+| Terminal ROIC | <…>% | excess return ROIC−WACC = <…>pp (the terminal driver); >0 only for a named durable moat, else convergence |
 | Net debt / cash / shares | ₹<…> Cr / ₹<…> Cr / <…> Cr | latest balance sheet + shareholding |
 | Post-operating adjustments | failure prob <…>% / complexity discount <…>% | <only if warranted — distress signals / governance-complexity; else "none">|
 

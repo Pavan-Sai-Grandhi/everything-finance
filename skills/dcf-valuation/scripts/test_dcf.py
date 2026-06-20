@@ -258,6 +258,28 @@ check("low lambda (exporter) lowers cost of equity",
       (exporter["assumptions"]["wacc_buildup"]["cost_of_equity"], det["cost_of_equity"]))
 check("lambda reported", approx(exporter["assumptions"]["wacc_buildup"]["lambda_country"], 0.1, 1e-9))
 
+# 19b) Bottom-up beta discipline: a high (regression-style) beta is flagged; beta is reported in the detail.
+hibeta = dcf.value(dict(spec1, wacc=None, wacc_buildup=dict(wb, beta=1.5)))
+check("beta reported in wacc detail", approx(hibeta["assumptions"]["wacc_buildup"]["beta"], 1.5, 1e-9))
+check("flag: high beta looks like regression",
+      any("BETA_LOOKS_LIKE_REGRESSION" in f for f in hibeta["flags"]), hibeta["flags"])
+check("no beta flag for a bottom-up-range beta (1.1)",
+      not any("BETA_LOOKS_LIKE_REGRESSION" in f for f in rwb["flags"]))
+
+# 19c) Terminal ROIC defaults to convergence (= terminal WACC, no perpetual excess) when unspecified —
+#      the Damodaran base case; excess return is surfaced separately and must be argued, not defaulted in.
+noroic = dict(spec1)
+noroic.pop("terminal_roic", None)
+rnr = dcf.value(noroic)
+check("terminal_roic defaults to terminal_wacc (convergence)",
+      approx(rnr["assumptions"]["terminal_roic"], rnr["assumptions"]["terminal_wacc"], 1e-9),
+      (rnr["assumptions"]["terminal_roic"], rnr["assumptions"]["terminal_wacc"]))
+check("terminal_excess_return = roic - wacc",
+      approx(rnr["assumptions"]["terminal_excess_return"],
+             rnr["assumptions"]["terminal_roic"] - rnr["assumptions"]["terminal_wacc"], 1e-9))
+check("convergence default -> NO_TERMINAL_EXCESS_RETURN",
+      any("NO_TERMINAL_EXCESS_RETURN" in f for f in rnr["flags"]))
+
 # 20) Story-driver sensitivity: center cell == base; value rises with growth and with margin.
 ss = dcf.story_sensitivity(rspec)
 center_ss = ss["cells"][2][1]  # zero growth-shift, zero margin-shift
