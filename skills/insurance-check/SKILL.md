@@ -28,7 +28,7 @@ Missing data: proceed with stated assumptions rather than stalling; list assumpt
 
 **Health need**: metro baseline ₹10L individual / ₹15–25L family floater (medical inflation ~12–14%); employer cover counts at half weight (it vanishes with the job). Super top-up is the cheap way to extend.
 
-**Flag traditional products**: endowment/ULIP/moneyback held for "investment" — compute the implied IRR (typically 1–5%; flag anything below inflation). If policy term or maturity value is unknown, run labeled scenarios rather than guessing one number. For in-force policies the decision-relevant figure is the **marginal IRR of continuing** (forgo surrender value + pay remaining premiums → maturity), not the whole-policy IRR — compute both and say which is which. Recommendation framework in reference.md is buy-term-invest-the-difference.
+**Flag traditional products**: endowment/ULIP/moneyback held for "investment" — compute the implied IRR (typically 1–5%; flag anything below inflation). If policy term or maturity value is unknown, run labeled scenarios rather than guessing one number. For in-force policies the decision-relevant figure is the **marginal IRR of continuing** (forgo surrender value + pay remaining premiums → maturity), not the whole-policy IRR — compute both and say which is which. The guidance framework in reference.md is buy-term-invest-the-difference.
 
 ## Step 3 — Gap report
 

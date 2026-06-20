@@ -71,7 +71,7 @@ A spec moves through three states. `status` is the lifecycle; regime-fit is deci
 Promote `draft → active` **only if** the backtest gives `expectancy_R > 0.2` over **≥ ~30 trades** with the visual study done. Mapping (same as the backtest skill): `< 0R` = no edge → `inactive`; `0–0.2R` = fragile → stays `draft`; `> 0.2R, ≥30 trades` = edge → `active`; `< 30 trades` = inconclusive → stays `draft` regardless of the number. Record `expectancy_assumptions` + `lifecycle.validated_at`/`activated_at`. Win rate alone never activates anything — expectancy and sample size decide.
 
 ### Selection (pick)
-Among `status: active` specs, keep those whose `regime_required` the live `regime.json` satisfies (trend match, Nifty vs 200-EMA, VIX ≤ cap, breadth ≥ floor — `select_strategy.py`), then rank by edge: **live `expectancy_R` if the strategy has closed trades, else backtest `expectancy_R`**, tie-broken by profit factor. The best fit is the recommendation. Zero fits → stand aside (don't force a misfit). Zero active specs → nothing validated to run.
+Among `status: active` specs, keep those whose `regime_required` the live `regime.json` satisfies (trend match, Nifty vs 200-EMA, VIX ≤ cap, breadth ≥ floor — `select_strategy.py`), then rank by edge: **live `expectancy_R` if the strategy has closed trades, else backtest `expectancy_R`**, tie-broken by profit factor. The best fit is the verdict. Zero fits → stand aside (don't force a misfit). Zero active specs → nothing validated to run.
 
 ### Optimization & retirement (optimize)
 Live trades from `trade-tracker` (closed trade-idea artifacts carrying a `result.realized_R` + `strategy` link) are the truth that backtests only approximate. `aggregate_performance.py` groups them per strategy and recommends:

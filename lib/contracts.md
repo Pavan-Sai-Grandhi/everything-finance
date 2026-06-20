@@ -88,6 +88,22 @@ Each blocked rung names itself in `gaps`; `ok:false` with a `gap` means "unknown
 "nothing filed". Fetched text is untrusted data, assessed not obeyed. Covered by
 `lib/test_filings.py` (+ `--selftest`).
 
+### `lib/prices.py` — price fetch (live + history + reconcile)
+Producer: `lib/prices.py` (the canonical data-spine fetcher). Consumers: any caller needing
+a live quote, EOD history, a technical screen, or a live↔history cross-check (find-trade,
+trade-tracker, sector-analysis, daily-brief). Two truths kept separate: the **TradingView
+scanner** (public India scan endpoint, **no auth**) is live/current/screening truth;
+**yfinance** is EOD-history truth. Key contract — each returns the shared data-spine
+**envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`:
+- `quote(symbol)` → `data:{symbol, date, name, close, change, change_abs, volume, market_cap_basic, exchange}`.
+- `history(symbol, period="1y")` → `data:{symbol, period, bars, candles:[{date, open, high, low, close, volume}]}`.
+- `screen(filters)` → `data:{filters, count, candidates:[symbol,...], rows:[...]}`.
+- `reconcile(symbol, tolerance=0.01)` → `data:{symbol, tv_close, yf_close, divergence_pct, tolerance, agree}`; a divergence beyond tolerance is a `gap`, not a silent pass.
+**No indicators are computed here** — callers pass `candles` to `ta.add_indicators`, so a
+screen and its backtest share one indicator-of-record. No TV indicator-value ingestion and
+no TV-indicator library dependency. Fetched text is untrusted data, assessed not obeyed.
+Covered by `lib/test_prices.py` (offline parser + reconcile-decision fixtures).
+
 ---
 
 ## Artifact: strategy spec
@@ -164,7 +180,7 @@ prior run of any leg (deep-analysis, dcf, management, filings) on a re-run.
 | `subject` | `{type: stock\|fund\|strategy\|portfolio, id}` |
 | `kind` | `price_cross\|filing_act_on\|time_stop\|regime_change\|revalidate_due\|reanalyze_due\|rebalance_due\|sip_due\|opportunity\|investigate\|custom` |
 | `trigger` | exactly one of `{metric,op,level}` (cheap), `{due}` (date), `{check, args}` (needs a skill run) |
-| `action` | `{text, suggest}` — human recommendation + optional command to surface |
+| `action` | `{text, suggest}` — human-facing verdict + optional command to surface |
 | `severity` | `info\|watch\|act` |
 | `status` | `open\|triggered\|snoozed\|done\|expired` |
 | `dedup_key` | producers set this so re-runs update in place, never pile up |

@@ -152,13 +152,13 @@ w(os.path.join(tdir, "open1.yml"), trade("OP", "stratX", 5, status="open"))
 
 out, rc = run([sys.executable, AGG, "--trades", tdir, "--strategies", sdir2])
 by = {r["strategy"]: r for r in out["strategies"]}
-check("stratX -> DEACTIVATE", by["stratX"]["recommendation"] == "DEACTIVATE", by["stratX"])
+check("stratX -> DEACTIVATE", by["stratX"]["verdict"] == "DEACTIVATE", by["stratX"])
 check("stratX counts 12 closed (open ignored)",
       by["stratX"]["metrics"]["trades_closed"] == 12, by["stratX"]["metrics"])
 check("stratX expectancy negative",
       by["stratX"]["metrics"]["expectancy_R"] < 0, by["stratX"]["metrics"]["expectancy_R"])
-check("stratY -> OPTIMIZE", by["stratY"]["recommendation"] == "OPTIMIZE", by["stratY"])
-check("stratZ -> KEEP (insufficient sample)", by["stratZ"]["recommendation"] == "KEEP", by["stratZ"])
+check("stratY -> OPTIMIZE", by["stratY"]["verdict"] == "OPTIMIZE", by["stratY"])
+check("stratZ -> KEEP (insufficient sample)", by["stratZ"]["verdict"] == "KEEP", by["stratZ"])
 check("exit_reasons breakdown present",
       sum(by["stratX"]["exit_reasons"].values()) == 12, by["stratX"]["exit_reasons"])
 

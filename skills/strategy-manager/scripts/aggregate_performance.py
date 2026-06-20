@@ -4,14 +4,14 @@
 Responsibility 4 of strategy-manager. trade-tracker writes a `result` block into each
 trade-idea artifact when it closes (realized_R, exit_reason, ...). This reads those closed
 trades, groups them by their `strategy` link, computes realized expectancy vs the strategy's
-backtested expectancy, and emits a recommendation per strategy:
+backtested expectancy, and emits a verdict per strategy:
 
   KEEP        — live edge holding up (or sample still small)
   OPTIMIZE    — live edge positive but decaying well below backtest -> tune & re-backtest
   DEACTIVATE  — live expectancy negative over a real sample -> retire the strategy
 
 With --update-spec, it also writes live_performance back into the matching spec and, on a
-DEACTIVATE recommendation, flips status->inactive with a lifecycle reason (the only mutation
+DEACTIVATE verdict, flips status->inactive with a lifecycle reason (the only mutation
 this script makes; everything else is read-only reporting the skill acts on).
 
 Usage:
@@ -143,7 +143,7 @@ def main():
         entry = {"strategy": strat, "spec_file": sp, "metrics": m,
                  "exit_reasons": exit_reasons.get(strat, {}),
                  "backtest_expectancy_R": backtest_R, "drift": drift,
-                 "recommendation": rec, "reason": why}
+                 "verdict": rec, "reason": why}
         report.append(entry)
 
         if args.update_spec and spec and sp:

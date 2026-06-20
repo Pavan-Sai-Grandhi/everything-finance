@@ -37,4 +37,4 @@ Two layers the script defers to the skill (qualitative judgement):
 
 ## What this is not
 
-Not an auto-trader and not advice. It surfaces a disciplined recommendation per position; the human places the order. A verdict is only as good as the rationale it checks — garbage thesis in, garbage exit out. Keep `thesis_invalidation` conditions concrete and testable when the trade is created.
+Not an auto-trader and not advice. It surfaces a disciplined verdict per position; the human places the order. A verdict is only as good as the rationale it checks — garbage thesis in, garbage exit out. Keep `thesis_invalidation` conditions concrete and testable when the trade is created.

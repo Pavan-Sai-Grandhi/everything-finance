@@ -76,7 +76,7 @@ Close the loop with reality. `trade-tracker` writes a `result` block (realized R
 
 1. Aggregate: `python3 <skill-dir>/scripts/aggregate_performance.py [--strategy <name>] --out artifacts/strategy-manager/YYYY-MM-DD/performance.json` (`--trades`/`--strategies` default to `artifacts/state/trades` and `artifacts/state/strategies`). It groups closed trades by their `strategy` link and computes realized win rate, expectancy_R, profit factor, and an exit-reason breakdown, then recommends **KEEP / OPTIMIZE / DEACTIVATE** (rules in reference.md: needs ≥ 10 closed trades to act; negative live expectancy → deactivate; positive but decaying well below backtest → optimize).
 2. Write the realized numbers into the spec's `live_performance` (re-run with `--update-spec` to do it, or write them yourself), with a `drift_note` comparing live vs backtest.
-3. Act on the recommendation:
+3. Act on the verdict:
    - **DEACTIVATE** → set `status: inactive`, `lifecycle.deactivated_at`/`deactivated_reason` (the script does this with `--update-spec`). The strategy stops being selectable. Tell the user the edge is gone and why.
    - **OPTIMIZE** → propose a concrete rule change driven by the diagnostic (e.g. TIME exits dominate the losers → tighten `time_stop_sessions`; stops too tight → widen to structure). **Bump `version`, append an `optimization_log` entry, then re-run VALIDATE** — an optimized strategy must re-pass the backtest gate before it's active again. Never tune parameters and call it active without re-validation (that's in-sample curve-fitting).
    - **KEEP** → record the live numbers, no change.

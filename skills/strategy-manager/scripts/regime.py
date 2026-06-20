@@ -113,7 +113,7 @@ def main():
     else:
         breadth = "strong" if breadth_pct > 60 else ("weak" if breadth_pct < 40 else "mixed")
 
-    # --- Risk posture (a summary of the gate, NOT a strategy recommendation) ---
+    # --- Risk posture (a summary of the gate, NOT a strategy verdict) ---
     # The skill checks this against the conditions the user's reference article claims.
     if market_trend == "up" and vol_regime != "high" and breadth in ("strong", "mixed"):
         posture, why = "risk-on", "Uptrend + acceptable vol + participation: directional/long systems have a tailwind."
