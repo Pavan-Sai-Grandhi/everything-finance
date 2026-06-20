@@ -7,7 +7,7 @@ allowed-tools: WebFetch, Read, Write, Bash, mcp__playwright__*
 
 # Exchange Filings Watch
 
-Read `references/reference.md` for the materiality classification and source endpoints. The mechanical fetch+classify core is the bundled **`scripts/filings.py`** — a shared module (daily-brief calls it too) so the BSE endpoints and the materiality taxonomy live in one place. This skill is the judgement layer on top: the browser-only shareholding/pledge read and the "so what" narrative.
+Read `references/reference.md` for the materiality classification and source endpoints. The mechanical fetch+classify core is the shared **`lib/filings.py`** — the canonical data-spine fetcher (daily-brief calls it too) so the BSE/NSE endpoints and the materiality taxonomy live in one place. This skill is the judgement layer on top: the browser-only shareholding/pledge read and the "so what" narrative.
 
 **Sites for this skill only:** NSE and BSE (primary, via the script's BSE JSON + Playwright for NSE — both block plain HTTP HTML), screener.in Documents section (fallback mirror for announcements/shareholding). No news sites — this skill reports *filings*, the news-sentiment agent handles press.
 
@@ -15,14 +15,14 @@ Read `references/reference.md` for the materiality classification and source end
 
 1. **Resolve symbol** on both exchanges (NSE symbol + BSE scrip code; screener.in company page header lists both). The script needs the **BSE scrip code**.
 
-2. **Fetch + classify the BSE feed with the script** (first rung — works over plain HTTP when BSE isn't fingerprint-blocking):
+2. **Fetch + classify the feed with the script** (it walks the fallback ladder itself — BSE JSON API first, then resolves the scrip to its NSE symbol and reads the NSE announcements API after a homepage cookie-bootstrap when BSE is blocked):
    ```bash
-   python3 <skill-dir>/scripts/filings.py --scrip <BSE_CODE> --days <lookback> \
+   python3 <plugin>/lib/filings.py --scrip <BSE_CODE> --days <lookback> \
        --out artifacts/stocks/<TICKER>/YYYY-MM-DD/filings.json
    ```
-   It returns announcements already classified into act-on / monitor / routine (+ forthcoming corporate actions), and a `notes` field. **If `notes` flags an empty/blocked BSE pull** ("No Record Found!" = fingerprint block, per reference.md), fall to the next rungs — don't assume the company was silent:
-   - (b) **NSE pages via Playwright** (cookie bootstrap from the homepage first) — and the **only** reliable source for the **SHP pledge %** detail.
-   - (c) **screener.in via WebFetch** — Documents/Announcements mirror + shareholding table.
+   It returns the data-spine envelope — `ok`, `source` (which exchange served it), announcements already classified into act-on / monitor / routine under `data.items` (+ forthcoming corporate actions), and a `gaps` list. **Each blocked rung names itself in `gaps`** (e.g. `BSE fingerprint block: HTTP 200 "No Record Found!"`) — a labelled gap, never a silent empty, so `ok:false` with a gap means "unknown", not "nothing filed". When the script can't resolve the NSE symbol, pass `--symbol <NSE_SYMBOL>`. Two things still need the browser/web rungs:
+   - (b) **NSE pages via Playwright** (cookie bootstrap from the homepage first) — the **only** reliable source for the **SHP pledge %** detail.
+   - (c) **screener.in via WebFetch** — Documents/Announcements mirror + shareholding table, when both exchange rungs are gapped.
    De-duplicate announcements filed on both exchanges (same subject ± minutes apart). **Single-exchange rule**: if only one exchange is reachable, skip de-dup and state in data-gaps that the other is assumed to mirror it — near-lossless for dual-listed large caps; for single-listed names, name what's missing.
 
 3. **Review the script's classification** (taxonomy in reference.md): 🔴 act-on (results, M&A, pledge increase, resignation of auditor/KMP, fraud/regulatory action, buyback) / 🟡 monitor (capex, order wins, credit-rating notes, investor-meet PPTs) / ⚪ routine (trading windows, ESOP allotments, newspaper copies). The script is the first-pass filter; **apply judgement on top** — an "unclassified → monitor" item, or an order win whose size you can size against revenue, may move tiers. Most filings are noise; the value of this skill is the filter plus that judgement.

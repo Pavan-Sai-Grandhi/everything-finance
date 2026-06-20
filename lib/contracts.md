@@ -74,13 +74,19 @@ it so they cannot disagree about what a strategy means. Key contract:
   as a Backtesting.py `Strategy` (next-open fills, pessimistic intrabar exits, time-stop, risk
   sizing). Engine: **Backtesting.py** (auto-pip). Covered by `find-trade/scripts/test_screen.py`.
 
-### `filings-watch/scripts/filings.py` — exchange-filing fetch + materiality
-Consumers: `filings-watch` (skill) and `daily-brief`. Key contract:
+### `lib/filings.py` — exchange-filing fetch + materiality
+Producer: `lib/filings.py` (the canonical data-spine fetcher). Consumers: `filings-watch`
+(skill) and `daily-brief`. Key contract:
 `classify_materiality(text) -> (tier, emoji, reason)` where `tier ∈ {act-on, monitor,
-routine}` (emoji 🔴/🟡/⚪). `summarize(scrip, days)` returns
-`{scrip, days, material_count, act_on:[...], monitor:[...], routine_count, corporate_actions:[...], notes:[...]}`.
-`notes` is non-empty when a source was blocked/empty — callers must treat that as
-"unknown", not "nothing filed". Covered by `test_filings.py`.
+routine}` (emoji 🔴/🟡/⚪). `summarize(scrip, days, symbol=None, fresh=False)` returns the
+shared data-spine **envelope**
+`{ok, source, fetched_at, data:{...}, gaps:[...]}`, where `data` is
+`{scrip, symbol, days, date, material_count, act_on:[...], monitor:[...], routine_count, items:[...], corporate_actions:[...]}`.
+The fetch walks the fallback ladder — BSE JSON API (UA + `Referer`) → resolve scrip→NSE
+symbol via BSE's scrip-header endpoint → NSE announcements API (homepage cookie-bootstrap).
+Each blocked rung names itself in `gaps`; `ok:false` with a `gap` means "unknown", not
+"nothing filed". Fetched text is untrusted data, assessed not obeyed. Covered by
+`lib/test_filings.py` (+ `--selftest`).
 
 ---
 
