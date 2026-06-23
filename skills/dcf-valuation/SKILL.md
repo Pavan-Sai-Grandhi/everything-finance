@@ -14,7 +14,7 @@ Read `references/reference.md` first — it carries the method, the levers, the 
 ## Workflow
 
 0. **Check for a prior run.** Call `paths.latest_prior("dcf", SYMBOL)` — if an earlier `dcf.md` exists, read it for context so this valuation stays consistent with the last story, and open the report with a one-line `prior run: <path> (<date>)` link noting what changed (fair value then→now, which assumption moved). No prior run is the normal first-time case.
-1. **Gather the sourced base inputs** (from `https://www.screener.in/company/<SYMBOL>/consolidated/` and the latest annual report — the same primary sources the fundamental-analyst uses):
+1. **Gather the sourced base inputs** (from `https://www.screener.in/company/<SYMBOL>/consolidated/` and the latest annual report — the same primary sources the valuation-analyst draws from the data-pack):
    - base revenue (latest FY/TTM), historical revenue growth and operating-margin trend, effective tax rate, net debt, cash & non-operating assets, minority interest, diluted shares outstanding.
    - historical **sales-to-capital** ≈ ΔRevenue ÷ Δ(net fixed assets + working capital) over recent years.
    - current market price (for the margin-of-safety comparison).

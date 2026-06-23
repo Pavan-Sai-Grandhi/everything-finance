@@ -16,7 +16,7 @@ strings, so the layout (below) can never drift between skills — the same reaso
       <skill>/<date>/                  ...with work papers beside the report
       backtest/<spec>/<date>/
       state/                           durable, mutable, NOT dated
-        strategies/  trades/  alerts/  watchlist.json
+        strategies/  trades/  alerts/  sectors/  watchlist.json
       cache/  tmp/                     disposable, safe to delete anytime
 
 Naming convention everywhere: <owner-dir>/<key>/<date>.<ext>, key = ticker / scheme
@@ -68,6 +68,11 @@ def ticker_key(ticker):
 def scheme_key(scheme):
     """Filesystem-safe slug of a fund scheme name: lowercase, non-alnum -> '-'."""
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", str(scheme).strip().lower())).strip("-")
+
+
+def sector_key(sector):
+    """Filesystem-safe slug of a sector name: lowercase, non-alnum -> '-'."""
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", str(sector).strip().lower())).strip("-")
 
 
 def _mkdir(path):
@@ -123,6 +128,38 @@ def alerts_dir():
 def watchlist_path():
     """state/watchlist.json — parent (state/) created."""
     return _mkparent(os.path.join(state_dir(), "watchlist.json"))
+
+
+def sector_cache_path(sector):
+    """state/sectors/<slug>.md — the shared, monthly-refreshed sector read.
+
+    Durable state (not dated): one current body per sector, overwritten on refresh,
+    read by deep-analysis and written by both sector-analysis and deep-analysis. The
+    dated trail still lives under sector-analysis/<date>/."""
+    return _mkparent(os.path.join(state_dir("sectors"), f"{sector_key(sector)}.md"))
+
+
+def sector_cache_age_days(sector, today=None):
+    """Age in days of the cached sector read, or None if missing/unreadable.
+
+    Reads the `generated: YYYY-MM-DD` frontmatter line written by the producer. A
+    missing file or undated cache returns None — the caller treats that as stale and
+    refreshes. Pure date math, no yaml dependency."""
+    p = os.path.join(state_dir("sectors"), f"{sector_key(sector)}.md")
+    if not os.path.isfile(p):
+        return None
+    generated = None
+    with open(p) as f:
+        for line in f:
+            m = re.match(r"\s*generated:\s*(\d{4}-\d{2}-\d{2})", line)
+            if m:
+                generated = m.group(1)
+                break
+    if not generated:
+        return None
+    ref = today if isinstance(today, _date_cls) else (
+        _date_cls.fromisoformat(today) if today else _date_cls.today())
+    return (ref - _date_cls.fromisoformat(generated)).days
 
 
 # --- disposable --------------------------------------------------------------

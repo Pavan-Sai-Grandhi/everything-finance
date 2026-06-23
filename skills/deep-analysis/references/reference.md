@@ -4,7 +4,7 @@ Grounded in Zerodha Varsity — Fundamental Analysis (https://zerodha.com/varsit
 
 ## Fundamental due-diligence checklist (Varsity ch. 12–13, "Investment Due Diligence" / "Equity Research")
 
-The fundamental-analyst agent works through this; the bull/bear researchers attack or defend each line:
+Source data is fetched once by `fundamentals-data` into a shared pack; the `financials-analyst` works through this checklist off that pack (with `management-analyst` and `valuation-analyst` as its sibling legs); the bull/bear researchers attack or defend each line:
 
 **Profitability & efficiency**
 - ROE > 15% sustained (DuPont it: margin × turnover × leverage — leverage-driven ROE is a red flag)
@@ -23,7 +23,7 @@ The fundamental-analyst agent works through this; the bull/bear researchers atta
 **Growth & valuation**
 - Revenue CAGR > 10% (5y) for a growth thesis
 - P/E vs own 5y band and vs sector median; P/B < 1.5 with decent ROE is the classic value zone (Varsity), P/S for loss-makers
-- DCF as a sanity band, not a price: Varsity's emphasis — apply a margin of safety, buy only meaningfully below intrinsic estimate, and distrust terminal-value-heavy valuations
+- DCF gated by its own confidence: the `valuation-analyst` grades each DCF low/med/high from terminal-value weight and assumption stretch. A high-confidence DCF is a real valuation input (margin of safety vs intrinsic estimate); a low-confidence one (terminal-heavy, aggressive, or a bank/violent cyclical) is a sanity band only and the call leans on relative P/E·P/B. Buy meaningfully below intrinsic estimate; never let a low-confidence DCF drive a buy on intrinsic value alone (Varsity's distrust of terminal-value-heavy valuations, made explicit).
 
 ## Reading annual reports & concalls (ch. 3)
 
@@ -39,9 +39,10 @@ The `sector-analyst` agent (its own bundled Varsity sector method) places the st
 
 ## Debate protocol
 
-- Bull and bear researchers must each produce: 3 strongest arguments, each tied to evidence from phase-1 reports; 1 explicit rebuttal of the opposing side's likely best point; what would change their mind.
-- The portfolio-manager verdict must state: position (Buy/Accumulate/Hold/Avoid/Exit), conviction (low/med/high), suggested allocation cap (% of portfolio), entry zone if Buy, and the invalidation (price level or fundamental event that kills the thesis).
-- Disagreement is the product: if bull and bear both sound right, the verdict should usually be Hold/Avoid with the specific uncertainty named.
+- The debate runs **up to 3 rounds, with early-stop on convergence**. Round 1: bull and bear each produce 3 strongest arguments tied to phase-1 evidence + what would change their mind. Round r>1: each side is fed the other's previous-round report and must add new load-bearing evidence or explicitly concede — restating a prior round is not a valid turn. After each round the orchestrator checks whether either side introduced a *new* evidence-tied argument; if neither did, the debate stops there.
+- A FAIL on the management integrity gate is near-fatal to the bull case — the side must engage it or concede; the portfolio-manager treats it as an AVOID override.
+- The portfolio-manager judges the full transcript once at the end and must state: position (Buy/Accumulate/Hold/Avoid/Exit), conviction (low/med/high), suggested allocation cap (% of portfolio), entry zone if Buy, and the invalidation (price level or fundamental event that kills the thesis). It weights the DCF by its stated confidence (above).
+- Disagreement is the product: if bull and bear both sound right after the rounds, the verdict should usually be Hold/Avoid with the specific uncertainty named.
 
 ## screener.in extraction map
 

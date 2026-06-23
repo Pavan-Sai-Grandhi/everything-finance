@@ -1,6 +1,6 @@
 {
   "name": "everything-finance",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Personal India-focused financial intelligence: strategy-driven trade finding on the Nifty 500, multi-agent deep stock analysis, DCF valuation, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, and live trade tracking against your broker (Zerodha/Upstox).",
   "author": {
     "name": "Pavan Sai Grandhi"
@@ -25,6 +25,7 @@
   "skills": [
     "./skills/find-trade",
     "./skills/deep-analysis",
+    "./skills/fundamental-analysis",
     "./skills/sector-analysis",
     "./skills/mf-research",
     "./skills/insurance-check",
@@ -41,7 +42,10 @@
   ],
   "agents": [
     "./agents/technical-analyst.md",
-    "./agents/fundamental-analyst.md",
+    "./agents/fundamentals-data.md",
+    "./agents/financials-analyst.md",
+    "./agents/management-analyst.md",
+    "./agents/valuation-analyst.md",
     "./agents/news-sentiment.md",
     "./agents/sector-analyst.md",
     "./agents/bull-researcher.md",

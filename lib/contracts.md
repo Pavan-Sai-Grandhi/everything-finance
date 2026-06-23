@@ -21,8 +21,10 @@ each). Root is `$EVERYTHING_FINANCE_ARTIFACTS` or `./artifacts` (cwd). Three lif
 singletons like `daily-brief/<date>.md`), **durable state** (`state/strategies/`, `state/trades/`,
 `state/alerts/`, `state/watchlist.json`), and **disposable** (`cache/`, `tmp/`). Helpers:
 `root, stock_dir, fund_dir, report_path, report_dir, backtest_dir, state_dir, alerts_dir,
-watchlist_path, cache_dir, tmp_dir` (all create dirs as needed) and **`latest_prior(skill,
-subject, before=None)`** — the prior-run lookup that powers "refer the earlier run"
+watchlist_path, cache_dir, tmp_dir, sector_cache_path` (all create dirs as needed),
+**`sector_cache_age_days(sector)`** (freshness of the monthly sector cache — `None` if
+missing/undated), and **`latest_prior(skill, subject, before=None)`** — the prior-run lookup
+that powers "refer the earlier run"
 (deep-analysis, dcf, management, filings, mf-research). Import via the same three-dirs-up
 `sys.path.insert` idiom as `ta`/`strategy`. `lib/migrate_artifacts.py` does a one-time
 (dry-run-by-default) move of an old flat tree into this layout. Covered by `lib/test_paths.py`.
@@ -123,8 +125,8 @@ never an empty crash. Fetched headlines are untrusted data, assessed not obeyed.
 
 ### `lib/fundamentals.py` — screener.in financials + fundamental screen
 Producer: `lib/fundamentals.py` (the canonical data-spine fetcher). Consumers: the
-`fundamental-analyst` agent and `deep-analysis` (its fundamentals leg); `find-trade`/
-`strategy-manager` for a fundamental candidate cut. Key contract — each returns the shared
+`fundamentals-data` agent (which packs it for `deep-analysis` / `fundamental-analysis`);
+`find-trade`/`strategy-manager` for a fundamental candidate cut. Key contract — each returns the shared
 data-spine **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`:
 - `fetch(symbol)` reads the public consolidated company page **once** → `data:{symbol, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. Falls back to the standalone page with a labelled `gap`.
 - `screen(query)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`).
@@ -180,24 +182,48 @@ spec — never null now that find-trade always runs a named/picked strategy),
 `exit_reason`) — **that block is what `strategy-manager optimize` aggregates**, so closing
 a trade without it breaks the learning loop.
 
+## Artifact: fundamentals data-pack
+**Producer:** the `fundamentals-data` agent → `artifacts/tmp/staging/<TICKER>/fundamentals/data-pack.md`
+— the single sourced fetch of one company's fundamentals for a run. **Consumers:** `financials-analyst`,
+`management-analyst`, `valuation-analyst` (each Reads it; none re-fetches), so all three reason off the
+same sourced numbers. **Fields:** CMP (+ as-of); the screener envelope (`ratios`, `pnl_10y`,
+`balance_sheet_10y`, `quarters`, `shareholding`, `peers`); annual-report excerpts keyed by section
+(MD&A, segment note, auditor, RPT, contingent liabilities, cash flow, revenue recognition) each with a
+page/section cite; management-quality signals (remuneration, RPT detail, auditor fees & trend,
+board/KMP profiles, pledging, multi-year MD&A); concall takeaways (quarter cited); and `Data gaps`.
+Facts only — no scoring/verdict. Archived under `deep-analysis/fundamentals/` by the Stop hook.
+
 ## Artifact: deep-analysis report
 **Producer:** `deep-analysis` → `artifacts/stocks/<TICKER>/<date>/deep-analysis.md` (`paths.stock_dir`),
 the synthesized report, with each forked agent's raw report archived beside it under
-`artifacts/stocks/<TICKER>/<date>/deep-analysis/agents/<role>.md` (the work papers the synthesis is
-built from). The Stop hook does the archival from `artifacts/tmp/staging/<TICKER>.md` (final report)
-and `artifacts/tmp/staging/<TICKER>/agents/` (work papers), and sends the `## Telegram Brief` section.
-**Consumer:** `trade-tracker` (as a rationale source when no trade-idea artifact exists). The
-fundamental leg embeds the `dcf-valuation` intrinsic range and the `management-quality` grade and
-**also persists them as discrete files** (`dcf.md`/`dcf.json`, `management.md`) in the same
-`stocks/<TICKER>/<date>/` folder; the sector leg embeds the `sector-analyst` read. Because every
-artifact for a stock+run-day lives in one folder, `paths.latest_prior(skill, TICKER)` finds the
-prior run of any leg (deep-analysis, dcf, management, filings) on a re-run.
+`artifacts/stocks/<TICKER>/<date>/deep-analysis/agents/<role>.md` (work papers: `technical`, `financials`,
+`management`, `valuation`, `news`, `sector`, `bull-r1…N`, `bear-r1…N`, `verdict`) plus the data-pack
+under `deep-analysis/fundamentals/`. The Stop hook archives the whole `artifacts/tmp/staging/<TICKER>/`
+tree (and final report `artifacts/tmp/staging/<TICKER>.md`), and sends the `## Telegram Brief` section.
+**Consumer:** `trade-tracker` (as a rationale source when no trade-idea artifact exists). The valuation
+leg embeds the `dcf-valuation` intrinsic range **with a DCF-confidence grade** and the management leg
+embeds the `management-quality` grade; both are **also persisted as discrete files** (`dcf.md`/`dcf.json`,
+`management.md`) in the same `stocks/<TICKER>/<date>/` folder. The sector leg embeds the `sector-analyst`
+read, sourced from the shared sector cache (see *Artifact: sector cache*). Because every artifact for a
+stock+run-day lives in one folder, `paths.latest_prior(skill, TICKER)` finds the prior run of any leg
+(deep-analysis, dcf, management, filings) on a re-run.
+
+## Artifact: sector cache
+**Producers:** `sector-analysis` (canonical monthly refresher) and `deep-analysis` (inline refresh when
+missing/stale). **Consumer:** `deep-analysis`'s sector leg. **Location:** `state/sectors/<slug>.md`
+(`paths.sector_cache_path`) — durable, not dated; one current body per sector, overwritten on refresh.
+**Fields:** frontmatter `generated: YYYY-MM-DD` + `rs_class:`; body = the sector-level read (RS vs Nifty,
+cycle, KPI snapshot, tailwinds/headwinds, leaders/laggards, stance) — **not** the focus-stock overlay,
+which is computed fresh. **Freshness:** `paths.sector_cache_age_days(sector)` — `> 30` or `None` ⇒ stale ⇒
+refresh + a `sector_refresh_due` alert (`dedup_key: sector-refresh-<sector>`, due +30d). The dated trail
+stays under `sector-analysis/<date>/`.
 
 ## Artifact: alert
 **Producer:** many — `trade-tracker` (`price_cross`/`time_stop`/`regime_change`), `filings-watch`
 (`filing_act_on`), `strategy-manager` (`revalidate_due`), `deep-analysis` (`reanalyze_due` +
 `price_cross` invalidation + `opportunity`), `find-trade` (`price_cross` entry + `opportunity`),
-`portfolio-review` (`rebalance_due`), `mf-research` (`sip_due`), and `alert-manager` (manual).
+`portfolio-review` (`rebalance_due`), `mf-research` (`sip_due`), `sector-analysis` + `deep-analysis`
+(`sector_refresh_due`), and `alert-manager` (manual).
 **Consumer:** `daily-brief` (surfaces and recommends — never auto-runs); `alert-manager` curates.
 **Owner of the schema/logic:** `lib/alerts.py`. **Location:** one file per alert at
 `artifacts/state/alerts/<id>.yml` (`paths.alerts_dir()`).
@@ -206,8 +232,8 @@ prior run of any leg (deep-analysis, dcf, management, filings) on a re-run.
 |---|---|
 | `id` | `<kind>-<subject>-<shorthash>` (generated) |
 | `created_by` | producing skill |
-| `subject` | `{type: stock\|fund\|strategy\|portfolio, id}` |
-| `kind` | `price_cross\|filing_act_on\|time_stop\|regime_change\|revalidate_due\|reanalyze_due\|rebalance_due\|sip_due\|opportunity\|investigate\|custom` |
+| `subject` | `{type: stock\|fund\|strategy\|portfolio\|sector, id}` |
+| `kind` | `price_cross\|filing_act_on\|time_stop\|regime_change\|revalidate_due\|reanalyze_due\|rebalance_due\|sip_due\|sector_refresh_due\|opportunity\|investigate\|custom` |
 | `trigger` | exactly one of `{metric,op,level}` (cheap), `{due}` (date), `{check, args}` (needs a skill run) |
 | `action` | `{text, suggest}` — human-facing verdict + optional command to surface |
 | `severity` | `info\|watch\|act` |

@@ -54,6 +54,28 @@ check("dedup keeps same id", a2["id"] == a["id"], a2["id"])
 check("dedup updates trigger level", a2["trigger"]["level"] == 1500)
 check("dedup did not create a second file", len(alerts.load_all()) == 1, len(alerts.load_all()))
 
+# --- sector_refresh_due (monthly sector cache reminder) ----------------------
+_isolated()
+sr = alerts.create(
+    created_by="deep-analysis",
+    subject={"type": "sector", "id": "banking"},
+    kind="sector_refresh_due",
+    trigger={"due": "2026-07-23"},
+    action={"text": "sector read 1 month old", "suggest": "/sector-analysis banking"},
+    severity="watch", dedup_key="sector-refresh-banking")
+check("sector_refresh_due id", sr["id"].startswith("sector_refresh_due-banking-"), sr["id"])
+check("sector subject persisted", sr["subject"]["type"] == "sector")
+# re-running deep-analysis on a same-sector stock updates the reminder in place
+sr2 = alerts.create(
+    created_by="deep-analysis",
+    subject={"type": "sector", "id": "banking"},
+    kind="sector_refresh_due",
+    trigger={"due": "2026-08-23"},
+    action={"text": "sector read refreshed", "suggest": "/sector-analysis banking"},
+    severity="watch", dedup_key="sector-refresh-banking")
+check("sector refresh dedups in place", sr2["id"] == sr["id"] and len(alerts.load_all()) == 1)
+check("sector refresh due bumped", sr2["trigger"]["due"] == "2026-08-23")
+
 # --- load_open filtering -----------------------------------------------------
 _isolated()
 alerts.create(created_by="x", subject={"type": "stock", "id": "INFY"}, kind="custom",

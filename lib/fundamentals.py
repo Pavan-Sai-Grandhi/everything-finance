@@ -3,7 +3,7 @@
 
 The canonical fundamentals fetcher — lives in `lib/` next to `ta.py`, `strategy.py`,
 `prices.py`, `news.py` and `paths.py` so screener.in is parsed in exactly one place instead
-of being re-parsed afresh inside every `fundamental-analyst` run (the drift this data spine
+of being re-parsed afresh inside every `fundamentals-data` run (the drift this data spine
 removes). Two entry points:
 
   * `fetch(symbol)` reads the public consolidated company page ONCE and parses it into typed

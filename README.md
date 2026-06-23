@@ -36,8 +36,9 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 | Skill | What it does |
 |---|---|
 | `/find-trade` | Run a chosen, validated strategy against the Nifty 500 — screen the universe (screener.in fundamentals + TradingView/local technical cut), build entry / SL / target / size signals; on your "yes" persists a trade-idea artifact for `/trade-tracker`. Strategy-agnostic: names a strategy or asks `/strategy-manager pick`; no hardcoded default |
-| `/deep-analysis TICKER` | Multi-agent debate: technical, fundamental (reads annual reports + concalls, grades management integrity & skill, computes a story-driven DCF intrinsic value), news, sector context, bull vs bear, portfolio-manager verdict — synthesized into a readable report with the raw agent work papers archived alongside. Artifact auto-archived + Telegram brief via Stop hook |
-| `/sector-analysis [sector]` | Deep-dive the sector(s) you name, or rank NSE sectoral indices and deep-dive the top three — RS, sector KPIs, tailwinds/headwinds, top picks (runs the `sector-analyst` agent) |
+| `/deep-analysis TICKER` | Multi-agent debate over six lenses — technical, financials, management (integrity gate + skill), valuation (story-driven DCF with a confidence grade), news, sector — fed by a fetch-once data-pack; bull vs bear run up to 3 rounds (early-stop on convergence); portfolio-manager verdict weights the DCF by its confidence. Synthesized into a readable report with the raw agent work papers archived alongside. Artifact auto-archived + Telegram brief via Stop hook |
+| `/fundamental-analysis TICKER` | Fundamentals-only view without the debate: the same fetch-once pack → financials (Varsity checklist + overview), management (integrity gate + skill), and valuation (DCF + confidence) legs, merged into one report |
+| `/sector-analysis [sector]` | Deep-dive the sector(s) you name, or rank NSE sectoral indices and deep-dive the top three — RS, sector KPIs, tailwinds/headwinds, top picks (runs the `sector-analyst` agent). Seeds the shared monthly sector cache that `/deep-analysis` reuses |
 | `/mf-research` | Mutual fund research: NAV history, rolling returns, category comparison, fund quality verdict |
 | `/insurance-check` | Life + health coverage adequacy vs need, gap list, action items |
 | `/budget-tracker` | Parse bank/CC statements (PDF/CSV), categorize, compare against the Monthly Budget Planning framework, discipline report |
@@ -53,7 +54,7 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 
 ## Agents (`agents/`, all `context: fork`)
 
-`technical-analyst`, `fundamental-analyst`, `news-sentiment`, `sector-analyst`, `bull-researcher`, `bear-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis`, reusable individually. `sector-analyst` also powers `/sector-analysis`.
+`technical-analyst`, `fundamentals-data` (fetch-once source pack) → `financials-analyst` · `management-analyst` · `valuation-analyst`, `news-sentiment`, `sector-analyst`, `bull-researcher`, `bear-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis`, reusable individually. The four fundamental agents also power `/fundamental-analysis`; `sector-analyst` also powers `/sector-analysis`.
 
 ## Hooks
 

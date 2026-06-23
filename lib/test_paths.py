@@ -82,6 +82,31 @@ with tempfile.TemporaryDirectory() as tmp:
     check("cache_dir named", paths.cache_dir("ohlcv") == os.path.join(root, "cache", "ohlcv"))
     check("tmp_dir named", paths.tmp_dir("staging") == os.path.join(root, "tmp", "staging"))
 
+# --- sector cache ------------------------------------------------------------
+with tempfile.TemporaryDirectory() as tmp:
+    _clean_env()
+    os.chdir(tmp)
+    root = paths.root()
+
+    check("sector_key slugifies", paths.sector_key("IT services") == "it-services",
+          paths.sector_key("IT services"))
+    scp = paths.sector_cache_path("Banking / NBFC")
+    check("sector_cache_path under state/sectors",
+          scp == os.path.join(root, "state", "sectors", "banking-nbfc.md"), scp)
+    check("sector_cache_path parent created", os.path.isdir(os.path.dirname(scp)))
+
+    check("sector_cache_age_days None when absent",
+          paths.sector_cache_age_days("pharma") is None)
+    with open(paths.sector_cache_path("pharma"), "w") as f:
+        f.write("---\ngenerated: 2026-05-01\nrs_class: Leading\n---\nbody\n")
+    check("sector_cache_age_days computes from frontmatter",
+          paths.sector_cache_age_days("pharma", today="2026-05-31") == 30,
+          paths.sector_cache_age_days("pharma", today="2026-05-31"))
+    with open(paths.sector_cache_path("auto"), "w") as f:
+        f.write("no frontmatter date here\n")
+    check("sector_cache_age_days None when undated",
+          paths.sector_cache_age_days("auto") is None)
+
 # --- latest_prior ------------------------------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()

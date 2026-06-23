@@ -43,29 +43,33 @@ Prior run: `{{PRIOR_PATH}}`
 | **Invalidation** | {{INVALIDATION}} |
 | **Review trigger** | {{REVIEW_TRIGGER}} |
 
-## 2 · At a Glance — five lenses
+## 2 · At a Glance — six lenses
 | Lens | Stance | One-line read |
 |---|---|---|
 | 🧭 Sector | {{SECTOR_STANCE}} | {{SECTOR_ONELINE}} |
 | 📈 Technical | {{TECH_STANCE}} | {{TECH_ONELINE}} |
-| 📊 Fundamental | {{FUND_STANCE}} | {{FUND_ONELINE}} |
+| 📊 Financials | {{FUND_STANCE}} | {{FUND_ONELINE}} |
+| 🛡️ Management | {{MGMT_STANCE}} | {{MGMT_ONELINE}} |
 | ⚖️ Valuation | {{VAL_STANCE}} | {{VAL_ONELINE}} |
 | 📰 News & sentiment | {{NEWS_STANCE}} | {{NEWS_ONELINE}} |
+<!-- Valuation one-line carries intrinsic MoS + DCF confidence (low/med/high).
+     Management stance is the integrity gate (PASS/FLAG/FAIL) + skill grade; a FAIL here forces the verdict to Avoid. -->
 
 ## 3 · Company Overview
 {{COMPANY_OVERVIEW}}
-<!-- Lift from the fundamental analyst's "Business overview": what it does, segments & revenue mix,
+<!-- Lift from the financials analyst's "Company overview": what it does, segments & revenue mix,
      geography, flagship products, the moat — so a reader meeting the company here is oriented. -->
 
-## 4 · The Debate
+## 4 · The Debate — {{DEBATE_ROUNDS}}
+<!-- e.g. "3 rounds (hit max)" or "2 rounds (converged)". -->
 **🐂 Bull thesis.** {{BULL_SYNTHESIS}}
-<!-- Distill the bull's strongest 2–3 evidence-tied arguments + conviction into prose. -->
+<!-- Distill the bull's strongest *surviving* arguments across all rounds + final conviction into prose. -->
 
 **🐻 Bear thesis.** {{BEAR_SYNTHESIS}}
-<!-- Same for the bear. -->
+<!-- Same for the bear — what still stood after rebuttal, and anything it conceded. -->
 
 **⚖️ What decided it.** {{DECISIVE_POINTS}}
-<!-- Which arguments the portfolio-manager kept, which it discarded, and the dissent worth keeping. -->
+<!-- Which arguments the portfolio-manager kept, which it discarded, where the debate landed, and the dissent worth keeping. -->
 
 ## 5 · Sector Context
 {{SECTOR_CONTEXT}}
@@ -76,9 +80,14 @@ Prior run: `{{PRIOR_PATH}}`
 **Technical.** {{TECH_EVIDENCE}}
 <!-- Trend stage, key S/R levels with the decision level, volume signature, indicator confirmation. -->
 
-**Fundamental & valuation.** {{FUND_EVIDENCE}}
-<!-- Checklist scorecard highlights, management integrity+skill grade, the DCF intrinsic range &
-     margin of safety (or why DCF is fragile here), relative valuation vs peers/own band. -->
+**Financials.** {{FUND_EVIDENCE}}
+<!-- Checklist scorecard highlights, annual-report findings, concall takeaways, relative valuation vs peers/own band. -->
+
+**Management.** {{MGMT_EVIDENCE}}
+<!-- Integrity gate (PASS/FLAG/FAIL with the finding) + skill grade. A FAIL here is the headline — verdict Avoid regardless. -->
+
+**Valuation.** {{VAL_EVIDENCE}}
+<!-- DCF intrinsic range & margin of safety, the DCF-confidence grade (and why), reverse-DCF read, relative cross-check. -->
 
 **News & sentiment.** {{NEWS_EVIDENCE}}
 <!-- Sentiment score, the material dated facts vs narrative, recurring theme, event risk ahead. -->
@@ -92,7 +101,8 @@ Prior run: `{{PRIOR_PATH}}`
 <summary>Work papers — full agent reports</summary>
 
 The raw, unedited report from each forked agent is archived alongside this file under
-`./{{TICKER}}-deep-analysis/agents/` (technical, fundamental, news, sector, bull, bear, verdict).
+`./{{TICKER}}-deep-analysis/agents/` (technical, financials, management, valuation, news, sector,
+bull-r1…N, bear-r1…N, verdict) and the sourced data-pack under `./{{TICKER}}-deep-analysis/fundamentals/`.
 This report is the synthesis of those; consult them for the full evidence trail.
 </details>
 

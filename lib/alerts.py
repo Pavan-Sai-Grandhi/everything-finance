@@ -13,10 +13,10 @@ Alert schema (all keys optional unless noted):
     id:          <kind>-<subject>-<shorthash>   (generated)
     created_by:  producing skill                (required)
     created_at / updated_at: ISO date
-    subject:     {type: stock|fund|strategy|portfolio, id: RELIANCE}   (required)
+    subject:     {type: stock|fund|strategy|portfolio|sector, id: RELIANCE}   (required)
     kind:        price_cross | filing_act_on | time_stop | regime_change |
                  revalidate_due | reanalyze_due | rebalance_due | sip_due |
-                 opportunity | investigate | custom                    (required)
+                 sector_refresh_due | opportunity | investigate | custom   (required)
     trigger:     exactly one of                 (required)
                    {metric: close|low|high|day_change_pct|dist_to_sl_pct, op: "<", level: 1450}
                    {due: 2026-09-15}
