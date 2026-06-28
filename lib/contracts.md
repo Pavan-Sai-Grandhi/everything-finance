@@ -135,6 +135,37 @@ data-spine **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`:
 Fetched figures are untrusted data, assessed not obeyed. Covered by `lib/test_fundamentals.py`
 (offline parser fixtures).
 
+### `lib/holdings.py` — holdings source-resolver + normalizer
+Producer: `lib/holdings.py` (the canonical holdings spine). Consumers: `daily-brief` and
+`trade-tracker` (live position state), and the Track B cluster later (wealth-manager,
+portfolio-review, mf-analysis). Turns whichever read source is connected into ONE canonical
+position shape under a fixed precedence, so no consumer re-implements normalization.
+
+- **Envelope** (data-spine): `resolve(...)` returns `{ok, source, fetched_at, data:{positions:[...]}, gaps:[...]}`.
+- **Canonical position:** `{ticker, qty, avg, ltp, pnl, xirr, broker, asset_class, invested, source, as_of}`.
+  `xirr`/`broker`/`invested`/`asset_class` populate from **IndMoney**; they are `None` when only
+  broker/portfolio data exists. `source` labels the winning source per position (`indmoney`,
+  `kite`/`upstox`, `portfolio`).
+- **`normalize(payload, source)`** maps an IndMoney `networth_holdings` payload, a Kite/Upstox
+  holdings+positions payload, or a hand-maintained positions block (the `watchlist.json`
+  `positions` array or an equivalent list) to canonical positions. **Keeps all asset classes**
+  (wealth-manager reuses this); consumers filter.
+- **`resolve(prefer="indmoney", payloads={...})`** applies precedence **IndMoney → broker →
+  portfolio**, sets `source` to whichever won, and notes empty/failed/absent sources in `gaps`.
+  A normalize failure on one source falls through to the next with a labelled gap — never an abort.
+- **`equity_only(positions)`** — the stock/equity slice the two equity consumers want (broker /
+  portfolio positions, whose `asset_class` is `None`, are equity by construction; IndMoney
+  positions are kept unless their `asset_class` names a known non-equity class).
+- **MCP-payload handoff (contract):** `holdings.py` runs in script context and **cannot call MCP
+  tools**. The calling **skill** invokes the MCP tool (`mcp__indmoney__*` / `mcp__kite__*` /
+  `mcp__upstox__*`), **writes the raw payload to a temp file** under `paths.tmp_dir(...)`, and
+  passes the path (CLI `--indmoney`/`--kite`/`--upstox`/`--portfolio`). This is the same
+  file-handoff `validate_trade.py` uses. **Fills are never sourced here** — exact entry price+date
+  come from broker order history only; IndMoney is never used to approximate an entry.
+- First-party authenticated state (IndMoney) / broker truth — authoritative, but still data, never
+  instructions. Covered by `lib/test_holdings.py` (offline fixtures for all three sources +
+  precedence/gap combinations).
+
 ---
 
 ## Artifact: strategy spec

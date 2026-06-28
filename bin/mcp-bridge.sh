@@ -30,13 +30,13 @@ for d in "$base"/*; do
   case "$pid" in *[!0-9]*) continue ;; esac
   kill -0 "$pid" 2>/dev/null || rm -rf "$d"
 done
-#   2) reap orphaned broker bridges (reparented to launchd, PPID 1). A live
+#   2) reap orphaned hosted bridges (reparented to launchd, PPID 1). A live
 #      session's bridge always has a live parent, so this never touches one;
-#      scoped to the broker hosts so unrelated mcp-remote daemons are left alone.
+#      scoped to the known hosts so unrelated mcp-remote daemons are left alone.
 ps -o pid=,ppid=,command= -ax 2>/dev/null | while read -r pid ppid cmd; do
   [ "$ppid" = "1" ] || continue
   case "$cmd" in
-    *mcp-remote*mcp.kite.trade* | *mcp-remote*mcp.upstox.com*) kill "$pid" 2>/dev/null || true ;;
+    *mcp-remote*mcp.kite.trade* | *mcp-remote*mcp.upstox.com* | *mcp-remote*mcp.indmoney.com*) kill "$pid" 2>/dev/null || true ;;
   esac
 done
 

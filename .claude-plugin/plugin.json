@@ -64,6 +64,10 @@
     "upstox": {
       "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
       "args": ["https://mcp.upstox.com/mcp"]
+    },
+    "indmoney": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
+      "args": ["https://mcp.indmoney.com/mcp"]
     }
   }
 }

@@ -28,9 +28,11 @@ Two layers the script defers to the skill (qualitative judgement):
 - **Remaining RRR to target** = (target − price) / (price − stop). As price climbs toward target this collapses; when the remaining reward no longer justifies the open risk, trimming or tightening the stop is rational even pre-target.
 - **Portfolio view**: sum the open risk (heat). The single-trade verdict is local; if total heat is high, prefer the exits the script flags and resist adding.
 
-## Broker data notes (Kite / Upstox MCP)
+## Broker & IndMoney data notes
 
-- Both hosted MCPs are **read-only** — they expose holdings, positions, orders, quotes; they cannot place or modify orders. That matches this plugin's hard rule: it recommends exits, the user executes them.
+- **Live state comes through `lib/holdings.py`** (precedence IndMoney → broker): it normalizes whichever source is connected to one canonical position shape (symbol/qty/avg/ltp/pnl, plus XIRR from IndMoney). IndMoney is read-only net worth across assets; the broker MCPs are the equity fallback. State (what you hold, at what live price) and **fills** (your exact entry) are different questions — see the next bullets.
+- **Fills are broker-only.** IndMoney has no order/trade history and its avg-cost must never be fed to the validator as `--entry`. The real fill comes from the broker's order history (or a `fill_avg` already recorded on the artifact). IndMoney-only with no recorded fill → report live health but make R-multiple/time-stop a Data gap.
+- Both hosted broker MCPs are **read-only** — they expose holdings, positions, orders, quotes; they cannot place or modify orders. That matches this plugin's hard rule: it recommends exits, the user executes them.
 - **Holdings** = settled/delivery (CNC) stock; **Positions** = intraday + F&O (MIS/NRML). A swing trade usually shows in holdings (T+1 onward) or as an overnight position. Match on trading symbol; reconcile qty against the artifact's planned qty and note partial fills.
 - Auth is per-session (Kite) or daily (Upstox); a stale session looks like "no tools" or an auth error — re-authenticate, don't guess positions.
 - The MCP's `average_price` is the **actual fill**; feed it to the validator as `--entry` so R/P&L are real. Keep the artifact's planned `entry` separate (it's the trigger you designed, not necessarily where you got filled).
