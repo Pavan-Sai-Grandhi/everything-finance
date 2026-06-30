@@ -28,3 +28,5 @@ venv/
 # Local secrets never live here (they're in ~/.claude/.env) — belt and braces:
 .env
 *.env
+
+docs/
