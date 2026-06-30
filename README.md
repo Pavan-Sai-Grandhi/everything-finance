@@ -22,10 +22,11 @@ SCREENER_SESSION_ID=...       # optional, screener.in sessionid cookie (saved sc
 SCREENER_CSRF_TOKEN=...       # optional, screener.in csrftoken cookie
 ```
 
-The plugin registers three MCP servers:
+The plugin registers four MCP servers:
 
 - **Playwright** (`npx @playwright/mcp@latest`, **real Chrome channel** — needed to beat the Akamai walls on Moneycontrol/NSE) for JS-heavy/authenticated pages.
 - **Kite** (Zerodha, `https://mcp.kite.trade/mcp`) and **Upstox** (`https://mcp.upstox.com/mcp`) — read-only broker access for `/trade-tracker`, both hosted and OAuth-gated; neither can place orders. You only need the broker you actually use. They run through `bin/mcp-bridge.sh`, a thin `mcp-remote` wrapper that gives **each Claude session its own OAuth config dir** (`~/.mcp-auth-sessions/<pid>`) so concurrent sessions register on independent callback ports and never collide on a shared one (the EADDRINUSE you'd otherwise hit when a second window connects to the same broker). It self-cleans after exited sessions — dropping their config dirs and reaping any bridge a crash/closed-terminal left orphaned (PPID 1), never a live session's. The trade-off of isolation: you authenticate **per session** (Kite already required this; Upstox is once per session rather than once per day). A reconnect within the same session reuses the stored token.
+- **IndMoney** (`https://mcp.indmoney.com/mcp`) — read-only, the **primary** source for live holdings, positions and net worth across all asset classes (with per-position P&L and XIRR), superseding the single-broker equity view. It runs through the same `bin/mcp-bridge.sh` (same per-session isolation and self-healing). OAuth is mobile + OTP + MPIN, read-only by design and revocable from IndMoney settings; the first run pops a browser consent screen. It carries no order/trade history, so exact entry fills still come from the broker MCPs — IndMoney is never used to approximate an entry.
 
 Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfinance for OHLCV, Moneycontrol's `priceapi` JSON and the BSE/mfapi JSON APIs over plain curl, screener.in with auth cookies. WebFetch handles the static, non-blocking pages; Claude in Chrome is the CAPTCHA fallback. TradingView's **stock screener** is driven via the Playwright browser for find-trade's technical cut (its chart pages remain a human-facing link); all computed OHLCV still comes from yfinance.
 
