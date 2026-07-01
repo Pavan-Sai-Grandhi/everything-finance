@@ -40,6 +40,7 @@
     <div class="stat"><div class="num {{SAVINGS_CLASS}}">{{SAVINGS_RATE}}%</div><div class="lbl">Savings + investments rate</div></div>
     <div class="stat"><div class="num">₹{{INVESTED}}</div><div class="lbl">Invested</div></div>
     <div class="stat"><div class="num {{LEFTOUT_CLASS}}">₹{{LEFTOUT}}</div><div class="lbl">Leftout</div></div>
+    <div class="stat"><div class="num">₹{{RECURRING_MONTHLY}}</div><div class="lbl">Committed recurring / mo</div></div>
     <div class="stat"><div class="num">{{TXN_COUNT}}</div><div class="lbl">Transactions</div></div>
   </div>
 
@@ -70,6 +71,18 @@
     <thead><tr><th>Merchant</th><th>Count</th><th>Total</th><th>Category</th></tr></thead>
     <tbody>
       <tr><td>{{MERCHANT}}</td><td>{{COUNT}}</td><td>₹{{TOTAL}}</td><td>{{CATEGORY}}</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Committed recurring spend</h2>
+  <div class="meta">₹{{RECURRING_MONTHLY}}/mo across {{RECURRING_COUNT}} recurring charges (dormant excluded from the total).</div>
+  <table class="recurring">
+    <thead><tr><th>Merchant</th><th>Cadence</th><th>Amount</th><th>₹/mo</th><th>Seen</th><th>Flag</th></tr></thead>
+    <tbody>
+      <!-- ROW per detected subscription/EMI/membership, sorted by ₹/mo desc.
+           FLAG cell: 🆕 new · ⬆️ price creep (show prior→now) · 💤 dormant (lapsed — confirm cancel).
+           Low-confidence rows (single-period inferred): append "· inferred". -->
+      <tr><td>{{MERCHANT}}</td><td>{{CADENCE}}</td><td>₹{{AMOUNT}}</td><td>₹{{MONTHLY_EQUIV}}</td><td>{{MONTHS_OBSERVED}}</td><td class="{{FLAG_CLASS}}">{{RECURRING_FLAG}}</td></tr>
     </tbody>
   </table>
 

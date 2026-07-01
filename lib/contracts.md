@@ -21,7 +21,7 @@ each). Root is `$EVERYTHING_FINANCE_ARTIFACTS` or `./artifacts` (cwd). Three lif
 singletons like `daily-brief/<date>.md`), **durable state** (`state/strategies/`, `state/trades/`,
 `state/alerts/`, `state/watchlist.json`), and **disposable** (`cache/`, `tmp/`). Helpers:
 `root, stock_dir, fund_dir, report_path, report_dir, backtest_dir, state_dir, alerts_dir,
-watchlist_path, cache_dir, tmp_dir, sector_cache_path` (all create dirs as needed),
+watchlist_path, cache_dir, tmp_dir, sector_cache_path, merchant_map_path` (all create dirs as needed),
 **`sector_cache_age_days(sector)`** (freshness of the monthly sector cache — `None` if
 missing/undated), and **`latest_prior(skill, subject, before=None)`** — the prior-run lookup
 that powers "refer the earlier run"
@@ -298,6 +298,42 @@ runs (no cron); `daily-brief` and `alert-manager` never place an order or auto-r
 auto-removes). **Location:** `artifacts/state/watchlist.json` (`paths.watchlist_path()`). Shape:
 `{"watchlist": [{ticker, added, source, note}], "positions": [{ticker, entry, sl, target, qty,
 entry_date, bse_code}]}`. A bare-string legacy watchlist is still read.
+
+## Artifact: budget merchant map
+**Producer/consumer:** `budget-tracker` (`scripts/categorize.py`). **Location:**
+`artifacts/budget/merchant-map.json` (`paths.merchant_map_path()`) — durable state, not dated,
+co-located with the dated `budget/<YYYY-MM>.html` reports. **Shape:** a flat
+`{ "<MERCHANT_TOKEN>": "<Category>" }` object, keyed by the normalized merchant token
+`categorize.normalize_token` produces (uppercased, narration plumbing / masked card numbers /
+`@handle` suffixes / short+numeric words stripped, first significant word) so UPI/POS/handle
+variants of one merchant collapse to a single rule. **Category** is one of the reference.md
+workbook categories (Groceries, Dine & Entertainment, EMIs, Investments, …). Resolution order in
+`categorize.py`: **map → reference.md taxonomy → UNCATEGORIZED**; the map wins so a correction
+overrides the taxonomy. The **same tokenizer** keys lookup and the `--learn` write, so a
+correction resolves the merchant it was made against. Missing/corrupt map ⇒ taxonomy-only, then
+rebuild — never a crash. Covered by `skills/budget-tracker/scripts/test_categorize.py`.
+
+## Convention: cashflow-leg digest (budget-tracker `quick`)
+**Producer:** `budget-tracker` in `quick` mode. **Consumer:** `wealth-manager` (the Track B
+personal-finance cluster) — the cheap cashflow read, mirroring the deep-analysis/mf-analysis
+digest hygiene (return a compact block, not the full render). `quick` writes **no HTML** and no
+transaction detail; it returns only:
+
+```
+<!-- cashflow-block
+savings_rate: <pct>            # (investments + leftout) / total inflow
+buckets: { Essential:{actual_pct,target,status}, Lifestyle:{...}, EMIs:{...}, Investments:{...} }
+biggest_leak: <category> ₹<amount>
+recurring_monthly: ₹<committed recurring/month>   # scripts/recurring.py total (dormant excluded)
+target_source: workbook | framework
+gaps: [ ... ]                 # "UNCATEGORIZED ₹X across N txns", "no prior months", ...
+month: <YYYY-MM>
+-->
+```
+
+`target_source` states whether the bands came from the user's workbook or the framework
+percentages (graceful degradation — labelled, never silently defaulted). Transaction-level data
+stays in the artifact, never in the digest.
 
 ---
 

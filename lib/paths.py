@@ -139,6 +139,16 @@ def watchlist_path():
     return _mkparent(os.path.join(state_dir(), "watchlist.json"))
 
 
+def merchant_map_path():
+    """budget/merchant-map.json — budget-tracker's durable merchant→category map.
+
+    Durable state (not dated), but co-located with the dated budget artifacts under
+    budget/ rather than state/ so a month's whole trail — the <YYYY-MM>.html reports
+    and the map they build up — lives in one folder. Loaded at the start of every
+    run and rewritten when the user corrects a categorization."""
+    return _mkparent(os.path.join(root(), "budget", "merchant-map.json"))
+
+
 def sector_cache_path(sector):
     """state/sectors/<slug>.md — the shared, monthly-refreshed sector read.
 

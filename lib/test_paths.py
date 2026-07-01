@@ -87,6 +87,11 @@ with tempfile.TemporaryDirectory() as tmp:
     check("cache_dir named", paths.cache_dir("ohlcv") == os.path.join(root, "cache", "ohlcv"))
     check("tmp_dir named", paths.tmp_dir("staging") == os.path.join(root, "tmp", "staging"))
 
+    mmp = paths.merchant_map_path()
+    check("merchant_map_path under budget/",
+          mmp == os.path.join(root, "budget", "merchant-map.json"), mmp)
+    check("merchant_map_path parent created", os.path.isdir(os.path.dirname(mmp)))
+
 # --- sector cache ------------------------------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
