@@ -335,6 +335,34 @@ month: <YYYY-MM>
 percentages (graceful degradation — labelled, never silently defaulted). Transaction-level data
 stays in the artifact, never in the digest.
 
+## Convention: investments-leg digest (portfolio-review `quick`)
+**Producer:** `portfolio-review` in `quick` mode. **Consumer:** `wealth-manager` (the Track B
+personal-finance cluster) — the cheap investments read, the sibling of the cashflow-leg digest
+above; same hygiene (a compact block, no per-holding deep fan-out, no report render). `quick`
+runs the multi-dimensional allocation + concentration engine (`scripts/allocation.py`) and the
+cheap per-holding drift/exit flags, but **not** the bounded `deep-analysis`/`mf-analysis`
+fan-out (that is `deep`-only). It returns only:
+
+```
+<!-- investments-block
+book_xirr: <blended portfolio XIRR %, or "inferred" | "unavailable">   # from lib/holdings.py (IndMoney)
+allocation: { asset_class:{equity,debt,cash pct}, market_cap:{large,mid,small,micro pct},
+              top_sector:"<name> <pct>", top_amc:"<name> <pct>" }
+concentration_flags: [ {dimension, category, pct, severity}, ... ]     # ranked, most-concentrated first
+top_exits: [ {ticker, verdict, reason}, ... ]                          # bounded worst-first (EXIT/TRIM/REVIEW)
+laggard_funds: [ {scheme, reason}, ... ]                               # from mf-analysis quick digests
+value: ₹<total book value>
+coverage: { sector:<pct>, market_cap:<pct> }                          # dimension coverage — partial reads as partial
+gaps: [ ... ]                 # "no IndMoney — manual paste, XIRR unavailable", "target split not stated", ...
+as_of: <YYYY-MM-DD>
+-->
+```
+
+`book_xirr` is `unavailable` when no IndMoney/broker source connected (manual-paste path) and
+`inferred` when only staleness could be estimated — never a fabricated number. Holdings-value
+detail (the full KEEP/TRIM/EXIT table) stays in the artifact, never in the digest (values are
+sensitive; the digest carries verdicts and percentages only).
+
 ---
 
 ## The pipeline these contracts wire together

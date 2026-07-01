@@ -9,6 +9,15 @@ Trades and investments answer to different judges — the first mistake reviews 
 - **Trading book**: judged by the system — entry/SL/target honored, time-stop ~4 weeks. An SL-hit position still in the account is a rule breach, not a market opinion.
 - **Investment book**: judged by the business — the fundamental drift checks below. Price drawdown alone is not an exit reason here; thesis damage is.
 
+## Scope — the portfolio view, depth deferred
+
+This skill owns the **portfolio** lens (allocation across dimensions, concentration, laggard detection, the KEEP/TRIM/EXIT verdict) and defers all **single-name** depth. On every holding it runs a *cheap* read to decide whether a name warrants a closer look, then hands the closer look downstream — it never re-derives single-stock or single-fund analysis here:
+
+- **Stock depth → `deep-analysis`.** The cheap read is the screener drift snapshot below; only names that trip a flag are confirmed with a bounded `deep-analysis --quick` (≤ 5 worst), and the most serious get a `/deep-analysis` (full) suggestion.
+- **Fund depth → `mf-analysis`.** The cheap read is an `mf-analysis quick` digest on every held fund; only flagged funds get a targeted `mf-analysis deep`.
+
+The book comes from `lib/holdings.py` (IndMoney → broker → manual), so **XIRR is the primary performance lens** where present — a real laggard is a poor *held* XIRR, not a point-to-point guess. Where XIRR is absent the read is labelled inferred.
+
 ## Investment-book drift checks (exit/trim triggers)
 
 Would-I-buy-today test on current data, focusing on deterioration:
@@ -21,17 +30,26 @@ Would-I-buy-today test on current data, focusing on deterioration:
 
 Three KEEP-grade reasons that survive drawdowns: intact growth + ROCE, falling debt, rising promoter/institutional holding. Name which applies.
 
-## Concentration thresholds
+## Concentration thresholds (multi-dimensional)
 
-- Single stock > 10% of portfolio → flag (winner concentration is allowed but must be a conscious choice)
-- Single sector > 25% → flag; > 35% → urgent
-- Small+microcap sleeve > 30% → liquidity risk flag (exit doors are narrow in corrections)
-- Trading book total > 20% of overall portfolio → the tail is wagging the dog
+`scripts/allocation.py` computes every dimension and returns each breach with its ₹-at-risk and a concrete ₹ trim. The thresholds it defaults to:
 
-## Fund-sleeve checks (method summary — deep version in the mf-analysis skill)
+- **Single stock** > 10% of portfolio → flag (winner concentration is allowed but must be a conscious choice)
+- **Single sector** > 25% → flag; > 35% → urgent
+- **Market cap** — small+microcap sleeve > 30% → liquidity-risk flag (exit doors are narrow in corrections). Cap split comes from IndMoney `networth_allocation_breakdown` plus fund look-through, not guessed per row.
+- **AMC** — one fund house > 40% of the fund sleeve → flag (platform/AMC-level risk hides behind fund-level diversification)
+- **Investing style** — the growth/value/factor mix (from mf-analysis style data); a single-factor tilt is a conscious choice, not a default — surface it
+- **Trading book** total > 20% of overall portfolio → the tail is wagging the dog
 
-- Rolling 3Y consistency below category median for 2+ years → REVIEW; bottom quartile → EXIT candidate (switch, mind capital gains + exit load)
-- Pairwise overlap > 60% between two equity funds → redundant; keep the cheaper/more consistent one
+Because dimensions like market-cap and style are portfolio-level weights, the engine takes them as pre-aggregated breakdowns (provenance-honest) while single-stock/sector/AMC aggregate the per-holding tags; missing tags lower a dimension's coverage rather than reading as zero.
+
+## Fund-sleeve checks (method summary — depth deferred to mf-analysis)
+
+Every held fund gets an `mf-analysis quick` digest; the checks below decide which funds escalate to `mf-analysis deep`:
+
+- **Held XIRR** materially below the fund's own category rank / benchmark → REVIEW (the primary laggard signal on the real book); persistently bottom-quartile → EXIT candidate (switch, mind capital gains + exit load)
+- Expense-ratio drag vs category, category-rank percentile slipping, AUM instability, or visible style drift → escalate to deep
+- Pairwise overlap > 60% between two equity funds → redundant; keep the cheaper/more consistent one (overlap needs the look-through — defer the pair to `/mf-analysis`)
 - Fund count sanity: > 6–7 equity funds is diworsification
 
 ## Allocation drift
