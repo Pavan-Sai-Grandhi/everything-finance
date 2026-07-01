@@ -41,7 +41,7 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 | `/fundamental-analysis TICKER` | Fundamentals-only view without the debate: the same fetch-once pack → financials (Varsity checklist + overview), management (integrity gate + skill), and valuation (DCF + confidence) legs, merged into one report |
 | `/sector-analysis [sector]` | Deep-dive the sector(s) you name, or rank NSE sectoral indices and deep-dive the top three — RS, sector KPIs, tailwinds/headwinds, top picks (runs the `sector-analyst` agent). Seeds the shared monthly sector cache that `/deep-analysis` reuses |
 | `/mf-analysis` | Mutual fund research: NAV history, rolling returns, category comparison, fund quality verdict |
-| `/insurance-check` | Life + health coverage adequacy vs need, gap list, action items |
+| `/insurance-advisor` | Term/health/vehicle insurance — advise & compare (shortlist 2), audit existing cover, or answer questions on a policy you hold |
 | `/budget-tracker` | Parse bank/CC statements (PDF/CSV), categorize, compare against the Monthly Budget Planning framework, discipline report |
 | `/filings-watch TICKER` | NSE + BSE announcements, corporate actions, shareholding pattern changes |
 | `/daily-brief` | Morning one-pager: indices, a market-moving news digest, sector tone, the open-alert inbox + actions due, a strictly-capped opportunities shortlist (vetted from the alert inbox + ≤1 labelled news flag), watchlist filings & news, open-position health — Telegram-ready. Surfaces and recommends; never auto-runs a skill or places an order |

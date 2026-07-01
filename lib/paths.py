@@ -112,6 +112,15 @@ def backtest_dir(spec, date=None):
     return _mkdir(os.path.join(root(), "backtest", str(spec), _day(date)))
 
 
+def insurance_report_path(policy_type, date=None, ext="md"):
+    """insurance/<type>/<date>.<ext> — insurance-advisor's per-type report; parent created.
+
+    ``policy_type`` is one of term / health / vehicle (slugged). Advise mode writes here;
+    Audit and Ask (not per-type) use ``report_path("insurance")``."""
+    slug = re.sub(r"[^a-z0-9]+", "-", str(policy_type).strip().lower()).strip("-")
+    return _mkparent(os.path.join(root(), "insurance", slug, f"{_day(date)}.{ext.lstrip('.')}"))
+
+
 # --- durable, mutable, not dated ---------------------------------------------
 
 def state_dir(name=None):
