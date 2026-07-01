@@ -1,7 +1,10 @@
 # {{TICKER}} — Deep Analysis ({{DATE}})
 
-> **{{CALL}}** · conviction {{CONVICTION}} · CMP ₹{{CMP}}{{COMPANY_NAME_SUFFIX}}
+> **{{CALL}}** · conviction {{CONVICTION}} · CMP ₹{{CMP}}{{COMPANY_NAME_SUFFIX}} · depth: {{MODE}}
 > {{ONE_LINE_THESIS}}
+
+<!-- QUICK_BANNER: include this block ONLY in `quick` mode; delete it entirely in standard/deep. -->
+> ⚡ **Quick read — not full diligence.** Skipped: annual report & concall (lite data-pack), and the management, news, and sector lenses. Re-run `/deep-analysis {{TICKER}}` (standard) or `--deep` for the full debate. ({{MODE_REASON}})
 
 ## Telegram Brief
 {{CALL}} {{TICKER}} @ ₹{{CMP}} (conviction: {{CONVICTION}})
@@ -43,7 +46,7 @@ Prior run: `{{PRIOR_PATH}}`
 | **Invalidation** | {{INVALIDATION}} |
 | **Review trigger** | {{REVIEW_TRIGGER}} |
 
-## 2 · At a Glance — six lenses
+## 2 · At a Glance — the lenses
 | Lens | Stance | One-line read |
 |---|---|---|
 | 🧭 Sector | {{SECTOR_STANCE}} | {{SECTOR_ONELINE}} |
@@ -52,7 +55,9 @@ Prior run: `{{PRIOR_PATH}}`
 | 🛡️ Management | {{MGMT_STANCE}} | {{MGMT_ONELINE}} |
 | ⚖️ Valuation | {{VAL_STANCE}} | {{VAL_ONELINE}} |
 | 📰 News & sentiment | {{NEWS_STANCE}} | {{NEWS_ONELINE}} |
-<!-- Valuation one-line carries intrinsic MoS + DCF confidence (low/med/high).
+<!-- standard/deep show all six. In `quick`, only Technical, Financials, Valuation ran —
+     mark Sector / Management / News rows "not run (quick)" rather than dropping them, so the
+     gap is visible. Valuation one-line carries the combined stance + DCF confidence (low/med/high).
      Management stance is the integrity gate (PASS/FLAG/FAIL) + skill grade; a FAIL here forces the verdict to Avoid. -->
 
 ## 3 · Company Overview
@@ -61,12 +66,13 @@ Prior run: `{{PRIOR_PATH}}`
      geography, flagship products, the moat — so a reader meeting the company here is oriented. -->
 
 ## 4 · The Debate — {{DEBATE_ROUNDS}}
-<!-- e.g. "3 rounds (hit max)" or "2 rounds (converged)". -->
+<!-- e.g. "3 rounds (hit max)", "2 rounds (converged)", "1 round (no divergence)", or "single contest (quick)". -->
 **🐂 Bull thesis.** {{BULL_SYNTHESIS}}
-<!-- Distill the bull's strongest *surviving* arguments across all rounds + final conviction into prose. -->
+<!-- Distill the bull's strongest *surviving* arguments across all rounds (or the contest's bull side) + conviction into prose. -->
 
 **🐻 Bear thesis.** {{BEAR_SYNTHESIS}}
-<!-- Same for the bear — what still stood after rebuttal, and anything it conceded. -->
+<!-- Same for the bear — what still stood after rebuttal (or the contest's bear side), and anything it conceded.
+     In `quick`, if the contest lean was "genuinely split", say so here and suggest re-running standard/deep. -->
 
 **⚖️ What decided it.** {{DECISIVE_POINTS}}
 <!-- Which arguments the portfolio-manager kept, which it discarded, where the debate landed, and the dissent worth keeping. -->
@@ -101,8 +107,9 @@ Prior run: `{{PRIOR_PATH}}`
 <summary>Work papers — full agent reports</summary>
 
 The raw, unedited report from each forked agent is archived alongside this file under
-`./{{TICKER}}-deep-analysis/agents/` (technical, financials, management, valuation, news, sector,
-bull-r1…N, bear-r1…N, verdict) and the sourced data-pack under `./{{TICKER}}-deep-analysis/fundamentals/`.
+`./{{TICKER}}-deep-analysis/agents/` (the legs that ran — technical, financials, valuation, and in
+standard/deep management, news, sector — plus `contest` in quick or `bull-r1…N`, `bear-r1…N` in
+standard/deep, and verdict) and the sourced data-pack under `./{{TICKER}}-deep-analysis/fundamentals/`.
 This report is the synthesis of those; consult them for the full evidence trail.
 </details>
 

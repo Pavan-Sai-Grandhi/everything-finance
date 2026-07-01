@@ -217,24 +217,41 @@ a trade without it breaks the learning loop.
 **Producer:** the `fundamentals-data` agent → `artifacts/tmp/staging/<TICKER>/fundamentals/data-pack.md`
 — the single sourced fetch of one company's fundamentals for a run. **Consumers:** `financials-analyst`,
 `management-analyst`, `valuation-analyst` (each Reads it; none re-fetches), so all three reason off the
-same sourced numbers. **Fields:** CMP (+ as-of); the screener envelope (`ratios`, `pnl_10y`,
-`balance_sheet_10y`, `quarters`, `shareholding`, `peers`); annual-report excerpts keyed by section
-(MD&A, segment note, auditor, RPT, contingent liabilities, cash flow, revenue recognition) each with a
-page/section cite; management-quality signals (remuneration, RPT detail, auditor fees & trend,
-board/KMP profiles, pledging, multi-year MD&A); concall takeaways (quarter cited); and `Data gaps`.
-Facts only — no scoring/verdict. Archived under `deep-analysis/fundamentals/` by the Stop hook.
+same sourced numbers. **Fields:** a `depth:` frontmatter marker (`full` or `lite`); CMP (+ as-of); the
+screener envelope (`ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`);
+annual-report excerpts keyed by section (MD&A, segment note, auditor, RPT, contingent liabilities, cash
+flow, revenue recognition) each with a page/section cite; management-quality signals (remuneration, RPT
+detail, auditor fees & trend, board/KMP profiles, pledging, multi-year MD&A); concall takeaways (quarter
+cited); and `Data gaps`. **`depth: lite`** (deep-analysis `quick` mode) carries **only** the screener
+envelope + CMP — the annual-report sections, management signals, and concall are omitted and listed as
+gaps; consumers label them rather than infer. **`depth: full`** (standard/deep, `/fundamental-analysis`)
+carries everything. Facts only — no scoring/verdict. Archived under `deep-analysis/fundamentals/` by the Stop hook.
+
+## Convention: agent digest (deep-analysis IO hygiene)
+Every forked deep-analysis agent (legs, contest, bull/bear, portfolio-manager) **writes its full report
+to its staged file** and **returns to the orchestrator only a compact digest** — its machine-readable
+top block (`<!-- <role>-block … -->`: verdict/grade/stance line, a few key numbers, an `axis` tag, and
+for debate agents a `conceded` + `new_evidence` flag) plus the file `path`. The orchestrator and any
+downstream agent receive **paths**, not bodies, and Read what they need in their own context. This keeps
+the orchestrator from re-carrying six full reports and is the contract `scripts/escalation.py` relies on
+(it reads the bull/bear `debate-block` axis + concession). Producers: all deep-analysis agents.
+Consumers: the deep-analysis orchestrator, `escalation.py`, and the synthesis.
 
 ## Artifact: deep-analysis report
 **Producer:** `deep-analysis` → `artifacts/stocks/<TICKER>/<date>/deep-analysis.md` (`paths.stock_dir`),
 the synthesized report, with each forked agent's raw report archived beside it under
-`artifacts/stocks/<TICKER>/<date>/deep-analysis/agents/<role>.md` (work papers: `technical`, `financials`,
-`management`, `valuation`, `news`, `sector`, `bull-r1…N`, `bear-r1…N`, `verdict`) plus the data-pack
-under `deep-analysis/fundamentals/`. The Stop hook archives the whole `artifacts/tmp/staging/<TICKER>/`
-tree (and final report `artifacts/tmp/staging/<TICKER>.md`), and sends the `## Telegram Brief` section.
-**Consumer:** `trade-tracker` (as a rationale source when no trade-idea artifact exists). The valuation
-leg embeds the `dcf-valuation` intrinsic range **with a DCF-confidence grade** and the management leg
-embeds the `management-quality` grade; both are **also persisted as discrete files** (`dcf.md`/`dcf.json`,
-`management.md`) in the same `stocks/<TICKER>/<date>/` folder. The sector leg embeds the `sector-analyst`
+`artifacts/stocks/<TICKER>/<date>/deep-analysis/agents/<role>.md`. The work papers present depend on the
+run's **depth mode** (recorded in the report): `quick` → `technical`, `financials`, `valuation`,
+`contest`, `verdict`; `standard`/`deep` → `technical`, `financials`, `management`, `valuation`, `news`,
+`sector`, `bull-r1…N`, `bear-r1…N`, `verdict` — plus the data-pack under `deep-analysis/fundamentals/`.
+The Stop hook archives the whole `artifacts/tmp/staging/<TICKER>/` tree (and final report
+`artifacts/tmp/staging/<TICKER>.md`), and sends the `## Telegram Brief` section. **Consumer:**
+`trade-tracker` (as a rationale source when no trade-idea artifact exists). The valuation leg embeds a
+**multi-method** read — intrinsic DCF range **with a DCF-confidence grade** plus the relative multiples
+(P/E, PEG, peer-median, EV/EBITDA) reconciled into a combined stance — and the management leg
+(standard/deep) embeds the `management-quality` grade; the DCF and management outputs are **also persisted
+as discrete files** (`dcf.md`/`dcf.json` always, `management.md` when the leg ran) in the same
+`stocks/<TICKER>/<date>/` folder. The sector leg embeds the `sector-analyst`
 read, sourced from the shared sector cache (see *Artifact: sector cache*). Because every artifact for a
 stock+run-day lives in one folder, `paths.latest_prior(skill, TICKER)` finds the prior run of any leg
 (deep-analysis, dcf, management, filings) on a re-run.

@@ -15,13 +15,13 @@ The standalone fundamentals path. The same four agents `deep-analysis` uses for 
 
 ## Orchestration
 
-1. **Fetch once.** Run `fundamentals-data` (forked) with the ticker and output path `artifacts/tmp/staging/<TICKER>/fundamentals/data-pack.md` (`paths.tmp_dir("staging")`). It writes the sourced data-pack — the single source the next three legs read.
+1. **Fetch once.** Run `fundamentals-data` (forked) with the ticker, output path `artifacts/tmp/staging/<TICKER>/fundamentals/data-pack.md` (`paths.tmp_dir("staging")`), and fetch depth `full`. It writes the sourced data-pack — the single source the next three legs read.
 2. **Three legs in parallel**, each forked, each given the **data-pack path** and its own output path under `artifacts/tmp/staging/<TICKER>/agents/`:
    - `financials-analyst` → `financials.md`
    - `management-analyst` → `management.md`
-   - `valuation-analyst` → `valuation.md`
+   - `valuation-analyst` → `valuation.md` (pass mode `deep` — this is a full single-stock fundamental read, so the valuation leg loads the full DCF method, not the distilled checklist)
    Pass each agent only the data-pack path (they Read it themselves) — agents are forked and share no context. If a leg fails, continue and state the gap; do not let one leg abort the report.
-3. **Merge, don't paste.** Author one fundamentals report in plain prose from the three legs: company overview (financials), the checklist scorecard highlights, the management integrity gate + skill grade, and the intrinsic-value range + margin of safety **with its DCF-confidence grade** and the relative cross-check. If the integrity gate is FAIL, that is the headline — overall AVOID regardless of numbers or valuation.
+3. **Merge, don't paste.** Author one fundamentals report in plain prose from the three legs: company overview (financials), the checklist scorecard highlights, the management integrity gate + skill grade, and the valuation leg's **combined stance** — the intrinsic DCF range + margin of safety **with its DCF-confidence grade** reconciled with the relative multiples (P/E, PEG, peer-median, EV/EBITDA). If the integrity gate is FAIL, that is the headline — overall AVOID regardless of numbers or valuation.
 
 ## Persist
 

@@ -50,6 +50,7 @@
     "./agents/sector-analyst.md",
     "./agents/bull-researcher.md",
     "./agents/bear-researcher.md",
+    "./agents/contest-researcher.md",
     "./agents/portfolio-manager.md"
   ],
   "mcpServers": {

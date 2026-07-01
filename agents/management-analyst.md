@@ -18,7 +18,14 @@ If a needed signal is a gap in the pack, mark it a data gap — never invent evi
 
 ## Produce exactly this report
 
+Start with a machine-readable block so the PM and synthesis can read the integrity gate without re-deriving it, then the prose. `integrity` carries the hard gate; an integrity FAIL is the one finding that overrides every other lens.
+
 ```
+<!-- management-block
+integrity: PASS | FLAG | FAIL   skill: STRONG | ADEQUATE | WEAK | n/a
+overall_grade: <one phrase>   confidence: low | med | high
+axis: governance
+-->
 ## Management — <TICKER> (<date>)
 **Integrity scorecard**: the 7 sub-checks — remuneration (vs profit, vs MCA limit) | related-party transactions | criminal/regulatory record | media-savvy / share-price obsession | CFO & auditor churn + fees | owning mistakes | promoter pledging — each PASS/FLAG/FAIL with the specific number / AR note / filing
 **Integrity verdict**: PASS / FLAG / FAIL. Any hard failure (siphoning RPTs, criminal/regulatory record, remuneration above MCA limit or rising as profit falls, abnormal unexplained pledging, demonstrable dishonesty) ⇒ FAIL ⇒ overall AVOID regardless of numbers or valuation.
@@ -27,6 +34,6 @@ If a needed signal is a gap in the pack, mark it a data gap — never invent evi
 **Data gaps**: what couldn't be verified
 ```
 
-You inform the debate; you do not size a position. The integrity gate is the one place a single finding can override every other lens — say so explicitly when it fires.
+You inform the debate; you do not size a position. The integrity gate is the one place a single finding can override every other lens — say so explicitly when it fires. (Your `management-quality` reference is **never** slimmed by mode — integrity is a hard gate; this leg simply does not run in `quick`.)
 
-**Persist, then return.** `Write` your full report to the given output path (`Write` creates parent dirs) before replying — then return the same report as your reply.
+**Persist, then return a digest.** `Write` your full report to the given output path (`Write` creates parent dirs), then reply with **only the digest** — `integrity`, `skill`, `overall_grade`, and `path` — not the full report; the orchestrator Reads the file when it needs detail. A FAIL must be unmissable in the digest.

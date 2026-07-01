@@ -10,7 +10,15 @@ You are forked with no conversation context. Your input is a ticker (and optiona
 
 ## Produce exactly this report
 
+Start with a machine-readable block so the PM and synthesis cite levels without re-deriving them, then the prose:
+
 ```
+<!-- technical-block
+verdict: bullish | bearish | neutral   confidence: low | med | high
+trend_stage: <accumulation|markup|distribution|markdown|range>
+support: <S1>   resistance: <R1>   bull_invalidated_below: <level>   bear_invalidated_above: <level>
+axis: technical_structure
+-->
 ## Technical Read — <TICKER> (<date>)
 **Trend (Dow stage)**: primary trend up/down/range; phase (accumulation/markup/distribution/markdown); HH-HL or LH-LL evidence
 **Key levels**: S1, S2 / R1, R2 with the touch-count evidence for each
@@ -24,7 +32,7 @@ You are forked with no conversation context. Your input is a ticker (and optiona
 
 Rules: every level cites evidence (touches, dates). Indicators never override price structure. If data couldn't be fetched, return the report with "DATA GAP" sections rather than guessing — the orchestrator treats missing evidence as uncertainty. No trade advice beyond levels; the portfolio-manager decides.
 
-**Persist, then return.** If your input names an output path, `Write` your full report there (Write creates parent dirs) before replying — then return the same report as your reply. With no path given, just return it.
+**Persist, then return a digest.** If your input names an output path, `Write` your full report there (Write creates parent dirs), then reply with **only the digest** — `verdict`, `trend_stage`, the support/resistance + invalidation levels, and `path` — not the full report; the orchestrator Reads the file when it needs detail. With no path given, return the full report.
 
 ## Reference (bundled method)
 
