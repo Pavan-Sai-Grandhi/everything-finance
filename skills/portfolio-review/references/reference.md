@@ -28,7 +28,7 @@ Three KEEP-grade reasons that survive drawdowns: intact growth + ROCE, falling d
 - Small+microcap sleeve > 30% → liquidity risk flag (exit doors are narrow in corrections)
 - Trading book total > 20% of overall portfolio → the tail is wagging the dog
 
-## Fund-sleeve checks (method summary — deep version in the mf-research skill)
+## Fund-sleeve checks (method summary — deep version in the mf-analysis skill)
 
 - Rolling 3Y consistency below category median for 2+ years → REVIEW; bottom quartile → EXIT candidate (switch, mind capital gains + exit load)
 - Pairwise overlap > 60% between two equity funds → redundant; keep the cheaper/more consistent one

@@ -242,6 +242,7 @@ def normalize(payload, source):
 # --------------------------------------------------------------------------- #
 _NON_EQUITY = ("mutual", "mf", "bond", "gold", "silver", "fd", "deposit", "ppf",
                "epf", "nps", "cash", "insurance", "reit", "invit", "debt")
+_FUND = ("mutual", "mf")
 
 
 def equity_only(positions):
@@ -252,6 +253,18 @@ def equity_only(positions):
     for p in positions:
         ac = p.get("asset_class")
         if ac is None or not any(t in str(ac).lower() for t in _NON_EQUITY):
+            out.append(p)
+    return out
+
+
+def mf_only(positions):
+    """Mutual-fund slice for `mf-analysis` — the tagged counterpart of `equity_only`.
+    Only IndMoney carries the asset_class tag, so this is IndMoney-sourced by nature;
+    broker/portfolio rows (asset_class None) hold no funds and drop out."""
+    out = []
+    for p in positions:
+        ac = p.get("asset_class")
+        if ac is not None and any(t in str(ac).lower() for t in _FUND):
             out.append(p)
     return out
 
@@ -318,6 +331,7 @@ def main():
     ap.add_argument("--portfolio", help="path to the hand-maintained positions block (JSON/YAML)")
     ap.add_argument("--prefer", default="indmoney", help="source to lead precedence")
     ap.add_argument("--equity-only", action="store_true", help="filter to the equity slice")
+    ap.add_argument("--mf-only", action="store_true", help="filter to the mutual-fund slice")
     args = ap.parse_args()
 
     payloads = {}
@@ -329,6 +343,8 @@ def main():
     env = resolve(prefer=args.prefer, payloads=payloads)
     if args.equity_only:
         env["data"]["positions"] = equity_only(env["data"]["positions"])
+    elif args.mf_only:
+        env["data"]["positions"] = mf_only(env["data"]["positions"])
     print(json.dumps(env, indent=2))
 
 

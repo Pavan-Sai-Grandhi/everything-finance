@@ -29,3 +29,33 @@ Grounded in Zerodha Varsity — Personal Finance module (https://zerodha.com/var
 ## Framework context (ch. 1–5, 31–33)
 
 Order of operations Varsity teaches: emergency fund (6 months expenses, liquid fund/FD) → term + health insurance → then investing. SIP is a discipline device, not a return enhancer; incremental/step-up SIP (also in the user's budget workbook) compounds materially. Asset allocation (equity:debt by age/goals, rebalanced annually) explains most outcome variance — fund selection is second-order to allocation.
+
+## Forward-looking quality — the second pillar
+
+Everything above measures the *past*. Trailing/rolling returns are backward-looking; a fund's forward potential rides on what it owns now, what it costs, and who runs it. This pillar grades that, so the verdict reflects *potential*, not just history.
+
+### Look-through valuation
+
+IndMoney gives a fund's holdings + weights but not its portfolio P/E-P/B — so compute them from the underlying stocks' screener.in ratios (`lib/fundamentals.py`), via `scripts/lookthrough.py`.
+
+- **Aggregation is not averaging.** Portfolio P/E and P/B aggregate by the **weighted harmonic mean** — you sum earnings/book *yields* across holdings, then invert — because multiples don't add. ROE and earnings growth use the weighted arithmetic mean.
+- **Coverage is a first-class number.** Report the % of AUM that could be priced (e.g. "ratios cover 82% of AUM"); never extrapolate the uncovered remainder.
+- **Read:** a flexicap trading at a large P/E premium to its category while carrying only average look-through ROE/growth is priced for perfection — a forward risk no trailing chart shows.
+
+### Style & drift
+
+- **Cap-tilt** — large/mid/small by weight (absolute market-cap bands are indicative; SEBI classifies by rank).
+- **Value/growth lean** — low P/B + dividend tilt vs high P/E + high earnings-growth tilt.
+- **Concentration** — top-5/top-10 weight and the Herfindahl index; sector bets.
+- **Style drift** — compare current cap-tilt/sector mix against prior holdings disclosures. A "large-cap" fund quietly drifting mid/small changes its risk without changing its name — flag it explicitly.
+
+### AMC & manager trust (each claim sourced)
+
+- **Fund-house pedigree** — process discipline and breadth; a track record of investor-first conduct vs mis-selling, expense abuse, or penalties.
+- **Manager tenure ≥ 3y** over the window being credited (ties back to the ch. 24–26 checklist) and **alpha consistency** — is the record the current manager's, or a predecessor's?
+- **AUM stability/trend** — sudden inflows into a small/midcap strategy erode agility; persistent outflows can force selling.
+- **Governance & regulatory flags** — SEBI actions, front-running/expense-abuse cases, side-pocketing history.
+
+### Weighing the two pillars
+
+The verdict is a forward-leaning **fund-quality grade** (Hold-worthy / Watch / Avoid) combining valuation + holdings quality + style-fit + cost + AMC/manager trust, with rolling/trailing performance as *one input*, not the headline. State the 2–3 deciding factors. Every data gap (young fund lacks 5Y, holdings stale, look-through coverage < 100%) is named, never fabricated.

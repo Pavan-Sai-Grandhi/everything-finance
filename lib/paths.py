@@ -11,7 +11,7 @@ strings, so the layout (below) can never drift between skills — the same reaso
         dcf.md  dcf.json  dcf-inputs.yml
         management.md  filings.md
       funds/<SCHEME>/<date>/           funds are entities too
-        mf-research.md  mf-research.json
+        mf-analysis.md  mf-analysis.json
       <skill>/<date>.<ext>             date/singleton skills: skill-first
       <skill>/<date>/                  ...with work papers beside the report
       backtest/<spec>/<date>/
@@ -38,7 +38,7 @@ _STOCK_ARTIFACT = {
     "filings-watch": "filings.md",
 }
 _FUND_ARTIFACT = {
-    "mf-research": "mf-research.md",
+    "mf-analysis": "mf-analysis.md",
 }
 
 

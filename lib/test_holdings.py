@@ -136,6 +136,18 @@ def test_equity_only():
     check("equity_only: broker None-class kept", len(bro) == 3, len(bro))
 
 
+# --- mf_only ----------------------------------------------------------------- #
+
+def test_mf_only():
+    pos = holdings.normalize(INDMONEY, "indmoney")
+    mf = holdings.mf_only(pos)
+    tks = sorted(p["ticker"] for p in mf)
+    check("mf_only: keeps mutual fund, drops stocks", tks == ["PPFAS"], tks)
+    # broker rows carry no asset_class tag → no funds to keep
+    bro = holdings.mf_only(holdings.normalize(KITE, "kite"))
+    check("mf_only: broker None-class dropped", bro == [], bro)
+
+
 # --- resolve: precedence ----------------------------------------------------- #
 
 def test_resolve_indmoney_wins():

@@ -25,7 +25,7 @@ watchlist_path, cache_dir, tmp_dir, sector_cache_path` (all create dirs as neede
 **`sector_cache_age_days(sector)`** (freshness of the monthly sector cache — `None` if
 missing/undated), and **`latest_prior(skill, subject, before=None)`** — the prior-run lookup
 that powers "refer the earlier run"
-(deep-analysis, dcf, management, filings, mf-research). Import via the same three-dirs-up
+(deep-analysis, dcf, management, filings, mf-analysis). Import via the same three-dirs-up
 `sys.path.insert` idiom as `ta`/`strategy`. `lib/migrate_artifacts.py` does a one-time
 (dry-run-by-default) move of an old flat tree into this layout. Covered by `lib/test_paths.py`.
 
@@ -270,7 +270,7 @@ stays under `sector-analysis/<date>/`.
 **Producer:** many — `trade-tracker` (`price_cross`/`time_stop`/`regime_change`), `filings-watch`
 (`filing_act_on`), `strategy-manager` (`revalidate_due`), `deep-analysis` (`reanalyze_due` +
 `price_cross` invalidation + `opportunity`), `find-trade` (`price_cross` entry + `opportunity`),
-`portfolio-review` (`rebalance_due`), `mf-research` (`sip_due`), `sector-analysis` + `deep-analysis`
+`portfolio-review` (`rebalance_due`), `mf-analysis` (`sip_due`), `sector-analysis` + `deep-analysis`
 (`sector_refresh_due`), and `alert-manager` (manual).
 **Consumer:** `daily-brief` (surfaces and recommends — never auto-runs); `alert-manager` curates.
 **Owner of the schema/logic:** `lib/alerts.py`. **Location:** one file per alert at
