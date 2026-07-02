@@ -59,6 +59,7 @@ Retains today's needs-analysis shape, now citing the per-type references.
 - For an in-force **endowment/ULIP** held "for investment": compute the **marginal IRR of *continuing*** (`marginal_irr_continue(...)` — forgo surrender value + pay remaining premiums → maturity) and compare to a safe hurdle. Say plainly whether to keep it or surrender-and-buy-term-invest-the-rest, and label marginal-IRR vs whole-policy-IRR.
 - 3–5 prioritised actions with rough premium magnitudes.
 - Save to `paths.report_path("insurance")` → `insurance/YYYY-MM-DD.md`. End with the compliance close.
+- **As wealth-manager's protection leg:** the need-vs-have gap table and red-flag list computed here are exactly the `protection-block` digest (`lib/contracts.md`) — the `wealth-leg` runner distils them from this report. Nothing extra to compute; keep this mode standalone.
 
 ---
 

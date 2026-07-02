@@ -1,7 +1,7 @@
 {
   "name": "everything-finance",
-  "version": "0.6.0",
-  "description": "Personal India-focused financial intelligence: strategy-driven trade finding on the Nifty 500, multi-agent deep stock analysis, DCF valuation, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, and live trade tracking against your broker (Zerodha/Upstox).",
+  "version": "0.7.0",
+  "description": "Personal India-focused financial intelligence: strategy-driven trade finding on the Nifty 500, multi-agent deep stock analysis, DCF valuation, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, live trade tracking against your broker (Zerodha/Upstox), and whole-picture wealth management — total net worth across every asset class with a cross-domain financial-health scorecard.",
   "author": {
     "name": "Pavan Sai Grandhi"
   },
@@ -20,7 +20,9 @@
     "trade-tracker",
     "dcf",
     "valuation",
-    "governance"
+    "governance",
+    "net-worth",
+    "wealth-management"
   ],
   "skills": [
     "./skills/find-trade",
@@ -33,6 +35,7 @@
     "./skills/filings-watch",
     "./skills/daily-brief",
     "./skills/portfolio-review",
+    "./skills/wealth-manager",
     "./skills/backtest",
     "./skills/strategy-manager",
     "./skills/trade-tracker",
@@ -51,7 +54,8 @@
     "./agents/bull-researcher.md",
     "./agents/bear-researcher.md",
     "./agents/contest-researcher.md",
-    "./agents/portfolio-manager.md"
+    "./agents/portfolio-manager.md",
+    "./agents/wealth-leg.md"
   ],
   "mcpServers": {
     "playwright": {

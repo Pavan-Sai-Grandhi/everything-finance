@@ -325,6 +325,7 @@ savings_rate: <pct>            # (investments + leftout) / total inflow
 buckets: { Essential:{actual_pct,target,status}, Lifestyle:{...}, EMIs:{...}, Investments:{...} }
 biggest_leak: <category> ₹<amount>
 recurring_monthly: ₹<committed recurring/month>   # scripts/recurring.py total (dormant excluded)
+monthly_outflow: ₹<total spend/month>             # wealth-manager's emergency-fund runway denominator
 target_source: workbook | framework
 gaps: [ ... ]                 # "UNCATEGORIZED ₹X across N txns", "no prior months", ...
 month: <YYYY-MM>
@@ -362,6 +363,54 @@ as_of: <YYYY-MM-DD>
 `inferred` when only staleness could be estimated — never a fabricated number. Holdings-value
 detail (the full KEEP/TRIM/EXIT table) stays in the artifact, never in the digest (values are
 sensitive; the digest carries verdicts and percentages only).
+
+## Convention: protection-leg digest (insurance-advisor Audit)
+**Producer:** `insurance-advisor` Audit mode, **distilled by wealth-manager's `wealth-leg` runner**
+(the Audit writes a full report; the runner transcribes its already-computed need-vs-have gap table
+and red-flag list into this compact block — no insurance logic is duplicated). **Consumer:**
+`wealth-manager` (the protection leg). Same hygiene as the other two leg digests: a compact block,
+never the full report.
+
+```
+<!-- protection-block
+term:    { have: ₹, need: ₹, gap: ₹, adequacy: adequate|short|absent }
+health:  { have: ₹, need: ₹, gap: ₹, adequacy: adequate|short|absent }
+vehicle: { status: ok|gap|n/a }
+red_flags: [ { policy, flag }, ... ]      # room-rent cap, co-pay, lowballed IDV, ULIP cost drag, …
+dependents: <n>|unknown
+gaps: [ ... ]                              # "term need un-sizable — income not stated", …
+as_of: <YYYY-MM-DD>
+-->
+```
+
+`adequacy` is `absent` (no cover on that line), `short` (have < need), or `adequate` (have ≥ need).
+An un-sizable line is a labelled gap, never a fabricated sum-assured or need.
+
+## Artifact: net-worth spine + financial-health scorecard (wealth-manager)
+**Producer:** `wealth-manager/scripts/wealth.py` (the deterministic engine). **Consumer:** the
+`wealth-manager` orchestrator (synthesis) and its artifact `artifacts/wealth/YYYY-MM-DD.md`
+(`paths.report_path("wealth")`). The engine reads a **picture JSON** — the raw IndMoney
+`networth_snapshot` + `networth_allocation_breakdown`, the `lib/holdings.py` positions envelope,
+the three leg digests above, and an optional `profile` (age/dependents/monthly_expenses) — and owns
+every number (nothing eyeballed).
+
+- **Net-worth spine** (`build_spine`): `{ total_networth, as_of, allocation:{<bucket>:{label,value,pct}},
+  liquid, equity_share_pct, holdings_xirr:{count,avg,best,worst}, source, coverage:
+  complete|tradeable-only, gaps:[…] }`. Allocation precedence: IndMoney breakdown (sees every class)
+  → else aggregate tradeable positions by class (labelled `tradeable-only`). Liquid = cash + FDs only;
+  equity share = equity + funds + US equity. Buckets are the fixed `canonical_class` set (equity,
+  mutual_funds, us_equity, debt, fd, epf, real_estate, gold, cash, insurance, crypto, other).
+- **Cross-domain** (`emergency_fund` / `protection_read` / `risk_posture`): emergency-fund months of
+  runway (liquid ÷ monthly expenses vs a 3–6 month target); protection-vs-net-worth status; risk
+  posture (equity share vs an age band, **gated by** the emergency-fund + protection state — a weak
+  foundation forces `fix-foundation-first` whatever the share).
+- **Scorecard** (`build_scorecard`): `{ domains:{net_worth,investments,protection,cashflow,
+  emergency_fund:{status,line}}, overall, actions:[{priority,domain,text,next_step,run}] }`. Status ∈
+  strong|adequate|weak|critical|not_assessed; `overall` = worst *assessed* domain (an absent leg is a
+  gap, never sets overall). Actions are ordered **across** domains by the health stack
+  (emergency-fund/protection before fresh equity), max 5, each naming the spoke to run for depth.
+- `--snapshot` returns spine + cross-domain flags only (no legs, no scorecard). Deterministic and
+  offline; covered by `skills/wealth-manager/scripts/test_wealth.py`.
 
 ---
 

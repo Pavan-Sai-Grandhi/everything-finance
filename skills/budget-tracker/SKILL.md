@@ -61,6 +61,7 @@ savings_rate: <pct>            # (investments + leftout) / total inflow
 buckets: { Essential: {actual_pct, target, status}, Lifestyle:{...}, EMIs:{...}, Investments:{...} }
 biggest_leak: <category> ₹<amount>
 recurring_monthly: ₹<total committed recurring/month>
+monthly_outflow: ₹<total spend/month>   # wealth-manager's emergency-fund runway denominator
 target_source: workbook | framework
 gaps: [ ... ]                  # e.g. "UNCATEGORIZED ₹X across N txns", "no prior months"
 month: <YYYY-MM>

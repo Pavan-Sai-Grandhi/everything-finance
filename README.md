@@ -47,6 +47,7 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 | `/daily-brief` | Morning one-pager: indices, a market-moving news digest, sector tone, the open-alert inbox + actions due, a strictly-capped opportunities shortlist (vetted from the alert inbox + ≤1 labelled news flag), watchlist filings & news, open-position health — Telegram-ready. Surfaces and recommends; never auto-runs a skill or places an order |
 | `/alert-manager` | The inbox for the plugin's alerts (stop levels, act-on filings, thesis rechecks due, vetted opportunities) that the other skills raise: list, add a manual watch-item, dismiss, snooze, or sweep expired. `/daily-brief` reads these every morning |
 | `/portfolio-review` | Holdings audit: exit signals, allocation drift, risk concentration |
+| `/wealth-manager [--snapshot\|--full-review]` | The whole-picture advisor: builds total net worth across every IndMoney asset class (equity, funds, real estate, gold, EPF, FDs, debt, cash, US, insurance value), then orchestrates the three personal-finance spokes in cheap mode (portfolio-review, insurance-advisor, budget-tracker → compact digests) into one financial-health scorecard and a cross-domain action plan — the calls no single spoke can make (protection before fresh equity, emergency-fund runway, risk posture). `snapshot` = spine-only; `full-review` = full fan-out |
 | `/backtest` | Validate a strategy spec on historical NSE data (strategy-agnostic **Backtesting.py** engine driven by the shared `lib/strategy.py` interpreter on **TA-Lib** indicators — expectancy, profit factor, drawdown vs buy-and-hold) |
 | `/strategy-manager` | Full strategy lifecycle: **generate** a complete rule-based system from a reference article you supply → **validate** it by backtest and mark it active when it passes → **pick** the active strategy that fits the current regime → **optimize** or retire strategies from live trade outcomes fed back by `/trade-tracker` |
 | `/trade-tracker` | Connect Zerodha/Upstox (read-only MCP), match each open position to its rationale (a find-trade idea, deep-analysis, strategy spec, or one you type), and re-validate the thesis — stop / target / time stop / broken setup / regime change → hold or early-exit call |
@@ -55,7 +56,7 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 
 ## Agents (`agents/`, all `context: fork`)
 
-`technical-analyst`, `fundamentals-data` (fetch-once source pack) → `financials-analyst` · `management-analyst` · `valuation-analyst`, `news-sentiment`, `sector-analyst`, `bull-researcher`, `bear-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis`, reusable individually. The four fundamental agents also power `/fundamental-analysis`; `sector-analyst` also powers `/sector-analysis`.
+`technical-analyst`, `fundamentals-data` (fetch-once source pack) → `financials-analyst` · `management-analyst` · `valuation-analyst`, `news-sentiment`, `sector-analyst`, `bull-researcher`, `bear-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis`, reusable individually. The four fundamental agents also power `/fundamental-analysis`; `sector-analyst` also powers `/sector-analysis`. `wealth-leg` — the per-leg runner `/wealth-manager` forks to run one spoke in cheap mode and return only its digest.
 
 ## Hooks
 
