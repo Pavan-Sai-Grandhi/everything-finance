@@ -231,10 +231,14 @@ def _df_to_candles(df):
 
 
 def _yf_ticker(sym):
-    """yfinance market form of a symbol: indices (`^NSEI`, `^CNXIT`) pass through; an NSE
-    equity gets the `.NS` suffix. Keeps the spine usable for both equities and the indices
-    the regime gate reads."""
-    return sym if sym.startswith("^") else f"{sym}.NS"
+    """yfinance market form of a symbol: indices (`^NSEI`, `^CNXIT`) and non-equity
+    instruments (FX `INR=X`, futures `GC=F`, already-suffixed `NIFTY_FIN_SERVICE.NS`) pass
+    through; a bare NSE equity gets the `.NS` suffix. Keeps the spine usable for equities,
+    the indices the regime gate reads, and the cross-asset macro series market.py fetches —
+    suffixing those produced `INR=X.NS` and a silent empty series."""
+    if sym.startswith("^") or "=" in sym or "." in sym:
+        return sym
+    return f"{sym}.NS"
 
 
 def history(symbol, period="1y", fresh=False, adjusted=False):

@@ -97,7 +97,7 @@ Grounded in Zerodha Varsity — Sector Analysis (https://zerodha.com/varsity/mod
 
 ## yfinance sectoral index ticker map (primary source, verified 2026-06)
 
-`^NSEI` (Nifty 50 benchmark), `^NSEBANK` (Bank), `NIFTY_FIN_SERVICE.NS` (Financial Services), `^CNXIT` (IT), `^CNXPHARMA` (Pharma), `^CNXAUTO` (Auto), `^CNXFMCG` (FMCG), `^CNXMETAL` (Metal), `^CNXREALTY` (Realty), `^CNXENERGY` (Energy), `^CNXPSUBANK` (PSU Bank), `^CNXMEDIA` (Media — thin index, flag rather than call a leader). Known gaps: Consumer Durables & Healthcare have no Yahoo history (quote only), Oil & Gas has no ticker — list these as data gaps rather than hunting.
+`^NSEI` (Nifty 50 benchmark) plus the sectoral tickers in **`lib/market.py`'s `SECTOR_YF`** — the single copy of that map, so read it from there rather than from a list restated here (it previously lived in three places and the copies drifted). `^CNXMEDIA` (Media) is a thin index: flag it rather than calling it a leader. Known gaps: Consumer Durables & Healthcare have no Yahoo history (quote only), Oil & Gas has no ticker — list these as data gaps rather than hunting.
 
 Stock-level: `<SYMBOL>.NS` for OHLCV / price-vs-50-EMA. Indicator math (EMA/RSI etc.) is shared — if you need it, call the plugin's `lib/ta.py` via a short Bash snippet (`sys.path` to `<plugin>/lib`, `import ta`) rather than reimplementing, so your read agrees with the screen and the technical-analyst.
 

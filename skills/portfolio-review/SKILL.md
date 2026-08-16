@@ -59,7 +59,7 @@ python3 <plugin>/skills/portfolio-review/scripts/allocation.py --book <book.json
 It returns per-dimension breakdowns (with coverage), asset-class drift vs target, and the ranked concentration flags — each carrying its **₹ amount at risk** and a concrete **₹ rebalancing move**. The dimensions:
 
 - **Asset class** — equity : debt : cash vs the stated target (ask once if not given; report **relative** otherwise). Drift > 10pp → rebalance move.
-- **Market cap** — large / mid / small / micro (IndMoney breakdown + fund look-through); small+micro sleeve > 30% → liquidity-risk flag.
+- **Market cap** — large / mid / small / micro (IndMoney breakdown + fund look-through); small+micro sleeve > 30% → liquidity-risk flag. **Read that threshold against the tape, not in a vacuum**: take `valuation["NIFTY SMALLCAP 250"].stance` and `relative.percentile_spread` from market-analysis (`python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick`) — an expensive tier (`rich`/`expensive`, spread ≥ +25) tightens the flag to 25%, a `cheap` tier relaxes it to 35%. Say which threshold was applied and why.
 - **AMC** — exposure piled into one fund house (> 40%).
 - **Investing style** — growth / value / factor mix (from mf-analysis style data).
 - **Sector** — single sector > 25% (> 35% urgent).

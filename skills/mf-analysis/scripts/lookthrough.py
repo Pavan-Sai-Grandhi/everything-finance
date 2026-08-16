@@ -1,17 +1,49 @@
 #!/usr/bin/env python3
-"""Look-through portfolio metrics for the forward-looking pillar (mf-analysis, spec §2).
+"""Look-through portfolio metrics — the forward-looking pillar of mf-analysis.
 
-A fund's own P/E-P/B-ROE aren't exposed by IndMoney, but its holdings + weights are —
-so we *compute* them from the underlying stocks' screener.in ratios (`lib/fundamentals.py`,
-already whitelisted). Portfolio P/E and P/B aggregate by the **weighted harmonic mean**
-(you sum earnings/book yields, not multiples), ROE and earnings growth by weighted mean.
-Every figure is reproducible from the cached holdings weights + the cached screener pages.
+A fund does not publish its own P/E, P/B or ROE, but it does publish what it owns.
+This script aggregates the underlying stocks' ratios into the portfolio's ratios, so a
+verdict can rest on *what the fund holds today* rather than on what it returned last year.
 
-The math core is pure and offline-tested (`test_lookthrough.py`); only `enrich()` touches
-the network. Uncovered weight (unpriced/illiquid holdings) is reported, never extrapolated.
+Holdings and per-stock ratios both come from `lib/funds.py` (Tickertape), the one
+sanctioned path — `--fund <MF_ID>` fetches the COMPLETE position list (64-278 names at
+90-99% weight coverage), threaded and disk-cached. `--holdings FILE` survives only as an
+offline/testing hatch. That default matters: callers used to hand-type a 20-row holdings
+JSON, which is precisely the fabrication surface the plugin forbids, and they did it
+because the honest path was the slow one. It no longer is.
+
+Three corrections are baked into the math, each of which flipped a real verdict:
+
+1. **Cap-tilt is RANK-based, not ₹Cr-band-based.** SEBI classifies by market-cap rank
+   (top 100 large, 101-250 mid, 251+ small) and Tickertape publishes that rank. The old
+   absolute-₹Cr bands reported a 74%-small-cap fund as "0% small-cap" and invented
+   "19% large-cap drift" in the purest small-cap book of its peer set — because a
+   small-cap fund's biggest holdings are, by construction, its largest names.
+
+2. **Coverage is a GATE, not a footnote.** Ratios computed on 20-65% of the book were
+   printed as fact and went straight into a recommendation; recomputed at 92-100% one
+   fund's P/E moved 46 -> 27.75 and another's 12 -> 17.29. Below `MIN_PUBLISHABLE`
+   coverage the ratio is withheld (`value: null`, `confidence: "unusable"`), not
+   annotated. A blank beats a confident wrong number.
+
+3. **A multiple aggregates by the weighted HARMONIC mean.** A portfolio P/E is total
+   price / total earnings = 1 / Sum(w_i / PE_i). Weighted-arithmetic averaging inflated
+   every fund in the peer set to P/E 44-56 and mis-ranked the whole comparison.
+
+Beyond the ratios it emits the analytics that actually decided a real comparison:
+`pb_over_roe` (the only valuation cut stable across three rounds of data revision),
+earnings-distress dispersion (share of book at ROE < 8% — "cheap" means nothing if the
+earnings are at a trough), weighted ROE, weighted earnings yield (which, unlike P/E, can
+carry loss-makers), sector concentration + Herfindahl, top-5/top-10 concentration, and
+the unpriced/unlisted weight that every ratio silently excludes.
+
+The math core is pure and offline-tested (`test_lookthrough.py`); only `load_fund()`
+touches the network. Uncovered weight is reported, never extrapolated.
 
 CLI:
-  python3 lookthrough.py --holdings holdings.json      # [{symbol, weight}, ...]
+  python3 lookthrough.py --fund M_NIMS                  # the default, honest path
+  python3 lookthrough.py --fund M_NIMS --fresh --out lt.json
+  python3 lookthrough.py --holdings rows.json           # offline/testing hatch
 """
 from __future__ import annotations
 
@@ -20,20 +52,40 @@ import json
 import os
 import sys
 
-# SEBI classifies caps by market-rank, not absolute size — unknowable from one stock.
-# These absolute-₹Cr bands are a labelled approximation of the 2024 cutoffs.
-CAP_BANDS_CR = {"large": 50000.0, "mid": 17000.0}  # >=large, >=mid, else small
-CAP_TILT_CAVEAT = ("cap-tilt uses approximate absolute market-cap bands (₹Cr); SEBI "
-                   "classifies by market rank, so treat the split as indicative.")
+# --------------------------------------------------------------------------- #
+# gates and thresholds — the tuned constants, in one place                     #
+# --------------------------------------------------------------------------- #
+
+# SEBI's own definition: caps are RANKS, not sizes. Top 100 large, 101-250 mid, 251+
+# small. Mirrors `lib/funds.SEBI_CAP_RANKS`; restated here so the pure math core stays
+# importable with no dependency on the network module.
+SEBI_CAP_RANKS = {"large": 100, "mid": 250}
+
+# Coverage bands over the fund's EQUITY weight. A ratio graded `unusable` is withheld.
+DECISION_GRADE_COVERAGE = 0.85
+MIN_PUBLISHABLE_COVERAGE = 0.60
+
+# Earnings-distress bands. 8% ROE is roughly the cost of equity for an Indian mid/small
+# cap — below it a company is not earning its keep, so its P/E denominator is depressed
+# and the multiple built on it is not a valuation, it is an artefact.
+ROE_DISTRESS = 8.0
+ROE_QUALITY = 18.0
+
+# Unlisted/unpriced weight above this is a named risk, not a footnote (SEBI caps a
+# scheme's unlisted exposure at 10%; a single unlisted top holding has been seen at 2.5%).
+UNPRICED_RISK_PCT = 2.0
 
 
 def _num(x):
-    """Coerce to float; None for anything non-numeric (screener values arrive parsed)."""
+    """Coerce to float; None for anything non-numeric or boolean."""
     if isinstance(x, bool):
         return None
     if isinstance(x, (int, float)):
         return float(x)
-    return None
+    try:
+        return float(str(x).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def _first(d, *keys):
@@ -43,12 +95,21 @@ def _first(d, *keys):
     return None
 
 
+def _round(v, n=2):
+    return round(v, n) if isinstance(v, (int, float)) else None
+
+
 # --------------------------------------------------------------------------- #
-# pure aggregation                                                            #
+# pure aggregation                                                             #
 # --------------------------------------------------------------------------- #
 def weighted_harmonic(pairs):
-    """(weight, value) → (portfolio multiple, covered weight). Yield-weighted, the
-    correct way to aggregate P/E-type multiples. Ignores None / non-positive values."""
+    """(weight, multiple) -> (portfolio multiple, covered weight).
+
+    Yield-weighted: 1 / Sum(w/v). The ONLY correct way to aggregate a P/E- or P/B-type
+    multiple — you sum earnings and book yields, not the multiples. Non-positive
+    multiples (loss-makers) are dropped, because a negative P/E is not a cheaper P/E;
+    their weight is excluded from coverage so the omission is visible.
+    """
     num = cov = 0.0
     for w, v in pairs:
         w, v = _num(w), _num(v)
@@ -62,8 +123,8 @@ def weighted_harmonic(pairs):
 
 
 def weighted_mean(pairs):
-    """(weight, value) → (weighted arithmetic mean, covered weight). For ROE/growth,
-    which can be negative. Ignores None values."""
+    """(weight, value) -> (weighted arithmetic mean, covered weight). For ROE, growth
+    and earnings yield, which are additive and may legitimately be negative."""
     num = cov = 0.0
     for w, v in pairs:
         w, v = _num(w), _num(v)
@@ -76,46 +137,93 @@ def weighted_mean(pairs):
     return num / cov, cov
 
 
+def earnings_yields(holdings):
+    """(weight, earnings yield %) per holding — 100/PE, keeping loss-makers NEGATIVE.
+
+    The counterpart the harmonic P/E cannot express: harmonic P/E must drop negative
+    earnings, so a book stuffed with loss-makers looks *cheaper* than it is. Aggregating
+    the yields instead keeps that drag visible.
+    """
+    for h in holdings:
+        pe = _num(_first(h, "pe", "ttm_pe"))
+        if pe is None or pe == 0:
+            continue
+        yield (h.get("weight"), 100.0 / pe)
+
+
 def cagr(series):
-    """First→last CAGR (%) of a numeric series over len-1 periods. None if <2 usable
-    or non-positive endpoints (a sign change makes CAGR meaningless)."""
+    """First->last CAGR (%) over len-1 periods. None if <2 usable points or a
+    non-positive endpoint (a sign change makes CAGR meaningless)."""
     xs = [_num(x) for x in (series or []) if _num(x) is not None]
     if len(xs) < 2 or xs[0] <= 0 or xs[-1] <= 0:
         return None
     return ((xs[-1] / xs[0]) ** (1.0 / (len(xs) - 1)) - 1.0) * 100.0
 
 
-def cap_bucket(mcap_cr):
-    m = _num(mcap_cr)
-    if m is None:
-        return None
-    if m >= CAP_BANDS_CR["large"]:
-        return "large"
-    if m >= CAP_BANDS_CR["mid"]:
-        return "mid"
-    return "small"
+# --------------------------------------------------------------------------- #
+# cap classification — rank first, provider label second                       #
+# --------------------------------------------------------------------------- #
+def cap_bucket(cap_rank=None, cap_label=None):
+    """-> ("large"|"mid"|"small"|None, source).
+
+    Rank is the fact (SEBI classifies by market-cap rank); the provider's own text label
+    is the labelled fallback when a rank is missing; absolute ₹Cr is not used at all,
+    because a band that calls a small-cap fund's top holdings "large-cap" fabricates
+    style drift out of nothing.
+    """
+    r = _num(cap_rank)
+    if r is not None and r > 0:
+        if r <= SEBI_CAP_RANKS["large"]:
+            return "large", "rank"
+        if r <= SEBI_CAP_RANKS["mid"]:
+            return "mid", "rank"
+        return "small", "rank"
+    lab = str(cap_label or "").strip().lower().replace(" ", "").replace("-", "")
+    if lab.startswith("large"):
+        return "large", "label"
+    if lab.startswith("mid"):
+        return "mid", "label"
+    if lab.startswith("small") or lab.startswith("micro"):
+        return "small", "label"
+    return None, None
 
 
 def cap_tilt(holdings):
-    """Weight fraction in large/mid/small, over the mcap-covered weight only."""
+    """Weight fraction in large/mid/small over the cap-classified weight only.
+
+    Reports how each rupee was classified (`by_rank` / `by_label`) so a reader can see
+    whether the split is a fact or a fallback, and `coverage` so an uncovered tail can
+    never masquerade as a zero bucket.
+    """
     buckets = {"large": 0.0, "mid": 0.0, "small": 0.0}
-    cov = 0.0
+    cov = by_rank = by_label = 0.0
     for h in holdings:
         w = _num(h.get("weight"))
-        b = cap_bucket(h.get("mcap"))
+        b, src = cap_bucket(h.get("cap_rank"), h.get("cap_label"))
         if w is None or w <= 0 or b is None:
             continue
         buckets[b] += w
         cov += w
+        if src == "rank":
+            by_rank += w
+        else:
+            by_label += w
     if cov <= 0:
-        return {"large": None, "mid": None, "small": None, "coverage": 0.0}
+        return {"large": None, "mid": None, "small": None, "coverage": 0.0,
+                "by_rank": 0.0, "by_label": 0.0, "basis": "none"}
     out = {k: round(v / cov, 4) for k, v in buckets.items()}
-    out["coverage"] = cov
+    out["coverage"] = round(cov, 2)
+    out["by_rank"] = round(by_rank / cov, 4)
+    out["by_label"] = round(by_label / cov, 4)
+    out["basis"] = "SEBI market-cap rank (top 100 large / 101-250 mid / 251+ small)"
     return out
 
 
+# --------------------------------------------------------------------------- #
+# concentration, sectors, distress                                             #
+# --------------------------------------------------------------------------- #
 def concentration(holdings):
-    """Top-5 / top-10 weight and Herfindahl index over the fund's holdings."""
+    """Top-5 / top-10 weight share and the Herfindahl index of position weights."""
     ws = sorted((_num(h.get("weight")) or 0.0 for h in holdings), reverse=True)
     total = sum(ws)
     if total <= 0:
@@ -128,113 +236,335 @@ def concentration(holdings):
     }
 
 
-def portfolio_metrics(holdings):
-    """Weighted portfolio ratios + cap-tilt + concentration from enriched holdings,
-    each holding carrying weight and (optional) pe/pb/roe/growth/mcap."""
-    total = sum(_num(h.get("weight")) or 0.0 for h in holdings)
+def sector_mix(holdings, top=8):
+    """Sector weights (share of sector-classified weight), Herfindahl, and the top bets.
 
-    def cov(w):
-        return round(w / total, 4) if total > 0 else 0.0
-
-    pe, pe_w = weighted_harmonic((h.get("weight"), h.get("pe")) for h in holdings)
-    pb, pb_w = weighted_harmonic((h.get("weight"), h.get("pb")) for h in holdings)
-    roe, roe_w = weighted_mean((h.get("weight"), h.get("roe")) for h in holdings)
-    gro, gro_w = weighted_mean((h.get("weight"), h.get("growth")) for h in holdings)
+    Sector concentration is what turns a "diversified" 278-name book into a single macro
+    bet — a fund can hold hundreds of stocks and still be one call on industrials.
+    """
+    tot = {}
+    cov = 0.0
+    for h in holdings:
+        w = _num(h.get("weight"))
+        s = (h.get("sector") or "").strip()
+        if w is None or w <= 0 or not s:
+            continue
+        tot[s] = tot.get(s, 0.0) + w
+        cov += w
+    if cov <= 0:
+        return {"coverage": 0.0, "hhi": None, "top_sectors": [], "n_sectors": 0}
+    shares = sorted(((s, w / cov) for s, w in tot.items()), key=lambda x: -x[1])
     return {
-        "portfolio_pe": {"value": _round(pe), "coverage": cov(pe_w)},
-        "portfolio_pb": {"value": _round(pb), "coverage": cov(pb_w)},
-        "portfolio_roe": {"value": _round(roe), "coverage": cov(roe_w)},
-        "earnings_growth": {"value": _round(gro), "coverage": cov(gro_w)},
-        "cap_tilt": cap_tilt(holdings),
-        "concentration": concentration(holdings),
+        "coverage": round(cov, 2),
+        "n_sectors": len(shares),
+        "hhi": round(sum(v ** 2 for _, v in shares), 4),
+        "top_sectors": [{"sector": s, "weight": round(v, 4)} for s, v in shares[:top]],
     }
 
 
-def _round(v, n=2):
-    return round(v, n) if isinstance(v, (int, float)) else None
+def earnings_distress(holdings, top=10):
+    """Dispersion of return-on-equity across the book — the "is this cheap or broken?" cut.
 
-
-# --------------------------------------------------------------------------- #
-# extraction from the screener.in data-pack (pure, fixture-testable)          #
-# --------------------------------------------------------------------------- #
-def stock_fields(data):
-    """screener.in `fetch()` data → {pe, pb, roe, growth, mcap}. Missing → None."""
-    r = (data or {}).get("ratios", {}) or {}
-    pe = _num(_first(r, "Stock P/E", "Price to Earning", "P/E"))
-    mcap = _num(_first(r, "Market Cap", "Market Capitalization"))
-    roe = _num(_first(r, "ROE", "Return on equity"))
-    pb = _num(_first(r, "Price to Book value", "P/B"))
-    if pb is None:  # derive from price / book value when no direct multiple
-        price = _num(_first(r, "Current Price", "Price"))
-        book = _num(_first(r, "Book Value", "Book Value Per Share"))
-        if price is not None and book not in (None, 0):
-            pb = price / book
-    rows = ((data or {}).get("pnl_10y", {}) or {}).get("rows", {}) or {}
-    eps = next((v for k, v in rows.items() if k.lower().startswith("eps")), None)
-    growth = cagr(eps) if eps else cagr(rows.get("Net Profit"))
-    return {"pe": pe, "pb": _round(pb), "roe": roe, "growth": _round(growth), "mcap": mcap}
-
-
-# --------------------------------------------------------------------------- #
-# network enrichment (not unit-tested — degrade-not-die per holding)          #
-# --------------------------------------------------------------------------- #
-def enrich(holdings):
-    """Fill each holding's ratios from `lib/fundamentals.py`. Returns (holdings, gaps).
-    A holding with no resolvable screener symbol, or a failed fetch, keeps its weight
-    (so coverage math stays honest) and is named in gaps — never guessed."""
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "..", "..", "..", "lib"))
-    import fundamentals  # noqa: E402  (three-dirs-up to the shared data spine)
-
-    gaps = []
-    out = []
+    A low portfolio P/E on collapsed earnings is a trap, not a bargain; a high one on
+    trough earnings can be a bargain. Neither is visible in the aggregate multiple, so
+    the share of book below `ROE_DISTRESS` and above `ROE_QUALITY` is reported directly,
+    with the distressed names listed so the reader can classify each as **cyclical**
+    (mean-reverting: steel, chemicals, capital goods in a downcycle) or **idiosyncratic**
+    (may never revert: a company earning 4% ROE in a healthy sector). Fractions are of
+    the ROE-covered weight, and that coverage is stated.
+    """
+    cov = lo = hi = 0.0
+    names = []
     for h in holdings:
-        sym = _first(h, "symbol", "ticker", "nse_code", "code")
-        row = dict(h)
-        if not sym:
-            gaps.append(f"{_first(h, 'name', 'company') or '?'}: no screener symbol — unpriced")
-            out.append(row)
+        w = _num(h.get("weight"))
+        roe = _num(h.get("roe"))
+        if w is None or w <= 0 or roe is None:
             continue
-        env = fundamentals.fetch(sym)
-        if not env.get("ok"):
-            gaps.append(f"{sym}: fetch failed — unpriced")
-            out.append(row)
-            continue
-        row.update(stock_fields(env.get("data", {})))
-        out.append(row)
-    return out, gaps
+        cov += w
+        if roe < ROE_DISTRESS:
+            lo += w
+            names.append({
+                "name": h.get("name") or h.get("ticker") or h.get("sid"),
+                "ticker": h.get("ticker"),
+                "sector": h.get("sector"),
+                "weight": round(w, 3),
+                "pe": _round(_num(h.get("pe"))),
+                "pb": _round(_num(h.get("pb"))),
+                "roe": _round(roe),
+            })
+        elif roe > ROE_QUALITY:
+            hi += w
+    if cov <= 0:
+        return {"coverage": 0.0, "pct_weight_roe_lt_8": None,
+                "pct_weight_roe_gt_18": None, "distressed": []}
+    names.sort(key=lambda r: -r["weight"])
+    return {
+        "coverage": round(cov, 2),
+        "roe_distress_threshold": ROE_DISTRESS,
+        "roe_quality_threshold": ROE_QUALITY,
+        "pct_weight_roe_lt_8": round(100.0 * lo / cov, 2),
+        "pct_weight_roe_gt_18": round(100.0 * hi / cov, 2),
+        "distressed": names[:top],
+    }
 
 
-def _load_holdings(payload):
-    """Tolerant: accept a bare list or a wrapper with a holdings/data list; each row
-    normalised to {symbol, weight, name, ...raw}."""
+# --------------------------------------------------------------------------- #
+# the coverage gate                                                            #
+# --------------------------------------------------------------------------- #
+def coverage_grade(fraction):
+    """Coverage fraction (0-1) -> "decision-grade" | "indicative" | "unusable"."""
+    f = _num(fraction) or 0.0
+    if f >= DECISION_GRADE_COVERAGE:
+        return "decision-grade"
+    if f >= MIN_PUBLISHABLE_COVERAGE:
+        return "indicative"
+    return "unusable"
+
+
+def gated(value, covered_weight, total_weight, ndigits=2):
+    """Wrap a ratio in its coverage grade and WITHHOLD it when unusable.
+
+    This is the gate itself: an `unusable` ratio comes back `{"value": null}`. It is not
+    a display convention — a number that survives into a table gets cited, and a ratio
+    computed on a fifth of a portfolio is a different portfolio's ratio.
+
+    A metric with literally no source at all is graded `unavailable` rather than
+    `unusable`, so "nobody publishes this" reads differently from "we only priced a
+    fifth of the book" — the first is a missing input, the second is a warning.
+    """
+    frac = (covered_weight / total_weight) if (total_weight and total_weight > 0) else 0.0
+    grade = "unavailable" if covered_weight <= 0 else coverage_grade(frac)
+    ok = grade in ("decision-grade", "indicative")
+    return {
+        "value": _round(value, ndigits) if ok else None,
+        "coverage": round(frac, 4),
+        "confidence": grade,
+        "withheld": not ok,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# the portfolio read                                                           #
+# --------------------------------------------------------------------------- #
+def portfolio_metrics(holdings, equity_weight=None):
+    """Every look-through metric for one fund, from enriched holdings.
+
+    Each holding carries `weight` and, when priced, `pe`/`pb`/`roe`/`cap_rank`/
+    `cap_label`/`sector`/`market_cap_cr` (+ optional `growth`). `equity_weight` is the
+    fund's total equity allocation (%) — the honest denominator for coverage, because
+    positions the provider never listed must count against coverage, not vanish from it.
+    """
+    listed = sum(_num(h.get("weight")) or 0.0 for h in holdings)
+    total = _num(equity_weight) or listed
+    total = max(total, listed)
+
+    pe, pe_w = weighted_harmonic((h.get("weight"), _first(h, "pe", "ttm_pe"))
+                                 for h in holdings)
+    pb, pb_w = weighted_harmonic((h.get("weight"), h.get("pb")) for h in holdings)
+    roe, roe_w = weighted_mean((h.get("weight"), h.get("roe")) for h in holdings)
+    gro, gro_w = weighted_mean((h.get("weight"), h.get("growth")) for h in holdings)
+    ey, ey_w = weighted_mean(earnings_yields(holdings))
+
+    priced_w = sum(_num(h.get("weight")) or 0.0 for h in holdings if h.get("priced"))
+    unpriced_w = round(max(0.0, total - priced_w), 2)
+
+    m = {
+        "portfolio_pe": gated(pe, pe_w, total),
+        "portfolio_pb": gated(pb, pb_w, total),
+        "portfolio_roe": gated(roe, roe_w, total),
+        "earnings_yield_pct": gated(ey, ey_w, total),
+        "earnings_growth": gated(gro, gro_w, total),
+        "pb_over_roe": pb_over_roe(pb, roe, pb_w, roe_w, total),
+        "cap_tilt": cap_tilt(holdings),
+        "concentration": concentration(holdings),
+        "sectors": sector_mix(holdings),
+        "earnings_distress": earnings_distress(holdings),
+        "unpriced_weight_pct": unpriced_w,
+        "equity_weight_pct": round(total, 2),
+        "listed_weight_pct": round(listed, 2),
+    }
+    m["confidence"] = coverage_grade(min(
+        (pe_w / total) if total else 0.0, (pb_w / total) if total else 0.0))
+    return m
+
+
+def pb_over_roe(pb, roe, pb_w, roe_w, total):
+    """Price-to-book per unit of return on equity — price paid for each point of
+    profitability.
+
+    The quality-adjusted valuation cut, and the ONLY one that survived three rounds of
+    data revision unchanged in a real four-fund comparison: P/E collapses whenever the
+    earnings denominator does, so it flip-flops; book value does not collapse, and
+    dividing by ROE asks the right question — am I paying up for a business that earns,
+    or for one that doesn't? Lower is cheaper. Undefined for a non-positive ROE (paying
+    anything for no return on equity is not a ratio, it is a red flag).
+    """
+    p, r = _num(pb), _num(roe)
+    if p is None or r is None or r <= 0:
+        return {"value": None, "coverage": 0.0, "confidence": "unusable",
+                "withheld": True,
+                "note": "undefined at non-positive portfolio ROE" if p is not None else None}
+    return gated(p / r, min(pb_w, roe_w), total, ndigits=4)
+
+
+def metric_gaps(metrics):
+    """The labelled degradations implied by a metrics block — the "Data gaps" line."""
+    gaps = []
+    for key in ("portfolio_pe", "portfolio_pb", "portfolio_roe", "pb_over_roe",
+                "earnings_yield_pct", "earnings_growth"):
+        m = metrics.get(key) or {}
+        if m.get("confidence") == "unavailable":
+            gaps.append(f"{key}: no source — nothing in the sanctioned data path publishes "
+                        f"it for these holdings; it is absent, not zero")
+        elif m.get("withheld"):
+            gaps.append(f"{key}: WITHHELD — priced weight {100 * m.get('coverage', 0):.1f}% "
+                        f"of the book is below the {100 * MIN_PUBLISHABLE_COVERAGE:.0f}% "
+                        f"publishable floor; the ratio would describe a different portfolio")
+        elif m.get("confidence") == "indicative":
+            gaps.append(f"{key}: indicative only — {100 * m.get('coverage', 0):.1f}% coverage "
+                        f"(decision-grade needs {100 * DECISION_GRADE_COVERAGE:.0f}%); "
+                        f"do not cite it as a deciding factor")
+    up = metrics.get("unpriced_weight_pct") or 0.0
+    if up > UNPRICED_RISK_PCT:
+        gaps.append(f"{up:.2f}% of the book is unlisted or unpriced — excluded from every "
+                    f"ratio above, never extrapolated; treat as opacity risk")
+    ct = metrics.get("cap_tilt") or {}
+    if ct.get("by_label"):
+        gaps.append(f"cap-tilt: {100 * ct['by_label']:.1f}% of classified weight fell back to "
+                    f"the provider's text label because no market-cap rank was published")
+    ed = metrics.get("earnings_distress") or {}
+    if ed.get("coverage") and metrics.get("equity_weight_pct"):
+        frac = ed["coverage"] / metrics["equity_weight_pct"]
+        if frac < DECISION_GRADE_COVERAGE:
+            gaps.append(f"earnings-distress dispersion covers {100 * frac:.1f}% of the book")
+    return gaps
+
+
+# --------------------------------------------------------------------------- #
+# holdings input                                                               #
+# --------------------------------------------------------------------------- #
+def _lib_dir():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "lib")
+
+
+def load_fund(mf_id, fresh=False, workers=10):
+    """The default path: full holdings + threaded, cached per-stock ratios via lib/funds.
+
+    Returns (holdings, equity_weight, gaps, meta). This is the ONLY network code in the
+    file; everything above it is pure and offline-tested.
+    """
+    sys.path.insert(0, _lib_dir())
+    import funds  # noqa: E402  (three-dirs-up to the shared data spine)
+
+    env = funds.holdings(mf_id, fresh=fresh)
+    gaps = list(env.get("gaps") or [])
+    data = env.get("data") or {}
+    positions = data.get("positions") or []
+    if not env.get("ok") or not positions:
+        return [], 0.0, gaps or [f"no holdings returned for {mf_id}"], {"mf_id": mf_id}
+
+    enriched, enrich_gaps = funds.enrich(positions, workers=workers, fresh=fresh)
+    gaps += enrich_gaps
+    meta = {
+        "mf_id": mf_id,
+        "source": env.get("source"),
+        "fetched_at": env.get("fetched_at"),
+        "position_count": data.get("position_count"),
+        "equity_positions": len(enriched),
+        "provider_sector_weights": data.get("sector_weights") or {},
+    }
+    return enriched, _num(data.get("equity_weight")) or 0.0, gaps, meta
+
+
+def load_holdings_file(payload):
+    """Offline hatch: a bare list, or a wrapper carrying holdings/positions/data.
+
+    Kept for tests and for the rare audit against an AMC's own disclosure — NOT the
+    normal path. A row that carries no ratios of its own and no `sid` stays unpriced and
+    drags coverage down, exactly as it should; nothing is inferred from a name.
+    """
     rows = payload if isinstance(payload, list) else _first(
-        payload, "holdings", "data", "portfolio", "positions") or []
+        payload, "holdings", "positions", "data", "portfolio") or []
     out = []
     for it in rows:
         if not isinstance(it, dict):
             continue
-        out.append({
-            "symbol": _first(it, "symbol", "ticker", "nse_code", "code"),
-            "name": _first(it, "name", "company", "instrument"),
-            "weight": _num(_first(it, "weight", "percentage", "holding_pct",
-                                  "corpus_percentage", "pct")),
-            **it,
-        })
+        rec = dict(it)
+        rec["weight"] = _num(_first(it, "weight", "percentage", "holding_pct",
+                                    "corpus_percentage", "pct", "latest"))
+        rec.setdefault("ticker", _first(it, "ticker", "symbol", "nse_code", "code"))
+        rec.setdefault("name", _first(it, "name", "title", "company", "instrument"))
+        rec["priced"] = it.get("priced") if "priced" in it else (
+            _num(_first(it, "pe", "ttm_pe")) is not None or _num(it.get("pb")) is not None)
+        out.append(rec)
     return out
 
 
+def enrich_file_rows(rows, fresh=False, workers=10):
+    """Fill ratios for file rows that carry a Tickertape `sid` (same source as the fund
+    path, so a mixed-provider aggregate can never happen). Rows without a `sid` keep
+    whatever ratios they were given and stay unpriced otherwise."""
+    if not any(r.get("sid") for r in rows):
+        return rows, []
+    sys.path.insert(0, _lib_dir())
+    import funds  # noqa: E402
+
+    for r in rows:
+        r.setdefault("type", "Equity")
+    enriched, gaps = funds.enrich(rows, workers=workers, fresh=fresh)
+    return enriched, gaps
+
+
+# --------------------------------------------------------------------------- #
+def build_report(holdings, equity_weight, gaps, meta):
+    """Assemble the artifact the skill and the HTML template consume."""
+    metrics = portfolio_metrics(holdings, equity_weight)
+    all_gaps = list(gaps) + metric_gaps(metrics)
+    return {
+        "meta": meta,
+        "n_holdings": len(holdings),
+        "metrics": metrics,
+        "confidence": metrics["confidence"],
+        "ratios_publishable": metrics["confidence"] != "unusable",
+        "gaps": all_gaps,
+    }
+
+
 def main():
-    ap = argparse.ArgumentParser(description="Look-through portfolio metrics for a fund.")
-    ap.add_argument("--holdings", required=True, help="path to holdings JSON ([{symbol, weight}])")
+    ap = argparse.ArgumentParser(
+        description="Look-through portfolio metrics for a mutual fund.")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--fund", metavar="MF_ID",
+                     help="Tickertape scheme id (e.g. M_NIMS) — the default, honest path")
+    src.add_argument("--holdings", metavar="FILE",
+                     help="offline/testing hatch: holdings JSON")
+    ap.add_argument("--fresh", action="store_true", help="bypass the on-disk cache")
+    ap.add_argument("--workers", type=int, default=10)
+    ap.add_argument("--out", metavar="FILE", help="also write the JSON report here")
     args = ap.parse_args()
-    with open(args.holdings) as f:
-        holdings = _load_holdings(json.load(f))
-    enriched, gaps = enrich(holdings)
-    metrics = portfolio_metrics(enriched)
-    if metrics["cap_tilt"].get("coverage"):
-        gaps.append(CAP_TILT_CAVEAT)
-    print(json.dumps({"metrics": metrics, "n_holdings": len(enriched), "gaps": gaps}, indent=2))
+
+    if args.fund:
+        holdings, eqw, gaps, meta = load_fund(args.fund, fresh=args.fresh,
+                                              workers=args.workers)
+    else:
+        with open(args.holdings) as f:
+            rows = load_holdings_file(json.load(f))
+        rows, gaps = enrich_file_rows(rows, fresh=args.fresh, workers=args.workers)
+        holdings = rows
+        eqw = sum(_num(r.get("weight")) or 0.0 for r in rows)
+        gaps = list(gaps) + [
+            f"holdings read from {os.path.basename(args.holdings)}, not from lib/funds — "
+            f"coverage is measured against the listed rows only, so a truncated file "
+            f"cannot be detected from inside this script"]
+        meta = {"source": f"file:{os.path.basename(args.holdings)}"}
+
+    report = build_report(holdings, eqw, gaps, meta)
+    text = json.dumps(report, indent=2, ensure_ascii=False)
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w") as f:
+            f.write(text + "\n")
+    print(text)
 
 
 if __name__ == "__main__":

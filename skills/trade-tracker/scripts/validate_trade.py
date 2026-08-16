@@ -15,7 +15,7 @@ Checks, in priority order (first hit wins the verdict):
   5. otherwise                                                  -> HOLD
 Qualitative invalidation conditions this script can't parse (e.g. "earnings miss") are
 returned under `manual_review` for the skill/LLM to judge. Regime-change checks for
-strategy-linked trades are likewise deferred to the skill (it re-runs regime.py).
+strategy-linked trades are likewise deferred to the skill (it reads the market-context artifact).
 
 Price source: yfinance (`<SYMBOL>.NS`) by default, or an OHLCV CSV via --ohlcv (offline /
 testing). Actual broker fill can be injected with --entry / --qty / --ltp so the report

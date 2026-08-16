@@ -31,6 +31,7 @@ python3 <skill-dir>/scripts/backtest.py \
 
 How the engine trades the spec (it matches find-trade's live screen by construction — both go through `lib/strategy.py`; simplifications are listed in reference.md and must be mentioned in output):
 - **entry**: next-bar open after `entry.signal` fires (one position at a time per symbol; no lookahead)
+- **market context is deliberately absent**: the market-analysis artifact describes *today* only, so feeding it into a historical run would be lookahead of the worst kind — the strategy would "know" a regime that had not happened yet. Regime-conditioned results are a future `by_regime_expectancy_R`, built from the dated market-analysis artifacts as they accumulate, never from today's.
 - **stop**: from `exit.stop` (`recent_swing_low` | `ema50_minus_2atr` | `range_low`); too-wide (> 15%) or malformed stops are skipped
 - **target**: from `exit.target` (`measured_move` → prior consolidation height; else a next-resistance proxy at `min_rrr`); entries below `min_rrr` are not taken
 - **exit**: stop / target intrabar (stop wins ties), else `exit.time_stop_sessions` time stop. Commission ~0.25% round trip (charged per side).

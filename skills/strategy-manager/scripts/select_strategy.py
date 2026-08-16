@@ -3,13 +3,15 @@
 
 Responsibility 3 of strategy-manager. Reads every strategy spec in a directory, keeps the
 ones with status==active, tests each one's `regime_required` against the live regime read
-(regime.json from strategy-manager/scripts/regime.py), and ranks the fitting ones by their
+(the market-context artifact from the market-analysis skill), and ranks the fitting ones by their
 validated edge (live expectancy if available, else backtest expectancy). Selection is a
 RUNTIME decision — an active spec is simply not selected while the tape doesn't fit it; its
 status does not change here.
 
 Usage:
-  python3 select_strategy.py --regime artifacts/regime/2026-06-11.json
+  python3 select_strategy.py
+  # --regime defaults to today's artifacts/market-analysis/<date>.json
+  #          (a legacy artifacts/regime/<date>.json is still accepted)
   # --strategies defaults to artifacts/state/strategies
 Exit: 0 = a strategy selected, 11 = none fit, 12 = no active specs, 2 = error.
 """
@@ -81,16 +83,26 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--strategies", default=None,
                    help="dir of <name>.yml specs (default: artifacts/state/strategies)")
-    p.add_argument("--regime", required=True, help="regime.json from regime.py")
+    p.add_argument("--regime", default=None,
+                   help="market-context JSON (default: today's artifacts/market-analysis/"
+                        "<date>.json; a legacy regime.json is still accepted)")
     p.add_argument("--out")
     args = p.parse_args()
     if args.strategies is None:
         args.strategies = paths.state_dir("strategies")
+    if args.regime is None:
+        # The market-of-record is market-analysis. Its digest is a superset of the old
+        # regime.json on every key gated below, so no spec needs rewriting.
+        args.regime = paths.report_path("market-analysis", ext="json")
 
     try:
         regime = json.load(open(args.regime))
     except Exception as e:
-        print(json.dumps({"error": f"cannot read regime: {e}"})); sys.exit(2)
+        print(json.dumps({
+            "error": f"cannot read market context: {e}",
+            "hint": "run: python3 skills/market-analysis/scripts/market_context.py "
+                    "--mode quick",
+        })); sys.exit(2)
 
     files = sorted(glob.glob(os.path.join(args.strategies, "*.yml"))
                    + glob.glob(os.path.join(args.strategies, "*.yaml")))
@@ -120,8 +132,11 @@ def main():
     selected = fitting[0] if fitting else None
     out = {
         "as_of": regime.get("as_of"),
+        # `market_posture` is the canonical name; `risk_posture` is the legacy shim's
+        # mirror, read only so an older regime.json still resolves during migration.
         "regime": {"market_trend": regime.get("market_trend"),
-                   "risk_posture": regime.get("risk_posture"),
+                   "market_posture": (regime.get("market_posture")
+                                      or regime.get("risk_posture")),
                    "vix": (regime.get("volatility") or {}).get("vix")},
         "active_specs": actives,
         "selected": selected,

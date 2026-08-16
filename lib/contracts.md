@@ -94,8 +94,8 @@ Each blocked rung names itself in `gaps`; `ok:false` with a `gap` means "unknown
 Producer: `lib/prices.py` (the canonical data-spine fetcher). Consumers: any caller needing
 a live quote, EOD history, a technical screen, or a live↔history cross-check —
 `find-trade/scripts/screen.py`, `trade-tracker/scripts/validate_trade.py`,
-`strategy-manager/scripts/regime.py` (index history), `sector-analysis`, `daily-brief`, and the
-`technical-analyst` agent. Two truths kept separate: the **TradingView
+`market-analysis/scripts/market_context.py` (index history), `lib/market.py` (breadth screen,
+macro series), `sector-analysis`, `daily-brief`, and the `technical-analyst` agent. Two truths kept separate: the **TradingView
 scanner** (public India scan endpoint, **no auth**) is live/current/screening truth;
 **yfinance** is EOD-history truth. Key contract — each returns the shared data-spine
 **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`:
@@ -134,6 +134,31 @@ data-spine **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`:
 `SCREENER_SESSION_ID`/`SCREENER_CSRF_TOKEN` are injected only for a login-walled screen.
 Fetched figures are untrusted data, assessed not obeyed. Covered by `lib/test_fundamentals.py`
 (offline parser fixtures).
+
+### `lib/market.py` — market-wide fetch (indices, valuation history, breadth, flows, macro)
+Producer: `lib/market.py` (the canonical market-level fetcher). Consumer: **only**
+`market-analysis/scripts/market_context.py` — every other skill reads the market-context
+artifact, not this module, so there is one market-of-record. Key contract — each returns the
+shared data-spine **envelope**:
+- `indices()` → `data.indices:{<CANONICAL NAME>:{last, pe, pb, dy, pct_change, pct_change_1y}}` for ~139 NSE indices in one call (NSE `allIndices`, cookie-bootstrapped curl).
+- `index_snapshot(day)` / `valuation_history(index, years)` → month-end `{date, close, pe, pb, dy}` series from the NSE archive daily CSVs. **One fetch per sampled DATE serves every index**, and snapshots are cached permanently — which is what makes a 10-year, multi-index percentile affordable.
+- `breadth(universe)` → `data.counts:{above_sma50, above_sma200, advancing, near_52w_high, near_52w_low}`, each as `{count, of}` so the priced denominator travels with the number.
+- `flows()` → `data.flows:{FII,DII}:{buy_cr, sell_cr, net_cr}`; `macro(period)` → `{last, chg_1m_pct, percentile_5y, as_of}` per series.
+- `percentile(values, value)` — the one pure primitive here; it ranks, it does not judge.
+`SECTOR_YF` is the **single** NSE-sectoral yfinance ticker map (it previously existed in three
+places, which is how two skills disagreed about which sectors exist). Fetches only — no regime
+label, no stance, no score. Covered by `lib/test_market.py` (offline fixtures).
+
+### `lib/funds.py` — mutual-fund fetch (identity, category screen, full holdings, NAV)
+Producer: `lib/funds.py` (the canonical fund-level fetcher). Consumers: `mf-analysis`
+(`scanner.py`, `lookthrough.py`), and `portfolio-review` indirectly through it. Envelope as above:
+- `resolve(name)` → `{scheme_code, isin, amfi_name, plan, mf_id, tickertape_name}`; AMFI `NAVAll.txt` is the scheme-code/ISIN authority (mfapi's search misses funds outright).
+- `screen(subsector, option, min_aum)` → `data.funds:[{mf_id, name, aum, expRatio, ret1y/3y/5y, sharpe, sortino, alpha, stdDevAnn, percSmallcap/Midcap/Largecap, ageInMon, …}]` — the category scanner. String filters in the vendor's `match` are silently ignored, so category filtering happens client-side; `PREMIUM_FIELDS` are stripped before the request because one gated field 403s the whole call.
+- `holdings(mf_id)` → `data.positions:[{sid, ticker, name, weight, change3m, type}]` — the **complete** book (64-278 positions at 90-99% coverage), plus `equity_weight`, `sector_weights`, `allocation_history`. `sid` is the join key and genuinely differs from `ticker` (REC: ticker `RECLTD`, sid `RECM`).
+- `stock_ratios(sid)` / `enrich(positions)` → per-holding `{pe, ttm_pe, pb, roe, market_cap_cr, cap_rank, cap_label, sector, …}`, threaded and cached. **`cap_rank` is the SEBI market-cap rank** — the basis cap-tilt must use.
+- `nav_history(code)` → `data.navs:[{date ISO, nav}]` oldest-first, strictly parsed.
+**Not to be replaced by the IndMoney MCP holdings feed** — it caps at 20 rows, misreports its
+own coverage, and can be months stale. Covered by `lib/test_funds.py` (offline fixtures).
 
 ### `lib/holdings.py` — holdings source-resolver + normalizer
 Producer: `lib/holdings.py` (the canonical holdings spine). Consumers: `daily-brief` and
@@ -181,7 +206,7 @@ Key blocks and who reads them:
 | Block | Written by | Read by | Meaning |
 |---|---|---|---|
 | `status` | strategy-manager validate/optimize | find-trade, backtest, select | `draft`→not tradeable; `active`→eligible; `inactive`→retired |
-| `regime_required` | generate | select_strategy.py, trade-tracker | conditions checked against live regime.json at PICK time |
+| `regime_required` | generate | select_strategy.py, trade-tracker | conditions checked against the live **market-context** artifact at PICK time |
 | `screening.fundamental` | generate | find-trade Stage 1 | `provider: screener.in` + `query` + `max_survivors` |
 | `screening.technical` | generate | find-trade Stage 2 | `provider: tradingview` (+`tradingview_filters`) or `compute` (+`compute_filters` for lib/ta.py) |
 | `entry`/`exit`/`sizing` | generate | find-trade Stage 3, backtest (via lib/strategy.py) | `entry.signal` (machine trigger; else `compute_filters`); `exit`: stop (auto-floored at max(0.5·ATR, 1% price)) / target (`measured_move`\|`next_resistance`\|`none`) / min_rrr / time_stop / **`trail_atr`** (ATR trailing stop) / **`exit_signal`** (close-on-condition, entry grammar); %-risk |
@@ -191,12 +216,45 @@ Key blocks and who reads them:
 **Invariant:** find-trade runs a spec **only** when `status: active` AND its
 `regime_required` fits the live regime. It has no default — no fitting active spec ⇒ no trade.
 
-## Artifact: regime read
-**Producer:** `strategy-manager/scripts/regime.py` → `artifacts/regime/YYYY-MM-DD.json`.
-**Consumers:** `select_strategy.py` (PICK), `trade-tracker` (regime-exit check), `find-trade`
-(indirectly, via pick). Fields read by the selector: `market_trend`, `trend_detail.above_ema200`,
-`volatility.vix`, `breadth.pct_sectors_above_ema50`, `risk_posture`, `as_of`. (See
-`select_strategy.py:regime_fit` for the exact comparison against `regime_required`.)
+## Artifact: market-context  *(supersedes the regime read)*
+**Producer:** `skills/market-analysis/scripts/market_context.py` → `artifacts/market-analysis/YYYY-MM-DD.json`.
+**Warmed by** whichever skill runs first that day (usually `daily-brief`); every later caller
+uses `--mode quick`, which reuses the artifact with **zero fetches**. That is the point of the
+contract: N skills in a day cost one computation, and they cannot disagree about the tape.
+
+`as_of` is the **last trading bar**, not the generation date — on a weekend the context is
+legitimately Friday's.
+
+| Field | Meaning | Read by |
+|---|---|---|
+| `market_trend` | `up`\|`range`\|`down` (Nifty vs 50/200-EMA + slope) | select_strategy.py, trade-tracker, find-trade, daily-brief |
+| `market_posture` | `risk_on`\|`neutral`\|`risk_off` — the sizing gate | find-trade (size), deep-analysis (portfolio-manager sizing), daily-brief, trade-tracker |
+| `rationale` | one line explaining the posture | daily-brief (the net read) |
+| `trend_detail.above_ema200` | Nifty vs 200-EMA | select_strategy.py (`nifty_above: ema200`) |
+| `trend_detail.{close,ema50,ema200,ema50_rising,pct_from_52w_high}` | trend context | daily-brief, find-trade |
+| `volatility.vix` | India VIX level | select_strategy.py (`vix_max`), find-trade sizing |
+| `volatility.{percentile_1y,percentile_5y,band}` | where that VIX sits historically | deep-analysis sizing, daily-brief |
+| `breadth.pct_sectors_above_ema50` | legacy 10-sector count | select_strategy.py (`breadth_min_pct`) — **name frozen** |
+| `breadth.{pct_above_sma50,pct_above_sma200,pct_near_52w_high,pct_near_52w_low,universe}` | real stock-level participation over the top 500 | find-trade, daily-brief, sector-analysis |
+| `valuation.<index>.{pe,pe_pctile,pb,pb_pctile,dy,dy_pctile,stance,blended_pctile}` | cap-tier valuation vs that index's own 10y history, for `NIFTY 50` / `NIFTY MIDCAP 150` / `NIFTY SMALLCAP 250` | **mf-analysis** (is the category worth adding to), portfolio-review (smallcap-sleeve flag), deep-analysis (valuation leg context) |
+| `relative.{smallcap_vs_largecap_pb_ratio,percentile_spread,read}` | cap-tier richness against each other | mf-analysis, portfolio-review |
+| `flows.{FII,DII}.{buy_cr,sell_cr,net_cr}`, `flows_session` | institutional flow, ₹ Cr | daily-brief |
+| `macro.{india_vix,usdinr,gold_usd,crude_brent,us_10y}.{last,chg_1m_pct,percentile_5y}` | cross-asset backdrop | daily-brief, deep-analysis |
+| `sectors.{leaders,laggards}` | 1Y sector ranking | sector-analysis (cheap first pass), daily-brief |
+| `gaps` | labelled degradations | every consumer — surfaced, never swallowed |
+
+**Two naming rules that are load-bearing.** `market_trend`, `trend_detail.above_ema200`,
+`volatility.vix` and `breadth.pct_sectors_above_ema50` keep their original spelling forever
+because `select_strategy.py:regime_fit` gates on them — renaming one silently breaks every
+strategy spec's `regime_required`. And the former `risk_posture` is now **`market_posture`**:
+`risk_posture` already means a *personal balance-sheet* posture in the wealth contract
+(see Cross-domain, below), and the two collide the moment wealth-manager reads market context.
+
+### Superseded: `artifacts/regime/YYYY-MM-DD.json`
+Produced **only** by `strategy-manager/scripts/regime.py`, now a thin deprecation shim that
+delegates to `market_context.py` and re-emits the legacy shape (including a `risk_posture`
+mirror) for one release. No new caller should read it. `select_strategy.py` defaults to the
+market-context artifact and accepts the legacy file only as a fallback.
 
 ## Artifact: trade-idea
 **Producer:** `find-trade` (on user confirmation), or `trade-tracker` (when it captures a
@@ -417,16 +475,21 @@ every number (nothing eyeballed).
 ## The pipeline these contracts wire together
 
 ```
+market-analysis ──market-context──┬──▶ strategy-manager (pick) ─┬──▶ find-trade (regime + sizing)
+  (one computation per day,       ├──▶ mf-analysis (is the tier ├──▶ deep-analysis (sizing, valuation ctx)
+   every later caller --quick)    │    worth adding to?)        ├──▶ portfolio-review (smallcap flag)
+                                  └──▶ sector-analysis ─────────┴──▶ daily-brief / trade-tracker
 sector-analysis ─┐
               ▼
 strategy-manager  ──generate→ spec(draft) ──validate(backtest)→ spec(active)
               │                                   ▲                  │
-              │ optimize ◀── trade-idea.result ───┘                  │ pick (regime.json)
+              │ optimize ◀── trade-idea.result ───┘                  │ pick (market-context)
               ▼                                                      ▼
         (live_performance)                                   find-trade ──signals──▶ trade-idea(idea)
                                                                                           │
 deep-analysis / dcf / management-quality ── rationale ──▶ trade-tracker ◀── broker MCP ───┘
 filings.py ──▶ filings-watch / daily-brief        (promotes idea→open, closes→result)
+funds.py ──▶ mf-analysis (scanner → shortlist → look-through) ──▶ portfolio-review
 ```
 Every arrow is one of the contracts above. Break an arrow and you break the system, not
 just one skill — which is why they are documented here together.

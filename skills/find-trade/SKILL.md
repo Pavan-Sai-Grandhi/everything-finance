@@ -59,6 +59,10 @@ This is the **coarse chart-state cut** (whole universe → a shortlist), distinc
 
 Either way, the shared `lib/ta.py` guarantees these indicators match the backtester's — a stock can't pass the screen on an EMA the backtest computes differently.
 
+## Stage 2.5 — Record the market the screen ran in
+
+Run `python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick` and carry `as_of`, `market_trend`, `market_posture` and `volatility.band` into the output header. `market_posture` governs **sizing aggressiveness only** — never the entry rule, which always comes from the spec: `risk_off` caps risk-per-trade at half the spec's figure and `risk_on` permits the full figure, with the reason stated. A signal list with no regime stamped on it cannot be judged later.
+
 ## Stage 3 — Signal construction (`entry` / `exit` / `sizing`)
 
 `scripts/screen.py` already builds a signal per survivor from the spec (it is the same `build_signal` the tests cover): entry (the breakout trigger for breakout archetypes, else the last close for pullback/reversal setups), stop from `exit.stop` (`recent_swing_low` | `ema50_minus_2atr` | `range_low`), target from `exit.target` (`measured_move` → consolidation height; else next-resistance proxy at `min_rrr`), RRR gated at `exit.min_rrr`, and qty at `sizing.risk_per_trade_pct`. Anything failing the RRR gate or with a malformed/too-wide stop is dropped with a reason — never silently.

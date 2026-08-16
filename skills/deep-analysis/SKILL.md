@@ -37,6 +37,7 @@ Forked subagents in four phases. Phase 0 fetches the fundamentals **once**; phas
 
 | Phase | Agent | Input | Modes |
 |---|---|---|---|
+| 0 | *(no agent — you run it)* | **market context**: `python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick`. Costs nothing after the first caller of the day. Pass `market_posture` + `volatility.band` to the `portfolio-manager` (they govern **sizing**, never the verdict), and the stock's cap-tier `valuation.stance` to the `valuation-analyst` as context for its relative-multiple read. Without this the portfolio-manager sizes positions regime-blind. | all |
 | 0 | `fundamentals-data` | ticker + output path + **fetch depth** (`lite` in `quick`, `full` otherwise) — pulls the screener.in envelope and CMP always; in `full` also the annual-report priority sections (incl. management signals) + concall. One sourced **data-pack**; the only fundamentals fetch in the run. | all |
 | 1 (parallel) | `technical-analyst` | ticker + cached OHLCV if you already fetched any (saves the agent a fetch) | all |
 | 1 (parallel) | `financials-analyst` | **data-pack path** — Varsity checklist + company overview + concall takeaways + relative valuation | all |

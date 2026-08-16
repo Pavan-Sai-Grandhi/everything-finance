@@ -61,7 +61,7 @@ Picture shape (leg blocks are the digests you transcribed; omit a leg that didn'
   "profile": { "age": <n>, "dependents": <n>, "monthly_expenses": <₹|absent> } }
 ```
 
-`wealth.py` owns every number: the spine, the **emergency-fund runway**, the **protection-vs-net-worth** read, the **risk posture** (all gated by the foundation — see reference.md), and the **financial-health scorecard** with the prioritized action plan. Deterministic; you never eyeball a figure. Ask once for age / dependents / monthly expenses if not derivable — missing expenses makes the emergency-fund read "not assessed", not fabricated.
+`wealth.py` owns every number: the spine, the **emergency-fund runway**, the **protection-vs-net-worth** read, the **risk posture** (all gated by the foundation — see reference.md; this is a *personal balance-sheet* posture and is deliberately distinct from market-analysis's `market_posture`, which describes the tape — never conflate the two, and never let a `risk_on` market loosen a personal posture the foundation has gated), and the **financial-health scorecard** with the prioritized action plan. Deterministic; you never eyeball a figure. Ask once for age / dependents / monthly expenses if not derivable — missing expenses makes the emergency-fund read "not assessed", not fabricated.
 
 ## Section 4 — Synthesis & output
 

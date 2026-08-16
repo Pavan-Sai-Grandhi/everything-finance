@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, WebFetch, Skill, mcp__indmoney__*, mcp__kite__
 
 This skill answers one question per open position: **is the original rationale still intact, or is an early exit warranted?** It reads what you actually hold (IndMoney net worth, or the broker) and your exact fills (broker order history), pairs each position with *why* you took the trade, and re-checks that "why" against today's price and regime. It never places orders — the hosted IndMoney/Kite/Upstox MCPs are read-only by design, and so is this plugin (CLAUDE.md). You execute exits yourself.
 
-**Sources for this skill only:** the shared `lib/holdings.py` resolver for live position state (**IndMoney** `mcp__indmoney__*` → broker fallback), the broker MCP (Kite/Upstox) for **order/trade history** (the only source of exact fills), the trade artifacts under `artifacts/state/trades/` and a stock's deep-analysis under `artifacts/stocks/<TICKER>/<date>/` (rationale), `scripts/validate_trade.py` + yfinance (price/indicator re-check), and `strategy-manager`'s `regime.py` for strategy-linked regime checks. Read `references/reference.md` first — it defines the exit-decision framework this skill enforces.
+**Sources for this skill only:** the shared `lib/holdings.py` resolver for live position state (**IndMoney** `mcp__indmoney__*` → broker fallback), the broker MCP (Kite/Upstox) for **order/trade history** (the only source of exact fills), the trade artifacts under `artifacts/state/trades/` and a stock's deep-analysis under `artifacts/stocks/<TICKER>/<date>/` (rationale), `scripts/validate_trade.py` + yfinance (price/indicator re-check), and the `market-analysis` skill's per-day market-context artifact for strategy-linked regime checks. Read `references/reference.md` first — it defines the exit-decision framework this skill enforces.
 
 ## 1. Source live state, and fills (read-only)
 
@@ -49,7 +49,7 @@ It fetches OHLCV (yfinance) and returns a verdict in priority order — **EXIT_S
 
 The script handles price-mechanical checks. You handle the rest:
 - **`manual_review` conditions** — qualitative invalidations like "earnings miss", "promoter pledge increase", "sector downgrade". Check them with the plugin's allowed news/filings paths (WebFetch / a quick `/filings-watch` or `/deep-analysis` if the user wants depth) and decide if the thesis is broken.
-- **Regime change (strategy-linked trades)** — if the artifact has a `strategy`, load that spec's `regime_required`, re-read the live regime (`python3 <strategy-manager-dir>/scripts/regime.py --out artifacts/regime/YYYY-MM-DD.json`), and if the regime now **fails** the strategy's conditions, flag a regime-exit even when price hasn't hit the stop — the edge that justified the trade is gone.
+- **Regime change (strategy-linked trades)** — if the artifact has a `strategy`, load that spec's `regime_required`, re-read the live market context (`python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick`), and if the regime now **fails** the strategy's conditions, flag a regime-exit even when price hasn't hit the stop — the edge that justified the trade is gone.
 
 Fold these into the final call: the script's verdict is the floor; a broken qualitative thesis or a failed regime can turn a mechanical HOLD into a recommended exit (say why).
 
