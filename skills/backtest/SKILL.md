@@ -2,7 +2,7 @@
 name: backtest
 description: Backtest a strategy spec on historical NSE daily data — runs the bundled Backtesting.py engine (driven by the shared lib/strategy.py spec interpreter on lib/ta.py / TA-Lib indicators) on any strategy-manager spec's rules, reporting win rate, expectancy, profit factor, max drawdown vs buy-and-hold. Use whenever the user asks to backtest, validate, or "check if this strategy actually works", wants historical performance of a setup, or after find-trade produces signals and the user questions the strategy's edge.
 argument-hint: "--spec <strategy>.yml TICKER(s) or 'largecap20' [years, default 5]"
-allowed-tools: Read, Write, Bash
+allowed-tools: Read, Write, Bash, mcp__finance-data__*
 ---
 
 # Backtest — historical validation of a strategy spec

@@ -22,13 +22,18 @@ SCREENER_SESSION_ID=...       # optional, screener.in sessionid cookie (saved sc
 SCREENER_CSRF_TOKEN=...       # optional, screener.in csrftoken cookie
 ```
 
-The plugin registers four MCP servers:
+The plugin registers four MCP servers (in [`.mcp.json`](.mcp.json)), split into two classes with deliberately opposite rules.
 
-- **Playwright** (`npx @playwright/mcp@latest`, **real Chrome channel** — needed to beat the Akamai walls on Moneycontrol/NSE) for JS-heavy/authenticated pages.
+**Decision data — one server, minimal by design.**
+
+- **`finance-data`** (local, `bin/finance-data-mcp.sh`) — **the only door to every number the plugin reasons about**: prices, market state, company fundamentals, mutual funds, news and exchange filings, over 20 tools and seven verified sources (TradingView, Yahoo, screener.in, NSE, Tickertape, AMFI, Google News RSS). No ad-hoc `curl`, no `WebFetch` at a data site, and **no browser automation anywhere in the plugin**. It needs no configuration: the launcher uses your `python3` if it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once. Full rationale and the per-data-point inventory live in [`docs/data-sources.md`](docs/data-sources.md).
+
+**Personal data — connect whatever you have, maximal by design.** These answer only *what you own and what it is worth*; they are never used to form a view (see rule 3 in [CLAUDE.md](CLAUDE.md) for the measured reasons that boundary is enforced).
+
 - **Kite** (Zerodha, `https://mcp.kite.trade/mcp`) and **Upstox** (`https://mcp.upstox.com/mcp`) — read-only broker access for `/trade-tracker`, both hosted and OAuth-gated; neither can place orders. You only need the broker you actually use. They run through `bin/mcp-bridge.sh`, a thin `mcp-remote` wrapper that gives **each Claude session its own OAuth config dir** (`~/.mcp-auth-sessions/<pid>`) so concurrent sessions register on independent callback ports and never collide on a shared one (the EADDRINUSE you'd otherwise hit when a second window connects to the same broker). It self-cleans after exited sessions — dropping their config dirs and reaping any bridge a crash/closed-terminal left orphaned (PPID 1), never a live session's. The trade-off of isolation: you authenticate **per session** (Kite already required this; Upstox is once per session rather than once per day). A reconnect within the same session reuses the stored token.
 - **IndMoney** (`https://mcp.indmoney.com/mcp`) — read-only, the **primary** source for live holdings, positions and net worth across all asset classes (with per-position P&L and XIRR), superseding the single-broker equity view. It runs through the same `bin/mcp-bridge.sh` (same per-session isolation and self-healing). OAuth is mobile + OTP + MPIN, read-only by design and revocable from IndMoney settings; the first run pops a browser consent screen. It carries no order/trade history, so exact entry fills still come from the broker MCPs — IndMoney is never used to approximate an entry.
 
-Cheap paths are preferred per the access matrix in [CLAUDE.md](CLAUDE.md): yfinance for OHLCV, Moneycontrol's `priceapi` JSON and the BSE/mfapi JSON APIs over plain curl, screener.in with auth cookies. WebFetch handles the static, non-blocking pages; Claude in Chrome is the CAPTCHA fallback. TradingView's **stock screener** is driven via the Playwright browser for find-trade's technical cut (its chart pages remain a human-facing link); all computed OHLCV still comes from yfinance.
+All HTTP goes through one transport (`lib/transport.py`, curl-based — NSE 403s urllib on the TLS fingerprint), and every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so a blocked source is a *labelled gap* the report names rather than a crash or a silent empty. Bulk results (holdings, NAV series, candles) are written to disk and the tool returns a summary plus the path, so a 278-row portfolio never lands in a context window. Optional cookies in `~/.claude/.env` unlock screener.in's saved screens; without them that one tool degrades to a labelled gap and everything else is unaffected.
 
 Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/pattern — TA-Lib-backed — plus the `FEATURES` registry), `strategy.py` (the one spec→signal engine both the live `find-trade` screen and the `backtest` sit on, so they can't drift), `paths.py` (the single artifact-path authority + `latest_prior` prior-run lookup; one-time migration in `migrate_artifacts.py`), `alerts.py` (the alert contract the skills feed and `daily-brief` reads), and `contracts.md` (the data-handoff contracts between skills). See [CLAUDE.md](CLAUDE.md) → *Shared code*.
 
@@ -43,7 +48,7 @@ Shared code lives in **`lib/`**: `ta.py` (one definition of every indicator/patt
 | `/mf-analysis` | Mutual fund research: NAV history, rolling returns, category comparison, fund quality verdict |
 | `/insurance-advisor` | Term/health/vehicle insurance — advise & compare (shortlist 2), audit existing cover, or answer questions on a policy you hold |
 | `/budget-tracker` | Parse bank/CC statements (PDF/CSV), categorize, compare against the Monthly Budget Planning framework, discipline report |
-| `/filings-watch TICKER` | NSE + BSE announcements, corporate actions, shareholding pattern changes |
+| `/filings-watch TICKER` | NSE announcements, corporate actions, shareholding pattern and promoter-pledge changes |
 | `/daily-brief` | Morning one-pager: indices, a market-moving news digest, sector tone, the open-alert inbox + actions due, a strictly-capped opportunities shortlist (vetted from the alert inbox + ≤1 labelled news flag), watchlist filings & news, open-position health — Telegram-ready. Surfaces and recommends; never auto-runs a skill or places an order |
 | `/alert-manager` | The inbox for the plugin's alerts (stop levels, act-on filings, thesis rechecks due, vetted opportunities) that the other skills raise: list, add a manual watch-item, dismiss, snooze, or sweep expired. `/daily-brief` reads these every morning |
 | `/portfolio-review` | Holdings audit: exit signals, allocation drift, risk concentration |

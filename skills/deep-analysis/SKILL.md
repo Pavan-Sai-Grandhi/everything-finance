@@ -2,7 +2,7 @@
 name: deep-analysis
 description: Full multi-agent investment debate on a single Indian stock, at one of three depths — six lenses (technical; financials from a fetch-once data-pack of annual reports & concalls; management integrity & skill; valuation triangulating a story-driven DCF with relative multiples; news sentiment; sector context), then bull vs bear researchers debate, and a portfolio-manager issues the verdict, synthesized into one readable report. Use whenever the user asks to analyze, research, deep-dive, evaluate, or form a view on a specific ticker or company name ("should I buy X?", "what do you think of Tata Motors?"), even if they don't say "deep analysis".
 argument-hint: "TICKER (NSE symbol or company name) [--quick | --deep]"
-allowed-tools: WebFetch, Read, Write, Bash, Agent, mcp__playwright__*, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*
+allowed-tools: WebFetch, Read, Write, Bash, Agent, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-data__*
 ---
 
 # Deep Stock Analysis — multi-agent debate
@@ -29,7 +29,7 @@ Record `{mode, reason}` — the synthesis reports both.
 
 **Refer the earlier run first.** Call `paths.latest_prior("deep-analysis", TICKER)` — if a prior report exists, read it before launching the debate so this run builds on it rather than starting cold, and pass the prior verdict/levels to the agents as context. The synthesized report then opens with a **"What changed since `<date>`"** block (see Synthesize). No prior run is the normal first-time case.
 
-**Sites for this skill only:** screener.in (financials, annual reports, concalls), yfinance + NSE (price), ET via Playwright/curl + Moneycontrol via real-Chrome Playwright or its `priceapi` JSON (news/quotes — WebFetch tool is blocked by both, browsers/curl work). TradingView not scraped (yfinance covers data; optional human chart link only).
+**Sources for this skill only:** the `finance-data` tools — `get_company_fundamentals` (financials, annual-report and concall links), `get_history` + `get_quote` (price), `get_news` (publisher-tiered), `get_filings` + `get_shareholding` + `get_corporate_actions`, and `get_market_context`. WebSearch/WebFetch only for the qualitative governance checks the management leg names. A TradingView chart URL may be linked for a human, never scraped.
 
 ## Orchestration
 

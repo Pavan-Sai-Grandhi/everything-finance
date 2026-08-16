@@ -2,21 +2,28 @@
 """Exchange-filings fetch + materiality classification (everything-finance plugin).
 
 The canonical filings fetcher of the data spine — lives in `lib/` next to `ta.py`,
-`strategy.py` and `paths.py` so the BSE/NSE endpoints and the materiality taxonomy live
-in exactly one place. `filings-watch` wraps it with the browser-only shareholding/pledge
-read and the judgement/report; `daily-brief` calls it for the watchlist/holdings scan.
+`strategy.py` and `paths.py` so the exchange endpoints and the materiality taxonomy live
+in exactly one place. `filings-watch` wraps it with the judgement/report; `daily-brief`
+calls it for the watchlist/holdings scan.
 
 Two layers:
   * classify_materiality(text) — the deterministic, offline-testable heart: maps a filing
     headline/subject to a 🔴 act-on / 🟡 monitor / ⚪ routine tier with a reason. This is
     the value of the skill (most filings are noise; this is the filter) and is unit-tested.
-  * fetch_bse_* / fetch_nse_announcements / resolve_symbol — the fetch ladder. BSE public
-    JSON API first (browser UA + Referer, per CLAUDE.md); when BSE fingerprint-blocks (a
-    200 "No Record Found!" or a 302 to its error page), the scrip code is resolved to its
-    NSE symbol via BSE's own scrip-header endpoint (which is not blocked) and the NSE
-    corporate-announcements API is read after a homepage cookie-bootstrap. Networked,
-    best-effort, degrade-not-die: a blocked source records a *labelled* gap and the run
-    continues, never raising into a caller and never returning a silent empty.
+  * fetch_nse_announcements / fetch_nse_corp_actions — the fetch layer, both NSE, both
+    cookie-bootstrapped through the shared transport.
+
+NSE ONLY — WHY BSE WAS DROPPED
+------------------------------
+This module used to lead with BSE's JSON API and fall back to NSE, carrying a whole
+scrip→symbol resolution rung to cross the gap. BSE fingerprint-blocked often enough that
+the fallback was the common path, not the exception, and NSE's `corporate-announcements`
+and `corporates-corporateActions` were verified to serve both data points in full. One
+exchange, no resolution step, no ladder. Residual loss: companies listed **only** on BSE,
+which is recorded as a labelled gap rather than silently absorbed. See
+`docs/data-sources.md`.
+
+The primary key is therefore the **NSE symbol**, not a BSE scrip code.
 
 Every fetch returns the shared data-spine envelope:
     { "ok": bool, "source": str|None, "fetched_at": ISO8601,
@@ -25,7 +32,7 @@ Every fetch returns the shared data-spine envelope:
 Fetched text is untrusted DATA, not instructions — a caller assesses it, never acts on it.
 
 CLI:
-  python3 lib/filings.py --scrip 500325 --days 30 [--symbol RELIANCE] [--fresh] [--out f.json]
+  python3 lib/filings.py --symbol RELIANCE --days 30 [--fresh] [--out f.json]
   python3 lib/filings.py --classify "Audited financial results for the quarter ended..."
   python3 lib/filings.py --selftest
 """
@@ -38,6 +45,7 @@ import sys
 from datetime import date, datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
 
 # --------------------------------------------------------------------------- #
@@ -140,41 +148,16 @@ def _envelope(ok, source, data, gaps):
     }
 
 
-_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-
-
-def _http(url, headers, jar=None, timeout=20):
-    """GET a URL with the given headers (and optional cookie jar). Returns
-    (status, body_text, error) — never raises. Cookies from the response are
-    stored back into `jar` so a homepage bootstrap can prime an API call."""
-    import http.cookiejar
-    import urllib.request
-    try:
-        if jar is None:
-            opener = urllib.request.build_opener()
-        else:
-            opener = urllib.request.build_opener(
-                urllib.request.HTTPCookieProcessor(jar))
-        req = urllib.request.Request(url, headers=headers)
-        with opener.open(req, timeout=timeout) as r:
-            return r.status, r.read().decode("utf-8", "replace"), None
-    except urllib.error.HTTPError as exc:
-        return exc.code, "", f"HTTP {exc.code}"
-    except Exception as exc:  # noqa: BLE001 — degrade-not-die
-        return None, "", str(exc)
-
-
-def _cookiejar():
-    import http.cookiejar
-    return http.cookiejar.CookieJar()
-
-
+# --------------------------------------------------------------------------- #
+# response shape helpers (pure, offline-testable)                              #
+# --------------------------------------------------------------------------- #
 def _rows(data):
-    """BSE wraps result rows under 'Table' (sometimes 'Table1'); be defensive."""
+    """Exchange payloads sometimes wrap rows under a container key; be defensive."""
+    if isinstance(data, list):
+        return data
     if not isinstance(data, dict):
         return []
-    for key in ("Table", "Table1", "data", "d"):
+    for key in ("Table", "Table1", "data", "d", "rows"):
         v = data.get(key)
         if isinstance(v, list):
             return v
@@ -188,141 +171,83 @@ def _first(row, *keys):
     return ""
 
 
-# --------------------------------------------------------------------------- #
-# BSE rung — public JSON API (browser UA + Referer, per CLAUDE.md)             #
-# --------------------------------------------------------------------------- #
-_BSE_HEADERS = {
-    "User-Agent": _UA,
-    "Referer": "https://www.bseindia.com/corporates/ann.html",
-    "Origin": "https://www.bseindia.com",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-}
-# the literal body BSE serves when it fingerprint-blocks an otherwise-200 request
-_BSE_BLOCK_BODY = "No Record Found!"
-
-
-def _bse_get(url):
-    """GET a BSE API url with the browser headers. Returns (rows, gap) — gap is a
-    labelled string when blocked/empty (HTTP code or the fingerprint body), else None."""
-    status, body, err = _http(url, _BSE_HEADERS)
-    if err and status is None:
-        return [], f"BSE fetch failed (network): {err}"
-    if status and status >= 300:
-        # BSE bounces blocked API calls to api.bseindia.com/error_Bse.html via 302
-        return [], f"BSE fetch blocked: HTTP {status} (redirect to error page)"
-    if _BSE_BLOCK_BODY.lower() in body.lower():
-        return [], 'BSE fingerprint block: HTTP 200 "No Record Found!"'
+def _f(value):
+    """Pure: coerce a cell to float, else None. A blank is None, never 0 — a fabricated
+    zero would silently poison a percentage series."""
+    if value in (None, "", "-", "None"):
+        return None
     try:
-        data = json.loads(body)
-    except Exception:  # noqa: BLE001
-        return [], "BSE response was not JSON (likely a block page)"
-    return _rows(data), None
+        return float(str(value).replace(",", "").replace("%", "").strip())
+    except (TypeError, ValueError):
+        return None
 
 
-def fetch_bse_announcements(scrip, days=30):
-    """BSE announcements for a scrip code over the last `days`. Returns
-    {items: [...], gap: str|None} — never raises. `gap` names the specific block."""
-    to_d = date.today()
-    from_d = to_d - timedelta(days=days)
-    url = ("https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?pageno=1&strCat=-1"
-           f"&strPrevDate={from_d:%Y%m%d}&strScrip={scrip}&strSearch=P"
-           f"&strToDate={to_d:%Y%m%d}&strType=C")
-    rows, gap = _bse_get(url)
-    out = []
-    for r in rows:
-        head = _first(r, "NEWSSUB", "HEADLINE", "News_submission", "Newssub")
-        if not head:
-            continue
-        tier, emoji, reason = classify_materiality(head)
-        out.append({
-            "date": _first(r, "NEWS_DT", "News_submission_dt", "DT_TM")[:10],
-            "headline": head.strip()[:240],
-            "category": _first(r, "CATEGORYNAME", "Category"),
-            "tier": tier, "emoji": emoji, "why": reason,
-            "attachment": _first(r, "ATTACHMENTNAME", "AttachmentName"),
-            "exchange": "BSE",
-        })
-    if not out and gap is None:
-        gap = "BSE announcements: none in window (verify via NSE before assuming nil)"
-    return {"items": out, "gap": None if out else gap}
-
-
-def fetch_bse_corp_actions(scrip):
-    """Forthcoming corporate actions (dividend/split/bonus/buyback ex-dates). Returns
-    {items: [...], gap: str|None} — never raises."""
-    url = f"https://api.bseindia.com/BseIndiaAPI/api/Corpforthcoming/w?scripcode={scrip}"
-    rows, gap = _bse_get(url)
-    out = []
-    for r in rows:
-        out.append({
-            "purpose": _first(r, "Purpose", "purpose"),
-            "ex_date": _first(r, "Ex_date", "ExDate", "BCRD_FROM")[:10],
-            "record_date": _first(r, "RD_Date", "RecordDate")[:10],
-        })
-    if not out and gap:
-        gap = f"BSE corp-actions: {gap}"
-    return {"items": out, "gap": None if out else (gap or "no forthcoming actions")}
-
-
-def resolve_symbol(scrip):
-    """Resolve a BSE scrip code to its NSE trading symbol via BSE's scrip-header
-    endpoint (which is NOT fingerprint-blocked, unlike the announcements API). The
-    SEO short-name equals the NSE symbol for listed equities. Returns (symbol, gap)."""
-    url = ("https://api.bseindia.com/BseIndiaAPI/api/getScripHeaderData/w?"
-           f"scripcode={scrip}&seriesid=")
-    status, body, err = _http(url, _BSE_HEADERS)
-    if err and status is None:
-        return None, f"scrip→symbol resolve failed (network): {err}"
-    if status and status >= 300:
-        return None, f"scrip→symbol resolve blocked: HTTP {status}"
-    try:
-        data = json.loads(body)
-    except Exception:  # noqa: BLE001
-        return None, "scrip→symbol resolve: BSE header not JSON"
-    short = _first(data.get("Cmpname", {}) if isinstance(data, dict) else {},
-                   "ShortN")
-    if not short:
-        return None, f"no NSE symbol for BSE scrip {scrip} (pass --symbol)"
-    return short.strip().upper(), None
+def _norm_symbol(value):
+    """A bare NSE symbol — uppercased, exchange prefix and `.NS` suffix stripped."""
+    s = str(value or "").strip().upper()
+    if ":" in s:
+        s = s.split(":")[-1]
+    if s.endswith(".NS"):
+        s = s[:-3]
+    return s
 
 
 # --------------------------------------------------------------------------- #
 # NSE rung — homepage cookie-bootstrap, then corporate-announcements API       #
 # --------------------------------------------------------------------------- #
 _NSE_HOME = "https://www.nseindia.com/"
-_NSE_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-announcements"
+_ANN_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-announcements"
+_CA_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-actions"
+_ANN_URL = "https://www.nseindia.com/api/corporate-announcements"
+_CA_URL = "https://www.nseindia.com/api/corporates-corporateActions"
+
+
+def _nse_json(url, referer):
+    """Cookie-bootstrapped NSE JSON GET. Returns (rows, gap).
+
+    NSE issues its API-gating cookies only on the homepage, so that is fetched into a
+    jar first and the API call replays them. The jar is reused across calls within a run.
+    """
+    jar = transport.jar_path("nse")
+    transport.bootstrap(_NSE_HOME, jar)
+    payload, gap = transport.json_request(
+        url, referer=referer, cookie_jar=jar, timeout=30,
+        headers={"X-Requested-With": "XMLHttpRequest"})
+    if gap:
+        return [], gap
+    return _rows(payload), None
 
 
 def fetch_nse_announcements(symbol, days=30):
-    """NSE corporate announcements for an equity symbol over the last `days`, after the
-    documented homepage cookie-bootstrap. Returns {items: [...], gap: str|None}."""
-    jar = _cookiejar()
-    # bootstrap: NSE issues the API-gating cookies only after a homepage GET
-    _http(_NSE_HOME, {"User-Agent": _UA, "Accept": "text/html,application/xhtml+xml"},
-          jar=jar)
+    """NSE corporate announcements for one equity symbol over the last `days`.
+
+    Returns {items: [...], gap: str|None} — never raises."""
+    symbol = _norm_symbol(symbol)
+    if not symbol:
+        return {"items": [], "gap": "no NSE symbol given for announcements"}
     to_d = date.today()
     from_d = to_d - timedelta(days=days)
-    url = ("https://www.nseindia.com/api/corporate-announcements?index=equities"
-           f"&symbol={symbol}&from_date={from_d:%d-%m-%Y}&to_date={to_d:%d-%m-%Y}")
-    status, body, err = _http(
-        url,
-        {"User-Agent": _UA, "Referer": _NSE_REFERER,
-         "Accept": "application/json, text/plain, */*",
-         "Accept-Language": "en-US,en;q=0.9", "X-Requested-With": "XMLHttpRequest"},
-        jar=jar)
-    if err and status is None:
-        return {"items": [], "gap": f"NSE announcements fetch failed (network): {err}"}
-    if status and status >= 300:
-        return {"items": [], "gap": f"NSE announcements blocked: HTTP {status}"}
-    try:
-        rows = json.loads(body)
-    except Exception:  # noqa: BLE001
-        return {"items": [], "gap": "NSE response was not JSON (likely a block page)"}
-    if not isinstance(rows, list):
-        rows = _rows(rows)
-    out = []
+    url = (f"{_ANN_URL}?index=equities&symbol={symbol}"
+           f"&from_date={from_d:%d-%m-%Y}&to_date={to_d:%d-%m-%Y}")
+    rows, gap = _nse_json(url, _ANN_REFERER)
+    if gap:
+        return {"items": [], "gap": f"NSE announcements: {gap}"}
+
+    # Guard: the endpoint has been observed returning the WHOLE market when its symbol
+    # filter is not honoured (~3,300 rows for a one-symbol query). Silently classifying
+    # another company's filings as this one's is the worst failure this module has, so
+    # the symbol is re-checked client-side — the same defence the fund screener needs
+    # against Tickertape's silently-ignored string filters.
+    scoped, foreign = [], 0
     for r in rows:
+        row_sym = _norm_symbol(_first(r, "symbol", "sym"))
+        if row_sym and row_sym != symbol:
+            foreign += 1
+            continue
+        scoped.append(r)
+
+    out = []
+    for r in scoped:
         subject = _first(r, "attchmntText", "desc")
         category = _first(r, "desc", "smIndustry")
         head = (category + " — " + subject).strip(" —") if subject else category
@@ -337,15 +262,93 @@ def fetch_nse_announcements(symbol, days=30):
             "attachment": _first(r, "attchmntFile"),
             "exchange": "NSE",
         })
-    gap = None if out else "NSE announcements: none in window for this symbol"
+    gap = None
+    if foreign:
+        gap = (f"NSE announcements: server ignored the symbol filter — dropped {foreign} "
+               f"rows belonging to other companies client-side")
+    elif not out:
+        gap = "NSE announcements: none in window for this symbol"
     return {"items": out, "gap": gap}
 
 
-# --------------------------------------------------------------------------- #
-# orchestration                                                               #
-# --------------------------------------------------------------------------- #
+def fetch_nse_corp_actions(symbol):
+    """Forthcoming/recent corporate actions (dividend, split, bonus, record dates).
+
+    Replaces BSE's `Corpforthcoming` rung. Returns {items: [...], gap: str|None}."""
+    symbol = _norm_symbol(symbol)
+    if not symbol:
+        return {"items": [], "gap": "no NSE symbol given for corporate actions"}
+    rows, gap = _nse_json(f"{_CA_URL}?index=equities&symbol={symbol}", _CA_REFERER)
+    if gap:
+        return {"items": [], "gap": f"NSE corporate actions: {gap}"}
+    out = []
+    for r in rows:
+        if _norm_symbol(_first(r, "symbol")) not in ("", symbol):
+            continue
+        subject = _first(r, "subject", "purpose")
+        if not subject:
+            continue
+        out.append({
+            "subject": str(subject)[:200],
+            "ex_date": _first(r, "exDate"),
+            "record_date": _first(r, "recDate"),
+            "series": _first(r, "series"),
+            "isin": _first(r, "isin"),
+            "exchange": "NSE",
+        })
+    return {"items": out, "gap": None if out else "no forthcoming corporate actions"}
+
+
+_SHP_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-shareholding-pattern"
+_SHP_URL = "https://www.nseindia.com/api/corporate-share-holdings-master"
+_PLEDGE_URL = "https://www.nseindia.com/api/corporate-pledgedata"
+
+
+def fetch_nse_shareholding(symbol, quarters=8):
+    """Quarterly shareholding pattern + promoter pledge for one NSE symbol.
+
+    This used to be documented as browser-only — it was the reason the plugin carried
+    Playwright with real Chrome. It is not: the same cookie-bootstrapped curl that serves
+    announcements serves the shareholding master too (verified 2026-08-16). Pledge comes
+    from a separate endpoint that is frequently empty; an empty pledge list is reported as
+    a labelled gap rather than as "no pledge", because those are different facts and only
+    one of them is safe to act on.
+
+    Returns {items: [...], pledge: [...], gap: str|None}."""
+    symbol = _norm_symbol(symbol)
+    if not symbol:
+        return {"items": [], "pledge": [], "gap": "no NSE symbol given for shareholding"}
+    rows, gap = _nse_json(f"{_SHP_URL}?index=equities&symbol={symbol}", _SHP_REFERER)
+    if gap:
+        return {"items": [], "pledge": [], "gap": f"NSE shareholding: {gap}"}
+
+    out = []
+    for r in rows[:quarters]:
+        out.append({
+            "quarter": _first(r, "date"),
+            "promoter_pct": _f(_first(r, "pr_and_prgrp")),
+            "public_pct": _f(_first(r, "public_val")),
+            "employee_trusts_pct": _f(_first(r, "employeeTrusts")),
+            "filed_on": _first(r, "submissionDate"),
+            "xbrl": _first(r, "xbrl"),
+        })
+
+    pledge_rows, pgap = _nse_json(
+        f"{_PLEDGE_URL}?index=equities&symbol={symbol}", _SHP_REFERER)
+    pledge = _rows(pledge_rows) if pledge_rows else []
+    gaps = []
+    if pgap:
+        gaps.append(f"NSE pledge data: {pgap}")
+    elif not pledge:
+        gaps.append("NSE returned no pledge rows — treat promoter pledge as UNKNOWN, "
+                    "not as nil")
+    if not out:
+        gaps.append("NSE shareholding: no quarters returned for this symbol")
+    return {"items": out, "pledge": pledge, "gap": "; ".join(gaps) or None}
+
+
 def _dedupe(items):
-    """Collapse the same event reported on both exchanges; keep first (BSE) seen."""
+    """Collapse a repeated event to one row; keep the first seen."""
     seen, out = set(), []
     for it in items:
         key = (it["date"], it["headline"][:80].lower())
@@ -356,15 +359,18 @@ def _dedupe(items):
     return out
 
 
-def summarize(scrip, days=30, symbol=None, fresh=False):
-    """Full best-effort pull for one scrip, returned in the data-spine envelope.
+def summarize(symbol, days=30, scrip=None, fresh=False):
+    """Full best-effort pull for one NSE symbol, in the data-spine envelope.
 
-    Fallback ladder: BSE announcements+corp-actions → (resolve scrip→NSE symbol) →
-    NSE announcements. Every blocked rung records a *labelled* gap; the run returns
-    whatever it gathered. `ok` is true when at least one announcement was retrieved.
+    Announcements + corporate actions, both from NSE. A blocked call records a
+    *labelled* gap and the run returns whatever it gathered; `ok` is true when at least
+    one announcement came back.
+
+    `scrip` (a BSE code) is accepted and echoed for backward compatibility with callers
+    that still pass one, but it is no longer used to fetch — see the module docstring.
     """
-    cache = paths.cache_dir("filings")
-    cache_file = os.path.join(cache, f"{scrip}_{days}.json")
+    symbol = _norm_symbol(symbol)
+    cache_file = os.path.join(paths.cache_dir("filings"), f"{symbol or scrip}_{days}.json")
     if not fresh and os.path.exists(cache_file):
         try:
             with open(cache_file) as fh:
@@ -374,44 +380,28 @@ def summarize(scrip, days=30, symbol=None, fresh=False):
         except Exception:  # noqa: BLE001 — a bad cache file never blocks a fetch
             pass
 
-    gaps = []
-    sources = []
-    items = []
+    gaps, sources, items, corp_actions = [], [], [], []
+    if not symbol:
+        gaps.append("no NSE symbol given — filings are fetched by NSE symbol, not BSE scrip")
+    else:
+        ann = fetch_nse_announcements(symbol, days)
+        items += ann["items"]
+        if ann["items"]:
+            sources.append("NSE")
+        if ann["gap"]:
+            gaps.append(ann["gap"])
 
-    bse = fetch_bse_announcements(scrip, days)
-    items += bse["items"]
-    if bse["items"]:
-        sources.append("BSE")
-    if bse["gap"]:
-        gaps.append(bse["gap"])
-
-    ca = fetch_bse_corp_actions(scrip)
-    corp_actions = ca["items"]
-    if ca["gap"] and not ca["items"] and "no forthcoming" not in ca["gap"]:
-        gaps.append(ca["gap"])
-
-    # fall to NSE when BSE gave no announcements (block or genuinely quiet)
-    if not bse["items"]:
-        sym = symbol
-        if not sym:
-            sym, rgap = resolve_symbol(scrip)
-            if rgap:
-                gaps.append(rgap)
-        if sym:
-            nse = fetch_nse_announcements(sym, days)
-            items += nse["items"]
-            if nse["items"]:
-                sources.append("NSE")
-            if nse["gap"]:
-                gaps.append(nse["gap"])
-        symbol = sym
+        ca = fetch_nse_corp_actions(symbol)
+        corp_actions = ca["items"]
+        if ca["gap"] and not ca["items"] and "no forthcoming" not in ca["gap"]:
+            gaps.append(ca["gap"])
 
     items = _dedupe(items)
     act_on = [a for a in items if a["tier"] == "act-on"]
     monitor = [a for a in items if a["tier"] == "monitor"]
     data = {
-        "scrip": scrip,
         "symbol": symbol,
+        "scrip": scrip,
         "days": days,
         "date": date.today().isoformat(),
         "material_count": len(act_on) + len(monitor),
@@ -421,17 +411,13 @@ def summarize(scrip, days=30, symbol=None, fresh=False):
         "items": items,
         "corporate_actions": corp_actions,
     }
-    env = _envelope(
-        ok=bool(items),
-        source="+".join(sources) if sources else None,
-        data=data,
-        gaps=gaps,
-    )
-    try:
-        with open(cache_file, "w") as fh:
-            json.dump(env, fh, ensure_ascii=False)
-    except Exception:  # noqa: BLE001
-        pass
+    env = _envelope(bool(items), "+".join(sources) if sources else None, data, gaps)
+    if items:
+        try:
+            with open(cache_file, "w") as fh:
+                json.dump(env, fh, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            pass
     return env
 
 
@@ -461,8 +447,8 @@ def _selftest():
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--scrip", help="BSE scrip code (e.g. 500325 for RELIANCE)")
-    p.add_argument("--symbol", help="NSE symbol override (skip scrip→symbol resolve)")
+    p.add_argument("--symbol", help="NSE symbol (e.g. RELIANCE) — the primary key")
+    p.add_argument("--scrip", help="deprecated: BSE scrip code, echoed but not fetched")
     p.add_argument("--days", type=int, default=30)
     p.add_argument("--fresh", action="store_true", help="bypass the day cache")
     p.add_argument("--classify", help="classify a single headline and exit")
@@ -476,10 +462,10 @@ def main():
         tier, emoji, reason = classify_materiality(args.classify)
         print(json.dumps({"tier": tier, "emoji": emoji, "why": reason}, indent=2))
         return
-    if not args.scrip:
-        print("error: --scrip required (or --classify / --selftest)", file=sys.stderr)
+    if not args.symbol:
+        print("error: --symbol required (or --classify / --selftest)", file=sys.stderr)
         sys.exit(2)
-    res = summarize(args.scrip, args.days, symbol=args.symbol, fresh=args.fresh)
+    res = summarize(args.symbol, args.days, scrip=args.scrip, fresh=args.fresh)
     out = json.dumps(res, indent=2, ensure_ascii=False)
     print(out)
     if args.out:

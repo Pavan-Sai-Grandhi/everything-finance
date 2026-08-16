@@ -2,7 +2,7 @@
 name: strategy-manager
 description: Own the full lifecycle of rule-based trading strategies for Indian markets — (1) GENERATE a complete strategy from a reference article you supply, (2) VALIDATE it by backtest and mark it active when it passes, (3) PICK the active strategy that fits the current market regime, and (4) OPTIMIZE or retire strategies from live trade outcomes fed back by trade-tracker. Use whenever the user asks to design/build a strategy, validate or backtest one, "what strategy should I run now / in this market", review or tune a strategy's live performance, or activate/deactivate a strategy.
 argument-hint: "[generate <article URL/file> | validate <name> | pick | optimize <name|all> | <name to inspect>]"
-allowed-tools: WebFetch, Read, Write, Bash, Skill, mcp__Claude_in_Chrome__*, mcp__playwright__*
+allowed-tools: WebFetch, Read, Write, Bash, Skill, mcp__Claude_in_Chrome__*, mcp__finance-data__*
 ---
 
 # Strategy Manager — generate → validate → pick → optimize

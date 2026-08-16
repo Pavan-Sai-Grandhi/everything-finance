@@ -14,8 +14,8 @@ You are forked with no conversation context. Input: ticker/company name, **an ou
 
 ## Gather (in order)
 
-1. **screener.in through the data spine, not by hand:** `python3 <plugin>/lib/fundamentals.py <SYMBOL>` reads the public consolidated page once and returns a typed envelope — `ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`, `documents` (annual-report / concall links). It falls back to the standalone page and says so. Capture the whole envelope verbatim.
-2. **Current price** for the downstream margin-of-safety read: `python3 <plugin>/lib/prices.py <SYMBOL>` (bare symbol → live quote) → record CMP + as-of date.
+1. **screener.in through the MCP tool, not by hand:** `get_company_fundamentals(symbol)` reads the public consolidated page once and returns a typed envelope — `ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`, `documents` (annual-report / concall links). It falls back to the standalone page and says so. Capture the whole envelope verbatim.
+2. **Current price** for the downstream margin-of-safety read: `get_quote(symbol)` → record CMP + as-of date.
 3. **Latest annual report** (from the envelope's `documents`). Read selectively — not cover-to-cover — and capture, each with a page/section cite:
    - **MD&A** (management's story, risks, multi-year — were past plans executed?)
    - **Segment note** (vertical/geography revenue & EBIT mix %)

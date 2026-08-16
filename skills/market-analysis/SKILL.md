@@ -2,7 +2,7 @@
 name: market-analysis
 description: The plugin's single market-of-record — what the Indian market is doing right now and what that implies for risk. Reads trend and regime (Nifty vs 50/200-EMA), real stock-level breadth, India VIX and its percentile, cap-tier valuation percentiles (Nifty 50 / Midcap 150 / Smallcap 250 P/E, P/B, dividend yield versus their own 10-year history), smallcap-vs-largecap relative richness, FII/DII flows, the cross-asset macro backdrop, and sector leadership. Runs `quick` (a cached digest other skills consume — the common case) or `deep` (the full written market read). Use whenever the user asks what the market is doing, about market conditions, regime, breadth, whether the market or a segment is expensive or cheap, "is this a good time to invest", "is smallcap overvalued", sector rotation, FII/DII flows, or before any skill needs market context to size or time a decision.
 argument-hint: "[--quick | --deep] [--years N] (e.g. 'what's the market doing', 'is smallcap expensive')"
-allowed-tools: Read, Write, Bash, WebFetch, WebSearch
+allowed-tools: Read, Write, Bash, WebFetch, WebSearch, mcp__finance-data__*
 ---
 
 # Market Analysis

@@ -2,18 +2,29 @@
 """News fetch — the company-news rung of the data spine (everything-finance plugin).
 
 The canonical news fetcher — lives in `lib/` next to `ta.py`, `strategy.py`, `prices.py`
-and `paths.py` so the ET → Moneycontrol → Google-News-RSS ladder lives in exactly one
-place instead of being re-derived by hand inside the `news-sentiment` agent (the drift
-this data spine removes). One entry point:
+and `paths.py` so news is fetched in exactly one place instead of being re-derived by hand
+inside the `news-sentiment` agent (the drift this data spine removes). One entry point:
 
-  * `fetch(company, ticker, days=60)` walks the ladder — Economic Times, then Moneycontrol,
-    then Google News RSS — stopping at the first rung that returns items. A blocked rung
-    records a *labelled* gap and the walk continues to the next (B3); an all-blocked run
-    still returns the envelope with `ok:false` and a gap, never an empty crash.
+  * `fetch(company, ticker, days=60)` reads Google News RSS for the company and window.
+    A block records a *labelled* gap and returns `ok:false` — never an empty crash (B3).
+
+ONE SOURCE, DELIBERATELY
+------------------------
+This was an Economic Times → Moneycontrol → Google-News-RSS ladder. A 30-day probe showed
+the RSS rung already indexes both outlets it was falling back from (Moneycontrol 10, ET 9
+of 100 items) plus Business Today, NDTV Profit, Business Standard and Mint — a strict
+superset, structured and dated, with no bot wall. The two HTML rungs above it were
+scraping anchor tags out of drifting markup for a subset of what the bottom rung already
+returned, and Moneycontrol's Akamai wall was the plugin's ONLY reason to run Playwright
+with real Chrome. See `docs/data-sources.md`.
+
+What one aggregator costs us is the implicit quality filter of hand-picked outlets, so
+that becomes explicit: every item carries a `publisher_tier` of `established` |
+`aggregator` | `unknown`.
 
 Every item it returns is **dated, deduped, classified** (`company` | `sector` | `noise`)
-and tagged `fact` | `narrative` with its `source` (B2). Noise (generic "stocks to watch"
-listicles) is filtered from the default `data.items` view.
+and tagged `fact` | `narrative` with its `source` and `publisher_tier` (B2). Noise
+(generic "stocks to watch" listicles) is filtered from the default `data.items` view.
 
 Every fetch returns the shared data-spine envelope:
     { "ok": bool, "source": str|None, "fetched_at": ISO8601,
@@ -36,6 +47,7 @@ import sys
 from datetime import date, datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
 
 
@@ -53,10 +65,6 @@ def _envelope(ok, source, data, gaps):
     }
 
 
-_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-
-
 def _norm(symbol):
     """A bare NSE ticker — uppercased, the `.NS`/exchange prefix stripped."""
     s = str(symbol or "").strip().upper()
@@ -68,20 +76,8 @@ def _norm(symbol):
 
 
 def _http_get(url, timeout=20, headers=None):
-    """GET a URL with a browser UA. Returns (text, gap) — never raises (degrade-not-die)."""
-    import urllib.error
-    import urllib.request
-    hdrs = {"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9"}
-    if headers:
-        hdrs.update(headers)
-    req = urllib.request.Request(url, headers=hdrs, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.read().decode("utf-8", "replace"), None
-    except urllib.error.HTTPError as exc:  # noqa: PERF203
-        return None, f"HTTP {exc.code}"
-    except Exception as exc:  # noqa: BLE001 — a block degrades to the next rung, never raises
-        return None, f"fetch failed: {exc}"
+    """GET via the single shared transport. Returns (text, gap) — never raises."""
+    return transport.request(url, timeout=timeout, headers=headers)
 
 
 # --------------------------------------------------------------------------- #
@@ -262,58 +258,57 @@ def _parse_rss(xml_text, origin):
     return out
 
 
-_ANCHOR_RE = re.compile(r"<a\b[^>]*href=[\"'](?P<href>[^\"']+)[\"'][^>]*>(?P<text>.*?)</a>",
-                        re.IGNORECASE | re.DOTALL)
-_TAG_RE = re.compile(r"<[^>]+>")
+# --------------------------------------------------------------------------- #
+# publisher trust — Google News indexes everyone, so rank the wire (B2)         #
+# --------------------------------------------------------------------------- #
+# Consolidating onto one aggregator buys reliability but loses the implicit quality
+# filter that "we only read ET and Moneycontrol" gave us: the same query also returns
+# SEO aggregators that restate a headline without reporting it. So publisher quality
+# becomes explicit data on each item rather than an accident of which site we scraped.
+#
+# `established` — mainstream financial press with newsrooms and corrections policies.
+_ESTABLISHED = (
+    "economic times", "moneycontrol", "business standard", "livemint", "mint",
+    "ndtv profit", "business today", "the hindu", "hindu businessline", "financial express",
+    "bloomberg", "reuters", "cnbc", "forbes", "times of india", "the print", "outlook",
+    "zeebiz", "zee business", "india today", "firstpost", "deccan herald", "the week",
+)
+# `aggregator` — restates other outlets' reporting; usable as corroboration, never as
+# the sole evidence for a claim that moves a position.
+_AGGREGATOR = (
+    "equitypandit", "univest", "scanx", "sahi", "trendlyne", "marketsmojo", "5paisa",
+    "angel one", "groww", "upstox", "investing.com", "simply wall st", "insider monkey",
+    "stocktwits", "tickertape", "smallcase", "dhan", "religare", "samco",
+)
 
 
-def _parse_anchor_list(html, origin, base_url=""):
-    """Pure: best-effort headline extraction from an outlet's HTML list (ET/Moneycontrol).
+def _publisher_tier(source):
+    """Pure: rank a publisher `established` | `aggregator` | `unknown` (offline-testable).
 
-    Outlet markup drifts, so this stays deliberately simple: every anchor whose text reads
-    like a headline (several words) becomes a raw item. Dates aren't reliably co-located in
-    list markup, so they're left None (still dated by the feed when available)."""
-    out = []
-    for m in _ANCHOR_RE.finditer(html or ""):
-        text = _TAG_RE.sub("", m.group("text"))
-        text = re.sub(r"\s+", " ", text).strip()
-        if len(text.split()) < 4:  # nav/utility links aren't headlines
-            continue
-        href = m.group("href").strip()
-        if href.startswith("/"):
-            href = base_url.rstrip("/") + href
-        out.append({"title": text, "url": href, "date": None, "source": origin, "origin": origin})
-    return out
+    Never drops an item — an unknown wire may still break real news. It labels the
+    evidence so a caller can weigh a single-sourced claim from an aggregator differently
+    from the same claim in the Economic Times."""
+    s = (source or "").strip().lower()
+    if not s:
+        return "unknown"
+    if any(name in s for name in _ESTABLISHED):
+        return "established"
+    if any(name in s for name in _AGGREGATOR):
+        return "aggregator"
+    return "unknown"
 
 
 # --------------------------------------------------------------------------- #
-# rungs — each returns (raw_items, gap); a gap is a labelled block (B3)         #
+# the source — Google News RSS (see docs/data-sources.md)                       #
 # --------------------------------------------------------------------------- #
-def _fetch_et(company, ticker, days):
-    """Economic Times topic page (curl + browser UA — the WebFetch tool is ET-blocklisted,
-    plain curl is not, per the CLAUDE.md access matrix). First rung of the ladder."""
-    slug = re.sub(r"\s+", "-", (company or "").strip().lower())
-    url = f"https://economictimes.indiatimes.com/topic/{slug}"
-    html, gap = _http_get(url, headers={"Referer": "https://economictimes.indiatimes.com/"})
-    if gap:
-        return [], gap
-    return _parse_anchor_list(html, "Economic Times", "https://economictimes.indiatimes.com"), None
-
-
-def _fetch_moneycontrol(company, ticker, days):
-    """Moneycontrol news-tag page. HTML needs real Chrome to beat the Akamai 403; over plain
-    urllib it usually blocks — which is exactly the degradation B3 records before falling on."""
-    slug = re.sub(r"[^a-z0-9]+", "-", (company or "").strip().lower()).strip("-")
-    url = f"https://www.moneycontrol.com/news/tags/{slug}.html"
-    html, gap = _http_get(url, headers={"Referer": "https://www.moneycontrol.com/"})
-    if gap:
-        return [], gap
-    return _parse_anchor_list(html, "Moneycontrol", "https://www.moneycontrol.com"), None
-
-
 def _fetch_google_rss(company, ticker, days):
-    """Google News RSS search — the reliable, fully-structured backstop rung. Scoped to the
-    company and the recency window, India edition."""
+    """Google News RSS search, scoped to the company and recency window, India edition.
+
+    The single news source. It replaced an Economic-Times → Moneycontrol → RSS ladder
+    after a 30-day probe showed this feed already indexes both (Moneycontrol 10, ET 9 of
+    100 items) plus Business Today, NDTV Profit, Business Standard and Mint — a strict
+    superset of the two rungs it replaces, structured, dated, and with no bot wall.
+    Moneycontrol's HTML was also the plugin's only Playwright dependency."""
     import urllib.parse
     q = f'"{company}" stock when:{int(days or 60)}d'
     url = ("https://news.google.com/rss/search?q=" + urllib.parse.quote(q) +
@@ -325,11 +320,9 @@ def _fetch_google_rss(company, ticker, days):
     return items, (None if items else "no RSS items returned")
 
 
-# The ladder, in order. `fetch` resolves these by name at call time so a test can monkeypatch
-# a rung to a saved fixture (proving B1/B3 offline, no network).
-_LADDER = ("_fetch_et", "_fetch_moneycontrol", "_fetch_google_rss")
-_LABELS = {"_fetch_et": "Economic Times", "_fetch_moneycontrol": "Moneycontrol",
-           "_fetch_google_rss": "Google News RSS"}
+# Resolved by name at call time so a test can monkeypatch it to a saved fixture (B1/B3).
+_LADDER = ("_fetch_google_rss",)
+_LABELS = {"_fetch_google_rss": "Google News RSS"}
 
 
 # --------------------------------------------------------------------------- #
@@ -354,6 +347,7 @@ def _process(raw, company, ticker, days, today=None):
             "origin": r.get("origin") or "",
             "kind": _classify(title, company, ticker),
             "tag": _tag(title),
+            "publisher_tier": _publisher_tier(r.get("source") or r.get("origin")),
         })
     out = _dedup(out)
     # Newest first; the undated sink to the bottom (they can't claim recency).
@@ -362,10 +356,11 @@ def _process(raw, company, ticker, days, today=None):
 
 
 def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
-    """Walk the ET → Moneycontrol → Google-News-RSS ladder for one company and return the
-    data-spine envelope with `data.items` (B1). Stops at the first rung that yields items; a
-    blocked rung records a labelled gap and the walk continues (B3). Noise is filtered from
-    the default view unless `include_noise` (B2)."""
+    """Fetch one company's news and return the data-spine envelope with `data.items` (B1).
+
+    A blocked source records a labelled gap and returns `ok:false` rather than raising or
+    returning a silent empty (B3). Noise is filtered from the default view unless
+    `include_noise` (B2), and every item carries a `publisher_tier`."""
     company = (company or "").strip()
     ticker = _norm(ticker or company)
     cache_file = os.path.join(paths.cache_dir("news"),
@@ -393,6 +388,8 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
         "count": len(visible),
         "items": visible,            # B2 — noise filtered from the default view
         "noise_filtered": len(noise),
+        "established_count": sum(1 for it in visible
+                                 if it["publisher_tier"] == "established"),
     }
     if source_used is None:
         # B3 — all rungs blocked: a labelled gap, ok:false, never an empty crash.

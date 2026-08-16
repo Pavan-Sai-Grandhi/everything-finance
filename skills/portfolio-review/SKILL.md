@@ -2,7 +2,7 @@
 name: portfolio-review
 description: Audit the real cross-broker book — stocks and mutual funds — for what to exit, trim, or fix. XIRR-driven laggard detection, multi-dimensional allocation & concentration (asset class, market-cap, AMC, style, sector, single-stock), cheap per-holding health with a bounded deep-dive only on flagged names, and rebalancing moves in ₹. Runs `quick` (a compact investments digest other skills consume) or `deep` (the full review). Use when the user asks to review their portfolio, holdings, or positions, asks "should I exit anything", wants a risk check, or mentions rebalancing.
 argument-hint: "[holdings inline / CSV / watchlist.json] [--quick | --deep]"
-allowed-tools: WebFetch, Read, Write, Bash, Agent, Skill, mcp__indmoney__*, mcp__playwright__*
+allowed-tools: WebFetch, Read, Write, Bash, Agent, Skill, mcp__indmoney__*, mcp__finance-data__*
 ---
 
 # Portfolio Review
@@ -59,7 +59,7 @@ python3 <plugin>/skills/portfolio-review/scripts/allocation.py --book <book.json
 It returns per-dimension breakdowns (with coverage), asset-class drift vs target, and the ranked concentration flags — each carrying its **₹ amount at risk** and a concrete **₹ rebalancing move**. The dimensions:
 
 - **Asset class** — equity : debt : cash vs the stated target (ask once if not given; report **relative** otherwise). Drift > 10pp → rebalance move.
-- **Market cap** — large / mid / small / micro (IndMoney breakdown + fund look-through); small+micro sleeve > 30% → liquidity-risk flag. **Read that threshold against the tape, not in a vacuum**: take `valuation["NIFTY SMALLCAP 250"].stance` and `relative.percentile_spread` from market-analysis (`python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick`) — an expensive tier (`rich`/`expensive`, spread ≥ +25) tightens the flag to 25%, a `cheap` tier relaxes it to 35%. Say which threshold was applied and why.
+- **Market cap** — large / mid / small / micro, classified by **SEBI market-cap rank** from `finance-data` `get_stock_ratios` (`mrktCapRank`: top 100 large / 101-250 mid / 251+ small) for direct stocks, plus fund look-through for the fund sleeve. **Never** take the cap split from a broker/IndMoney breakdown — that is a decision input, not a holding, and rank-based classification is also the correct one (absolute ₹Cr bands reported a real small-cap fund as 0% small-cap). Small+micro sleeve > 30% → liquidity-risk flag. **Read that threshold against the tape, not in a vacuum**: take `valuation["NIFTY SMALLCAP 250"].stance` and `relative.percentile_spread` from market-analysis (`python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick`) — an expensive tier (`rich`/`expensive`, spread ≥ +25) tightens the flag to 25%, a `cheap` tier relaxes it to 35%. Say which threshold was applied and why.
 - **AMC** — exposure piled into one fund house (> 40%).
 - **Investing style** — growth / value / factor mix (from mf-analysis style data).
 - **Sector** — single sector > 25% (> 35% urgent).

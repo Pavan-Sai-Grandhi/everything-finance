@@ -99,7 +99,7 @@ Manager tenure must cover **the window being credited**. A fund whose 3-year num
 | Source | Result |
 |---|---|
 | Morningstar India `detailed-portfolio.aspx` | Paywalled — data behind "Unlock" |
-| AMFI portfolio-disclosure portal | JS-driven; WebFetch sees an empty dropdown. Would need Playwright real-Chrome. Audit-grade only |
+| AMFI portfolio-disclosure portal | JS-driven; WebFetch sees an empty dropdown, and the plugin has no browser. Tickertape's API already returns the complete book |
 | AdvisorKhoj monthly-disclosure pages | Lists months, but every link bounces to a generic AMC downloads page |
 | Legacy AMC monthly-portfolio XLSX URLs | HTTP 200 with `content-type: text/html` — dead pattern |
 | ValueResearch portfolio-holdings page | Partial / top-N only |

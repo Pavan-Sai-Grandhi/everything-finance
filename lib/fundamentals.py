@@ -36,6 +36,7 @@ from datetime import date, datetime
 from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
 
 
@@ -53,8 +54,7 @@ def _envelope(ok, source, data, gaps):
     }
 
 
-_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
 _BASE = "https://www.screener.in"
 
 
@@ -81,22 +81,37 @@ def _screener_cookies():
     return "; ".join(parts)
 
 
+_LOGGED_OUT_TITLES = ("register", "login", "sign in", "sign up")
+
+
+def is_logged_out(html):
+    """Pure: did screener.in serve its anonymous page instead of the requested one?
+
+    Worth a dedicated check because the two failure modes are indistinguishable to a
+    caller otherwise. When a `sessionid` expires — Django rotates them, so this happens
+    routinely — screener does NOT return 401 or redirect visibly: it answers 200 with its
+    **Register** page. The screen parser finds no company rows in that page and reports
+    "no companies matched", which reads exactly like a filter that was too tight. A
+    `find-trade` run then proceeds as though no stock passed the fundamental cut.
+
+    Detected on the page title (screener titles its anonymous pages "Register - Screener"
+    / "Login - Screener"), with a login-form fallback. A real screen result is titled
+    after the query, so this cannot fire on a legitimately empty result.
+    """
+    text = html or ""
+    m = re.search(r"<title>(.*?)</title>", text, re.S | re.IGNORECASE)
+    if m:
+        title = _WS_RE.sub(" ", m.group(1)).strip().lower()
+        if any(title.startswith(t) for t in _LOGGED_OUT_TITLES):
+            return True
+    # Fallback: an anonymous page carries a login form; a signed-in one carries a logout link.
+    return bool(re.search(r'action=["\'][^"\']*/login/?["\']', text, re.IGNORECASE))
+
+
 def _http_get(url, timeout=20, cookie=None):
-    """GET a URL with a browser UA. Returns (text, gap) — never raises (degrade-not-die)."""
-    import urllib.error
-    import urllib.request
-    hdrs = {"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9",
-            "Referer": _BASE + "/"}
-    if cookie:
-        hdrs["Cookie"] = cookie
-    req = urllib.request.Request(url, headers=hdrs, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.read().decode("utf-8", "replace"), None
-    except urllib.error.HTTPError as exc:  # noqa: PERF203
-        return None, f"HTTP {exc.code}"
-    except Exception as exc:  # noqa: BLE001 — a block degrades, never raises into the caller
-        return None, f"fetch failed: {exc}"
+    """GET via the single shared transport. Returns (text, gap) — never raises."""
+    headers = {"Cookie": cookie} if cookie else None
+    return transport.request(url, timeout=timeout, referer=_BASE + "/", headers=headers)
 
 
 # --------------------------------------------------------------------------- #
@@ -358,10 +373,22 @@ def screen(query, fresh=False):
     if gap or not html:
         return _envelope(False, "screener.in", {"query": query, "count": 0, "candidates": []},
                          gaps + [f"screen fetch: {gap or 'empty'}"])
+    # Check auth BEFORE parsing: an expired session yields a parseable page with no
+    # company rows, which is indistinguishable from an empty result unless asked directly.
+    if is_logged_out(html):
+        gaps.append(
+            "screener.in session expired or not logged in — this is NOT an empty result. "
+            "Re-copy `sessionid` and `csrftoken` from a logged-in browser "
+            "(DevTools -> Application -> Cookies -> screener.in) into ~/.claude/.env as "
+            "SCREENER_SESSION_ID / SCREENER_CSRF_TOKEN.")
+        return _envelope(False, "screener.in",
+                         {"query": query, "count": 0, "candidates": []}, gaps)
+
     candidates = _parse_screen(html)
     data = {"query": query, "count": len(candidates), "candidates": candidates}
     if not candidates:
-        gaps.append("screen matched no companies (query too tight or login required)")
+        gaps.append("screen matched no companies — the session is valid, so this is a "
+                    "genuinely empty result (query too tight)")
     return _envelope(bool(candidates), "screener.in", data, gaps)
 
 

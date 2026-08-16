@@ -225,6 +225,72 @@ def test_to_number():
     check("to_number percent stripped", fz._to_number("50.30%") == 50.30)
 
 
+# --- D1b: an expired session must not masquerade as an empty screen -------- #
+REGISTER_PAGE = """<html><head><title>Register - Screener</title></head>
+<body><form action="/login/" method="post"><input name="username"></form></body></html>"""
+
+LOGGED_IN_SCREEN = """<html><head><title>Market Capitalization &gt; 50000 - Screener</title></head>
+<body><table><tr><td><a href="/company/TCS/consolidated/">TCS</a></td></tr>
+<tr><td><a href="/company/INFY/consolidated/">INFY</a></td></tr></table>
+<a href="/logout/">Logout</a></body></html>"""
+
+EMPTY_BUT_AUTHED = """<html><head><title>Some Impossible Query - Screener</title></head>
+<body><p>No companies match.</p><a href="/logout/">Logout</a></body></html>"""
+
+
+def test_D1b_detects_logged_out_page():
+    check("screener's Register page is detected as logged out",
+          fz.is_logged_out(REGISTER_PAGE))
+    check("a Login title is detected",
+          fz.is_logged_out("<html><head><title>Login - Screener</title></head></html>"))
+    check("detection is case-insensitive",
+          fz.is_logged_out("<HTML><TITLE>REGISTER - Screener</TITLE></HTML>"))
+
+
+def test_D1b_does_not_misfire_on_real_results():
+    check("a real screen result is NOT flagged as logged out",
+          not fz.is_logged_out(LOGGED_IN_SCREEN))
+    check("a genuinely EMPTY but authenticated screen is not flagged as logged out",
+          not fz.is_logged_out(EMPTY_BUT_AUTHED))
+    check("empty html is not flagged (no evidence either way)",
+          not fz.is_logged_out(""))
+    check("None is handled", not fz.is_logged_out(None))
+
+
+def test_D1b_screen_distinguishes_the_two_failures():
+    orig = fz._http_get
+    try:
+        fz._http_get = lambda url, timeout=20, cookie=None: (REGISTER_PAGE, None)
+        env = fz.screen("Market Capitalization > 50000")
+        check("expired session -> ok:false", env["ok"] is False)
+        check("expired session names itself, not a tight query",
+              any("session expired" in g for g in env["gaps"]), env["gaps"])
+        check("expired session explicitly denies being an empty result",
+              any("NOT an empty result" in g for g in env["gaps"]))
+        check("expired session tells you how to fix it",
+              any("SCREENER_SESSION_ID" in g for g in env["gaps"]))
+
+        fz._http_get = lambda url, timeout=20, cookie=None: (EMPTY_BUT_AUTHED, None)
+        env2 = fz.screen("Some Impossible Query")
+        check("a genuinely empty result is reported as empty, not as an auth problem",
+              any("genuinely empty" in g for g in env2["gaps"]), env2["gaps"])
+        check("a genuinely empty result never mentions the session",
+              not any("session expired" in g for g in env2["gaps"]))
+
+        fz._http_get = lambda url, timeout=20, cookie=None: (LOGGED_IN_SCREEN, None)
+        # cookies present, so the "no auth cookies" warning must not fire either
+        fz.os.environ["SCREENER_SESSION_ID"] = "x" * 32
+        fz.os.environ["SCREENER_CSRF_TOKEN"] = "y" * 32
+        env3 = fz.screen("Market Capitalization > 50000")
+        check("a working screen returns candidates with no gaps",
+              env3["ok"] and env3["data"]["count"] == 2 and not env3["gaps"],
+              (env3["data"]["count"], env3["gaps"]))
+    finally:
+        fz._http_get = orig
+        fz.os.environ.pop("SCREENER_SESSION_ID", None)
+        fz.os.environ.pop("SCREENER_CSRF_TOKEN", None)
+
+
 def test_envelope_shape():
     env = fz._envelope(True, "screener.in", {"x": 1}, [])
     check("envelope has the contract keys",
@@ -237,7 +303,10 @@ def main():
                test_D1_shareholding, test_D1_peers, test_D1_documents,
                test_D2_screen_parses_candidates, test_D2_screen_envelope,
                test_D3_no_html_in_data, test_fetch_envelope_offline,
-               test_fetch_all_blocked_degrades, test_to_number, test_envelope_shape):
+               test_fetch_all_blocked_degrades, test_to_number, test_D1b_detects_logged_out_page,
+               test_D1b_does_not_misfire_on_real_results,
+               test_D1b_screen_distinguishes_the_two_failures,
+               test_envelope_shape):
         fn()
     print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
     sys.exit(1 if _failed else 0)

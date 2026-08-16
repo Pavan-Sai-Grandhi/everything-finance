@@ -36,7 +36,7 @@ Three KEEP-grade reasons that survive drawdowns: intact growth + ROCE, falling d
 
 - **Single stock** > 10% of portfolio → flag (winner concentration is allowed but must be a conscious choice)
 - **Single sector** > 25% → flag; > 35% → urgent
-- **Market cap** — small+microcap sleeve > 30% → liquidity-risk flag (exit doors are narrow in corrections). Cap split comes from IndMoney `networth_allocation_breakdown` plus fund look-through, not guessed per row.
+- **Market cap** — small+microcap sleeve > 30% → liquidity-risk flag (exit doors are narrow in corrections). Cap split is classified by **SEBI market-cap rank** (`finance-data` `get_stock_ratios` → `mrktCapRank`) plus fund look-through, never from a broker/IndMoney breakdown (a personal source reports holdings, not classifications) and never guessed per row.
 - **AMC** — one fund house > 40% of the fund sleeve → flag (platform/AMC-level risk hides behind fund-level diversification)
 - **Investing style** — the growth/value/factor mix (from mf-analysis style data); a single-factor tilt is a conscious choice, not a default — surface it
 - **Trading book** total > 20% of overall portfolio → the tail is wagging the dog

@@ -2,7 +2,7 @@
 name: mf-analysis
 description: The plugin's mutual-fund authority — research or compare any Indian fund, scan a whole SEBI category down to a shortlist, AND review the funds the user holds, across two pillars: past performance (rolling returns, drawdown, Sortino from NAV history) and forward-looking quality (full look-through portfolio valuation, style + drift, AMC & manager trust), read against live market context. Runs `quick` (a fast descriptive digest other skills consume) or `deep` (the full two-pillar verdict). Use whenever the user asks about a mutual fund, SIP choice, comparing funds, "is X fund good", which index/flexicap/smallcap fund to pick, whether to switch or replace a fund, or wants to review their MF portfolio — even casual phrasings like "where should my SIP go".
 argument-hint: "FUND NAME(s) / category / 'review my funds' [--quick] (e.g. 'best smallcap fund', 'Parag Parikh vs UTI Nifty 50')"
-allowed-tools: WebFetch, WebSearch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__playwright__*
+allowed-tools: WebFetch, WebSearch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-data__*
 ---
 
 # Mutual Fund Analysis
@@ -11,17 +11,23 @@ The single fund authority: research/compare any fund, **scan a category down to 
 
 Read `references/reference.md` for the grounding: the Varsity performance hierarchy, the forward-looking framework, and the analytics that decide close calls (P/B ÷ ROE, earnings-distress dispersion, coverage as a gate).
 
-## Data sources — `lib/funds.py` is the canonical path
+## Data sources — the `finance-data` MCP tools are the only path
 
-Every fetch goes through the data spine, never an ad-hoc call:
+Every fetch goes through a tool, never an ad-hoc call:
 
-- **`lib/funds.py`** — fund identity (AMFI `NAVAll.txt` for scheme code + ISIN), the **category scanner** (Tickertape MF screener), **complete holdings** (Tickertape `mutualfunds/<mfId>/holdings` — every position, 90-99% weight coverage), per-holding ratios including **`mrktCapRank`**, and NAV history (mfapi.in).
-- **`lib/market.py`** via the `market-analysis` skill — the market context this analysis is read against.
-- **`lib/fundamentals.py`** (screener.in) — the cross-check for a specific holding when a ratio looks wrong.
-- **IndMoney** (`mcp__indmoney__*`, read-only) — **authoritative for the user's own state**: `networth_holdings`, `networth_allocation_breakdown`, `mf_sips`, and `fund_performance.{returns, benchmark_returns, category_returns, best_in_category, worst_in_category}`.
+- **`resolve_fund`** — name → AMFI scheme code + ISIN + plan + Tickertape fund id. Call first; the other tools take ids, not names.
+- **`screen_funds`** — the category scanner (every fund in a SEBI sub-category with AUM, TER, returns, risk, cap mix).
+- **`get_fund_holdings`** — the **complete** position list plus sector weights, 90-99% weight coverage.
+- **`get_stock_ratios`** — per-holding P/E, P/B, ROE and **`mrktCapRank`** (the SEBI cap rank).
+- **`get_nav_history`** — the daily NAV series the rolling-return and drawdown math is computed from.
+- **`get_market_context`** — the market this analysis is read against.
+- **`get_company_fundamentals`** — the cross-check for a specific holding when a ratio looks wrong.
+- **IndMoney / broker** (`mcp__indmoney__*`, `mcp__kite__*`, read-only) — **only for what the user owns**: which funds are held, units, invested value, current value, XIRR, SIPs. Nothing else.
 - AMC/manager trust is qualitative web research (AMC factsheets, SEBI/AMFI, ValueResearch, fund news) — **every claim carries its source URL**. No other sites.
 
-> **Do NOT use for look-through analysis:** IndMoney `get_mf_funds_details.holdings` is **capped at 20 rows with no pagination**, `holdings_count` reports the cap as the total, and `perc` advertises 91-98% coverage beside a list that actually sums to 6-27%. Funds hold 64-278 positions; one fund's 20-row slice omitted its true top three holdings and another's was nine months stale. Also unusable: `fund_performance.category_rank` and `fund_detail.ind_ranking` (internally inconsistent — the same fund ranked both 3/15 and 14/15 on one window). These are correctness traps, not preferences.
+> **The personal/decision boundary — a hard rule.** A personal source reports *what you own and what it is worth*. It never supplies a number that shapes the verdict: no returns-vs-benchmark, no category returns or ranks, no best/worst-in-category, no valuation, no cap classification, no news or sentiment. All of those come from `finance-data`.
+>
+> This is not tidiness. An authenticated feed *looks* authoritative, so its convenience fields get trusted more than sourced ones — and they have been wrong here. `get_mf_funds_details.holdings` is **capped at 20 rows with no pagination**, `holdings_count` reports the cap as the total, and `perc` advertises 91-98% coverage beside a list summing to 6-27%; funds hold 64-278 positions, one 20-row slice omitted the fund's true top three holdings, and another was nine months stale. `fund_performance.category_rank` and `fund_detail.ind_ranking` contradict each other — the same fund ranked both 3/15 and 14/15 on one window. Every ratio built on any of it was wrong.
 
 ## Depth modes
 
@@ -30,16 +36,10 @@ Every fetch goes through the data spine, never an ad-hoc call:
 
 ## Workflow (`deep`)
 
-1. **Read the market first.** Invoke `market-analysis` in quick mode:
-
-   ```
-   python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick
-   ```
-
-   Take `valuation["NIFTY SMALLCAP 250" | "NIFTY MIDCAP 150" | "NIFTY 50"]` for the tier the fund lives in, plus `relative.percentile_spread` and `market_posture`. **"Is this category worth adding to now?" and "which fund inside it is best?" are different questions** — answer them separately and say so. A skill that fuses them recommends the best fund in an expensive category without ever mentioning the category is expensive.
+1. **Read the market first.** Call `get_market_context` (mode `quick`). Take `valuation["NIFTY SMALLCAP 250" | "NIFTY MIDCAP 150" | "NIFTY 50"]` for the tier the fund lives in, plus `relative.percentile_spread` and `market_posture`. **"Is this category worth adding to now?" and "which fund inside it is best?" are different questions** — answer them separately and say so. A skill that fuses them recommends the best fund in an expensive category without ever mentioning the category is expensive.
 
 2. **Resolve or scan.**
-   - Named funds → `funds.resolve()` (prefers Direct-Growth; says so if only Regular matched).
+   - Named funds → `resolve_fund` (prefers Direct-Growth; says so if only Regular matched).
    - **A category question** ("best smallcap fund") → run the scanner:
 
      ```

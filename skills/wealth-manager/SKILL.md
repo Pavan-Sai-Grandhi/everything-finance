@@ -2,7 +2,7 @@
 name: wealth-manager
 description: The whole-picture financial advisor — builds your total net worth across every IndMoney asset class (equity, funds, real estate, gold, EPF, FDs, debt, cash, US stocks, insurance value), then orchestrates the three personal-finance spokes (portfolio-review, insurance-advisor, budget-tracker) in cheap mode to produce one financial-health scorecard and a prioritized cross-domain action plan — the calls no single spoke can make ("fix protection before adding equity", "your emergency fund is one month"). Use when the user asks about their overall finances, net worth, "how am I doing financially", "where should my next rupee go", a financial health check, or how their investments/insurance/spending fit together.
 argument-hint: "[--snapshot | --full-review]"
-allowed-tools: Read, Write, Bash, Agent, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*
+allowed-tools: Read, Write, Bash, Agent, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-data__*
 ---
 
 # Wealth Manager

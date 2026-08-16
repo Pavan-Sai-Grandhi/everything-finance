@@ -62,36 +62,22 @@ RSS_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
   </item>
 </channel></rss>"""
 
-# --- saved fixture: an Economic Times topic-page HTML snippet --------------- #
-ET_HTML_FIXTURE = """
-<div class="topicList">
-  <a href="/markets/stocks/news/reliance-bags-large-order-from-defence-ministry/123.cms">
-     Reliance bags large order from defence ministry</a>
-  <a href="/login">Sign In</a>
-  <a href="/markets/stocks/news/reliance-launches-new-energy-arm/124.cms">
-     Reliance launches new energy arm</a>
-</div>
-"""
-
 # A frozen "today" so the recency window is deterministic across runs.
 TODAY = news.date(2026, 6, 20)
 
 
-# --- B1: fetch walks the ladder and returns the envelope with data.items ---- #
-def test_B1_fetch_walks_ladder_returns_items(monkeypatched=None):
-    # ET blocks, Moneycontrol blocks, Google RSS answers — the ladder degrades through.
-    orig = (news._fetch_et, news._fetch_moneycontrol, news._fetch_google_rss)
-    news._fetch_et = lambda c, t, d: ([], "HTTP 403")
-    news._fetch_moneycontrol = lambda c, t, d: ([], "fetch failed: blocked")
+# --- B1: fetch returns the envelope with data.items ------------------------- #
+def test_B1_fetch_returns_envelope_with_items(monkeypatched=None):
+    orig = news._fetch_google_rss
     news._fetch_google_rss = lambda c, t, d: (news._parse_rss(RSS_FIXTURE, "Google News RSS"), None)
     try:
         env = news.fetch("Reliance Industries", ticker="RELIANCE", days=60, fresh=True)
     finally:
-        news._fetch_et, news._fetch_moneycontrol, news._fetch_google_rss = orig
+        news._fetch_google_rss = orig
     check("B1 envelope has the data-spine keys",
           set(env) == {"ok", "source", "fetched_at", "data", "gaps"})
     check("B1 data carries items", isinstance(env["data"].get("items"), list))
-    check("B1 source is the rung that answered", env["source"] == "Google News RSS")
+    check("B1 source names the one news source", env["source"] == "Google News RSS")
     check("B1 ok:true when items returned", env["ok"] is True)
 
 
@@ -144,15 +130,14 @@ def test_B2_each_item_has_source():
 
 
 def test_B2_noise_filtered_from_default_view():
-    orig = (news._fetch_et, news._fetch_moneycontrol, news._fetch_google_rss)
-    news._fetch_et = lambda c, t, d: (news._parse_rss(RSS_FIXTURE, "Economic Times"), None)
-    news._fetch_moneycontrol = news._fetch_google_rss = lambda c, t, d: ([], "skipped")
+    orig = news._fetch_google_rss
+    news._fetch_google_rss = lambda c, t, d: (news._parse_rss(RSS_FIXTURE, "Google News RSS"), None)
     try:
         env = news.fetch("Reliance Industries", ticker="RELIANCE", days=3650, fresh=True)
         env_noise = news.fetch("Reliance Industries", ticker="RELIANCE", days=3650,
                                fresh=True, include_noise=True)
     finally:
-        news._fetch_et, news._fetch_moneycontrol, news._fetch_google_rss = orig
+        news._fetch_google_rss = orig
     check("B2 no noise item in the default view",
           all(it["kind"] != "noise" for it in env["data"]["items"]))
     check("B2 noise_filtered counts what was hidden", env["data"]["noise_filtered"] >= 1)
@@ -171,32 +156,37 @@ def test_B2_recency_window_drops_stale():
     check("B2 fresh item kept", "Reliance fresh news" in titles)
 
 
-# --- B3: degradation — blocked rung records a gap; all-blocked -> ok:false --- #
-def test_B3_single_block_degrades_with_gap():
-    orig = (news._fetch_et, news._fetch_moneycontrol, news._fetch_google_rss)
-    news._fetch_et = lambda c, t, d: ([], "HTTP 403")
-    news._fetch_moneycontrol = lambda c, t, d: (news._parse_anchor_list(ET_HTML_FIXTURE,
-                                                                        "Moneycontrol"), None)
-    news._fetch_google_rss = lambda c, t, d: ([], "unused")
-    try:
-        env = news.fetch("Reliance Industries", ticker="RELIANCE", days=3650, fresh=True)
-    finally:
-        news._fetch_et, news._fetch_moneycontrol, news._fetch_google_rss = orig
-    check("B3 blocked rung recorded as a labelled gap",
-          any("Economic Times" in g for g in env["gaps"]))
-    check("B3 walk fell through to the next rung", env["source"] == "Moneycontrol")
-    check("B3 ok:true once a later rung answered", env["ok"] is True)
+def test_B2_publisher_tier_ranks_the_wire():
+    check("mainstream press is established",
+          news._publisher_tier("The Economic Times") == "established")
+    check("Moneycontrol is established (matched case-insensitively)",
+          news._publisher_tier("Moneycontrol.com") == "established")
+    check("an SEO aggregator is labelled aggregator",
+          news._publisher_tier("Equitypandit") == "aggregator")
+    check("an unrecognised wire is 'unknown', never silently trusted",
+          news._publisher_tier("Some New Blog") == "unknown")
+    check("a missing publisher is 'unknown', not a crash",
+          news._publisher_tier(None) == "unknown")
+    check("tiering never drops an item — it only labels it",
+          news._publisher_tier("Equitypandit") in {"established", "aggregator", "unknown"})
 
 
-def test_B3_all_blocked_returns_ok_false_with_gap():
-    orig = (news._fetch_et, news._fetch_moneycontrol, news._fetch_google_rss)
-    news._fetch_et = lambda c, t, d: ([], "HTTP 403")
-    news._fetch_moneycontrol = lambda c, t, d: ([], "fetch failed: Akamai 403")
+def test_B2_every_item_carries_a_publisher_tier():
+    items = news._process(news._parse_rss(RSS_FIXTURE, "Google News RSS"),
+                          "Reliance Industries", "RELIANCE", 3650, today=TODAY)
+    check("B2 every item is tiered",
+          all(it.get("publisher_tier") in {"established", "aggregator", "unknown"}
+              for it in items))
+
+
+# --- B3: degradation — a blocked source records a gap and returns ok:false -- #
+def test_B3_blocked_source_returns_ok_false_with_gap():
+    orig = news._fetch_google_rss
     news._fetch_google_rss = lambda c, t, d: ([], "no RSS items returned")
     try:
         env = news.fetch("Nonexistent Co", ticker="ZZZZ", days=60, fresh=True)
     finally:
-        news._fetch_et, news._fetch_moneycontrol, news._fetch_google_rss = orig
+        news._fetch_google_rss = orig
     check("B3 all-blocked run returns ok:false", env["ok"] is False)
     check("B3 all-blocked run still carries a gap", len(env["gaps"]) >= 1)
     check("B3 never an empty crash — envelope shape intact",
@@ -204,7 +194,7 @@ def test_B3_all_blocked_returns_ok_false_with_gap():
     check("B3 data.items present (empty list, not missing)", env["data"]["items"] == [])
 
 
-# --- parser fixtures: RSS + HTML anchor list (feeds B1/B2 inputs) ----------- #
+# --- parser fixtures: RSS (feeds B1/B2 inputs) ------------------------------ #
 def test_parse_rss_fixture():
     items = news._parse_rss(RSS_FIXTURE, "Google News RSS")
     check("rss parser emits one raw item per <item>", len(items) == 5)
@@ -212,17 +202,6 @@ def test_parse_rss_fixture():
           items[0]["title"] == "Reliance Industries Q4 net profit rises 12% YoY")
     check("rss parser recovers the link", items[0]["url"].endswith("/aaa"))
     check("rss parser tolerates malformed xml", news._parse_rss("<not xml", "x") == [])
-
-
-def test_parse_anchor_list_fixture():
-    items = news._parse_anchor_list(ET_HTML_FIXTURE, "Economic Times",
-                                    "https://economictimes.indiatimes.com")
-    titles = [it["title"] for it in items]
-    check("anchor parser keeps headlines",
-          "Reliance bags large order from defence ministry" in titles)
-    check("anchor parser drops short nav links", "Sign In" not in titles)
-    check("anchor parser makes absolute urls",
-          all(it["url"].startswith("http") for it in items))
 
 
 def test_envelope_shape():
@@ -233,13 +212,14 @@ def test_envelope_shape():
 
 # --- B4 is this file passing: every test above runs offline on fixtures ----- #
 def main():
-    for fn in (test_B1_fetch_walks_ladder_returns_items,
+    for fn in (test_B1_fetch_returns_envelope_with_items,
                test_B2_items_dated, test_B2_items_classified, test_B2_items_tagged,
                test_B2_items_deduped, test_B2_each_item_has_source,
                test_B2_noise_filtered_from_default_view, test_B2_recency_window_drops_stale,
-               test_B3_single_block_degrades_with_gap,
-               test_B3_all_blocked_returns_ok_false_with_gap,
-               test_parse_rss_fixture, test_parse_anchor_list_fixture, test_envelope_shape):
+               test_B2_publisher_tier_ranks_the_wire,
+               test_B2_every_item_carries_a_publisher_tier,
+               test_B3_blocked_source_returns_ok_false_with_gap,
+               test_parse_rss_fixture, test_envelope_shape):
         fn()
     print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
     sys.exit(1 if _failed else 0)

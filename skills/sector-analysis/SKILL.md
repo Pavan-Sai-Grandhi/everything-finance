@@ -2,14 +2,14 @@
 name: sector-analysis
 description: Sector analysis for Indian markets — deep-dive the sector(s) the user names, or, if none is named, rank the NSE sectoral indices by relative strength and deep-dive the top three in the current market. Each sector read covers relative strength, sector-specific KPIs, tailwinds/headwinds, and top stock picks. Use whenever the user asks about a specific sector, which sectors are hot, sector rotation, where money is flowing, "which sector should I look at", or wants sector-level context before picking stocks.
 argument-hint: "[optional: one or more sectors to deep-dive, e.g. 'banking' or 'IT, pharma' — omit for the top sectors now]"
-allowed-tools: WebFetch, Read, Write, Bash, Agent, mcp__playwright__*
+allowed-tools: WebFetch, Read, Write, Bash, Agent, mcp__finance-data__*
 ---
 
 # Sector Analysis — rotation + per-sector deep dives
 
 Read `references/reference.md` for the sector KPI map (Varsity sector-analysis module) and the relative-strength method. The per-sector analytical read is done by the **`sector-analyst` agent** (forked, self-contained) — this skill decides *which* sectors to analyze, runs that agent on each, then assembles the rotation grid and the comprehensive writeup.
 
-**Sources for this skill only:** the data spine `lib/prices.py` for index OHLCV (sectoral index RS — primary; index-aware yfinance in one place), NSE (sectoral index data), Moneycontrol (sector pages, index returns) as cross-checks, and `lib/fundamentals.py` / screener.in for stock-level KPIs. The agent uses the same set. Do not use other sites.
+**Sources for this skill only:** the `finance-data` tools — `get_history` for sectoral index OHLCV (relative strength), `get_market_context` for the shared sector read, `get_company_fundamentals` for constituent and stock-level KPIs, and `get_indices` for sectoral index levels. The agent uses the same set. Do not use other sites.
 
 ## Decide which sectors to analyze
 
@@ -18,7 +18,7 @@ Read `references/reference.md` for the sector KPI map (Varsity sector-analysis m
 
 ## Step 1 — Rank the rotation (only when no sector was named)
 
-**Cheap first pass:** run `python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick` and take `sectors.leaders` / `sectors.laggards` (1-year ranking, already computed from the single NSE index fetch) to decide **which** sectors are worth the full treatment. Then, for those sectors only, pull 1-month, 3-month, and 6-month returns (**21 / 63 / 126 trading days** — fixed so runs are comparable) for the NSE sectoral indices plus Nifty 50 as the benchmark. The sectoral ticker map is `lib/market.py`'s `SECTOR_YF` — the single copy; do not restate it. Source order (verified 2026-06): **the data spine `lib/prices.py`** — `prices.history("^NSEI", "1y")` and the sectoral index tickers (map in reference.md; index-aware yfinance under the hood, works in any session, primary), Moneycontrol Nifty JSON `curl 'https://priceapi.moneycontrol.com/pricefeed/notapplicable/inidicesindia/in%3BNSX'` (cross-check, no browser; `;` must be `%3B`), NSE index pages or Moneycontrol HTML via Playwright **real Chrome** (the WebFetch tool is blocked by both, browsers/curl work).
+**Cheap first pass:** call `get_market_context` (mode `quick`) and take `sectors.leaders` / `sectors.laggards` (1-year ranking, already computed from the single NSE index fetch) to decide **which** sectors are worth the full treatment. Then, for those sectors only, pull 1-month, 3-month, and 6-month returns (**21 / 63 / 126 trading days** — fixed so runs are comparable) for the NSE sectoral indices plus Nifty 50 as the benchmark. The sectoral ticker map is `lib/market.py`'s `SECTOR_YF` — the single copy; do not restate it. Pull the series with `get_history` (e.g. `^NSEI` for the benchmark and the sectoral index tickers). If an index has no series, record a labelled data gap — there is no browser fallback in this plugin.
 
 Compute relative strength = sector return − Nifty 50 return for each window. Classify:
 - **Leading**: positive RS on both 1M and 3M

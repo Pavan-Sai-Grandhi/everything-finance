@@ -2,7 +2,7 @@
 name: fundamental-analysis
 description: Fundamentals-only view of one Indian company — fetches the source data once, then runs the numbers (Varsity checklist + company overview), management (integrity gate + skill), and valuation (story-driven DCF with a confidence grade) legs in parallel and merges them into one report. Use when the user wants the fundamental read on a stock without the full bull/bear debate — "are the fundamentals good?", "is X fundamentally sound?", "fundamental analysis of Y". For the full multi-agent debate use deep-analysis instead.
 argument-hint: "TICKER (NSE symbol or company name)"
-allowed-tools: Read, Write, Bash, Agent
+allowed-tools: Read, Write, Bash, Agent, mcp__finance-data__*
 ---
 
 # Fundamental Analysis — fetch-once, then three parallel legs

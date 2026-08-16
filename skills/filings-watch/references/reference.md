@@ -2,12 +2,28 @@
 
 Compiled 2026-06-10. Sources: NSE/BSE corporate filings sections, SEBI LODR materiality framing.
 
-## Endpoints / pages (fetch ladder order)
+## Sources — all via the `finance-data` MCP server
 
-- **BSE JSON API (first choice — works over plain HTTP, verified 2026-06)**: announcements `https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?strCat=-1&strPrevDate=<YYYYMMDD>&strScrip=<scripcode>&strSearch=P&strToDate=<YYYYMMDD>&strType=C`; forthcoming corporate actions `https://api.bseindia.com/BseIndiaAPI/api/Corpforthcoming/w?scripcode=<code>`. Send a normal browser User-Agent **and `Referer: https://www.bseindia.com/`**. Not officially documented — a 200 response with "No Record Found!" for every query is the fingerprint-block signature: drop to the next rung instead of retrying variants; never assume it's gone forever.
-- **NSE via Playwright (second)**: `https://www.nseindia.com/companies-listing/corporate-filings-announcements` (filter by symbol), `.../corporate-filings-actions`, `.../corporate-filings-board-meetings`, `.../corporate-filings-shareholding-pattern`. Requires a real browser session — visit `nseindia.com` first (cookie bootstrap), then the filings page, then read the rendered table. The SHP detail here is the only reliable **pledge %** source.
-- **screener.in (third)**: `https://www.screener.in/company/<SYMBOL>/` — "Documents → Announcements" (mirrors recent filings) and the shareholding-pattern table with quarterly history. Static, WebFetch-friendly. Covers shareholding well; thin on corporate-action dates.
-- The exchanges' **HTML pages** block plain WebFetch — the BSE JSON API is the exception, not a sign the HTML will work.
+Every filing datum comes from one exchange, NSE, through four tools. There is no ladder,
+no browser, and no BSE rung any more (see `docs/data-sources.md` for why BSE was dropped:
+NSE serves both announcements and corporate actions in full, and BSE fingerprint-blocked
+often enough that its fallback was the common path rather than the exception).
+
+- **`get_filings(symbol, days)`** — corporate announcements, already classified into
+  act-on / monitor / routine with a reason. The full list is written to `data.items_path`.
+- **`get_corporate_actions(symbol)`** — dividends, splits, bonuses with ex-date and record
+  date.
+- **`get_shareholding(symbol, quarters)`** — quarterly promoter %, public %, employee
+  trusts, plus promoter pledge rows. **This was believed to need a real browser and does
+  not**: the same cookie-bootstrapped request that serves announcements serves the
+  shareholding master. NSE often returns *no* pledge rows — the tool labels that as a gap,
+  and it means **UNKNOWN, never nil**.
+- **`get_company_fundamentals(symbol, sections=["shareholding"])`** — screener.in's
+  12-quarter FII / DII / public split, which NSE's master does not break out.
+
+A blocked source returns `ok:false` with a labelled gap. That means "unknown", not
+"nothing filed" — never report an unreachable source as a quiet quarter. A company listed
+only on BSE has no NSE filings to fetch; say so explicitly.
 
 ## Materiality taxonomy
 

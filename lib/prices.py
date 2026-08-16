@@ -39,6 +39,7 @@ import sys
 from datetime import date, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
 
 
@@ -55,9 +56,6 @@ def _envelope(ok, source, data, gaps):
         "gaps": gaps,
     }
 
-
-_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 
 def _f(v):
@@ -119,27 +117,15 @@ def _screen_body(filters, columns, limit=50):
 
 
 def _scan_post(body, timeout=20):
-    """POST a scanner body. Returns (payload_dict, gap) — never raises. No cookies or
-    auth headers are sent: the public India scanner needs none (A2)."""
-    import urllib.error
-    import urllib.request
-    data = json.dumps(body).encode("utf-8")
-    headers = {
-        "User-Agent": _UA,
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Origin": "https://www.tradingview.com",
-        "Referer": "https://www.tradingview.com/",
-    }
-    req = urllib.request.Request(_TV_SCAN, data=data, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8", "replace")), None
-    except urllib.error.HTTPError as exc:  # noqa: PERF203
-        return None, f"TradingView scanner blocked: HTTP {exc.code}"
-    except Exception as exc:  # noqa: BLE001 — degrade-not-die
-        return None, f"TradingView scanner fetch failed: {exc}"
+    """POST a scanner body via the shared transport. Returns (payload_dict, gap).
+
+    No cookies or auth headers are sent: the public India scanner needs none (A2)."""
+    payload, gap = transport.json_request(
+        _TV_SCAN, payload=body, timeout=timeout,
+        origin="https://www.tradingview.com", referer="https://www.tradingview.com/")
+    if gap:
+        return None, f"TradingView scanner: {gap}"
+    return payload, None
 
 
 def _parse_scan(payload, columns):

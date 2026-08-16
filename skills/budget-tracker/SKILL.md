@@ -2,7 +2,7 @@
 name: budget-tracker
 description: Parse bank and credit-card statements (PDF/CSV), categorize every transaction against a durable merchant memory, detect recurring/subscription spend, compare actual spend against the Monthly Budget Planning framework, and produce a discipline report with a budget dashboard. Use whenever the user shares a statement file, asks where their money went, wants a monthly spend review, asks about budget adherence, savings rate, subscriptions/recurring charges, or "how much did I spend on X". Also the cashflow leg other skills consume via `quick`.
 argument-hint: "path(s) to statement PDF/CSV [+ month, e.g. 'May 2026'] [+ quick|deep]"
-allowed-tools: Read, Write, Bash, Skill
+allowed-tools: Read, Write, Bash, Skill, mcp__finance-data__*
 ---
 
 # Budget Tracker

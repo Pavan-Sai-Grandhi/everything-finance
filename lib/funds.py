@@ -58,6 +58,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority)
 
 
@@ -72,8 +73,6 @@ def _envelope(ok, source, data, gaps):
     }
 
 
-_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
 _TT = "https://api.tickertape.in"
 _AMFI_NAV_ALL = "https://portal.amfiindia.com/spages/NAVAll.txt"
@@ -112,23 +111,8 @@ def _f(v):
 # HTTP (curl — same transport choice as market.py; see its _http_get docstring) #
 # --------------------------------------------------------------------------- #
 def _curl(url, payload=None, timeout=30, referer="https://www.tickertape.in/"):
-    """GET, or POST when `payload` is given. Returns (body, gap) — never raises."""
-    import subprocess
-    cmd = ["curl", "-sS", "-L", "--compressed", "--max-time", str(timeout),
-           "-H", f"User-Agent: {_UA}",
-           "-H", "Accept: application/json, text/plain, */*",
-           "-H", f"Referer: {referer}"]
-    if payload is not None:
-        cmd += ["-X", "POST", "-H", "Content-Type: application/json",
-                "-d", json.dumps(payload)]
-    cmd.append(url)
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 10)
-    except Exception as exc:  # noqa: BLE001 — degrade-not-die
-        return None, f"curl failed for {url.split('/')[2]}: {exc}"
-    if r.returncode != 0:
-        return None, f"curl exit {r.returncode} for {url.split('/')[2]}"
-    return r.stdout, None
+    """GET, or POST when `payload` is given, via the single shared transport."""
+    return transport.request(url, payload=payload, timeout=timeout, referer=referer)
 
 
 def _json(url, payload=None, timeout=30):
@@ -182,9 +166,13 @@ def _write_cache(path, env):
 def amfi_index(fresh=False):
     """The full AMFI scheme list — the authority for scheme code + ISIN + exact name.
 
-    mfapi's `/search` is a substring match on the AMFI name and misses funds outright
-    ("TRUST Small Cap" returns nothing; only "TRUSTMF" matches), so name resolution goes
-    through this file instead of that search. ~17.8k rows, cached for a week.
+    Name resolution goes through this file rather than mfapi's `/search` for two
+    measured reasons (verified 2026-08-16): the search is a substring match on the
+    registered name, so "TRUST Small Cap" returns **nothing** (AMFI registers it as
+    "TRUSTMF"); and it **caps at 15 results with no pagination**, so the broad query you
+    would fall back to ("Small Cap Fund") silently omits most of the category — the same
+    truncation trap as the IndMoney holdings cap. This file is the complete registry.
+    ~17.8k rows, cached for a week, so the cost is one fetch per week.
     Returns the envelope with `data.schemes = [{code, isin, name, nav, nav_date}]`.
     """
     cache = _cache_path("meta", "amfi-navall")
@@ -215,12 +203,23 @@ def amfi_index(fresh=False):
     return env
 
 
+def _token_hit(token, name_lower, name_words):
+    """Pure: does `token` match this scheme name, allowing a word-prefix match?
+
+    An AMC's registered AMFI name is often a longer word than the name people use:
+    "TRUST Small Cap" is registered as "TRUSTMF SMALL CAP FUND". A plain substring test
+    over the whole name would also let "iti" match inside "MULTI", so the prefix match is
+    anchored to word boundaries."""
+    return token in name_lower or any(w.startswith(token) for w in name_words)
+
+
 def _score_name(query, name):
     """Token-overlap score of a query against an AMFI scheme name. Direct+Growth is
     preferred because that is the only plan this plugin ever recommends."""
     q = {t for t in query.lower().replace("-", " ").split() if t}
     n = name.lower()
-    hits = sum(1 for t in q if t in n)
+    words = n.replace("-", " ").replace("(", " ").replace(")", " ").split()
+    hits = sum(1 for t in q if _token_hit(t, n, words))
     if hits < len(q):
         return -1
     score = 100 - abs(len(n) - len(query))

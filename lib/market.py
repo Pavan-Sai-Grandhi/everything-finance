@@ -54,6 +54,7 @@ import sys
 from datetime import date, datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — never hardcode a cache string)
 import prices  # noqa: E402  (the TradingView scanner rung is already solved there)
 
@@ -72,8 +73,6 @@ def _envelope(ok, source, data, gaps):
     }
 
 
-_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
 # The indices the plugin actually reasons about, in canonical NSE spelling. Callers pass
 # these keys around; `_canon()` makes matching case/space-insensitive so the live JSON
@@ -135,48 +134,18 @@ def _canon(name):
 # HTTP                                                                         #
 # --------------------------------------------------------------------------- #
 def _http_get(url, timeout=25, referer=None, cookie_jar=None):
-    """GET via **curl**, not urllib. Returns (body, gap) — never raises.
-
-    curl is deliberate, not incidental: nseindia.com 403s urllib even with a full browser
-    header set (the block is on the TLS/HTTP2 fingerprint, not the headers — verified
-    2026-08-16), while curl is served normally. CLAUDE.md's access matrix already routes
-    the NSE/BSE JSON rungs through curl for the same reason.
-    """
-    import subprocess
-    cmd = ["curl", "-sS", "-L", "--compressed", "--max-time", str(timeout),
-           "-H", f"User-Agent: {_UA}",
-           "-H", "Accept: application/json, text/csv, text/plain, */*",
-           "-H", "Accept-Language: en-US,en;q=0.9"]
-    if referer:
-        cmd += ["-H", f"Referer: {referer}"]
-    if cookie_jar:
-        cmd += ["-b", cookie_jar, "-c", cookie_jar]
-    cmd.append(url)
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 10)
-    except Exception as exc:  # noqa: BLE001 — degrade-not-die
-        return None, f"curl failed for {url.split('/')[2]}: {exc}"
-    if r.returncode != 0:
-        return None, f"curl exit {r.returncode} for {url.split('/')[2]}: {r.stderr.strip()[:120]}"
-    return r.stdout, None
+    """GET via the single shared transport. Returns (body, gap) — never raises."""
+    return transport.request(url, timeout=timeout, referer=referer, cookie_jar=cookie_jar)
 
 
 def _nse_json(url, referer):
     """Cookie-bootstrapped NSE JSON GET. Returns (parsed, gap).
 
     NSE blocks naive clients, so the homepage is fetched first into a cookie jar and the
-    API call replays those bot cookies (CLAUDE.md access matrix).
-    """
-    jar = os.path.join(paths.tmp_dir("market"), "nse-cookies.txt")
-    _http_get("https://www.nseindia.com/", timeout=20, cookie_jar=jar)
-    body, gap = _http_get(url, referer=referer, cookie_jar=jar)
-    if gap:
-        return None, gap
-    try:
-        return json.loads(body), None
-    except Exception as exc:  # noqa: BLE001
-        snippet = (body or "").strip()[:60].replace("\n", " ")
-        return None, f"NSE returned non-JSON ({exc}): {snippet!r}"
+    API call replays those bot cookies."""
+    jar = transport.jar_path("nse")
+    transport.bootstrap("https://www.nseindia.com/", jar)
+    return transport.json_request(url, referer=referer, cookie_jar=jar, timeout=30)
 
 
 # --------------------------------------------------------------------------- #
