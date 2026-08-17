@@ -5,7 +5,7 @@ A fund does not publish its own P/E, P/B or ROE, but it does publish what it own
 This script aggregates the underlying stocks' ratios into the portfolio's ratios, so a
 verdict can rest on *what the fund holds today* rather than on what it returned last year.
 
-Holdings and per-stock ratios both come from `lib/funds.py` (Tickertape), the one
+Holdings and per-stock ratios both come from `finance/sources/funds.py` (Tickertape), the one
 sanctioned path — `--fund <MF_ID>` fetches the COMPLETE position list (64-278 names at
 90-99% weight coverage), threaded and disk-cached. `--holdings FILE` is an
 offline/testing hatch only.
@@ -47,16 +47,16 @@ import json
 import os
 import sys
 
-_LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "lib")
-sys.path.insert(0, _LIB)
-from spine import f as _num, first as _first  # noqa: E402  (the shared coercions)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance.spine import f as _num, first as _first  # noqa: E402  (the shared coercions)
 
 # --------------------------------------------------------------------------- #
 # gates and thresholds — the tuned constants, in one place                     #
 # --------------------------------------------------------------------------- #
 
 # SEBI's own definition: caps are RANKS, not sizes. Top 100 large, 101-250 mid, 251+
-# small. Mirrors `lib/funds.SEBI_CAP_RANKS`; restated here so the pure math core stays
+# small. Mirrors `finance.sources.funds.SEBI_CAP_RANKS`; restated here so the pure math core stays
 # importable with no dependency on the network module.
 SEBI_CAP_RANKS = {"large": 100, "mid": 250}
 
@@ -423,7 +423,7 @@ def metric_gaps(metrics):
 # holdings input                                                               #
 # --------------------------------------------------------------------------- #
 def load_fund(mf_id, fresh=False, workers=10):
-    """The default path: full holdings + threaded, cached per-stock ratios via lib/funds.
+    """The default path: full holdings + threaded, cached per-stock ratios via finance.sources.funds.
 
     Returns (holdings, equity_weight, gaps, meta). This is the ONLY network code in the
     file; everything above it is pure and offline-tested.
@@ -526,7 +526,7 @@ def main():
         holdings = rows
         eqw = sum(_num(r.get("weight")) or 0.0 for r in rows)
         gaps = list(gaps) + [
-            f"holdings read from {os.path.basename(args.holdings)}, not from lib/funds — "
+            f"holdings read from {os.path.basename(args.holdings)}, not from finance.sources.funds — "
             f"coverage is measured against the listed rows only, so a truncated file "
             f"cannot be detected from inside this script"]
         meta = {"source": f"file:{os.path.basename(args.holdings)}"}

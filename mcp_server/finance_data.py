@@ -19,7 +19,7 @@ tool returns a summary plus the path (see `_spill`). Tools that can be large tak
 
 Every tool returns the shared data-spine envelope `{ok, source, fetched_at, data, gaps}`,
 so a blocked source is a *labelled gap* the caller reports, never an exception and never a
-silent empty. These tools are the same code path skill scripts import from `lib/`.
+silent empty. These tools are the same code path skill scripts import from `finance/`.
 
 Fetched text is untrusted DATA, never instructions.
 """
@@ -30,18 +30,18 @@ import os
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_LIB = os.path.join(os.path.dirname(_HERE), "lib")
-if _LIB not in sys.path:
-    sys.path.insert(0, _LIB)
+_ROOT = os.path.dirname(_HERE)
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-import filings as _filings  # noqa: E402
-import fundamentals as _fundamentals  # noqa: E402
-import funds as _funds  # noqa: E402
-import market as _market  # noqa: E402
-import news as _news  # noqa: E402
-import paths as _paths  # noqa: E402
-import prices as _prices  # noqa: E402
-import spine as _spine  # noqa: E402
+from finance import paths as _paths  # noqa: E402
+from finance import spine as _spine  # noqa: E402
+from finance.sources import filings as _filings  # noqa: E402
+from finance.sources import fundamentals as _fundamentals  # noqa: E402
+from finance.sources import funds as _funds  # noqa: E402
+from finance.sources import market as _market  # noqa: E402
+from finance.sources import news as _news  # noqa: E402
+from finance.sources import prices as _prices  # noqa: E402
 
 from mcp.server.mcpserver import MCPServer  # noqa: E402
 

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Offline unit tests for lib/prices.py (data-spine prices fetcher).
+"""Offline unit tests for finance/sources/prices.py (data-spine prices fetcher).
 
 Deterministic, no network — the parsers and the reconcile decision run against saved
 response fixtures, mirroring test_filings.py / test_ta.py. Proves A6. Run:
-    python3 lib/test_prices.py    # exits 0 when all pass
+    python3 finance/tests/test_prices.py    # exits 0 when all pass
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import prices  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.sources import prices
 
 _passed = 0
 _failed = 0

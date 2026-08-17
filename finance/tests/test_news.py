@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Offline unit tests for lib/news.py (the data-spine news fetcher).
+"""Offline unit tests for finance/sources/news.py (the data-spine news fetcher).
 
 Deterministic, no network — the parsers, classifier, dedup and the ladder's degradation
 run against saved response fixtures, mirroring test_prices.py / test_filings.py / test_ta.py.
 Each test names the section-B acceptance criterion it proves. Run:
-    python3 lib/test_news.py   # exits 0
+    python3 finance/tests/test_news.py   # exits 0
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import news  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.sources import news
 
 _passed = 0
 _failed = 0

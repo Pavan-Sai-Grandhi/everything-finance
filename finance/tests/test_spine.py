@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Offline tests for lib/spine.py — the primitives every data-spine fetcher shares.
+"""Offline tests for finance/spine.py — the primitives every data-spine fetcher shares.
 
 These assertions used to live in each fetcher's own test file, one copy per module. They
 belong here now: the coercion and cache rules have one implementation, so they get one
 test. The per-module tests still exercise the names the modules re-export.
 
-Run: python3 lib/test_spine.py
+Run: python3 finance/tests/test_spine.py
 """
 import json
 import os
@@ -13,8 +13,8 @@ import sys
 import tempfile
 from datetime import date, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import spine  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance import spine
 
 _passed = 0
 _failed = 0

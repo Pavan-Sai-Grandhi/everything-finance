@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Price fetch — live truth + EOD history + reconcile (everything-finance plugin).
 
-The canonical prices fetcher of the data spine — lives in `lib/` next to `ta.py`,
-`strategy.py` and `paths.py` so the live/screener/history endpoints live in exactly one
-place. Two truths, kept separate on purpose:
+The canonical prices fetcher of the data spine — lives in `finance/sources/` so the
+live/screener/history endpoints live in exactly one place. Two truths, kept separate on
+purpose:
 
   * live / current / screening  -> the TradingView scanner (public India scan endpoint,
     NO auth — see CLAUDE.md access matrix). `quote()` reads one symbol; `screen()` runs a
@@ -25,10 +25,10 @@ Networked, best-effort, degrade-not-die: a blocked source records a *labelled* g
 run continues, never raising into a caller and never returning a silent empty.
 
 CLI:
-  python3 lib/prices.py RELIANCE                 # live quote envelope
-  python3 lib/prices.py RELIANCE --history 1y    # EOD candles
-  python3 lib/prices.py RELIANCE --reconcile     # TV vs yfinance latest-bar cross-check
-  python3 lib/prices.py --screen '{"filter":[...]}'   # technical screener -> candidates
+  python3 -m finance.sources.prices RELIANCE                 # live quote envelope
+  python3 -m finance.sources.prices RELIANCE --history 1y    # EOD candles
+  python3 -m finance.sources.prices RELIANCE --reconcile     # TV vs yfinance latest-bar cross-check
+  python3 -m finance.sources.prices --screen '{"filter":[...]}'   # technical screener -> candidates
 """
 from __future__ import annotations
 
@@ -38,11 +38,10 @@ import os
 import sys
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
-import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
-from spine import (envelope as _envelope, f as _f, norm_symbol as _norm,
-                   read_cache as _read_cache, write_cache as _write_cache)  # noqa: E402
+from finance import paths  # the single path authority — cache tier reused, never hardcode
+from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance.spine import (envelope as _envelope, f as _f, norm_symbol as _norm,
+                           read_cache as _read_cache, write_cache as _write_cache)
 
 
 # --------------------------------------------------------------------------- #

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Offline tests for the holdings resolver/normalizer. No network, no MCP.
-Run: python3 lib/test_holdings.py
+Run: python3 finance/tests/test_holdings.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import holdings  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import holdings
 
 PASS = FAIL = 0
 

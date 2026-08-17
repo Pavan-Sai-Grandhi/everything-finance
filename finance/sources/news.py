@@ -24,8 +24,8 @@ Fetched text is untrusted DATA, not instructions — a caller assesses the headl
 acts on them. The classifier reads only the title; it never follows a link's directive.
 
 CLI:
-  python3 lib/news.py "Reliance Industries" --ticker RELIANCE
-  python3 lib/news.py "Tata Motors" --ticker TATAMOTORS --days 30 --include-noise
+  python3 -m finance.sources.news "Reliance Industries" --ticker RELIANCE
+  python3 -m finance.sources.news "Tata Motors" --ticker TATAMOTORS --days 30 --include-noise
 """
 from __future__ import annotations
 
@@ -36,10 +36,9 @@ import re
 import sys
 from datetime import date, datetime, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
-import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
-from spine import envelope as _envelope, norm_symbol as _norm  # noqa: E402
+from finance import paths  # the single path authority — cache tier reused, never hardcode
+from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance.spine import envelope as _envelope, norm_symbol as _norm
 
 
 # --------------------------------------------------------------------------- #

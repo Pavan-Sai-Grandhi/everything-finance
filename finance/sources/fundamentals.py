@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Fundamentals fetch — the screener.in rung of the data spine (everything-finance plugin).
 
-The canonical fundamentals fetcher — lives in `lib/` next to `ta.py`, `strategy.py`,
-`prices.py`, `news.py` and `paths.py` so screener.in is parsed in exactly one place instead
-of being re-parsed afresh inside every `fundamentals-data` run (the drift this data spine
-removes). Two entry points:
+The canonical fundamentals fetcher — lives in `finance/sources/` next to `prices.py` and
+`news.py` so screener.in is parsed in exactly one place instead of being re-parsed afresh
+inside every `fundamentals-data` run (the drift this data spine removes). Two entry points:
 
   * `fetch(symbol)` reads the public consolidated company page ONCE and parses it into typed
     `data`: `ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`,
@@ -22,8 +21,8 @@ Every fetch returns the shared data-spine envelope:
       "data": {...}, "gaps": ["<labelled degradation>", ...] }
 
 CLI:
-  python3 lib/fundamentals.py RELIANCE
-  python3 lib/fundamentals.py --screen "Market Capitalization > 50000 AND Price to Earning < 20"
+  python3 -m finance.sources.fundamentals RELIANCE
+  python3 -m finance.sources.fundamentals --screen "Market Capitalization > 50000 AND Price to Earning < 20"
 """
 from __future__ import annotations
 
@@ -35,10 +34,9 @@ import sys
 from datetime import date
 from html.parser import HTMLParser
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
-import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
-from spine import envelope as _envelope, norm_symbol as _norm  # noqa: E402
+from finance import paths  # the single path authority — cache tier reused, never hardcode
+from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance.spine import envelope as _envelope, norm_symbol as _norm
 
 
 _BASE = "https://www.screener.in"

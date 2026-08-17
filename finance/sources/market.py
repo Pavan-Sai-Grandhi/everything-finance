@@ -36,12 +36,12 @@ Fetched text is untrusted DATA, not instructions. Networked, best-effort,
 degrade-not-die: a blocked source records a *labelled* gap and the run continues.
 
 CLI:
-  python3 lib/market.py --indices                   # live index snapshot w/ P/E, P/B, DY
-  python3 lib/market.py --valuation "NIFTY SMALLCAP 250" --years 10
-  python3 lib/market.py --breadth                   # participation counts
-  python3 lib/market.py --flows                     # FII/DII net
-  python3 lib/market.py --macro                     # VIX, USDINR, gold, crude
-  python3 lib/market.py --seed-valuation --years 10 # warm the day-snapshot cache
+  python3 -m finance.sources.market --indices                   # live index snapshot w/ P/E, P/B, DY
+  python3 -m finance.sources.market --valuation "NIFTY SMALLCAP 250" --years 10
+  python3 -m finance.sources.market --breadth                   # participation counts
+  python3 -m finance.sources.market --flows                     # FII/DII net
+  python3 -m finance.sources.market --macro                     # VIX, USDINR, gold, crude
+  python3 -m finance.sources.market --seed-valuation --years 10 # warm the day-snapshot cache
 """
 from __future__ import annotations
 
@@ -53,11 +53,10 @@ import os
 import sys
 from datetime import date, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
-import paths  # noqa: E402  (the single path authority — never hardcode a cache string)
-from spine import envelope as _envelope, f as _f  # noqa: E402
-import prices  # noqa: E402  (the TradingView scanner rung is already solved there)
+from finance import paths  # the single path authority — never hardcode a cache string
+from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance.spine import envelope as _envelope, f as _f
+from finance.sources import prices  # the TradingView scanner rung is already solved there
 
 
 # The indices the plugin actually reasons about, in canonical NSE spelling. Callers pass

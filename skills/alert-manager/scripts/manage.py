@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Thin CLI over lib/alerts.py — the documented owner of the alert contract (the
-way strategy-manager owns specs). All real logic lives in lib/alerts.py; this just
+"""Thin CLI over finance/compute/alerts.py — the documented owner of the alert contract
+(the way strategy-manager owns specs). All real logic lives there; this just
 exposes it on the command line for the skill.
 
   python3 manage.py list [--subject RELIANCE]
@@ -15,9 +15,9 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "..", "lib"))
-import alerts  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance.compute import alerts  # noqa: E402
 
 _SEV_ORDER = {"act": 0, "watch": 1, "info": 2}
 

@@ -3,7 +3,7 @@
 #
 # The deep-analysis skill writes a finished report to <root>/tmp/staging/<TICKER>.md and the
 # raw agent work papers to <root>/tmp/staging/<TICKER>/agents/*.md (relative to the SESSION cwd),
-# where <root> = $EVERYTHING_FINANCE_ARTIFACTS or ./artifacts (matching lib/paths.py). This hook:
+# where <root> = $EVERYTHING_FINANCE_ARTIFACTS or ./artifacts (matching finance/paths.py). This hook:
 #   1. archives each staged report to  <root>/stocks/<TICKER>/YYYY-MM-DD/deep-analysis.md
 #   2. archives its work papers to      <root>/stocks/<TICKER>/YYYY-MM-DD/deep-analysis/agents/
 #   3. extracts the "## Telegram Brief" section (or the first 12 lines as fallback)

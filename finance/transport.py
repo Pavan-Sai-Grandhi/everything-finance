@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """The ONE HTTP transport for the everything-finance data spine.
 
-Exactly one function touches the network: `request()`. Everything else in `lib/` calls it,
-so a UA, a header set or a block workaround has one definition.
+Exactly one function touches the network: `request()`. Everything else in `finance/` calls
+it, so a UA, a header set or a block workaround has one definition.
 
 NAMED `transport`, NOT `http`
 -----------------------------
-`lib/` goes on `sys.path`, so a module called `http.py` here shadows the standard library's
-`http` package for every dependency in the process — yfinance's `import http.client` would
-resolve to this file and break price history. Do not rename it.
+`http` is a standard-library package name. A module named `http.py` that is reachable as a
+top-level import shadows it for every dependency in the process — yfinance's
+`import http.client` would resolve to this file and break price history. Do not rename it.
 
 WHY CURL, FOR EVERYTHING
 ------------------------
@@ -167,9 +167,8 @@ def bootstrap(home_url, cookie_jar, timeout=20):
 
 def jar_path(name):
     """A stable cookie-jar path under the disposable tmp tier (never hardcoded)."""
-    import sys
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import paths  # noqa: PLC0415 — imported lazily so this module stays import-light
+    # imported lazily so this module stays import-light
+    from finance import paths  # noqa: PLC0415
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(name))
     return os.path.join(paths.tmp_dir("http"), f"{safe}-cookies.txt")
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for lib/transport.py — the single HTTP transport.
+"""Offline tests for finance/transport.py — the single HTTP transport.
 
 The contract that matters here is **degrade, never die**: every failure mode must come
 back as `(None, "<labelled gap>")` rather than an exception, because every caller in the
@@ -7,13 +7,13 @@ plugin treats a gap as data to report and an exception as a crashed skill. These
 drive the failure modes directly (a curl that cannot run, a non-2xx status, a body that
 isn't JSON) rather than mocking around them.
 
-Run: python3 lib/test_transport.py
+Run: python3 finance/tests/test_transport.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import transport  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance import transport
 
 _passed = 0
 _failed = 0
@@ -121,9 +121,10 @@ def test_jar_path_uses_the_path_authority():
 # --- one UA for the whole plugin ------------------------------------------- #
 def test_single_user_agent():
     check("a browser UA is defined once here", "Mozilla/5.0" in transport.DEFAULT_UA)
+    sources = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "sources")
     for mod in ("market", "prices", "funds", "fundamentals", "news", "filings"):
-        src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                f"{mod}.py")).read()
+        src = open(os.path.join(sources, f"{mod}.py")).read()
         check(f"{mod}.py declares no UA of its own", "_UA = (" not in src)
 
 

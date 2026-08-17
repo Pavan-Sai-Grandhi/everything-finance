@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Offline unit tests for the shared TA module. No network — every fixture is
-synthetic and deterministic. Run: python3 lib/test_ta.py
+synthetic and deterministic. Run: python3 finance/tests/test_ta.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ta  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import ta
 
 pd = ta.pd
 np = ta.np

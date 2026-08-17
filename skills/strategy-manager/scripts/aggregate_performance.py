@@ -22,10 +22,10 @@ Exit: 0 ok, 2 error.
 import argparse, glob, json, os, sys
 from datetime import date
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "..", "lib"))
-import paths
-from deps import need as _need, load_yaml
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance import paths
+from finance.deps import need as _need, load_yaml
 
 MIN_SAMPLE = 10           # below this, never act — too few trades to judge
 DECAY_FLOOR_R = 0.1       # live expectancy below this (but >=0) with backtest edge -> OPTIMIZE

@@ -11,8 +11,8 @@ Import from a skill script (skills/<name>/scripts/<x>.py):
 
     import os, sys
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "..", "..", "..", "lib"))
-    import ta
+                                    "..", "..", ".."))
+    from finance.compute import ta
 
 Input is a DataFrame with Open/High/Low/Close/Volume on a DatetimeIndex.
 Indicators return a Series aligned to it (NaN until the lookback fills); pattern

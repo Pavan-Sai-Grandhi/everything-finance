@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Offline unit tests for lib/fundamentals.py (the data-spine fundamentals fetcher).
+"""Offline unit tests for finance/sources/fundamentals.py (the data-spine fundamentals fetcher).
 
 Deterministic, no network — the screener.in parsers run against a saved page fixture,
 mirroring test_prices.py / test_news.py / test_filings.py / test_ta.py. Each test names the
 section-D acceptance criterion it proves. Run:
-    python3 lib/test_fundamentals.py   # exits 0
+    python3 finance/tests/test_fundamentals.py   # exits 0
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import fundamentals as fz  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.sources import fundamentals as fz
 
 _passed = 0
 _failed = 0

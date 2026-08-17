@@ -2,14 +2,14 @@
 """Spec-driven swing backtester for NSE daily data (everything-finance plugin).
 
 Validates any STRATEGY SPEC, not a hardcoded archetype: entry, stop, target,
-time-stop and sizing all come from the spec via `lib/strategy.py` — the same
+time-stop and sizing all come from the spec via `finance/compute/strategy.py` — the same
 module the live find-trade screen uses, so a new strategy is backtestable by
 existing, with no per-archetype code here.
 
 Engine: **Backtesting.py** (MIT). Its defaults give the discipline a real-money
 test needs: no lookahead (signal on bar t -> fill at t+1 open) and pessimistic
 intrabar exits (both stop and target touched in one bar -> the STOP is taken).
-Indicators come from TA-Lib via lib/ta.py. Commission is charged per side, set so
+Indicators come from TA-Lib via finance/compute/ta.py. Commission is charged per side, set so
 the round trip ~= 0.25% all-in (charges + slippage).
 
 Usage:
@@ -25,13 +25,13 @@ import os
 import sys
 from datetime import date
 
-# Shared engine: lib/ta.py (indicators) + lib/strategy.py (spec -> signals) +
-# lib/paths.py (artifact locations).
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "..", "lib"))
-import ta          # noqa: E402
-import strategy    # noqa: E402
-import paths       # noqa: E402
+# Shared engine: finance/compute/ta.py (indicators) + finance/compute/strategy.py
+# (spec -> signals) + finance/paths.py (artifact locations).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance import paths  # noqa: E402
+from finance.compute import strategy  # noqa: E402
+from finance.compute import ta  # noqa: E402
 
 pd = ta.pd
 
@@ -236,7 +236,7 @@ def main():
                    "capital": args.capital,
                    "risk_pct": args.risk_pct or spec.get("sizing", {}).get("risk_per_trade_pct"),
                    "commission_per_side": COMMISSION_PER_SIDE,
-                   "engine": "Backtesting.py + lib/strategy.py (spec-driven)"},
+                   "engine": "Backtesting.py + finance/compute/strategy.py (spec-driven)"},
         "summary": summarize(all_trades, args.capital),
         "buy_and_hold": bh,
         "data_gaps": failures,

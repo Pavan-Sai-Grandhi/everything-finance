@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Offline unit tests for lib/funds.py (the mutual-fund data-spine fetcher).
+"""Offline unit tests for finance/sources/funds.py (the mutual-fund data-spine fetcher).
 
 Deterministic, no network — every rung runs against saved response fixtures with the
 module's own curl/JSON seams swapped out, mirroring test_prices.py / test_fundamentals.py
 / test_market.py. Artifact roots are temp dirs, so a run never touches the user's real
 ./artifacts. Run:
-    python3 lib/test_funds.py    # exits 0 when all pass
+    python3 finance/tests/test_funds.py    # exits 0 when all pass
 """
 import atexit
 import contextlib
@@ -16,14 +16,14 @@ import sys
 import tempfile
 from datetime import date, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Point the path authority at a throwaway root BEFORE anything can write a cache file.
 _TMP_ROOT = tempfile.mkdtemp(prefix="ef-test-funds-")
 os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = os.path.join(_TMP_ROOT, "artifacts")
 atexit.register(shutil.rmtree, _TMP_ROOT, True)
 
-import funds  # noqa: E402
+from finance.sources import funds  # noqa: E402
 
 _passed = 0
 _failed = 0

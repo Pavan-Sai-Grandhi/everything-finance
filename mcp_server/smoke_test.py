@@ -4,7 +4,7 @@
 Speaks the real MCP wire protocol over stdio to a real server process and calls EVERY tool
 against its real upstream. Deliberately not mocked: the failure this catches is a source
 changing shape or starting to block, which no fixture can see. It complements the offline
-unit tests in `lib/test_*.py` rather than replacing them.
+unit tests in `finance/tests/test_*.py` rather than replacing them.
 
 A tool returning `ok:false` with a labelled gap is DEGRADED, not FAILED — that is the
 contract working. Only a protocol error, an exception, or a malformed envelope fails.

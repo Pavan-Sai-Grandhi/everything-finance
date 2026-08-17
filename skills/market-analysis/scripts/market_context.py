@@ -16,8 +16,9 @@ decision-grade numbers. A model reasoning about the market needs "Smallcap P/B a
 percentile of 10 years, dividend yield at the 9th" — never 122 monthly samples, never 500
 screener rows. Everything here exists to make that one compact statement trustworthy.
 
-Indicator values come from `lib/ta.py` (TA-Lib) and raw data from `lib/market.py` /
-`lib/prices.py`, so this script owns *interpretation* only — never a second definition of
+Indicator values come from `finance/compute/ta.py` (TA-Lib) and raw data from
+`finance/sources/market.py` / `finance/sources/prices.py`, so this script owns
+*interpretation* only — never a second definition of
 an EMA or a second path to an endpoint.
 
 FROZEN KEY NAMES (do not rename)
@@ -50,12 +51,12 @@ import statistics
 import sys
 from datetime import date
 
-_LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "lib")
-sys.path.insert(0, _LIB)
-import market  # noqa: E402  — the market-wide data spine
-import paths  # noqa: E402   — the single path authority
-import prices  # noqa: E402  — EOD history
-import ta  # noqa: E402      — the indicator-of-record (TA-Lib)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance import paths  # noqa: E402                — the single path authority
+from finance.compute import ta  # noqa: E402           — the indicator-of-record (TA-Lib)
+from finance.sources import market  # noqa: E402       — the market-wide data spine
+from finance.sources import prices  # noqa: E402       — EOD history
 
 NIFTY = "^NSEI"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Multi-dimensional allocation + concentration engine (portfolio-review).
 
-Pure computation over the canonical positions the shared `lib/holdings.py`
+Pure computation over the canonical positions the shared `finance/compute/holdings.py`
 resolver returns — no fetch, no MCP. The skill enriches each position with the
 dimension tags it gathered (sector, market-cap, AMC, style, asset-class) and the
 pre-aggregated breakdowns IndMoney / mf-analysis look-through supply, then hands

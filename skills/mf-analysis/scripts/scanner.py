@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Category scanner — turns "which small-cap fund?" into a deterministic shortlist.
 
-Takes the WHOLE SEBI sub-category from `lib/funds.screen()`, applies the Varsity
+Takes the WHOLE SEBI sub-category from `finance.sources.funds.screen()`, applies the Varsity
 checklist as HARD gates, scores the survivors on a fixed published weight table, and
 emits the top N. Same inputs, same answer, every run, and auditable because the weights
 and the per-component scores are in the output. The universe is never printed — only the
@@ -49,10 +49,11 @@ from datetime import date
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.join(_HERE, "..", "..", "..", "lib"))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
 
 import rolling as R  # noqa: E402  (the tested rolling-return math, shared with pillar 1)
-from spine import f as _f  # noqa: E402  (the one scraped-cell -> float coercion)
+from finance.spine import f as _f  # noqa: E402  (the one scraped-cell -> float coercion)
 
 # --------------------------------------------------------------------------- #
 # the published scoring contract                                              #
@@ -357,7 +358,7 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     gaps = list(env.get("gaps") or [])
     if not universe:
         gaps.append(f"no funds returned for category {category!r} — check the SEBI "
-                    f"sub-category spelling against `python3 lib/funds.py --screen`")
+                    f"sub-category spelling against `python3 -m finance.sources.funds --screen`")
 
     # --- hard gates ---------------------------------------------------------
     survivors, rejected = [], {}

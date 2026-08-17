@@ -7,13 +7,13 @@ deterministic core of that run — it does NOT decide *what* to trade, it execut
 spec's screening + signal rules on price data:
 
   1. screen_compute()  — the local technical cut (spec.screening.technical.compute_filters)
-                         over a universe, using the shared indicators in lib/ta.py.
+                         over a universe, using the shared indicators in finance/compute/ta.py.
                          This is the fallback when the TradingView provider is
                          unreachable, and the offline-testable heart of the engine.
   2. build_signal()    — turns a surviving stock into entry / stop / target / RRR /
                          qty from the spec's entry/exit/sizing blocks.
 
-The evaluator + signal math live in `lib/strategy.py`, shared verbatim with the
+The evaluator + signal math live in `finance/compute/strategy.py`, shared verbatim with the
 backtest; this file is just the live-screen orchestration around it.
 
 Usage:
@@ -29,16 +29,16 @@ import os
 import sys
 from datetime import date
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "..", "lib"))
-import ta        # noqa: E402
-import strategy  # noqa: E402
-import paths     # noqa: E402
-import prices    # noqa: E402  (data spine — EOD history fetch; indicators still via ta.py)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance import paths  # noqa: E402
+from finance.compute import strategy  # noqa: E402
+from finance.compute import ta  # noqa: E402
+from finance.sources import prices  # noqa: E402  (data spine — EOD history; indicators via ta.py)
 
 pd = ta.pd
 
-# The screen engine IS lib/strategy.py — re-export the pieces the SKILL workflow and
+# The screen engine IS finance/compute/strategy.py — re-export the pieces the SKILL workflow
 # the tests reference, so there is exactly one implementation of each.
 eval_filter = strategy.eval_filter
 passes_technical = strategy.passes_technical
@@ -170,7 +170,7 @@ def main():
     res = screen_compute(symbols, spec, args.years, args.capital, cache_dir)
     res["config"] = {"spec": spec.get("name"), "symbols": len(symbols),
                      "capital": args.capital, "as_of": str(date.today()),
-                     "screen_path": "compute (local lib/ta.py)"}
+                     "screen_path": "compute (local finance/compute/ta.py)"}
     out = json.dumps(res, indent=2, default=str)
     print(out)
     if args.out:

@@ -7,17 +7,17 @@ this module owns every number so none is eyeballed:
 
   - **spine**: total net worth, per-asset-class allocation across all IndMoney classes,
     equity share, liquid pool, per-holding XIRR summary — from `networth_snapshot` +
-    `networth_allocation_breakdown` + the `lib/holdings.py` positions envelope.
+    `networth_allocation_breakdown` + the `finance/compute/holdings.py` positions envelope.
   - **cross-domain** (the figures no single leg can produce): emergency-fund months of
     runway, protection-vs-net-worth read, risk posture.
   - **scorecard**: a status per domain (net worth & allocation, investments, protection,
     cashflow, emergency fund) with one line each, scored from the spine + leg digests.
 
-Deterministic, offline, no MCP/network — same discipline as `lib/strategy.py`. Every
+Deterministic, offline, no MCP/network — same discipline as `finance/compute/strategy.py`. Every
 input is sourced upstream (IndMoney first-party state, spoke digests); this only weighs.
 Absent legs/sources degrade to a labelled "not assessed", never a fabricated number.
 
-Spine schema, scorecard shape, and the input envelope are in `lib/contracts.md`.
+Spine schema, scorecard shape, and the input envelope are in `finance/contracts.md`.
 
 CLI:
   python3 wealth.py --input picture.json               # full-review: spine + cross-domain + scorecard
@@ -28,13 +28,13 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "..", "lib"))
-from spine import first as _first  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance.spine import first as _first  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
-# tolerant coercion (mirrors lib/holdings.py — fetched values arrive ₹/%-formatted)
+# tolerant coercion (mirrors finance/compute/holdings.py — fetched values arrive ₹/%-formatted)
 # --------------------------------------------------------------------------- #
 _SCALE_SUFFIXES = (
     ("crores", 1e7), ("crore", 1e7), ("cr", 1e7),

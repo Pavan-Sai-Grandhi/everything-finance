@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Offline tests for the alert contract. No network. Each test runs inside a temp
-artifacts root. Run: python3 lib/test_alerts.py
+artifacts root. Run: python3 finance/tests/test_alerts.py
 """
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import alerts  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import alerts
 
 PASS = 0
 FAIL = 0

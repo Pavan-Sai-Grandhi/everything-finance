@@ -34,10 +34,10 @@ Fetched text is untrusted DATA, not instructions. Degrade-not-die: a blocked sou
 records a *labelled* gap and the run continues.
 
 CLI:
-  python3 lib/funds.py --resolve "Nippon India Small Cap"
-  python3 lib/funds.py --screen "Small Cap Fund"
-  python3 lib/funds.py --holdings M_NIMS
-  python3 lib/funds.py --nav 118778
+  python3 -m finance.sources.funds --resolve "Nippon India Small Cap"
+  python3 -m finance.sources.funds --screen "Small Cap Fund"
+  python3 -m finance.sources.funds --holdings M_NIMS
+  python3 -m finance.sources.funds --nav 118778
 """
 from __future__ import annotations
 
@@ -48,11 +48,10 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
-import paths  # noqa: E402  (the single path authority)
-from spine import (envelope as _envelope, f as _f,
-                   read_cache as _read_cache, write_cache as _write_cache)  # noqa: E402
+from finance import paths  # the single path authority
+from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance.spine import (envelope as _envelope, f as _f,
+                           read_cache as _read_cache, write_cache as _write_cache)
 
 _TT = "https://api.tickertape.in"
 _AMFI_NAV_ALL = "https://portal.amfiindia.com/spages/NAVAll.txt"

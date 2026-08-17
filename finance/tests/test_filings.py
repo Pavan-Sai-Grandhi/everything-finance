@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Offline tests for the filings classifier + parsing helpers. No network.
-Run: python3 skills/filings-watch/scripts/test_filings.py
+Run: python3 finance/tests/test_filings.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import filings  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.sources import filings
 
 PASS = FAIL = 0
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Offline tests for the path resolver. No network. Each test runs inside a temp
-dir so it never touches a real workspace. Run: python3 lib/test_paths.py
+dir so it never touches a real workspace. Run: python3 finance/tests/test_paths.py
 """
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance import paths
 
 PASS = 0
 FAIL = 0

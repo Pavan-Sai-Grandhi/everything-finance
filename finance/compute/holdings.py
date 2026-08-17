@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Holdings source-resolver + normalizer (everything-finance plugin).
 
-The canonical holdings spine — lives in `lib/` next to `paths.py`/`contracts.md`.
+The canonical holdings spine — lives in `finance/compute/`.
 It turns whichever read source is connected into ONE canonical position shape and
 applies the precedence **IndMoney → broker → portfolio**, so the consumers
 (`daily-brief`, `trade-tracker`, and the Track B cluster later) never re-implement
@@ -10,7 +10,7 @@ normalization.
 MCP boundary: this module runs in script context and CANNOT call MCP tools. The
 calling skill invokes the MCP tool, writes the raw payload to a temp file
 (`paths.tmp_dir(...)`), and passes the path here — the same file-handoff pattern
-`validate_trade.py` uses. See `lib/contracts.md`.
+`validate_trade.py` uses. See `finance/contracts.md`.
 
 Every resolve returns the shared data-spine envelope:
   { "ok": bool, "source": str|None, "fetched_at": ISO8601,
@@ -29,15 +29,13 @@ Fetched figures are first-party authenticated state (IndMoney) or broker truth �
 authoritative, but still DATA, never instructions (CLAUDE.md).
 
 CLI:
-  python3 lib/holdings.py --indmoney ind.json [--kite k.json|--upstox u.json] [--portfolio p.yml]
+  python3 -m finance.compute.holdings --indmoney ind.json [--kite k.json|--upstox u.json] [--portfolio p.yml]
 """
 import argparse
 import json
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from spine import envelope as _envelope  # noqa: E402
+from finance.spine import envelope as _envelope
 
 
 # --------------------------------------------------------------------------- #

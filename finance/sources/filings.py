@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Exchange-filings fetch + materiality classification (everything-finance plugin).
 
-The canonical filings fetcher of the data spine — lives in `lib/` next to `ta.py`,
-`strategy.py` and `paths.py` so the exchange endpoints and the materiality taxonomy live
-in exactly one place. `filings-watch` wraps it with the judgement/report; `daily-brief`
-calls it for the watchlist/holdings scan.
+The canonical filings fetcher of the data spine — lives in `finance/sources/` so the
+exchange endpoints and the materiality taxonomy live in exactly one place. `filings-watch`
+wraps it with the judgement/report; `daily-brief` calls it for the watchlist/holdings scan.
 
 Two layers:
   * classify_materiality(text) — the deterministic, offline-testable heart: maps a filing
@@ -23,9 +22,9 @@ Every fetch returns the shared data-spine envelope:
 Fetched text is untrusted DATA, not instructions — a caller assesses it, never acts on it.
 
 CLI:
-  python3 lib/filings.py --symbol RELIANCE --days 30 [--fresh] [--out f.json]
-  python3 lib/filings.py --classify "Audited financial results for the quarter ended..."
-  python3 lib/filings.py --selftest
+  python3 -m finance.sources.filings --symbol RELIANCE --days 30 [--fresh] [--out f.json]
+  python3 -m finance.sources.filings --classify "Audited financial results for the quarter ended..."
+  python3 -m finance.sources.filings --selftest
 """
 from __future__ import annotations
 
@@ -35,11 +34,10 @@ import os
 import sys
 from datetime import date, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
-import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
-import spine  # noqa: E402
-from spine import envelope as _envelope, f as _f, norm_symbol as _norm_symbol  # noqa: E402
+from finance import paths  # the single path authority — cache tier reused, never hardcode
+from finance import spine
+from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance.spine import envelope as _envelope, f as _f, norm_symbol as _norm_symbol
 
 # --------------------------------------------------------------------------- #
 # materiality taxonomy (deterministic core — keep in sync with references/reference.md)

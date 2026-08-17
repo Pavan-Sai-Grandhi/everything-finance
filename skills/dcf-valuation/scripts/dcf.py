@@ -46,9 +46,9 @@ import os
 import sys
 from functools import reduce
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "..", "lib"))
-from deps import need as _need  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance.deps import need as _need  # noqa: E402
 
 # ----------------------------------------------------------------------------- helpers
 

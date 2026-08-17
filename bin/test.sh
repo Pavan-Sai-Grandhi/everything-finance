@@ -7,7 +7,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-files=$(find lib finance skills -name 'test_*.py' 2>/dev/null | sort)
+files=$(find finance skills -name 'test_*.py' 2>/dev/null | sort)
 total_pass=0 total_fail=0 broken=0
 
 for f in $files; do

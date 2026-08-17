@@ -18,12 +18,9 @@ language and signal math are unit-tested offline (find-trade/test_screen.py).
 """
 from __future__ import annotations
 
-import os
 import re
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
-import ta  # noqa: E402  (same dir)
+from finance.compute import ta
 
 pd = ta.pd
 

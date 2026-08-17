@@ -15,10 +15,10 @@ Exit: 0 = a strategy selected, 11 = none fit, 12 = no active specs, 2 = error.
 """
 import argparse, glob, json, os, sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "..", "lib"))
-import paths
-from deps import load_yaml
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance import paths
+from finance.deps import load_yaml
 
 
 def regime_fit(req, regime):

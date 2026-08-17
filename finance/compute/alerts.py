@@ -31,13 +31,11 @@ Alert schema (all keys optional unless noted):
 import hashlib
 import os
 import re
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths  # noqa: E402
-from spine import today as _today  # noqa: E402
+import yaml
 
-import yaml  # noqa: E402
+from finance import paths
+from finance.spine import today as _today
 
 OPEN_STATUSES = ("open", "triggered", "snoozed")
 _OPS = {"<": lambda a, b: a < b, ">": lambda a, b: a > b,

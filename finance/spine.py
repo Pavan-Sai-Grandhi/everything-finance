@@ -4,7 +4,7 @@
 `transport.py` owns the network; this owns the shape of what comes back. Each domain
 fetcher (`prices`, `market`, `funds`, `fundamentals`, `news`, `filings`) imports from here
 rather than carrying its own copy, so the envelope contract and the cache-freshness rule
-have exactly one definition. See `lib/contracts.md`.
+have exactly one definition. See `finance/contracts.md`.
 """
 import json
 import os
@@ -16,7 +16,7 @@ _BLANKS = {"", "-", "--", "NA", "N.A.", "N/A", "NONE", "NULL"}
 
 
 def envelope(ok, source, data, gaps):
-    """The contract every data-spine fetch returns (see lib/contracts.md)."""
+    """The contract every data-spine fetch returns (see finance/contracts.md)."""
     return {
         "ok": bool(ok),
         "source": source,

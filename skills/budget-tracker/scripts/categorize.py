@@ -23,9 +23,9 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "..", "lib"))
-import paths  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+                   os.path.dirname(os.path.abspath(__file__))))))
+from finance import paths  # noqa: E402
 
 # --- taxonomy (mirrors references/reference.md) ------------------------------
 # Ordered: more-specific categories first so an overlapping narration resolves to the
