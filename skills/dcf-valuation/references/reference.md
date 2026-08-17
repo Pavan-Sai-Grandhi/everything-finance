@@ -44,7 +44,7 @@ Margin of safety = intrinsic/share ÷ current_price − 1
 
 ## Worked example — a story turned into numbers (runnable)
 
-The bundled `--selftest` *is* a worked example; run `python3 scripts/dcf.py --selftest` to see every number. The story it encodes:
+The bundled `--selftest` *is* a worked example; run `python3 <plugin>/skills/dcf-valuation/scripts/dcf.py --selftest` to see every number. The story it encodes:
 
 > "A ₹1,000 Cr-revenue firm with a real but fading edge: it grows 15%/yr for 3 years while the edge holds, then fades to 4% (≈ the economy) by year 10. Today's 12% operating margin widens to 18% by year 5 as scale kicks in — no higher, because that's where the best peers sit. Each ₹1 of new capital buys ₹2 of sales (sales-to-capital 2.0). Discount at 11%. In perpetuity it grows 4% and earns 13% on new capital (a modest, durable moat). Net debt ₹500 Cr, ₹100 Cr surplus cash, 100 Cr shares."
 
@@ -113,19 +113,6 @@ Where a large gap to price *survives* a coherent, stage-appropriate valuation �
 
 If you cannot make these adjustments precisely, **say so in the report as a data gap** rather than quietly ignoring them.
 
-## Running it
-
-```bash
-# fill assets/dcf-inputs.example.yml with sourced numbers, then:
-python3 <skill-dir>/scripts/dcf.py --inputs <your-inputs>.yml \
-    --sensitivity --story --out artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf.json
-# --story emits the growth×margin grid (the headline range for a growth company)
-# or a quick worked example:
-python3 <skill-dir>/scripts/dcf.py --selftest
-```
-
-The script emits a per-year FCFF table, EV/equity/per-share, the **story-driver grid** (`--story`, growth × steady-state margin — the headline range), the WACC×terminal-growth grid (`--sensitivity`, a secondary check), and **flags**. Exit 3 means the model is invalid (e.g. WACC ≤ g) — fix the inputs, don't paper over it.
-
 ## The flags the engine raises (read them as Damodaran's reality checks)
 
 - `TERMINAL_GROWTH_ABOVE_RISKFREE` — cap g_T at the risk-free rate (in the cash-flow currency). Always.
@@ -141,14 +128,7 @@ The script emits a per-year FCFF table, EV/equity/per-share, the **story-driver 
 
 The forward DCF asks "given my story, what is it worth?" The **reverse DCF** flips it: "given the market price, what story must already be true?" It is often the single most decision-useful output, because it sidesteps the endless argument over your assumptions and instead tests the *market's* — which are usually far more aggressive than people realise.
 
-Mechanically, the engine holds every assumption fixed except one lever and shifts that lever's whole path by a constant until intrinsic value/share equals the price:
-
-```bash
-python3 scripts/dcf.py --inputs <file>.yml --reverse              # implied revenue growth (default)
-python3 scripts/dcf.py --inputs <file>.yml --reverse-solve margin # implied operating margin
-```
-
-It reports the **implied year-1 growth and the implied N-year revenue CAGR** (or the implied margin). Then you do the judgement: compare that number to the company's own history, management's guidance, and the size of the TAM. *Example (the bundled selftest): a ₹60 price implies ~28% revenue CAGR for a decade against a 15% base story — a demand the business has never met, which condemns the price more convincingly than any single fair-value figure.*
+Mechanically, the engine holds every assumption fixed except one lever and shifts that lever's whole path by a constant until intrinsic value/share equals the price. It reports the **implied year-1 growth and the implied N-year revenue CAGR** (or the implied margin). Then you do the judgement: compare that number to the company's own history, management's guidance, and the size of the TAM. *Example (the bundled selftest): a ₹60 price implies ~28% revenue CAGR for a decade against a 15% base story — a demand the business has never met, which condemns the price more convincingly than any single fair-value figure.*
 
 When it returns `solved: false`, that is a finding, not a failure: either the price sits **below** what even conservative assumptions support (the stock is cheap on that lever), or **above** any credible range (richly priced / the lever can't justify it — and if terminal ROIC ≤ WACC, growth adds no value, so the price can't be a growth story at all). Use growth as the primary lever for growth stories; use the margin version when the bull case is really a margin-expansion thesis.
 
@@ -157,6 +137,4 @@ When it returns `solved: false`, that is a finding, not a failure: either the pr
 1. **Show a range, not a point — on the levers that matter.** Lead with the `story_sensitivity` grid (growth × steady-state margin) and its `duration` read; the single per-share number is the midpoint of an honest band, never a precise target. The WACC×g grid is a secondary check — for a growth company it perturbs the two *lowest*-leverage levers, so leading with it understates the true range and hides a premature-fade problem.
 2. **Margin of safety, not fair value = buy.** Damodaran/Graham: require a discount (commonly ≥ 25–30% below intrinsic) before acting, sized to how terminal-heavy and assumption-laden the model is.
 3. **Break your own story.** If a competitor launched a cheaper product tomorrow, which input collapses? If the whole thesis hangs on one heroic assumption, say that out loud.
-4. **Know when DCF is fragile — and when it merely *looks* fragile.** Genuinely fragile: banks/NBFCs/insurers (FCFF ill-defined → use P/B–RoE) and violently cyclical/commodity firms (normalise through the cycle, treat DCF as one weak input). *Not* fragile, despite appearances: young loss-makers — that is precisely what story-driven DCF is for (Zomato, SpaceX), valued with a TAM-built revenue, a country-risk WACC, and a failure probability. Don't retreat to multiples just because today's earnings are negative.
-
-Not investment advice — personal research tool.
+4. **Know when DCF is fragile** — the two cases, and the young loss-maker that only looks like a third, are in SKILL.md § Boundaries. Whichever applies, say which view you trust and why.

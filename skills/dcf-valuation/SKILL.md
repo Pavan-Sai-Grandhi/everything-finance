@@ -2,38 +2,28 @@
 name: dcf-valuation
 description: Compute what an Indian stock is actually worth per share with a story-driven discounted-cash-flow (FCFF) model in Aswath Damodaran's style — project revenue growth and operating margins from a coherent narrative, fund that growth via the sales-to-capital ratio, discount free cash flow to the firm at WACC, add a disciplined terminal value, and report intrinsic value as a range with a margin of safety, a WACC×terminal-growth sensitivity grid, and reality-check flags. Reach for this skill whenever the user wants a valuation or intrinsic/fair value of one company — phrasings like "what is X really worth", "is X overvalued or undervalued", "justify this P/E", "should I buy at ₹Y", "build me a DCF", "value this stock", or wanting the numbers behind a buy/sell decision — even if they never say the word "DCF". It is for single-stock equity intrinsic value specifically (not mutual-fund picks → mf-analysis, not historical strategy testing → backtest, not the full multi-agent debate → deep-analysis, which invokes this skill for its valuation leg).
 argument-hint: "TICKER (or 'inputs <file.yml>') — supply sourced financials; the model only computes what you feed it"
-allowed-tools: Read, Write, Bash, WebFetch, Skill, mcp__finance-data__*
+allowed-tools: Read, Write, Bash, WebFetch, mcp__finance-market__*, mcp__finance-company__*
 ---
 
 # DCF Valuation — story-driven intrinsic value (Damodaran FCFF)
 
-Read `references/reference.md` first — it carries the method, the levers, the capitalisation adjustments, and the discipline. This SKILL is the workflow on top of the bundled engine `scripts/dcf.py`.
+Read `references/reference.md` first — it owns the method: the life-cycle diagnosis, the levers and where to source each, country risk and beta, the terminal excess-return call, the post-operating adjustments, the capitalisation adjustments, every engine flag, and the devil's-advocate discipline. This SKILL is the workflow on top of the bundled engine `scripts/dcf.py`.
 
-**Sources for this skill only:** screener.in consolidated financials, the company's annual report, exchange filings.
+**Sources for this skill only:** `finance-company` `get_company_fundamentals` (consolidated financials, and the `documents` links to the annual report / filings, which you read with `WebFetch`) and `finance-market` `get_quote` (current price).
 
 ## Workflow
 
 0. **Check for a prior run.** Call `paths.latest_prior("dcf", SYMBOL)` — if an earlier `dcf.md` exists, read it for context so this valuation stays consistent with the last story, and open the report with a one-line `prior run: <path> (<date>)` link noting what changed (fair value then→now, which assumption moved). No prior run is the normal first-time case.
-1. **Gather the sourced base inputs** (from `https://www.screener.in/company/<SYMBOL>/consolidated/` and the latest annual report — the same primary sources the valuation-analyst draws from the data-pack):
-   - base revenue (latest FY/TTM), historical revenue growth and operating-margin trend, effective tax rate, net debt, cash & non-operating assets, minority interest, diluted shares outstanding.
-   - historical **sales-to-capital** ≈ ΔRevenue ÷ Δ(net fixed assets + working capital) over recent years.
-   - current market price (for the margin-of-safety comparison).
-2. **Diagnose the life-cycle stage first, then build the story.** Before any number, place the company on its life cycle (`lifecycle_stage`: start_up / young_growth / high_growth / mature_growth / mature_stable / decline) — **read `references/reference.md` § "Diagnose first"**. The stage decides which inputs are hard, where value should sit, and which adjustments are warranted — terminal growth, country premium and failure probability are *conclusions of the diagnosis*, reasoned per company, never defaults. Then set the revenue-growth path, the margin path (benchmarked to peer steady-state), the sales-to-capital path, WACC, terminal growth (≤ risk-free *in the cash-flow currency*), and terminal ROIC, each with a one-line justification. Key stage-driven decisions:
-   - **Growth & its duration** — don't fade a *demonstrated* high grower to GDP on a fixed schedule; fade to the durable rate the edge supports. Use `years: 15` for a genuinely young firm. Build revenue top-down from **TAM × share × take-rate** where you can.
-   - **Country risk by exposure, not incorporation** — prefer `wacc_buildup` with `lambda_country` set from the company's India revenue share (an IT exporter barely carries India's CRP; a domestic lender carries it fully). This avoids both over-discounting exporters and double-counting risk into growth. Use a **bottom-up/sector beta** (business risk), not the stock's raw regression beta — a volatile share price throws up a 1.3–1.6 beta that inflates WACC and silently depresses value; the engine flags a beta over ~1.3 (`BETA_LOOKS_LIKE_REGRESSION`).
-   - **Terminal value is an excess-return call** — terminal value turns on the spread `terminal_roic − WACC`, not on g_T. Default it to **convergence** (ROIC = WACC, growth adds no value); set terminal ROIC above WACC *only* when you can name a durable moat that persists into perpetuity, and treat that spread as the model's most consequential assumption. A heavy terminal value is normal for a going concern, not a defect.
-   - **Post-operating adjustments only if the diagnosis calls for them** — `failure_probability` for a firm with genuine distress signals (loss-making + heavy debt, or decline-phase), ≈ 0 for a profitable mature firm; `complexity_discount` for governance/cross-holding/promoter-control opacity (the Adani move: value operations clean, then haircut); normalise margins/commodity prices for cyclicals. Apply lease/R&D capitalisation where material.
+1. **Gather the sourced base inputs** — base revenue (latest FY/TTM), the revenue-growth and operating-margin history, effective tax rate, net debt, cash & non-operating assets, minority interest, diluted shares, historical **sales-to-capital** (≈ ΔRevenue ÷ Δ(net fixed assets + working capital)), and CMP for the margin-of-safety comparison. Invoked as `deep-analysis`'s valuation leg, these arrive in the data-pack — do not re-fetch.
+2. **Diagnose the life-cycle stage, then build the story.** Set `lifecycle_stage` before any number, then the growth path, margin path, sales-to-capital path, WACC, terminal growth and terminal ROIC, each with a one-line justification. The reference's § "Diagnose first" governs all of it: **terminal growth, country premium, beta and failure probability are conclusions of the diagnosis, never defaults.**
 3. **Write the inputs file** from `assets/dcf-inputs.example.yml` → `artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml` (`paths.stock_dir(symbol, date)`), every value carrying a source comment.
 4. **Run the engine** (forward valuation + both sensitivity grids + reverse DCF):
    ```bash
-   python3 <skill-dir>/scripts/dcf.py --inputs artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml \
+   python3 <plugin>/skills/dcf-valuation/scripts/dcf.py --inputs artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml \
        --sensitivity --story --reverse --out artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf.json
    ```
    Exit 3 = model-invalid (e.g. WACC ≤ terminal growth) — fix the input, never override the guard. The script auto-installs `pyyaml` if missing. `--reverse` defaults to solving for **growth** against `current_price`; add `--reverse-solve margin` for the implied-margin version, or `--reverse-target <price>` to test a different price.
-5. **Read the flags, BOTH grids, and the reverse DCF.**
-   - Address every flag in your write-up (terminal-heavy, growth/margin too high, negative EV, no terminal excess return).
-   - **Lead with the range from the `story_sensitivity` grid (growth × steady-state margin), not the WACC×g grid** — in a rupee model a full ±1% on terminal growth barely moves value, while the growth rate, how long it lasts, and the steady-state margin move it enormously. Read `story_sensitivity.duration` for the most common Indian-compounder failure: was demonstrated growth faded to a mature rate years too early?
-   - **Reverse DCF** — the revenue growth (or margin) today's price already assumes. Compare it against the company's history, management guidance, and the TAM. If the price requires growth no one in the sector has sustained, that *is* the verdict. If instead the implied number is roughly the growth the company has *already demonstrated* and you can name the moat that sustains it, your base case faded too hard — **lengthen the high-growth window and re-run, then report that as your base case** (extend the duration, don't bump the rate). If it comes back `solved: false`, read its `reason`.
+5. **Read the flags, BOTH grids, and the reverse DCF.** Address every flag raised in the write-up. **Lead with the `story_sensitivity` grid (growth × steady-state margin) as the range**, WACC×g as a secondary check, and read `story_sensitivity.duration` for a premature fade. Then act on the reverse DCF: if the price-implied growth is one no one in the sector has sustained, that *is* the verdict; if it is roughly what the company has already demonstrated and you can name the moat, **lengthen the high-growth window, re-run, and report that as the base case** (extend the duration, never bump the rate). On `solved: false`, read its `reason`.
 
 ## Produce this report
 
@@ -54,4 +44,4 @@ A young, loss-making, cash-burning company is **in scope** — that is exactly w
 
 DCF is genuinely **fragile** in two cases, where you should lean on relative valuation (P/E, P/B, P/S vs peers and own 5y band) and say which you trust and why: **(1) banks / NBFCs / insurers** (FCFF is ill-defined — value on equity/P/B/RoE instead), and **(2) violently cyclical / commodity firms** where fuel, forex, or commodity swings throw FCFF around so hard that any single forecast is arbitrary (normalise through a cycle and treat the DCF as one weak input). The fix for a *young* firm is a failure probability and a story-driver range, **not** abandoning the DCF.
 
-End with the standard risk note: this is a model, not a price target — not investment advice, personal research tool.
+End on the model's own limit: this is a model, not a price target.

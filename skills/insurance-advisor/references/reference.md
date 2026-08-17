@@ -1,6 +1,6 @@
 # Insurance knowledge base — shared framework
 
-Grounded in Zerodha Varsity — Insurance module (https://zerodha.com/varsity/module/insurance/, 9 chapters by Ditto: Perverse Incentives, The Nudge, Skin in the Game, Dunning-Kruger Effect, A Mighty Defence, No Free Lunch, Gimmick or Not 1–2). Fetched and summarized 2026-06-10. This file is the **shared layer** every mode loads; the per-type detail lives in `term.md`, `health.md`, `vehicle.md` — always load this plus the relevant per-type reference.
+Grounded in Zerodha Varsity — Insurance module (https://zerodha.com/varsity/module/insurance/, 9 chapters by Ditto: Perverse Incentives, The Nudge, Skin in the Game, Dunning-Kruger Effect, A Mighty Defence, No Free Lunch, Gimmick or Not 1–2). Fetched and summarized 2026-06-10. This file is the **shared layer** every mode loads; the per-type criteria live in `term.md`, `health.md`, `vehicle.md`.
 
 ## The one stance: insurance is protection, not investment
 
@@ -19,22 +19,12 @@ Grounded in Zerodha Varsity — Insurance module (https://zerodha.com/varsity/mo
 
 ## Web research + sourcing (Advise mode fetches; all modes obey)
 
-Insurance products are the one domain no `finance-data` source covers, so **named-source WebFetch/WebSearch on insurer and IRDAI pages is the right tool here**. **IRDAI is authoritative** for claim-settlement ratios and registered-insurer status. The research stays qualitative, and every figure carries its source URL + as-of date.
+**IRDAI is authoritative** for claim-settlement ratios and registered-insurer status. The research stays qualitative, and every figure carries its source URL + as-of date.
 
 - Premiums are labelled **"indicative — verify with insurer"**. Quote engines that need personal data are flagged **"needs a real quote"** — never auto-fill invented inputs to extract a number.
 - Flag promotional/one-sided passages and down-weight them.
 - A page that blocks WebFetch is a labelled gap, not a reason to escalate to a browser.
 - Too few candidates for a type → present what was found, state the shortfall, ask the user to supply brochures/quotes for the finalists.
-
-## Deterministic math
-
-Every computed figure comes from `scripts/insurance_math.py` (term cover need, health sum-insured sizing, IDV/NCB sanity, marginal-IRR of continuing an in-force endowment/ULIP), not eyeballed in prose. The assumptions feeding it appear in the Assumptions table.
-
-## Artifact contract
-
-- **Advise** (per-type): `paths.insurance_report_path(<type>)` → `insurance/<type>/YYYY-MM-DD.md`.
-- **Audit / Ask** (not per-type): `paths.report_path("insurance")` → `insurance/YYYY-MM-DD.md`.
-- Text-first (no HTML asset).
 
 ## Compliance close (every output ends with this)
 

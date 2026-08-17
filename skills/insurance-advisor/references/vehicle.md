@@ -1,6 +1,6 @@
 # Vehicle insurance — best-practice reference
 
-Motor cover (car / two-wheeler). Read with `reference.md`.
+Motor cover (car / two-wheeler).
 
 ## Interview — what to ask (one at a time)
 
@@ -40,8 +40,7 @@ Make / model / year / variant · current IDV + no-claim bonus (NCB) % · usage p
 
 ## Red flags (claim-repudiation risk)
 
-- **IDV lowballed** to advertise a cheaper premium — bites at total loss/theft.
-- **Quoted NCB above entitlement** — voids on verification.
-- Comprehensive marketed but **add-ons that matter (zero-dep/RTI) missing** for a new car.
+A lowballed IDV, an NCB above entitlement, or a missing zero-dep/RTI on a new car are the § IDV & NCB and § Add-on rules failed — flag them from there. The two the tables can't hold:
+
 - Owner-driver **personal-accident (PA) cover** absent — it's mandatory and cheap.
-- Undeclared prior claims or commercial use on a private policy → rejection at claim time.
+- Undeclared prior claims, or commercial use on a private policy → rejection at claim time.

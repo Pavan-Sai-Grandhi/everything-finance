@@ -14,7 +14,7 @@ shares_outstanding: 700.0       # diluted share count, ₹ Cr units  [src: scree
 net_debt: 12000.0               # total debt − cash                [src: screener balance sheet]
 non_operating_cash: 0.0         # cash/investments not in FCFF      [src: balance sheet]
 minority_interest: 0.0          # minority interest to subtract     [src: balance sheet]
-current_price: 1500.0           # market price/share, ₹             [src: yfinance/NSE]
+current_price: 1500.0           # market price/share, ₹             [src: get_quote]
 
 # --- revenue growth: EITHER an explicit path OR a high->fade glide ----------------------
 # revenue_growth: [0.15, 0.15, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.08, 0.07]

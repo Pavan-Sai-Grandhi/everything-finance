@@ -30,7 +30,7 @@ Integrity is screened **before** skill. A *skilled but dishonest* management is 
 
 6. **Ego — unwillingness to own mistakes.** Managements that **never admit errors** are dangerous. Example pattern: a serial-acquirer that overpaid, then **wrote off goodwill blaming COVID** (when the year had only days of COVID impact) rather than admitting the acquisitions were expensive. Avoid managements that rationalise instead of accepting and correcting mistakes. *Source: AR notes/impairments + concall tone on past decisions.*
 
-7. **Promoter pledging.** Pledging is **not inherently bad** — even good promoters pledge when they need funds. Judge the **reason** and the **percentage**: low single digits (3–5%) is usually fine; **abnormal pledging** (e.g. ~69%) can hand the company to lenders on a margin call (the source cites Future group pre-collapse). *Source: screener.in promoter "pledge %" (add the column), and the SHP filing.*
+7. **Promoter pledging.** Pledging is **not inherently bad** — even good promoters pledge when they need funds. Judge the **reason** and the **percentage**: low single digits (3–5%) is usually fine; **abnormal pledging** (e.g. ~69%) can hand the company to lenders on a margin call (the source cites Future group pre-collapse). *Source: `get_shareholding` pledge rows (NSE returns them from a separate endpoint that is often empty — an empty list is UNKNOWN, never nil pledge), cross-read with the AR/SHP filing.*
 
 **Skill-builders for integrity:** Vijay Malik's blogs (deep RPT/remuneration forensics); Moneylife / Sucheta Dalal exposés of dishonest promoters.
 
@@ -54,16 +54,9 @@ Skilled management can turn a struggling company around (the source's example: S
 
 1. **Integrity is a hard gate.** Any of these → **management grade = AVOID** no matter the skill: money-siphoning RPTs, a genuine criminal/regulatory record, remuneration above the MCA limit (or pay rising as profit falls), abnormal pledging with no sound reason, demonstrable dishonesty. Softer integrity concerns (media-savvy, ego, mild auditor-fee drift) are **FLAGS** that lower confidence, not automatic disqualifiers — weigh the pattern.
 2. **Grade skill only for integrity-clean managements**, across the four skill checks.
-3. **Output:**
-   - **Integrity: PASS / FLAG / FAIL** — with the specific evidence (the number, the AR note, the filing) behind each sub-check.
-   - **Skill: STRONG / ADEQUATE / WEAK** — with evidence.
-   - **Overall management grade** + one-line rationale + confidence (low/med/high). FAIL integrity ⇒ overall AVOID.
 
-Every judgement must cite its source (AR page/note, screener field, filing, dated interview). "Good management" with no evidence is a defect. This judges *people and intention*, so state your confidence honestly and flag what you could not verify.
+Every judgement cites its source (AR page/note, screener field, filing, dated interview). "Good management" with no evidence is a defect.
 
 ## Evidence standard
 
-- Governance evidence comes from annual reports and filings, screener.in, NSE disclosures, the RHP for IPOs, and well-known financial press or regulator orders. An integrity claim never rests on an unknown site — governance is the topic where fabricated allegations circulate most freely.
-- Label every finding **verified fact** (a filing says X), **allegation** (a blog claims Y), or **inference** (the pattern suggests Z). An unproven allegation is not a conviction.
-
-Not investment advice — personal research tool.
+Governance is the topic where fabricated allegations circulate most freely, so an integrity claim rests only on annual reports and filings, screener.in, NSE disclosures, the RHP for IPOs, or a regulator order / well-known financial press — never an unknown site. An unproven allegation is not a conviction.

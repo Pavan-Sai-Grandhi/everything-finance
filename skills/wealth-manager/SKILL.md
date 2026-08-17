@@ -2,7 +2,7 @@
 name: wealth-manager
 description: The whole-picture financial advisor — builds your total net worth across every IndMoney asset class (equity, funds, real estate, gold, EPF, FDs, debt, cash, US stocks, insurance value), then orchestrates the three personal-finance spokes (portfolio-review, insurance-advisor, budget-tracker) in cheap mode to produce one financial-health scorecard and a prioritized cross-domain action plan — the calls no single spoke can make ("fix protection before adding equity", "your emergency fund is one month"). Use when the user asks about their overall finances, net worth, "how am I doing financially", "where should my next rupee go", a financial health check, or how their investments/insurance/spending fit together.
 argument-hint: "[--snapshot | --full-review]"
-allowed-tools: Read, Write, Bash, Agent, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-data__*
+allowed-tools: Read, Write, Bash, Agent, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*
 ---
 
 # Wealth Manager
@@ -11,7 +11,7 @@ Every spoke owns one domain and sees only that domain; **this is the only thing 
 
 It **orchestrates, it does not re-derive**: each domain's depth is a forked leg-runner that invokes the spoke in its cheap mode and returns a compact digest, and the orchestrator holds digests, not full reports. Read `references/reference.md` for the financial-health framework and the prioritization rubric.
 
-**Sources for this skill only:** live net worth + holdings via the shared spine — **IndMoney** (`networth_snapshot` / `networth_allocation_breakdown` / `networth_holdings`) first, **broker MCP** (Kite/Upstox) equity fallback, `portfolio.yml` last — normalized through `lib/holdings.py`. All domain depth is delegated to the spokes; fetch nothing a spoke owns here.
+**Sources for this skill only:** live net worth + holdings — **IndMoney** (`networth_snapshot` / `networth_allocation_breakdown` / `networth_holdings`) first, **broker MCP** (Kite/Upstox) equity fallback, `portfolio.yml` last — normalized through `finance/compute/holdings.py`. Nothing else: **every market number this report contains arrives inside a leg digest**, so the hub itself never calls a market or company tool.
 
 ## Depth mode — resolve first
 
@@ -20,12 +20,12 @@ It **orchestrates, it does not re-derive**: each domain's depth is a forked leg-
 
 ## Section 1 — Net-worth spine
 
-The data foundation, and the only place the non-tradeable classes are seen. `lib/holdings.py` and `scripts/wealth.py` run in script context and **cannot call MCP tools**, so the handoff is:
+The data foundation, and the only place the non-tradeable classes are seen. `finance/compute/holdings.py` and `scripts/wealth.py` run in script context and **cannot call MCP tools**, so the handoff is:
 
 1. Invoke IndMoney `networth_snapshot`, `networth_allocation_breakdown`, and `networth_holdings` (and, if IndMoney is absent, any connected broker's holdings+positions). **Write each raw payload to a temp file** under `paths.tmp_dir("wealth")`.
 2. Normalize the holdings into canonical positions:
-   ```
-   python3 <plugin>/lib/holdings.py --indmoney <networth_holdings.json> [--kite <k.json>|--upstox <u.json>] [--portfolio <portfolio.yml>] > positions.json
+   ```bash
+   python3 <plugin>/finance/compute/holdings.py --indmoney <networth_holdings.json> [--kite <k.json>|--upstox <u.json>] [--portfolio <portfolio.yml>] > positions.json
    ```
 3. Build the spine — total net worth, per-class allocation, liquid pool, equity share, XIRR summary — from the two net-worth payloads + the positions envelope. `wealth.py` does this (Section 3); you assemble the **picture JSON** it reads.
 
@@ -47,7 +47,7 @@ Funds are **not** a separate leg — they ride inside the investments leg. Pass 
 
 Assemble the **picture JSON** — the raw net-worth payloads, the positions envelope, the three leg digests, and any user profile (age, dependents, stated monthly expenses) — and run the engine:
 
-```
+```bash
 python3 <plugin>/skills/wealth-manager/scripts/wealth.py --input <picture.json> [--snapshot]
 ```
 
@@ -72,7 +72,7 @@ You synthesize directly from the compact digests + the engine output — no sepa
 - **Prioritized cross-domain action plan (max ~5)** — ordered by what matters most *across* domains, each with a concrete next step and the spoke to run for depth (`/portfolio-review`, `/insurance-advisor`, `/budget-tracker`, `/mf-analysis`).
 - **Data gaps** — every absent leg / uncovered asset class, labelled.
 
-Net-worth values are sensitive: the **full net-worth detail lives in the artifact**; in **chat** give only the scorecard, the plan, and the headline net-worth figure. End with the standard risk note: *Not investment advice — personal research tool.*
+Net-worth values are sensitive: the **full net-worth detail lives in the artifact**; in **chat** give only the scorecard, the plan, and the headline net-worth figure.
 
 `snapshot` writes a compact spine-only note (net worth, allocation, emergency-fund + gross-protection flags) — no scorecard, no plan.
 

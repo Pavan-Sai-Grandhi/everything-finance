@@ -2,14 +2,14 @@
 name: management-quality
 description: Judge whether an Indian company's management can be trusted and whether they're any good — the part of fundamental analysis that ratios can't capture (Philip Fisher put ~90% of analysis effort on management). Screen integrity first as a hard gate (remuneration vs profit, related-party transactions, criminal/regulatory record, media-savvy/share-price obsession, CFO/auditor churn and fees, refusal to own mistakes, promoter pledging), then grade skill (qualification & experience, growth vs comfort-zone mindset, capital allocation, succession plan). Reach for this skill whenever the user asks about the people running a specific company — "is the promoter honest/trustworthy", "any governance red flags", "should I worry about the related-party dealings or the pledging", "their auditor/CFO just resigned", "is there a succession plan", "are they good capital allocators", "is the management any good" — even when they don't say the word "management". This is the governance/integrity read on one company, distinct from exchange-filing alerts (→ filings-watch) and from the fundamental ratio scorecard. Invoked by the management-analyst as the management read inside deep-analysis and fundamental-analysis.
 argument-hint: "TICKER or company name"
-allowed-tools: WebFetch, WebSearch, Read, Bash, Skill, mcp__finance-data__*
+allowed-tools: WebFetch, WebSearch, Read, Write, Skill, mcp__finance-company__*
 ---
 
 # Management Quality — integrity gate, then skill grade
 
-Read `references/reference.md` first — it is the full method (every sub-check, the thresholds, what each one means, and how to combine them into a verdict). This SKILL is the workflow.
+Read `references/reference.md` first — it is the full method: every sub-check, its threshold and what it means, and how the two pillars combine into a verdict. This SKILL is the workflow.
 
-The core idea (Fisher): most of what separates two companies with the same opportunity is **management**. You judge two pillars — **integrity** (will they treat minority shareholders honestly?) screened as a *hard gate*, and **skill** (can they grow the business?) graded for the honest ones. This is **subjective**: you're reading *intention and pattern*, not hitting fixed ratios.
+Two pillars, in order: **integrity** (will they treat minority shareholders honestly?) as a *hard gate*, then **skill** (can they grow the business?) for the honest ones.
 
 ## Data gathering (primary sources only)
 
@@ -17,8 +17,8 @@ First, **check for a prior run** with `paths.latest_prior("management", SYMBOL)`
 
 The evidence lives in disclosures, not opinions. Gather, in order:
 
-1. **screener.in** — `https://www.screener.in/company/<SYMBOL>/consolidated/`: promoter holding & **pledge %** (add the column if logged in), shareholding trend, and the **Documents** section for annual reports and concall transcripts.
-2. **Latest 2–3 annual reports** (download from screener Documents) — read these notes specifically:
+1. **`get_company_fundamentals(symbol)`** — the shareholding trend and the `documents` links (annual reports, concall transcripts). **`get_shareholding(symbol)`** for promoter **pledge %** by quarter; an empty pledge list is a labelled gap, **not zero pledge**.
+2. **Latest 2–3 annual reports** (the envelope's `documents` links, read with `WebFetch`) — read these notes specifically:
    - **Remuneration of directors / KMP** (and related-party remuneration) — vs net profit, vs MCA limit, relatives on payroll.
    - **Related-party transactions** — counterparties, amounts, rates; look for abnormal loans/purchases/deposits.
    - **Payment to auditors** — level and trend (5–10y), peer-relative.
@@ -34,11 +34,11 @@ The evidence lives in disclosures, not opinions. Gather, in order:
 Fill `assets/management-scorecard.example.md` → `artifacts/stocks/<SYMBOL>/YYYY-MM-DD/management.md` (`paths.stock_dir(symbol, date)`):
 
 - **Integrity scorecard** — each of the 7 sub-checks: PASS / FLAG / FAIL with the specific number / AR note / filing behind it.
-- **Integrity verdict**: PASS / FLAG / FAIL. Any hard failure (siphoning RPTs, criminal/regulatory record, remuneration above MCA limit or rising as profit falls, abnormal unexplained pledging, demonstrable dishonesty) ⇒ FAIL.
+- **Integrity verdict**: PASS / FLAG / FAIL, per the reference's hard-failure list.
 - **Skill scorecard** (only meaningful if integrity isn't FAIL) — the 4 checks: qualification & experience, mindset, capital allocation, succession — each STRONG / ADEQUATE / WEAK with evidence.
 - **Overall management grade** + one-line rationale + confidence (low/med/high). Integrity FAIL ⇒ overall **AVOID**.
 - **Data gaps** — what you couldn't verify.
 
 ## Boundaries
 
-This is a judgement of **people and intention**, so state confidence honestly and separate **verified fact** from **allegation** from **inference**. Teaching examples in the reference are not buy/sell calls and may be dated. You inform a decision; you don't size a position. End with the standard risk note — not investment advice, personal research tool.
+This grades *people and intention*, so a grade always carries a confidence. You inform a decision; you don't size a position.

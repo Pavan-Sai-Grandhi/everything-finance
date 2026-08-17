@@ -2,14 +2,14 @@
 name: budget-tracker
 description: Parse bank and credit-card statements (PDF/CSV), categorize every transaction against a durable merchant memory, detect recurring/subscription spend, compare actual spend against the Monthly Budget Planning framework, and produce a discipline report with a budget dashboard. Use whenever the user shares a statement file, asks where their money went, wants a monthly spend review, asks about budget adherence, savings rate, subscriptions/recurring charges, or "how much did I spend on X". Also the cashflow leg other skills consume via `quick`.
 argument-hint: "path(s) to statement PDF/CSV [+ month, e.g. 'May 2026'] [+ quick|deep]"
-allowed-tools: Read, Write, Bash, Skill, mcp__finance-data__*
+allowed-tools: Read, Write, Bash, Skill
 ---
 
 # Budget Tracker
 
 Read `references/reference.md` for the category taxonomy, the durable-map layering, the recurring-detection rules, and the target allocation framework (mirrors the user's `Monthly Budget Planning.xlsx`).
 
-No web access needed. Inputs are local statement files; the budget reference workbook is at `~/Downloads/Monthly Budget Planning.xlsx` (read actual targets from it when populated; otherwise use the framework percentages in reference.md and say so).
+**No network source at all** — inputs are the user's own local statement files, so this skill calls no data tool. The budget reference workbook is at `~/Downloads/Monthly Budget Planning.xlsx` (read actual targets from it when populated; otherwise use the framework percentages in reference.md and say so).
 
 Two deterministic scripts do the categorization and recurring detection — call them, don't re-implement their logic:
 - `scripts/categorize.py` — durable merchant map + taxonomy → categorized transactions + UNCATEGORIZED residue.
@@ -29,16 +29,16 @@ Two deterministic scripts do the categorization and recurring detection — call
 
 ## Step 2 — Categorize (durable map first)
 
-Write the normalized table to a temp JSON and run `python3 scripts/categorize.py --txns <file>` (it loads `paths.merchant_map_path()` = `artifacts/budget/merchant-map.json` automatically). Resolution order per transaction: **durable merchant map → reference.md taxonomy → UNCATEGORIZED**. The map is keyed by normalized merchant token (`ZOMATO`, `SWIGGY`), so UPI/POS/handle variants collapse to one rule and corrections persist across months.
+Write the normalized table to a temp JSON and run `python3 <plugin>/skills/budget-tracker/scripts/categorize.py --txns <file>` (it loads `paths.merchant_map_path()` = `artifacts/budget/merchant-map.json` automatically). It resolves **durable merchant map → taxonomy → UNCATEGORIZED**; reference.md carries the tokenizer and the layering.
 
 UNCATEGORIZED handling:
-- **Interactive**: list the top UNCATEGORIZED merchants and ask the user to classify. Record each answer with `python3 scripts/categorize.py --learn --merchant "<narration>" --category "<Category>"` so it sticks — UNCATEGORIZED shrinks month over month. Never silently force a category.
+- **Interactive**: list the top UNCATEGORIZED merchants and ask the user to classify. Record each answer with `python3 <plugin>/skills/budget-tracker/scripts/categorize.py --learn --merchant "<narration>" --category "<Category>"` so it sticks — UNCATEGORIZED shrinks month over month. Never silently force a category.
 - **Non-interactive** (user away / batch): keep them in `UNCATEGORIZED` as their own line in the dashboard and verdict, top-5 listed for later classification — do not block, do not guess.
 - **First run / missing map**: behaves as taxonomy-only, then starts building the map.
 
 ## Step 3 — Recurring / subscription detection
 
-Concatenate the current transactions with prior months' (from `artifacts/budget/`) into one JSON and run `python3 scripts/recurring.py --txns <file> [--as-of <YYYY-MM-DD>]`. It returns the committed **recurring ₹/month**, the subscription/EMI/membership list (cadence, amount, months observed), and **new / price_creep / dormant** flags. Cite amounts with the months they were observed in. With no prior months it runs on the current statements only and labels confidence **low** (cadence inferred from a single period) — say so.
+Concatenate the current transactions with prior months' (from `artifacts/budget/`) into one JSON and run `python3 <plugin>/skills/budget-tracker/scripts/recurring.py --txns <file> [--as-of <YYYY-MM-DD>]`. It returns the committed **recurring ₹/month**, the subscription/EMI/membership list (cadence, amount, months observed) and the **new / price_creep / dormant** flags, per the detection rules in reference.md. Cite every amount with the months it was observed in, and carry its confidence through — a single-period run is inferred, not observed.
 
 ## Step 4 — Compare vs budget
 
@@ -68,4 +68,4 @@ month: <YYYY-MM>
 -->
 ```
 
-State whether targets came from the workbook or the framework percentages. This digest shape is the leg contract in `lib/contracts.md`; keep it in sync.
+State whether targets came from the workbook or the framework percentages. This digest shape is the leg contract in `finance/contracts.md`; keep it in sync.

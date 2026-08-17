@@ -1,6 +1,6 @@
 # Health insurance — best-practice reference
 
-Indemnity cover for hospitalisation. Read with `reference.md`.
+Indemnity cover for hospitalisation.
 
 ## Interview — what to ask (one at a time)
 
@@ -29,12 +29,10 @@ Family composition + ages · city tier (metro / tier-2 / tier-3) · existing con
 
 ## Red flags (claim-repudiation risk)
 
-- **Room-rent cap** with proportionate deduction — the single most damaging clause.
-- **Mandatory co-pay**, especially age-linked.
-- **Disease sub-limits** dressed up as a cheaper premium.
-- **Restoration absent** on a family floater.
-- Long/opaque **PED waiting period**, or PED under-declared to lower premium (→ future rejection).
-- "Everything covered" marketing that on reading has caps/exclusions.
+Every high-weight criterion above, failed, is a red flag — **a room-rent cap with proportionate deduction is the single most damaging clause in Indian health insurance**, and a mandatory co-pay or a disease sub-limit dressed up as a cheaper premium is the next. Beyond the table:
+
+- PED **under-declared** to lower the premium → the rejection arrives at the claim, years later.
+- "Everything covered" marketing that on reading carries caps/exclusions.
 
 ## Sizing sanity (2026 metro context)
 

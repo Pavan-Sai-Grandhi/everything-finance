@@ -2,17 +2,17 @@
 name: alert-manager
 description: The inbox for the plugin's alerts — the durable "watch this / do this" items other skills raise (a stop level to watch, a filing to act on, a thesis recheck due, a vetted opportunity). Use to list open alerts, dismiss or snooze one, add a manual alert ("tell me if RELIANCE closes below 1450"), or sweep expired ones. daily-brief reads these every morning; this skill is how you curate them.
 argument-hint: "[list | add | dismiss <id> | snooze <id> <YYYY-MM-DD> | sweep]"
-allowed-tools: Read, Bash, mcp__finance-data__*
+allowed-tools: Read, Bash
 disable-model-invocation: false
 ---
 
 # Alert Manager
 
-The owner of the **alert contract**. Alerts are durable, machine-readable items stored one-per-file at `artifacts/state/alerts/<id>.yml`; the schema and all logic live in `lib/alerts.py` and are described in `lib/contracts.md`.
+The owner of the **alert contract**. Alerts are durable, machine-readable items stored one-per-file at `artifacts/state/alerts/<id>.yml`; the schema and all logic live in `finance/compute/alerts.py` and are described in `finance/contracts.md`.
 
 Producers (the other skills) raise alerts as a side-effect of their normal runs; `daily-brief` is the consumer that surfaces them. You use this skill to read and tidy the inbox.
 
-All operations go through the bundled CLI (`<plugin>/skills/alert-manager/scripts/manage.py`), which dispatches to `lib/alerts.py`:
+All operations go through the bundled CLI, which dispatches to that module:
 
 ## Modes
 

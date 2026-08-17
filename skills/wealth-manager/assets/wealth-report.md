@@ -40,4 +40,4 @@
 - {{DATA_GAP}}
 
 ---
-*This is a personal-finance research tool, not investment or financial advice. Net-worth figures are your own first-party data; verify any action with the source. **Not investment advice — personal research tool.***
+*Net-worth figures are your own first-party data; verify any action against the source. Not investment advice — personal research tool.*
