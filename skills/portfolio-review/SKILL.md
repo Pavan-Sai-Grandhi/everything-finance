@@ -29,8 +29,8 @@ All per-name *depth* is delegated to `deep-analysis` / `mf-analysis` — do not 
 Review the **real book, not a hand-typed approximation**. Source through the shared `finance/compute/holdings.py` resolver, precedence **IndMoney → broker MCP → manual paste / CSV / `watchlist.json`**. The resolver runs in script context and cannot call MCP tools, so the **handoff is**: invoke IndMoney `networth_holdings` (and any connected broker's holdings+positions), **write the raw payload to a temp file** under `paths.tmp_dir("holdings")`, then take each slice:
 
 ```bash
-python3 <plugin>/finance/compute/holdings.py --indmoney <ind.json> [--kite <k.json>] --equity-only   # stock passes
-python3 <plugin>/finance/compute/holdings.py --indmoney <ind.json> --mf-only                          # fund passes
+PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> [--kite <k.json>] --equity-only   # stock passes
+PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> --mf-only                          # fund passes
 ```
 
 Each equity row drives the per-stock passes (§2); each MF row drives the per-fund passes (§3).

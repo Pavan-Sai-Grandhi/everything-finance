@@ -16,7 +16,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
 
 - **Live holdings (preferred) — via `finance/compute/holdings.py`.** Source the real book through the shared resolver, precedence **IndMoney → broker → watchlist positions**. IndMoney (`mcp__indmoney__*`) is net worth across asset classes; the broker MCPs (`mcp__kite__*` = Zerodha, `mcp__upstox__*` = Upstox) are the equity fallback. The resolver runs in script context and cannot call MCP tools, so the **handoff is**: for each connected source, invoke its holdings tool (IndMoney `networth_holdings`; broker holdings + positions), **write the raw payload to a temp file** under `paths.tmp_dir("holdings")`, then resolve and take the equity slice:
   ```bash
-  python3 <plugin>/finance/compute/holdings.py --indmoney <ind.json> --kite <kite.json> --equity-only
+  PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> --kite <kite.json> --equity-only
   ```
   (pass only the files for sources that are connected; add `--portfolio <watchlist.json>` to fold the hand-maintained positions in as the last fallback). The envelope's `data.positions` give symbol / qty / avg / ltp / pnl for the position-health section — **XIRR is available but not surfaced here** (depth belongs to wealth-manager / portfolio-review). `source` and `gaps` tell you which source won and what was absent. If no source is connected, build the brief without the position sections and suggest connecting one.
 - **Watchlist + open positions (fallback / supplement)** — the managed list at `paths.watchlist_path()` (`artifacts/state/watchlist.json`); its `positions` block is also the `--portfolio` fallback the resolver folds in when no live source is connected. Shape:

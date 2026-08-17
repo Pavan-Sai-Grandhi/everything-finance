@@ -25,7 +25,7 @@ The data foundation, and the only place the non-tradeable classes are seen. `fin
 1. Invoke IndMoney `networth_snapshot`, `networth_allocation_breakdown`, and `networth_holdings` (and, if IndMoney is absent, any connected broker's holdings+positions). **Write each raw payload to a temp file** under `paths.tmp_dir("wealth")`.
 2. Normalize the holdings into canonical positions:
    ```bash
-   python3 <plugin>/finance/compute/holdings.py --indmoney <networth_holdings.json> [--kite <k.json>|--upstox <u.json>] [--portfolio <portfolio.yml>] > positions.json
+   PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <networth_holdings.json> [--kite <k.json>|--upstox <u.json>] [--portfolio <portfolio.yml>] > positions.json
    ```
 3. Build the spine — total net worth, per-class allocation, liquid pool, equity share, XIRR summary — from the two net-worth payloads + the positions envelope. `wealth.py` does this (Section 3); you assemble the **picture JSON** it reads.
 

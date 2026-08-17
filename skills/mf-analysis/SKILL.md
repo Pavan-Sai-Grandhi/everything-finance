@@ -69,7 +69,7 @@ Every recommendation carries a **review trigger that is not a price** — a chan
 MF rows come through the shared `finance/compute/holdings.py` resolver, **not** a raw IndMoney read. The resolver runs in script context and cannot call MCP tools, so invoke IndMoney `networth_holdings`, write the raw payload under `paths.tmp_dir("holdings")`, then take the fund slice:
 
 ```bash
-python3 <plugin>/finance/compute/holdings.py --indmoney <ind.json> --mf-only
+PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> --mf-only
 ```
 
 Each row carries invested / current / XIRR. Cap-split comes from the look-through (`get_stock_ratios.mrktCapRank`), never from a personal source's own breakdown field. Run each held fund through the pillars above (or `quick` when the caller only needs the digest). If neither IndMoney nor a broker is connected, **say the personalised layer is unavailable and give the generic verdict** — never infer a holding.

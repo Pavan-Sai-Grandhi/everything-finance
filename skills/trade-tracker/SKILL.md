@@ -15,7 +15,7 @@ Read `references/reference.md` first — it defines the exit-decision framework 
 
 **Live position state — via `finance/compute/holdings.py`** (precedence **IndMoney → broker**). The resolver runs in script context and cannot call MCP tools, so for each connected source invoke its holdings tool (IndMoney `networth_holdings`; broker holdings + positions), **write the raw payload to a temp file** under `paths.tmp_dir("holdings")`, then resolve and take the equity slice:
 ```bash
-python3 <plugin>/finance/compute/holdings.py --indmoney <ind.json> --kite <kite.json> --equity-only
+PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> --kite <kite.json> --equity-only
 ```
 The envelope gives each open position's symbol / qty / avg / ltp / **P&L and XIRR** (IndMoney populates XIRR; broker leaves it `None`). Detect connections by tool presence (`mcp__indmoney__*`, `mcp__kite__*` = Zerodha, `mcp__upstox__*` = Upstox); honor a `broker:kite|upstox` override. If **no** source is connected, stop and tell the user to authenticate — never fabricate positions.
 
