@@ -26,7 +26,8 @@ This module FETCHES ONLY. It classifies nothing: no regime label, no "expensive/
 verdict, no score. Turning these series into a market read is
 `finance/compute/context.py`'s single job — the same separation
 `prices.py` (candles) keeps from `ta.py` (indicators), so there is one market-of-record.
-The one exception is `percentile()`, a pure ranking primitive with no opinion in it.
+The exceptions are `percentile()` and `valuation_percentiles()`: ranking primitives that
+say where a number sits in its own history, with no verdict attached.
 
 Every fetch returns the shared data-spine envelope:
     { "ok": bool, "source": str|None, "fetched_at": ISO8601,
@@ -117,23 +118,26 @@ _nse_json = transport.nse_json
 # --------------------------------------------------------------------------- #
 # rung 1 — live index snapshot with valuation (NSE allIndices)                  #
 # --------------------------------------------------------------------------- #
-def indices(fresh=False):
-    """Live level + **P/E, P/B, dividend yield** + 1-day/1-year change for every NSE index.
+def indices(fresh=False, names=None):
+    """Live level + **P/E, P/B, dividend yield** + 1-day/1-year change for NSE indices.
 
     One call covers all ~139 indices, so the broad-market read, the smallcap-vs-largecap
     comparison and the sector table all come from a single fetch of a single source —
-    they cannot disagree. Returns the envelope with
-    `data.indices = {<CANONICAL NAME>: {last, pe, pb, dy, pct_change, pct_change_1y}}`.
+    they cannot disagree. `names` narrows the returned map (matched case- and
+    space-insensitively); `None` returns every index. Returns the envelope with
+    `data.indices = {<CANONICAL NAME>: {last, pe, pb, dy, pct_change, pct_change_1y}}` and
+    `data.available_total`, the number the fetch carried before any narrowing.
     """
     cache_file = os.path.join(paths.cache_dir("market"), "indices.json")
     cached = _read_day_cache(cache_file, fresh)
     if cached is not None:
-        return cached
+        return _select_indices(cached, names)
 
     payload, gap = _nse_json("https://www.nseindia.com/api/allIndices",
                              referer="https://www.nseindia.com/market-data/live-market-indices")
     if gap:
-        return _envelope(False, "NSE", {"indices": {}}, [f"NSE allIndices: {gap}"])
+        return _select_indices(
+            _envelope(False, "NSE", {"indices": {}}, [f"NSE allIndices: {gap}"]), names)
 
     out = {}
     for row in (payload or {}).get("data", []):
@@ -153,8 +157,24 @@ def indices(fresh=False):
     gaps = [] if out else ["NSE allIndices returned no index rows"]
     env = _envelope(bool(out), "NSE", {"indices": out, "count": len(out)}, gaps)
     if out:
-        _write_day_cache(cache_file, env)
+        _write_day_cache(cache_file, env)   # cache the full set; narrow only what is returned
+    return _select_indices(env, names)
+
+
+def _select_indices(env, names):
+    """Narrow an indices envelope to `names` (None keeps all) and record the fetched total."""
+    idx = (env.get("data") or {}).get("indices") or {}
+    env.setdefault("data", {})["available_total"] = len(idx)
+    if names is not None:
+        wanted = {_canon(n) for n in names}
+        env["data"]["indices"] = {k: v for k, v in idx.items() if _canon(k) in wanted}
     return env
+
+
+def index_levels(names=None, fresh=False):
+    """`indices()` for a caller with a context budget: `names=None` means the broad set,
+    because all ~139 indices are far too many to read inline."""
+    return indices(fresh=fresh, names=names or BROAD_INDICES)
 
 
 # --------------------------------------------------------------------------- #
@@ -276,6 +296,36 @@ def valuation_history(index_name, years=10, fresh=False, max_fetches=200):
     return _envelope(bool(series), "NSE archives",
                      {"index": key, "years": years, "samples": len(series),
                       "series": series}, gaps)
+
+
+def valuation_percentiles(index_name, years=10, fresh=False):
+    """Where an index's valuation sits against its own history: the current P/E, P/B and
+    dividend yield each ranked against the month-end series over `years`.
+
+    Returns the envelope with `data = {index, years, samples, pe|pb|dy: {current,
+    percentile, n}}` — the ranks, not the series, because "where does today sit" is the
+    decision and the series is a few hundred rows of context nobody reads.
+    """
+    env = valuation_history(index_name, years=years, fresh=fresh)
+    series = (env.get("data") or {}).get("series") or []
+    live = indices(fresh=fresh)
+    cur = ((live.get("data") or {}).get("indices") or {}).get(_canon(index_name)) or {}
+
+    out = {"index": index_name, "years": years, "samples": len(series)}
+    for field in ("pe", "pb", "dy"):
+        pool = [row[field] for row in series if row.get(field) is not None]
+        now = cur.get(field)
+        out[field] = {
+            "current": now,
+            "percentile": (round(percentile(pool, now), 1)
+                           if pool and now is not None else None),
+            "n": len(pool),
+        }
+    env["data"] = out
+    if not series:
+        env.setdefault("gaps", []).append(
+            f"no valuation history sampled for {index_name} over {years}y")
+    return env
 
 
 def percentile(values, value):

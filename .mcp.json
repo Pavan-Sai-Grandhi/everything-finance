@@ -1,14 +1,29 @@
 {
   "mcpServers": {
-    "finance-data": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-data-mcp.sh",
-      "args": [],
+    "finance-market": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-mcp.sh",
+      "args": ["market"],
       "env": {
         "EVERYTHING_FINANCE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",
         "PYTHONUNBUFFERED": "1"
       }
     },
-
+    "finance-company": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-mcp.sh",
+      "args": ["company"],
+      "env": {
+        "EVERYTHING_FINANCE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "finance-funds": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-mcp.sh",
+      "args": ["funds"],
+      "env": {
+        "EVERYTHING_FINANCE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
     "kite": {
       "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
       "args": ["https://mcp.kite.trade/mcp"]

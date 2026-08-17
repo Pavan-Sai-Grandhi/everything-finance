@@ -299,15 +299,30 @@ def _empty_company(sym):
             "documents": {"annual_reports": [], "concalls": []}}
 
 
-def fetch(symbol, fresh=False):
+def _select_sections(env, sections):
+    """Narrow a company envelope to `sections` (None keeps all), always keeping the
+    identity fields and listing every section the page actually yielded."""
+    if not sections:
+        return env
+    data = env.get("data") or {}
+    keep = set(sections) | {"symbol", "name", "url"}
+    env["data"] = {k: v for k, v in data.items() if k in keep}
+    env["data"]["sections_available"] = sorted(data)
+    return env
+
+
+def fetch(symbol, sections=None, fresh=False):
     """Read the public consolidated company page once and parse it into the typed envelope
     (D1). Falls back to the standalone page (with a labelled gap) if consolidated is missing;
-    the public page needs no auth. Never dumps page HTML into `data` (D3)."""
+    the public page needs no auth. Never dumps page HTML into `data` (D3).
+
+    `sections` narrows the returned data to the parts asked for (the whole page is large);
+    the cache always holds the complete parse, so a narrowed read costs no extra fetch."""
     sym = _norm(symbol)
     cache_file = os.path.join(paths.cache_dir("fundamentals"), f"{sym}.json")
     cached = _read_cache(cache_file, fresh)
     if cached is not None:
-        return cached
+        return _select_sections(cached, sections)
 
     gaps = []
     html, gap = _http_get(f"{_BASE}/company/{sym}/consolidated/")
@@ -318,7 +333,8 @@ def fetch(symbol, fresh=False):
         source = "screener.in (standalone)"
         if gap2 or not html:
             gaps.append(f"standalone page: {gap2 or 'empty'}")
-            return _envelope(False, "screener.in", _empty_company(sym), gaps)
+            return _select_sections(
+                _envelope(False, "screener.in", _empty_company(sym), gaps), sections)
 
     data = _parse_company(html, sym)
     if not data["pnl_10y"]["rows"]:
@@ -327,7 +343,7 @@ def fetch(symbol, fresh=False):
     env = _envelope(ok, source, data, gaps)
     if ok:
         _write_cache(cache_file, env)
-    return env
+    return _select_sections(env, sections)
 
 
 # --------------------------------------------------------------------------- #

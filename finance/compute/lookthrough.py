@@ -46,7 +46,7 @@ import argparse
 import json
 import os
 
-from finance.spine import f as _num, first as _first  # the shared coercions
+from finance.spine import envelope as _envelope, f as _num, first as _first  # shared spine
 
 # --------------------------------------------------------------------------- #
 # gates and thresholds — the tuned constants, in one place                     #
@@ -498,6 +498,20 @@ def build_report(holdings, equity_weight, gaps, meta):
         "ratios_publishable": metrics["confidence"] != "unusable",
         "gaps": all_gaps,
     }
+
+
+def report(mf_id, fresh=False, workers=10):
+    """The look-through report for one fund in the shared data-spine envelope.
+
+    `ok` is false when the holdings could not be read, or when coverage leaves the ratios
+    unpublishable — a look-through built on a third of the book is a labelled gap, not a
+    valuation.
+    """
+    holdings, equity_weight, gaps, meta = load_fund(mf_id, fresh=fresh, workers=workers)
+    rep = build_report(holdings, equity_weight, gaps, meta)
+    data = {k: v for k, v in rep.items() if k != "gaps"}
+    return _envelope(bool(holdings) and rep["ratios_publishable"],
+                     "finance.compute.lookthrough", data, rep["gaps"])
 
 
 def main():

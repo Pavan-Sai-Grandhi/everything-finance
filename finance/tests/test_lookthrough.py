@@ -261,5 +261,47 @@ check("file hatch accepts a bare list",
       len(L.load_holdings_file([{"weight": 1}, {"weight": 2}])) == 2)
 check("file hatch skips non-dict rows", len(L.load_holdings_file([1, "x", {"weight": 1}])) == 1)
 
+# --- report(): the envelope the fund tool returns ----------------------------
+_orig_load_fund = L.load_fund
+PRICED_BOOK = [{"weight": 95.0, "pe": 25.0, "pb": 4.0, "roe": 18.0, "cap_rank": 50,
+                "priced": True, "name": "A", "sector": "IT"}]
+try:
+    L.load_fund = lambda mf_id, fresh=False, workers=10: (
+        PRICED_BOOK, 95.0, ["one holding unpriced"], {"mf_id": mf_id, "source": "Tickertape"})
+    env = L.report("M_TEST")
+finally:
+    L.load_fund = _orig_load_fund
+check("report returns the data-spine envelope",
+      set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
+check("report is ok when the book is priced well enough to publish", env["ok"] is True)
+check("report carries the look-through metrics", "metrics" in env["data"], sorted(env["data"]))
+check("report carries the coverage confidence grade",
+      env["data"]["confidence"] == env["data"]["metrics"]["confidence"])
+check("report keeps the fund identity in meta",
+      env["data"]["meta"]["mf_id"] == "M_TEST", env["data"]["meta"])
+check("report lifts the gaps to the envelope, not into data",
+      "one holding unpriced" in env["gaps"] and "gaps" not in env["data"], env["gaps"])
+
+try:
+    L.load_fund = lambda mf_id, fresh=False, workers=10: (
+        [], 0.0, ["no holdings returned for M_TEST"], {"mf_id": mf_id})
+    env_empty = L.report("M_TEST")
+finally:
+    L.load_fund = _orig_load_fund
+check("report with no holdings is ok:false", env_empty["ok"] is False)
+check("report with no holdings names the gap",
+      any("no holdings" in g for g in env_empty["gaps"]), env_empty["gaps"])
+
+try:
+    L.load_fund = lambda mf_id, fresh=False, workers=10: (
+        [{"weight": 20.0, "pe": 25.0, "pb": 4.0, "roe": 18.0, "priced": True}],
+        100.0, [], {"mf_id": mf_id})
+    env_thin = L.report("M_TEST")
+finally:
+    L.load_fund = _orig_load_fund
+check("report below the publishable coverage floor is ok:false — a gap, not a valuation",
+      env_thin["ok"] is False and env_thin["data"]["confidence"] == "unusable",
+      env_thin["data"]["confidence"])
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

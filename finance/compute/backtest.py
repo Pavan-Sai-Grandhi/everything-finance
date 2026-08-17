@@ -28,10 +28,20 @@ from datetime import date
 # Shared engine: finance/compute/ta.py (indicators) + finance/compute/strategy.py
 # (spec -> signals) + finance/paths.py (artifact locations).
 from finance import paths
+from finance import spine
 from finance.compute import strategy
 from finance.compute import ta
 
 pd = ta.pd
+
+# What every report built on this engine must carry alongside its numbers.
+CAVEATS = [
+    "survivorship bias: current symbols only (delisted losers absent)",
+    "in-sample, spec parameters as written (not optimized; not walk-forward validated)",
+    "per-symbol expectancy test (each symbol sized off full capital), not a portfolio sim",
+    "tests the spec's mechanical entry/exit only — not the fundamental gate "
+    "or discretionary S/R reads",
+]
 
 # 20 liquid large-caps — NOT the full Nifty 50; reports must call it a 20-stock basket
 LARGECAP20_BASKET = [
@@ -150,6 +160,74 @@ def summarize(trades, capital):
     }
 
 
+def resolve_universe(symbols):
+    """The test universe: a list, a comma-separated string, or `largecap20`."""
+    if isinstance(symbols, str):
+        if symbols.strip().lower() == "largecap20":
+            return list(LARGECAP20_BASKET)
+        symbols = symbols.split(",")
+    return [str(s).strip().upper() for s in (symbols or []) if str(s).strip()]
+
+
+def run(spec, symbols, years=5, capital=500000, risk_pct=None, out=None):
+    """Backtest a spec over a universe and return the shared data-spine envelope.
+
+    `spec` is a path to a strategy YAML. `out` is a path PREFIX: `<out>-summary.json` always,
+    `<out>-trades.csv` when trades fired (default prefix
+    `artifacts/backtest/<spec>/<date>/report`). The envelope carries the performance
+    summary, the buy-and-hold comparison, the caveats that qualify both, and those paths —
+    the per-trade log stays on disk.
+    """
+    doc = strategy_load(spec)
+    symbols = resolve_universe(symbols)
+    if out is None:
+        name = doc.get("name") or os.path.splitext(os.path.basename(spec))[0]
+        out = os.path.join(paths.backtest_dir(name), "report")
+    os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
+    cache_dir = paths.cache_dir("ohlcv")
+
+    all_trades, bh, gaps = [], {}, []
+    for sym in symbols:
+        try:
+            df = load_ohlcv(sym, years, cache_dir)
+        except Exception as exc:  # noqa: BLE001 — a data gap skips the symbol, never the run
+            gaps.append(f"{sym}: {exc}")
+            continue
+        bh[sym] = buy_and_hold(df)
+        try:
+            all_trades += run_symbol(df, doc, sym, capital, risk_pct)
+        except Exception as exc:  # noqa: BLE001
+            gaps.append(f"{sym}: backtest error: {exc}")
+
+    if not all_trades:
+        gaps.append("the spec produced no trades over this universe and window — "
+                    "an untested spec, not a validated one")
+    result = {
+        "config": {"spec": doc.get("name"), "spec_path": spec,
+                   "symbols_resolved": symbols, "years": years, "capital": capital,
+                   "risk_pct": risk_pct or doc.get("sizing", {}).get("risk_per_trade_pct"),
+                   "commission_per_side": COMMISSION_PER_SIDE,
+                   "engine": "Backtesting.py + finance/compute/strategy.py (spec-driven)"},
+        "summary": summarize(all_trades, capital),
+        "buy_and_hold": bh,
+        "data_gaps": gaps,
+        "caveats": CAVEATS,
+    }
+    trades_path = None
+    if all_trades:
+        trades_path = f"{out}-trades.csv"
+        pd.DataFrame(all_trades).to_csv(trades_path, index=False)
+    with open(f"{out}-summary.json", "w") as fh:
+        json.dump(result, fh, indent=2, default=str)
+    return spine.envelope(
+        bool(all_trades), "finance.compute.backtest",
+        {"config": result["config"], "summary": result["summary"],
+         "buy_and_hold": bh, "caveats": CAVEATS,
+         "trades": len(all_trades), "summary_path": f"{out}-summary.json",
+         "trades_path": trades_path},
+        gaps)
+
+
 def _synth(kind):
     """Deterministic OHLCV: a clean uptrend (signals fire) vs a downtrend."""
     np = ta.np
@@ -203,56 +281,13 @@ def main():
     if not args.spec or not args.symbols:
         print("error: --spec and --symbols required (or use --selftest)", file=sys.stderr)
         sys.exit(2)
-    spec = strategy_load(args.spec)
-
-    if args.out is None:
-        spec_name = spec.get("name") or os.path.splitext(os.path.basename(args.spec))[0]
-        args.out = os.path.join(paths.backtest_dir(spec_name), "report")
-
-    basket_key = args.symbols.lower()
-    symbols = (LARGECAP20_BASKET if basket_key == "largecap20"
-               else [s.strip().upper() for s in args.symbols.split(",")])
-    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    cache_dir = paths.cache_dir("ohlcv")
-
-    all_trades, bh, failures = [], {}, []
-    for sym in symbols:
-        try:
-            df = load_ohlcv(sym, args.years, cache_dir)
-        except Exception as exc:  # data gap: skip symbol, keep going
-            failures.append(f"{sym}: {exc}")
-            continue
-        bh[sym] = buy_and_hold(df)
-        try:
-            all_trades += run_symbol(df, spec, sym, args.capital, args.risk_pct)
-        except Exception as exc:
-            failures.append(f"{sym}: backtest error: {exc}")
-
-    result = {
-        "config": {"spec": spec.get("name"), "spec_path": args.spec,
-                   "symbols_resolved": symbols, "years": args.years,
-                   "capital": args.capital,
-                   "risk_pct": args.risk_pct or spec.get("sizing", {}).get("risk_per_trade_pct"),
-                   "commission_per_side": COMMISSION_PER_SIDE,
-                   "engine": "Backtesting.py + finance/compute/strategy.py (spec-driven)"},
-        "summary": summarize(all_trades, args.capital),
-        "buy_and_hold": bh,
-        "data_gaps": failures,
-        "caveats": [
-            "survivorship bias: current symbols only (delisted losers absent)",
-            "in-sample, spec parameters as written (not optimized; not walk-forward validated)",
-            "per-symbol expectancy test (each symbol sized off full capital), not a portfolio sim",
-            "tests the spec's mechanical entry/exit only — not the fundamental gate "
-            "or discretionary S/R reads",
-        ],
-    }
-    if all_trades:
-        pd.DataFrame(all_trades).to_csv(f"{args.out}-trades.csv", index=False)
-    with open(f"{args.out}-summary.json", "w") as f:
-        json.dump(result, f, indent=2, default=str)
-    print(json.dumps(result, indent=2, default=str))
-    print(f"\nwrote {args.out}-summary.json"
-          + (f" and {args.out}-trades.csv ({len(all_trades)} trades)" if all_trades else ""))
+    env = run(args.spec, args.symbols, years=args.years, capital=args.capital,
+              risk_pct=args.risk_pct, out=args.out)
+    print(json.dumps(env, indent=2, default=str))
+    data = env["data"]
+    print(f"\nwrote {data['summary_path']}"
+          + (f" and {data['trades_path']} ({data['trades']} trades)"
+             if data["trades_path"] else ""))
 
 
 if __name__ == "__main__":

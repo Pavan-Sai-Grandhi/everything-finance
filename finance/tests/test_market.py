@@ -255,6 +255,48 @@ def test_indices_parses():
     check("indices keeps a negative 1y change", idx["NIFTY SMALLCAP 250"]["pct_change_1y"] == -3.2)
 
 
+def test_indices_narrows_to_the_names_asked_for():
+    fresh_root("indices-names")
+    with swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
+        env = market.indices(fresh=True, names=["nifty   50"])
+    check("indices narrowed to one name returns only that index",
+          set(env["data"]["indices"]) == {"NIFTY 50"}, sorted(env["data"]["indices"]))
+    check("indices reports how many the fetch carried, not how many it returned",
+          env["data"]["available_total"] == 2, env["data"]["available_total"])
+    check("indices matches names case- and space-insensitively",
+          env["data"]["indices"]["NIFTY 50"]["pe"] == 22.45)
+
+    with swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
+        env_all = market.indices(fresh=True)
+    check("indices without names keeps every index fetched",
+          set(env_all["data"]["indices"]) == {"NIFTY 50", "NIFTY SMALLCAP 250"},
+          sorted(env_all["data"]["indices"]))
+    check("indices records available_total even unnarrowed",
+          env_all["data"]["available_total"] == 2)
+
+    with swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
+        env_none = market.indices(fresh=True, names=["NIFTY IT"])
+    check("indices asked for an absent index returns an empty map, not a substitute",
+          env_none["data"]["indices"] == {}, env_none["data"]["indices"])
+
+
+def test_index_levels_defaults_to_the_broad_set():
+    fresh_root("index-levels")
+    with swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
+        env = market.index_levels()
+    check("index_levels with no names returns the broad set only",
+          set(env["data"]["indices"]) == {"NIFTY 50", "NIFTY SMALLCAP 250"},
+          sorted(env["data"]["indices"]))
+    check("index_levels still reports the fetched total",
+          env["data"]["available_total"] == 2)
+
+    with swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
+        env_one = market.index_levels(names=["NIFTY SMALLCAP 250"], fresh=True)
+    check("index_levels honours explicit names over the broad default",
+          set(env_one["data"]["indices"]) == {"NIFTY SMALLCAP 250"},
+          sorted(env_one["data"]["indices"]))
+
+
 def test_indices_blocked_degrades():
     fresh_root("indices-blocked")
     with swap(market, "_nse_json", lambda url, referer: (None, "curl exit 28 for www.nseindia.com")):
@@ -383,6 +425,52 @@ def test_valuation_history_unknown_index():
     check("valuation_history for an unknown index names the gap",
           any("no archive valuation history" in g for g in env["gaps"]), env["gaps"])
     check("valuation_history for an unknown index still has the envelope shape", envelope_keys(env))
+
+
+def test_valuation_percentiles_ranks_today_against_its_own_history():
+    fresh_root("valuation-percentiles")
+    with swap(market, "_http_get", _csv_server([])), \
+         swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
+        env = market.valuation_percentiles("nifty 50", years=1)
+    check("valuation_percentiles returns the envelope", envelope_keys(env), sorted(env))
+    data = env["data"]
+    check("valuation_percentiles ships the ranks, never the series",
+          "series" not in data, sorted(data))
+    check("valuation_percentiles echoes the index as asked", data["index"] == "nifty 50")
+    check("valuation_percentiles counts the samples it ranked against",
+          data["samples"] == 14, data["samples"])
+    check("valuation_percentiles takes the current level from the live rung",
+          data["pe"]["current"] == 22.45, data["pe"])
+    check("a level equal to every sample ranks at the 50th percentile",
+          data["pe"]["percentile"] == 50.0, data["pe"])
+    check("valuation_percentiles counts only priced samples per field",
+          (data["pe"]["n"], data["pb"]["n"], data["dy"]["n"]) == (14, 14, 14),
+          (data["pe"]["n"], data["pb"]["n"], data["dy"]["n"]))
+    check("valuation_percentiles covers pe, pb and dy",
+          {"pe", "pb", "dy"} <= set(data), sorted(data))
+
+
+def test_valuation_percentiles_unpriced_field_is_none_not_zero():
+    fresh_root("valuation-percentiles-unpriced")
+    with swap(market, "_http_get", _csv_server([])), \
+         swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
+        env = market.valuation_percentiles("Nifty Smallcap 250", years=1)
+    pe = env["data"]["pe"]
+    check("an index NSE publishes no P/E for ranks as None, never 0",
+          pe["current"] is None and pe["percentile"] is None, pe)
+    check("its P/B still ranks", env["data"]["pb"]["percentile"] == 50.0, env["data"]["pb"])
+
+
+def test_valuation_percentiles_unknown_index_is_a_labelled_gap():
+    fresh_root("valuation-percentiles-unknown")
+    with swap(market, "_http_get", _csv_server([])), \
+         swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
+        env = market.valuation_percentiles("NIFTY NOT AN INDEX", years=1)
+    check("valuation_percentiles for an unknown index is ok:false", env["ok"] is False)
+    check("valuation_percentiles for an unknown index samples nothing",
+          env["data"]["samples"] == 0, env["data"])
+    check("valuation_percentiles for an unknown index names the gap",
+          any("no valuation history sampled" in g for g in env["gaps"]), env["gaps"])
 
 
 # --------------------------------------------------------------------------- #
@@ -617,10 +705,15 @@ def main():
                test_parse_ind_close_empty, test_canon,
                test_month_ends, test_month_ends_ten_years, test_month_ends_on_the_first_of_a_month,
                test_percentile,
-               test_indices_parses, test_indices_blocked_degrades, test_indices_empty_payload_gap,
+               test_indices_parses, test_indices_narrows_to_the_names_asked_for,
+               test_index_levels_defaults_to_the_broad_set,
+               test_indices_blocked_degrades, test_indices_empty_payload_gap,
                test_index_snapshot_skips_weekends, test_index_snapshot_walks_back_over_a_holiday,
                test_index_snapshot_cache_round_trip, test_index_snapshot_all_blocked,
                test_valuation_history_offline, test_valuation_history_unknown_index,
+               test_valuation_percentiles_ranks_today_against_its_own_history,
+               test_valuation_percentiles_unpriced_field_is_none_not_zero,
+               test_valuation_percentiles_unknown_index_is_a_labelled_gap,
                test_breadth_counts_and_denominators,
                test_breadth_all_fields_missing_gives_empty_denominator,
                test_breadth_no_rows_degrades,

@@ -75,6 +75,86 @@ def test_first_picks_present_key():
     check("_first all-missing -> ''", filings._first(row, "NOPE") == "")
 
 
+def _serve(payloads):
+    """Fake `_nse_json`: url substring -> (rows, gap). Anything unmatched serves nothing."""
+    def fake(url, referer):
+        for key, result in payloads.items():
+            if key in url:
+                return result
+        return [], None
+    return fake
+
+
+def _swapped(fake, fn):
+    orig = filings._nse_json
+    filings._nse_json = fake
+    try:
+        return fn()
+    finally:
+        filings._nse_json = orig
+
+
+SHP_ROWS = [{"date": "30-Jun-2026", "pr_and_prgrp": "50.5", "public_val": "49.5",
+             "employeeTrusts": "0.0", "submissionDate": "15-Jul-2026", "xbrl": "u"}]
+CA_ROWS = [{"symbol": "RELIANCE", "subject": "Dividend - Rs 10 per share",
+            "exDate": "10-Aug-2026", "recDate": "11-Aug-2026", "series": "EQ",
+            "isin": "INE002A01018"}]
+
+
+def test_shareholding_envelope():
+    env = _swapped(_serve({"share-holdings-master": (SHP_ROWS, None),
+                           "pledgedata": ([{"x": 1}], None)}),
+                   lambda: filings.shareholding("reliance", quarters=4))
+    check("shareholding returns the data-spine envelope",
+          set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
+    check("shareholding ok:true with quarters", env["ok"] is True)
+    check("shareholding source is NSE", env["source"] == "NSE")
+    check("shareholding echoes the symbol as given", env["data"]["symbol"] == "reliance")
+    check("shareholding carries the parsed quarters",
+          env["data"]["quarters"][0]["promoter_pct"] == 50.5, env["data"]["quarters"])
+    check("shareholding carries the pledge rows", env["data"]["pledge"] == [{"x": 1}])
+    check("shareholding with pledge rows reports no gap", env["gaps"] == [], env["gaps"])
+
+
+def test_shareholding_empty_pledge_is_unknown_not_nil():
+    env = _swapped(_serve({"share-holdings-master": (SHP_ROWS, None),
+                           "pledgedata": ([], None)}),
+                   lambda: filings.shareholding("VEDL"))
+    check("an empty pledge list is a labelled gap, never 'no pledge'",
+          any("UNKNOWN" in g for g in env["gaps"]), env["gaps"])
+    check("an empty pledge list still returns the quarters", env["ok"] is True)
+
+
+def test_shareholding_blocked_degrades():
+    env = _swapped(_serve({"share-holdings-master": ([], "HTTP 403")}),
+                   lambda: filings.shareholding("RELIANCE"))
+    check("shareholding blocked is ok:false", env["ok"] is False)
+    check("shareholding blocked names the gap",
+          any("NSE shareholding" in g for g in env["gaps"]), env["gaps"])
+    check("shareholding blocked returns no quarters, never a partial lie",
+          env["data"]["quarters"] == [] and env["data"]["pledge"] == [], env["data"])
+
+
+def test_corporate_actions_envelope():
+    env = _swapped(_serve({"corporateActions": (CA_ROWS, None)}),
+                   lambda: filings.corporate_actions("RELIANCE"))
+    check("corporate_actions returns the data-spine envelope",
+          set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
+    check("corporate_actions ok:true with rows", env["ok"] is True)
+    check("corporate_actions carries ex and record dates",
+          env["data"]["corporate_actions"][0]["ex_date"] == "10-Aug-2026",
+          env["data"]["corporate_actions"])
+    check("corporate_actions reports no gap when rows came back", env["gaps"] == [])
+
+
+def test_corporate_actions_none_is_a_labelled_gap():
+    env = _swapped(_serve({"corporateActions": ([], None)}),
+                   lambda: filings.corporate_actions("RELIANCE"))
+    check("no corporate actions is ok:false with a gap",
+          env["ok"] is False and env["gaps"] == ["no forthcoming corporate actions"],
+          env["gaps"])
+
+
 def main():
     for fn in sorted(g for g in globals() if g.startswith("test_")):
         print(f"\n[{fn}]")

@@ -29,8 +29,11 @@ Exit code: 0 = HOLD, 10 = an EXIT_* verdict, 2 = error.
 import argparse, json, os, re, sys
 from datetime import date, datetime
 
+from finance import spine
 from finance.deps import load_yaml
 from finance.sources import prices  # data spine — EOD history fetch in one place
+
+_SOURCE = "finance.compute.trade_check"
 
 def load_ohlcv_csv(path):
     """CSV with header Date,Open,High,Low,Close,Volume -> list of dict rows (floats)."""
@@ -128,7 +131,7 @@ def eval_condition(cond, closes):
     return ("fired" if fired else "ok", detail)
 
 
-def sessions_held(rows, created):
+def sessions_since(rows, created):
     """Count bars dated on/after `created` (YYYY-MM-DD). Falls back to len(rows)."""
     if not created:
         return None
@@ -149,43 +152,41 @@ def sessions_held(rows, created):
     return n
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--trade", required=True, help="path to trade-idea YAML")
-    p.add_argument("--ohlcv", help="OHLCV CSV (offline). Default: fetch yfinance")
-    p.add_argument("--ltp", type=float, help="override last price (broker LTP)")
-    p.add_argument("--entry", type=float, help="actual fill avg price (broker)")
-    p.add_argument("--qty", type=float, help="actual position qty (broker)")
-    p.add_argument("--sessions-held", type=int, help="override sessions held")
-    p.add_argument("--out", help="also write verdict JSON here")
-    args = p.parse_args()
+def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None):
+    """Re-validate one trade-idea artifact against current price, in the shared envelope.
 
+    `data` is the verdict record — verdict, reasons, manual_review, metrics — and an
+    unreadable trade file or a blocked price series comes back as `ok:false` with a labelled
+    gap, never as an exception. `entry` / `qty` / `ltp` inject the broker's real fill so the
+    verdict is about the position held, not the position planned; `sessions_held` overrides
+    the bar count when the broker knows better.
+    """
     try:
-        trade = load_yaml(args.trade)
-    except Exception as e:
-        print(json.dumps({"error": f"cannot read trade: {e}"})); sys.exit(2)
+        doc = load_yaml(trade)
+    except Exception as exc:  # noqa: BLE001 — an unreadable artifact is a gap, not a crash
+        return spine.envelope(False, _SOURCE, {"source_trade": trade},
+                              [f"cannot read trade {trade}: {exc}"])
 
-    plan = trade.get("plan", {}) or {}
-    direction = (trade.get("direction") or "long").lower()
-    symbol = trade.get("symbol", "?")
+    plan = doc.get("plan", {}) or {}
+    direction = (doc.get("direction") or "long").lower()
+    symbol = doc.get("symbol", "?")
     stop = plan.get("stop")
     target = plan.get("target")
-    entry = args.entry if args.entry is not None else plan.get("entry")
+    entry = entry if entry is not None else plan.get("entry")
     time_stop = plan.get("time_stop_sessions")
-    invalidations = trade.get("thesis_invalidation") or []
+    invalidations = doc.get("thesis_invalidation") or []
 
-    if args.ohlcv:
-        rows = load_ohlcv_csv(args.ohlcv)
-    else:
-        rows = fetch_ohlcv_yf(symbol)
+    rows = load_ohlcv_csv(ohlcv) if ohlcv else fetch_ohlcv_yf(symbol)
     if not rows:
-        print(json.dumps({"error": f"no price data for {symbol}"})); sys.exit(2)
+        return spine.envelope(False, _SOURCE,
+                              {"symbol": symbol, "source_trade": trade},
+                              [f"no price data for {symbol}"])
 
     closes = [r["close"] for r in rows if r.get("close") is not None]
     last_close = closes[-1]
     last_low = rows[-1].get("low", last_close)
     last_high = rows[-1].get("high", last_close)
-    price = args.ltp if args.ltp is not None else last_close
+    price = ltp if ltp is not None else last_close
 
     long = direction != "short"
     reasons, manual = [], []
@@ -215,8 +216,8 @@ def main():
         target_hit = (reach >= target) if long else (reach <= target)
 
     # 4. TIME stop
-    held = args.sessions_held if args.sessions_held is not None \
-        else sessions_held(rows, trade.get("created"))
+    held = sessions_held if sessions_held is not None \
+        else sessions_since(rows, doc.get("created"))
     time_hit = (time_stop is not None and held is not None and held >= time_stop)
 
     # verdict priority
@@ -244,8 +245,8 @@ def main():
         move = (price - entry) if long else (entry - price)
         unreal_R = round(move / abs(risk), 2) if risk else None
     pnl = None
-    if entry is not None and args.qty:
-        pnl = round(((price - entry) if long else (entry - price)) * args.qty, 2)
+    if entry is not None and qty:
+        pnl = round(((price - entry) if long else (entry - price)) * qty, 2)
     rem_rrr = None
     if target is not None and stop is not None and (price - stop) != 0:
         if long and price < target and price > stop:
@@ -253,26 +254,46 @@ def main():
         elif not long and price > target and price < stop:
             rem_rrr = round((price - target) / (stop - price), 2)
 
-    out = {
+    verdict_record = {
         "symbol": symbol, "direction": direction, "as_of": str(date.today()),
         "verdict": verdict,
         "reasons": reasons,
         "manual_review": manual,
-        "regime_check": "deferred_to_skill" if trade.get("strategy") else "n/a",
+        "regime_check": "deferred_to_skill" if doc.get("strategy") else "n/a",
         "metrics": {
             "price": round(price, 2), "entry": entry, "stop": stop, "target": target,
-            "qty": args.qty, "sessions_held": held, "time_stop_sessions": time_stop,
+            "qty": qty, "sessions_held": held, "time_stop_sessions": time_stop,
             "unrealized_R": unreal_R, "unrealized_pnl": pnl,
             "remaining_rrr_to_target": rem_rrr,
         },
-        "source_trade": args.trade,
+        "source_trade": trade,
     }
-    print(json.dumps(out, indent=2))
+    return spine.envelope(True, _SOURCE, verdict_record, [])
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--trade", required=True, help="path to trade-idea YAML")
+    p.add_argument("--ohlcv", help="OHLCV CSV (offline). Default: fetch yfinance")
+    p.add_argument("--ltp", type=float, help="override last price (broker LTP)")
+    p.add_argument("--entry", type=float, help="actual fill avg price (broker)")
+    p.add_argument("--qty", type=float, help="actual position qty (broker)")
+    p.add_argument("--sessions-held", type=int, help="override sessions held")
+    p.add_argument("--out", help="also write verdict JSON here")
+    args = p.parse_args()
+
+    env = check(args.trade, ohlcv=args.ohlcv, ltp=args.ltp, entry=args.entry,
+                qty=args.qty, sessions_held=args.sessions_held)
+    record = env["data"]
+    if not env["ok"]:
+        print(json.dumps({"error": "; ".join(env["gaps"])}))
+        sys.exit(2)
+    print(json.dumps(record, indent=2))
     if args.out:
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
         with open(args.out, "w") as f:
-            json.dump(out, f, indent=2)
-    sys.exit(10 if verdict.startswith("EXIT") else 0)
+            json.dump(record, f, indent=2)
+    sys.exit(10 if record["verdict"].startswith("EXIT") else 0)
 
 
 if __name__ == "__main__":

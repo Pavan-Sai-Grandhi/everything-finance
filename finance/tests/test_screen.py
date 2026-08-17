@@ -164,6 +164,83 @@ def test_screen_compute_handles_loader_failure():
     check("good symbol still screened", any(c["symbol"] == "GOOD" for c in res["candidates"]))
 
 
+# --- resolve_symbols: how a universe is expressed -------------------------- #
+def test_resolve_symbols():
+    check("a list is normalised and upper-cased",
+          screen.resolve_symbols([" reliance ", "tcs"]) == ["RELIANCE", "TCS"])
+    check("a comma string splits", screen.resolve_symbols("reliance, tcs") ==
+          ["RELIANCE", "TCS"])
+    check("blank entries are dropped", screen.resolve_symbols("RELIANCE,,  ") ==
+          ["RELIANCE"])
+    check("None is an empty universe, not a crash", screen.resolve_symbols(None) == [])
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+        fh.write("reliance\n\ntcs\n")
+        path = fh.name
+    check("a file path reads one symbol per line",
+          screen.resolve_symbols(path) == ["RELIANCE", "TCS"], screen.resolve_symbols(path))
+    os.unlink(path)
+
+
+# --- run(): the envelope the screen tool returns ---------------------------- #
+def _run_with(res, out):
+    orig_load, orig_compute = screen.load_spec, screen.screen_compute
+    screen.load_spec = lambda path: {"name": "test-spec"}
+    screen.screen_compute = lambda *a, **k: res
+    try:
+        return screen.run("spec.yml", ["RELIANCE", "TCS"], years=2, capital=100000, out=out)
+    finally:
+        screen.load_spec, screen.screen_compute = orig_load, orig_compute
+
+
+def test_run_envelope_and_report_file():
+    import json
+    import tempfile
+    out = os.path.join(tempfile.mkdtemp(), "screen.json")
+    res = {"candidates": [{"symbol": "RELIANCE", "rrr": 2.0}],
+           "rejected": [{"symbol": "TCS", "why": ["Close > ema50"]}],
+           "data_gaps": ["INFY: no price history"]}
+    env = _run_with(res, out)
+    check("run returns the data-spine envelope",
+          set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
+    check("run is ok when something passed", env["ok"] is True)
+    check("run returns the ranked candidates inline",
+          env["data"]["candidates"] == res["candidates"], env["data"]["candidates"])
+    check("run counts rejections instead of shipping them",
+          env["data"]["rejected_count"] == 1 and "rejected" not in env["data"],
+          sorted(env["data"]))
+    check("run carries the config a report has to cite",
+          env["data"]["config"]["spec"] == "test-spec"
+          and env["data"]["config"]["symbols"] == 2, env["data"]["config"])
+    check("run surfaces per-symbol data gaps",
+          env["gaps"] == ["INFY: no price history"], env["gaps"])
+    check("run writes the full result, rejections included, to report_path",
+          env["data"]["report_path"] == out)
+    with open(out) as fh:
+        written = json.load(fh)
+    check("the written report keeps every rejection and its reason",
+          written["rejected"][0]["why"] == ["Close > ema50"], written["rejected"])
+
+
+def test_run_with_no_candidates_is_a_labelled_gap():
+    import tempfile
+    out = os.path.join(tempfile.mkdtemp(), "screen.json")
+    env = _run_with({"candidates": [], "rejected": [], "data_gaps": []}, out)
+    check("an empty screen is ok:false", env["ok"] is False)
+    check("an empty screen says so rather than reading as a silent pass",
+          any("no candidate passed" in g for g in env["gaps"]), env["gaps"])
+
+
+def test_run_unwritable_report_is_a_gap_not_a_crash():
+    env = _run_with({"candidates": [{"symbol": "RELIANCE", "rrr": 2.0}], "rejected": [],
+                     "data_gaps": []}, "/nonexistent-root/deep/screen.json")
+    check("an unwritable report path degrades to a gap",
+          any("could not write" in g for g in env["gaps"]), env["gaps"])
+    check("an unwritable report path reports no path", env["data"]["report_path"] is None)
+    check("an unwritable report still returns the candidates",
+          len(env["data"]["candidates"]) == 1)
+
+
 def main():
     for fn in sorted(g for g in globals() if g.startswith("test_")):
         print(f"\n[{fn}]")

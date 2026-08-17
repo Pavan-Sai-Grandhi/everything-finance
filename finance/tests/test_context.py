@@ -159,6 +159,33 @@ with tempfile.TemporaryDirectory() as tmp:
           mc.load_today() is None)
     os.environ.pop("EVERYTHING_FINANCE_ARTIFACTS", None)
 
+# --- report: the envelope the market tool returns ----------------------------------
+_orig_compute = mc.compute
+mc.compute = lambda mode="standard", years=10: dict(ctx, mode=mode)
+try:
+    env = mc.report(mode="quick", years=5)
+finally:
+    mc.compute = _orig_compute
+check("report returns the data-spine envelope",
+      set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
+check("report dates itself by the context's as_of, not by now",
+      env["fetched_at"] == "2026-08-14", env["fetched_at"])
+check("report carries the digest", "as_of: 2026-08-14" in env["data"]["digest"])
+check("report carries the structured fields a caller branches on without parsing prose",
+      (env["data"]["market_trend"], env["data"]["market_posture"],
+       env["data"]["rationale"]) == ("range", "neutral", "why"), env["data"])
+check("report stays narrow — digest plus the branch fields, no raw blocks",
+      set(env["data"]) == {"digest", "as_of", "market_trend", "market_posture",
+                           "rationale"}, sorted(env["data"]))
+
+mc.compute = lambda mode="standard", years=10: dict(ctx, gaps=["India VIX unavailable"])
+try:
+    env_gappy = mc.report()
+finally:
+    mc.compute = _orig_compute
+check("report surfaces the context's gaps as the envelope's gaps",
+      env_gappy["gaps"] == ["India VIX unavailable"], env_gappy["gaps"])
+
 # --- frozen key names -------------------------------------------------------------
 # select_strategy.py gates on exactly these paths. Renaming one silently breaks every
 # strategy spec's regime_required check, so the contract is asserted here.

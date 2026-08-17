@@ -417,6 +417,29 @@ def digest(ctx):
     return "\n".join(L)
 
 
+def report(mode="quick", years=10):
+    """The market-of-record in the shared data-spine envelope: the digest plus the few
+    structured fields a caller branches on without parsing prose.
+
+    `fetched_at` is the context's own as-of, not the moment of the call — this is a daily
+    artifact, and dating it now would claim a freshness it does not have.
+    """
+    ctx = compute(mode=mode, years=years)
+    return {
+        "ok": True,
+        "source": "market-analysis",
+        "fetched_at": ctx.get("as_of"),
+        "data": {
+            "digest": digest(ctx),
+            "as_of": ctx.get("as_of"),
+            "market_trend": ctx.get("market_trend"),
+            "market_posture": ctx.get("market_posture"),
+            "rationale": ctx.get("rationale"),
+        },
+        "gaps": ctx.get("gaps", []),
+    }
+
+
 def artifact_path(day=None):
     return paths.report_path("market-analysis", date=day, ext="json")
 

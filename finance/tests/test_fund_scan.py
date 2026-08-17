@@ -168,5 +168,51 @@ with tempfile.TemporaryDirectory() as tmp:
     check("a corrupt market context degrades to None rather than raising",
           S.load_market_context(p, "Small Cap Fund") is None)
 
+# --- report(): the envelope the fund tool returns ----------------------------
+SCAN_RESULT = {
+    "as_of": "2026-08-17", "category": "Small Cap Fund", "window_credited": "3y",
+    "universe": {"screened": 20, "passed_gates": 6, "scored": 5, "shortlisted": 2},
+    "gates": {"rejected_tally": {"AUM below the floor": 14}},
+    "scoring": {"weights": S.WEIGHTS},
+    "category_context": None, "pending_manual_gates": [],
+    "shortlist": [{"rank": 1, "name": "Fund A", "flags": []}],
+    "gaps": ["AMFI scheme list unavailable"],
+}
+
+_orig_scan = S.scan
+with tempfile.TemporaryDirectory() as tmp:
+    out = os.path.join(tmp, "scanner.json")
+    try:
+        S.scan = lambda **kw: dict(SCAN_RESULT)
+        env = S.report(category="Small Cap Fund", top=2, out=out)
+    finally:
+        S.scan = _orig_scan
+    check("report returns the data-spine envelope",
+          set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
+    check("report is ok when something was shortlisted", env["ok"] is True)
+    check("report carries the shortlist inline",
+          env["data"]["shortlist"][0]["name"] == "Fund A", env["data"]["shortlist"])
+    check("report carries the universe funnel so a rank is auditable",
+          env["data"]["universe"]["screened"] == 20, env["data"]["universe"])
+    check("report keeps the rejection tally rather than hiding the failures",
+          env["data"]["gates"]["rejected_tally"]["AUM below the floor"] == 14)
+    check("report lifts the scan's gaps to the envelope, not into data",
+          env["gaps"] == ["AMFI scheme list unavailable"] and "gaps" not in env["data"],
+          env["gaps"])
+    check("report writes the shortlist JSON and names the path",
+          env["data"]["report_path"] == out and os.path.isfile(out))
+    with open(out) as fh:
+        check("the written shortlist keeps its own gaps list",
+              json.load(fh)["gaps"] == ["AMFI scheme list unavailable"])
+
+    try:
+        S.scan = lambda **kw: dict(SCAN_RESULT, shortlist=[], gaps=["no fund cleared"])
+        env_empty = S.report(category="Small Cap Fund", out=out)
+    finally:
+        S.scan = _orig_scan
+    check("report with an empty shortlist is ok:false", env_empty["ok"] is False)
+    check("report with an empty shortlist carries the reason",
+          env_empty["gaps"] == ["no fund cleared"], env_empty["gaps"])
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

@@ -47,7 +47,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 from finance.compute import rolling as R  # the tested rolling-return math, shared with pillar 1
-from finance.spine import f as _f         # the one scraped-cell -> float coercion
+from finance.spine import envelope as _envelope, f as _f  # the shared envelope + coercion
 
 # --------------------------------------------------------------------------- #
 # the published scoring contract                                              #
@@ -619,6 +619,34 @@ def default_out_path(category):
     return os.path.join(paths.fund_dir(f"{category} scan"), "scanner.json")
 
 
+def report(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
+           min_age_months=None, agility_ceiling_cr=None, ter_ceiling=DIRECT_TER_CEILING,
+           workers=8, fresh=False, market_context=None, out=None):
+    """`scan()` in the shared data-spine envelope, with the shortlist persisted as JSON.
+
+    `market_context` is the path to a market-analysis artifact whose cap-tier reading is
+    carried through verbatim, so "which fund" and "is this category worth adding to now"
+    stay separable questions.
+    """
+    result = scan(category=category, top=top, window=window, min_aum_cr=min_aum_cr,
+                  min_age_months=min_age_months, agility_ceiling_cr=agility_ceiling_cr,
+                  ter_ceiling=ter_ceiling, workers=workers, fresh=fresh,
+                  market_context=load_market_context(market_context, category))
+    gaps = list(result.get("gaps") or [])
+    path = out or default_out_path(category)
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    except OSError as exc:
+        gaps.append(f"could not write the shortlist to {path}: {exc}")
+        path = None
+    data = {k: v for k, v in result.items() if k != "gaps"}
+    data["report_path"] = path
+    return _envelope(bool(result["shortlist"]), "finance.compute.fund_scan", data, gaps)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Rank a SEBI fund sub-category deterministically.")
     ap.add_argument("--category", default="Small Cap Fund",
@@ -643,22 +671,17 @@ def main():
     ap.add_argument("--workers", type=int, default=8)
     a = ap.parse_args()
 
-    result = scan(category=a.category, top=a.top, window=a.window, min_aum_cr=a.min_aum,
-                  min_age_months=a.min_age_months, agility_ceiling_cr=a.agility_ceiling,
-                  ter_ceiling=a.ter_ceiling, workers=a.workers, fresh=a.fresh,
-                  market_context=load_market_context(a.market_context, a.category))
-
-    out = a.out or default_out_path(a.category)
-    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    with open(out, "w") as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    env = report(category=a.category, top=a.top, window=a.window, min_aum_cr=a.min_aum,
+                 min_age_months=a.min_age_months, agility_ceiling_cr=a.agility_ceiling,
+                 ter_ceiling=a.ter_ceiling, workers=a.workers, fresh=a.fresh,
+                 market_context=a.market_context, out=a.out)
+    result = {**env["data"], "gaps": env["gaps"]}
 
     if a.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         print(render_table(result))
-        print(f"\nshortlist JSON: {out}")
+        print(f"\nshortlist JSON: {env['data']['report_path']}")
 
 
 if __name__ == "__main__":

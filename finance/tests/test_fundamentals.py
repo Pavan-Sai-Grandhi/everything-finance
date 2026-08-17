@@ -218,6 +218,44 @@ def test_fetch_all_blocked_degrades():
           set(env) == {"ok", "source", "fetched_at", "data", "gaps"})
 
 
+def test_fetch_sections_narrowing():
+    orig = fz._http_get
+    fz._http_get = lambda url, timeout=20, cookie=None: (COMPANY_FIXTURE, None)
+    try:
+        env = fz.fetch("RELIANCE", sections=["ratios"], fresh=True)
+        full = fz.fetch("RELIANCE", fresh=True)
+    finally:
+        fz._http_get = orig
+    d = env["data"]
+    check("fetch(sections=...) returns only the sections asked for plus identity",
+          set(d) <= {"ratios", "symbol", "name", "url", "sections_available"}, sorted(d))
+    check("fetch(sections=...) keeps the section's own content",
+          d["ratios"] == full["data"]["ratios"])
+    check("fetch(sections=...) keeps the symbol so the answer is attributable",
+          d["symbol"] == "RELIANCE")
+    check("fetch(sections=...) lists every section the page yielded",
+          "pnl_10y" in d["sections_available"] and "peers" in d["sections_available"],
+          d["sections_available"])
+    check("fetch(sections=...) still returns the envelope",
+          set(env) == {"ok", "source", "fetched_at", "data", "gaps"})
+    check("fetch without sections narrows nothing", "pnl_10y" in full["data"],
+          sorted(full["data"]))
+    check("fetch without sections adds no sections_available",
+          "sections_available" not in full["data"], sorted(full["data"]))
+
+
+def test_fetch_sections_on_a_blocked_page():
+    orig = fz._http_get
+    fz._http_get = lambda url, timeout=20, cookie=None: (None, "HTTP 403")
+    try:
+        env = fz.fetch("ZZZZ", sections=["ratios"], fresh=True)
+    finally:
+        fz._http_get = orig
+    check("a blocked page narrowed to sections is still ok:false", env["ok"] is False)
+    check("a blocked page narrowed to sections still lists what would have been there",
+          "sections_available" in env["data"], sorted(env["data"]))
+
+
 def test_to_number():
     check("to_number strips ₹ and commas", fz._to_number(" ₹ 19,89,000 Cr.") == 1989000.0)
     check("to_number parens are negative", fz._to_number("(1,234)") == -1234.0)
@@ -303,7 +341,9 @@ def main():
                test_D1_shareholding, test_D1_peers, test_D1_documents,
                test_D2_screen_parses_candidates, test_D2_screen_envelope,
                test_D3_no_html_in_data, test_fetch_envelope_offline,
-               test_fetch_all_blocked_degrades, test_to_number, test_D1b_detects_logged_out_page,
+               test_fetch_all_blocked_degrades, test_fetch_sections_narrowing,
+               test_fetch_sections_on_a_blocked_page,
+               test_to_number, test_D1b_detects_logged_out_page,
                test_D1b_does_not_misfire_on_real_results,
                test_D1b_screen_distinguishes_the_two_failures,
                test_envelope_shape):

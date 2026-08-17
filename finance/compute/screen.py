@@ -30,6 +30,7 @@ import sys
 from datetime import date
 
 from finance import paths
+from finance import spine
 from finance.compute import strategy
 from finance.compute import ta
 from finance.sources import prices  # data spine — EOD history; indicators via ta.py
@@ -101,6 +102,49 @@ def load_spec(path):
         return yaml.safe_load(f)
 
 
+def resolve_symbols(symbols):
+    """The universe as callers express it: a list, a comma-separated string, or a path to a
+    file with one NSE symbol per line."""
+    if isinstance(symbols, str):
+        rows = (open(symbols).read().splitlines() if os.path.exists(symbols)
+                else symbols.split(","))
+    else:
+        rows = list(symbols or [])
+    return [str(s).strip().upper() for s in rows if str(s).strip()]
+
+
+def run(spec, symbols, years=2, capital=500000, out=None):
+    """The whole live screen in the shared data-spine envelope.
+
+    `spec` is a path to a strategy YAML — the rules always come from a spec, never from
+    here. The complete result, every rejection and its reason included, is written to `out`
+    (default `artifacts/find-trade/<date>.json`); the envelope returns the config, the
+    ranked candidates and the rejection tally, so a caller reads the file only when it
+    wants to know why a name was dropped.
+    """
+    doc = load_spec(spec)
+    syms = resolve_symbols(symbols)
+    res = screen_compute(syms, doc, years, capital, paths.cache_dir("ohlcv"))
+    res["config"] = {"spec": doc.get("name"), "spec_path": spec, "symbols": len(syms),
+                     "capital": capital, "years": years, "as_of": str(date.today())}
+    path = out or paths.report_path("find-trade", ext="json")
+    gaps = list(res["data_gaps"])
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w") as fh:
+            json.dump(res, fh, indent=2, default=str)
+    except OSError as exc:
+        gaps.append(f"could not write the screen result to {path}: {exc}")
+        path = None
+    if not res["candidates"]:
+        gaps.append(f"no candidate passed {doc.get('name')!r} in this universe")
+    return spine.envelope(
+        bool(res["candidates"]), "finance.compute.screen",
+        {"config": res["config"], "candidates": res["candidates"],
+         "rejected_count": len(res["rejected"]), "report_path": path},
+        gaps)
+
+
 # --------------------------------------------------------------------------- #
 # selftest (synthetic, offline)                                               #
 # --------------------------------------------------------------------------- #
@@ -158,23 +202,9 @@ def main():
     if not args.spec or not args.symbols:
         print("error: --spec and --symbols required (or use --selftest)", file=sys.stderr)
         sys.exit(2)
-    spec = load_spec(args.spec)
-    if os.path.exists(args.symbols):
-        symbols = [l.strip().upper() for l in open(args.symbols) if l.strip()]
-    else:
-        symbols = [s.strip().upper() for s in args.symbols.split(",")]
-
-    cache_dir = paths.cache_dir("ohlcv")
-    res = screen_compute(symbols, spec, args.years, args.capital, cache_dir)
-    res["config"] = {"spec": spec.get("name"), "symbols": len(symbols),
-                     "capital": args.capital, "as_of": str(date.today()),
-                     "screen_path": "compute (local finance/compute/ta.py)"}
-    out = json.dumps(res, indent=2, default=str)
-    print(out)
-    if args.out:
-        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        open(args.out, "w").write(out)
-        print(f"\nwrote {args.out}", file=sys.stderr)
+    env = run(args.spec, args.symbols, years=args.years, capital=args.capital,
+              out=args.out)
+    print(json.dumps(env, indent=2, default=str))
 
 
 if __name__ == "__main__":

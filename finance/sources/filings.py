@@ -293,6 +293,27 @@ def fetch_nse_shareholding(symbol, quarters=8):
     return {"items": out, "pledge": pledge, "gap": "; ".join(gaps) or None}
 
 
+def shareholding(symbol, quarters=8):
+    """Quarterly shareholding pattern + promoter pledge in the shared envelope.
+
+    `data = {symbol, quarters: [...], pledge: [...]}`; an absent pledge list arrives as the
+    labelled gap `fetch_nse_shareholding` built, meaning UNKNOWN rather than nil.
+    """
+    res = fetch_nse_shareholding(symbol, quarters=quarters)
+    return _envelope(bool(res["items"]), "NSE",
+                     {"symbol": symbol, "quarters": res["items"], "pledge": res["pledge"]},
+                     [res["gap"]] if res["gap"] else [])
+
+
+def corporate_actions(symbol):
+    """Forthcoming/recent corporate actions in the shared envelope:
+    `data = {symbol, corporate_actions: [...]}`."""
+    res = fetch_nse_corp_actions(symbol)
+    return _envelope(bool(res["items"]), "NSE",
+                     {"symbol": symbol, "corporate_actions": res["items"]},
+                     [res["gap"]] if res["gap"] else [])
+
+
 def _dedupe(items):
     """Collapse a repeated event to one row; keep the first seen."""
     seen, out = set(), []

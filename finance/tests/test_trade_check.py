@@ -192,5 +192,30 @@ out, rc = run(ts, c)
 # note: 121 high also >110 stop, so STOP wins (higher priority) — that's correct behavior
 check("SHORT stop precedence over thesis", out["verdict"] == "EXIT_STOP", out["verdict"])
 
+# ---- 9. check(): the envelope the tool layer returns ----
+sys.path.insert(0, ROOT)
+from finance.compute import trade_check as tc  # noqa: E402
+
+flat = bars_to_csv("envelope.csv", [100] * 60)
+env = tc.check(t, ohlcv=flat, sessions_held=5)
+check("check returns the data-spine envelope",
+      set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
+check("check is ok when it reached a verdict", env["ok"] is True)
+check("check puts the verdict record in data", env["data"]["verdict"] == "HOLD",
+      env["data"].get("verdict"))
+check("check reports no gap on a clean read", env["gaps"] == [], env["gaps"])
+check("check names the trade it judged", env["data"]["source_trade"] == t)
+
+env_missing = tc.check(os.path.join(D, "not-a-trade.yml"))
+check("an unreadable trade file is ok:false, not an exception",
+      env_missing["ok"] is False)
+check("an unreadable trade file names the gap",
+      any("cannot read trade" in g for g in env_missing["gaps"]), env_missing["gaps"])
+
+env_nodata = tc.check(t, ohlcv=csv("empty.csv", []))
+check("no price data is a labelled gap, not a fabricated verdict",
+      env_nodata["ok"] is False
+      and any("no price data" in g for g in env_nodata["gaps"]), env_nodata["gaps"])
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
