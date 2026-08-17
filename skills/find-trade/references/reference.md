@@ -1,6 +1,6 @@
 # find-trade method — screening + candidate grading (strategy-agnostic)
 
-Distilled from Zerodha Varsity — *Technical Analysis* (22 chapters) and *Trading Systems* (16 chapters), fetched 2026-06-10. This file is the **method find-trade applies to whatever strategy it runs** — it is deliberately strategy-neutral. The *what to trade* (the screening filters, the entry trigger, the exits) comes from the **active strategy spec** chosen by `strategy-manager`; find-trade only supplies the disciplined *how* of executing and grading it. The single source of truth for the indicator math is `<plugin>/lib/ta.py` (shared with the backtester).
+Distilled from Zerodha Varsity — *Technical Analysis* (22 chapters) and *Trading Systems* (16 chapters), fetched 2026-06-10. This file is the **method find-trade applies to whatever strategy it runs** — it is deliberately strategy-neutral. The *what to trade* (the screening filters, the entry trigger, the exits) comes from the **active strategy spec** chosen by `strategy-manager`; find-trade only supplies the disciplined *how* of executing and grading it. The single source of truth for the indicator math is `<plugin>/finance/compute/ta.py` (shared with the backtester).
 
 ## Two-stage screening — coarse cut, then fine trigger
 
@@ -9,10 +9,10 @@ A strategy's `screening` block defines the **coarse universe cut** (whole Nifty 
 | Stage | Provider | What it does |
 |---|---|---|
 | `screening.fundamental` | **screener.in** | Business-quality cut: market cap, ROCE, D/E, growth — keeps swing longs out of structurally broken companies (Varsity: *technicals time the trade, fundamentals pick the universe*). Not a value screen. |
-| `screening.technical` | **tradingview** (server-side) or **compute** (local `lib/ta.py`) | Chart-state cut: trend (SMA50>SMA200), momentum (RSI band), participation (volume vs average) — applied across the whole universe at once. |
-| `entry` (Stage 3) | local `lib/ta.py` | The exact, testable trigger on each shortlisted stock: breakout level / reversal candle at support, with the stop and target it implies. |
+| `screening.technical` | **tradingview** (server-side) or **compute** (local `finance/compute/ta.py`) | Chart-state cut: trend (SMA50>SMA200), momentum (RSI band), participation (volume vs average) — applied across the whole universe at once. |
+| `entry` (Stage 3) | local `finance/compute/ta.py` | The exact, testable trigger on each shortlisted stock: breakout level / reversal candle at support, with the stop and target it implies. |
 
-The provider split exists because each tool is best at one thing: **screener.in** has the fundamentals, **TradingView** can screen thousands of charts server-side in one query, and the **local compute** path (yfinance + `lib/ta.py`) is the always-available fallback that also keeps the live screen consistent with the backtest.
+The provider split exists because each tool is best at one thing: **screener.in** has the fundamentals, **TradingView** can screen thousands of charts server-side in one query, and the **local compute** path (EOD OHLCV + `finance/compute/ta.py`) is the always-available fallback that also keeps the live screen consistent with the backtest.
 
 ## The Varsity candidate-grading checklist (TA ch. 19) — indicators last
 
@@ -33,9 +33,9 @@ Run every shortlisted candidate through this order before emitting a signal — 
 - **Position size from risk, never conviction**: `qty = (capital × risk%) / (entry − stop)`, default 1%. Conviction changes nothing; only the stop distance does. Never widen a stop to "give it room".
 - **Expectancy mindset**: any single signal can fail; the edge is statistical, and it lives in the strategy's validated backtest — which is why find-trade refuses to run an unvalidated (`draft`) or retired (`inactive`) strategy.
 
-## No built-in default strategy
+## Why there is no built-in default strategy
 
-find-trade runs **only** specs from the validated library; when the user names none it asks `strategy-manager pick` for the regime-fit choice. A hardcoded house setup would be the one "strategy" that never passed the generate→validate→pick lifecycle — an un-backtested edge masquerading as a default. If the library is empty or nothing fits the tape, the correct output is **no trade**, with a pointer to build/validate a strategy — never a fabricated signal. The seed library in `strategy-manager/assets/seed-strategies/` ships as `draft` specs: stock to validate, not a shortcut around validation.
+A hardcoded house setup would be the one "strategy" that never passed the generate→validate→pick lifecycle — an un-backtested edge masquerading as a default. That is why an empty library or a tape nothing fits produces **no trade** rather than a fallback signal. The seed library in `strategy-manager/assets/seed-strategies/` ships as `draft` specs: stock to validate, not a shortcut around validation.
 
 ## Failure modes to flag in output
 

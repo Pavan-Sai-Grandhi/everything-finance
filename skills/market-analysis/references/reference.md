@@ -25,7 +25,7 @@ When P/E and P/B percentiles diverge sharply, the divergence is itself the findi
 
 ## Regime taxonomy
 
-**Trend** (Nifty 50, EMA from `lib/ta.py`):
+**Trend** (Nifty 50, EMA from `finance/compute/ta.py`):
 - `up` — price above both the 50- and 200-EMA, with the 50-EMA rising.
 - `down` — price below both, with the 50-EMA falling.
 - `range` — anything else. Most of the time is `range`, and that is a real answer, not a failure to decide.
@@ -60,12 +60,4 @@ FII/FPI and DII net cash-market flows, in ₹ Cr, from the exchange's own daily 
 
 India VIX, USDINR, gold, Brent, US 10-Year — each as level, 1-month change, and 5-year percentile. These are context for risk appetite (a rising US 10Y and a weakening rupee tighten conditions for Indian equity), never signals on their own.
 
-**The rate cycle has no approved source.** No RBI or MoSPI row exists, so the repo rate, CPI and the policy stance are a **labelled data gap** unless the user supplies them — a remembered repo rate is never reported as fact.
-
-## Reading rules
-
-1. **Read dimensions together; report the tension.** A benign trend with rich valuations, or cheap largecaps beside expensive smallcaps, is the actual finding. Averaging disagreeing dimensions into one bland verdict destroys the information.
-2. **Never explain a trailing-window number with a calendar-year number.** "The trailing 1Y is weak, but CY2025 was worse" compares two different windows. It is not an argument.
-3. **`as_of` is the last trading bar, not today.** On a weekend the market context is Friday's, and saying so beats restamping it.
-4. **Market context is an input to a decision, never a forecast.** This skill reports the tape. It does not predict direction and does not time entries.
-5. **State what would change the read** — the level, breadth reading, or flow reversal that would flip the posture. A market read with no invalidation is an opinion.
+The rate cycle sits outside this set: no approved RBI or MoSPI feed exists, which is why the repo rate, CPI and the policy stance are a labelled gap rather than a rung.

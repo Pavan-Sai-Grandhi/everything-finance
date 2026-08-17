@@ -10,7 +10,7 @@ Every trade entered through this plugin carries a written rationale (the trade-i
 
 ## The exit decision (priority order)
 
-`validate_trade.py` evaluates these top-down; the first hit is the verdict:
+`check_trade` evaluates these top-down; the first hit is the verdict:
 
 1. **EXIT_STOP** — price breached the stoploss. Non-negotiable; the stop is where the thesis was defined to be wrong. (Uses the bar's low for longs / high for shorts, plus the live LTP, so an intrabar breach counts.)
 2. **EXIT_THESIS** — a machine-checkable invalidation fired (e.g. *daily close below 50-EMA*, *break of pivot 3,250*). The setup that justified the entry is gone even if the hard stop hasn't printed — exit into strength rather than waiting for the stop.
@@ -18,7 +18,7 @@ Every trade entered through this plugin carries a written rationale (the trade-i
 4. **EXIT_TIME** — held ≥ `time_stop_sessions` with neither stop nor target hit. Dead money has an opportunity cost; a swing trade that hasn't worked in its window is telling you something.
 5. **HOLD** — none of the above. The rationale is intact; do nothing.
 
-Two layers the script defers to the skill (qualitative judgement):
+Two layers the tool defers to the skill (qualitative judgement):
 - **`manual_review`** — invalidations the parser can't evaluate (earnings miss, pledge change, downgrade). Check them against news/filings and treat a confirmed one as EXIT_THESIS.
 - **Regime change** — for strategy-linked trades, if the live regime no longer satisfies the strategy's `regime_required`, the edge is gone → recommend exit even on a mechanical HOLD.
 
@@ -26,16 +26,16 @@ Two layers the script defers to the skill (qualitative judgement):
 
 - **Unrealized R** = (current − entry) / (entry − stop) for longs (flipped for shorts). R, not rupees, is the unit of discipline: +2R means the trade has paid back twice its risk. Manage on R, size on R.
 - **Remaining RRR to target** = (target − price) / (price − stop). As price climbs toward target this collapses; when the remaining reward no longer justifies the open risk, trimming or tightening the stop is rational even pre-target.
-- **Portfolio view**: sum the open risk (heat). The single-trade verdict is local; if total heat is high, prefer the exits the script flags and resist adding.
+- **Portfolio view**: sum the open risk (heat). The single-trade verdict is local; if total heat is high, prefer the flagged exits and resist adding.
 
 ## Broker & IndMoney data notes
 
-- **Live state comes through `lib/holdings.py`** (precedence IndMoney → broker): it normalizes whichever source is connected to one canonical position shape (symbol/qty/avg/ltp/pnl, plus XIRR from IndMoney). IndMoney is read-only net worth across assets; the broker MCPs are the equity fallback. State (what you hold, at what live price) and **fills** (your exact entry) are different questions — see the next bullets.
-- **Fills are broker-only.** IndMoney has no order/trade history and its avg-cost must never be fed to the validator as `--entry`. The real fill comes from the broker's order history (or a `fill_avg` already recorded on the artifact). IndMoney-only with no recorded fill → report live health but make R-multiple/time-stop a Data gap.
+- **Live state comes through `finance/compute/holdings.py`** (precedence IndMoney → broker): it normalizes whichever source is connected to one canonical position shape (symbol/qty/avg/ltp/pnl, plus XIRR from IndMoney). IndMoney is read-only net worth across assets; the broker MCPs are the equity fallback. State (what you hold, at what live price) and **fills** (your exact entry) are different questions — see the next bullets.
+- **Fills are broker-only.** IndMoney has no order/trade history and its avg-cost must never be fed to `check_trade` as `entry`. The real fill comes from the broker's order history (or a `fill_avg` already recorded on the artifact). IndMoney-only with no recorded fill → report live health but make R-multiple/time-stop a Data gap.
 - Both hosted broker MCPs are **read-only** — holdings, positions, orders, quotes; they cannot place or modify orders.
 - **Holdings** = settled/delivery (CNC) stock; **Positions** = intraday + F&O (MIS/NRML). A swing trade usually shows in holdings (T+1 onward) or as an overnight position. Match on trading symbol; reconcile qty against the artifact's planned qty and note partial fills.
 - Auth is per-session (Kite) or daily (Upstox); a stale session looks like "no tools" or an auth error — re-authenticate, don't guess positions.
-- The MCP's `average_price` is the **actual fill**; feed it to the validator as `--entry` so R/P&L are real. Keep the artifact's planned `entry` separate (it's the trigger you designed, not necessarily where you got filled).
+- The MCP's `average_price` is the **actual fill**; feed it to `check_trade` as `entry` so R/P&L are real. Keep the artifact's planned `entry` separate (it's the trigger you designed, not necessarily where you got filled).
 
 ## What this is not
 

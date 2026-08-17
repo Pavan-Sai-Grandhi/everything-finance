@@ -2,12 +2,12 @@
 name: deep-analysis
 description: Full multi-agent investment debate on a single Indian stock, at one of three depths — six lenses (technical; financials from a fetch-once data-pack of annual reports & concalls; management integrity & skill; valuation triangulating a story-driven DCF with relative multiples; news sentiment; sector context), then bull vs bear researchers debate, and a portfolio-manager issues the verdict, synthesized into one readable report. Use whenever the user asks to analyze, research, deep-dive, evaluate, or form a view on a specific ticker or company name ("should I buy X?", "what do you think of Tata Motors?"), even if they don't say "deep analysis".
 argument-hint: "TICKER (NSE symbol or company name) [--quick | --deep]"
-allowed-tools: WebFetch, Read, Write, Bash, Agent, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-data__*
+allowed-tools: Read, Write, Bash, Agent, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*
 ---
 
 # Deep Stock Analysis — multi-agent debate
 
-Read `references/reference.md` for the fundamental-analysis grounding, the three depth modes, and the debate protocol. Resolve the argument to an NSE symbol first (screener.in search if ambiguous).
+Read `references/reference.md` — it owns the shared fundamental method and the debate protocol. Resolve the argument to an NSE symbol first; `get_company_fundamentals` on the candidate symbol confirms the company name.
 
 ## Depth mode — resolve first
 

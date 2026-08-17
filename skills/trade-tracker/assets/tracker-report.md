@@ -29,6 +29,6 @@
 - {{SYMBOL}}: {{what was missing — no rationale artifact / no price data / fetch blocked}}
 
 ---
-*Verdicts from `validate_trade.py` (EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD), priority order. R = (price − entry)/(entry − stop).*
+*Verdicts from `check_trade` (EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD), priority order. R = (price − entry)/(entry − stop).*
 
 *This tool recommends; you place the order. No automated execution. Not investment advice — personal research tool.*
