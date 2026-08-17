@@ -72,7 +72,7 @@ MF rows come through the shared `finance/compute/holdings.py` resolver, **not** 
 python3 <plugin>/finance/compute/holdings.py --indmoney <ind.json> --mf-only
 ```
 
-Each row carries invested / current / XIRR. Cap-split comes from `networth_allocation_breakdown`. Run each held fund through the pillars above (or `quick` when the caller only needs the digest). If neither IndMoney nor a broker is connected, **say the personalised layer is unavailable and give the generic verdict** — never infer a holding.
+Each row carries invested / current / XIRR. Cap-split comes from the look-through (`get_stock_ratios.mrktCapRank`), never from a personal source's own breakdown field. Run each held fund through the pillars above (or `quick` when the caller only needs the digest). If neither IndMoney nor a broker is connected, **say the personalised layer is unavailable and give the generic verdict** — never infer a holding.
 
 ## Output
 

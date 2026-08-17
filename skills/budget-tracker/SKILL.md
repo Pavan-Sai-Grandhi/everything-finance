@@ -23,7 +23,7 @@ Two deterministic scripts do the categorization and recurring detection — call
 ## Step 1 — Parse statements
 
 - **CSV/XLSX**: parse directly with Python (pandas or csv stdlib). Bank exports vary; detect columns by header heuristics (date / narration / debit / credit / amount).
-- **PDF**: extract via `pdfplumber` (install if missing) or invoke the `pdf` skill for stubborn/scanned files. Password-protected bank PDFs: ask the user for the password convention (usually PAN/DOB combos) rather than guessing.
+- **PDF**: extract via `pdfplumber` (install if missing); if it yields no rows the statement is likely scanned, so ask for a CSV export rather than guessing at OCR. Password-protected bank PDFs: ask the user for the password convention (usually PAN/DOB combos) rather than guessing.
 - Normalize to one transaction table: `date, description, amount, direction, account`. De-duplicate CC-payment transfers between accounts so they're not counted as spend twice.
 - A corrupt/unreadable file or section → report which file/section failed, process the rest, never silently drop transactions.
 

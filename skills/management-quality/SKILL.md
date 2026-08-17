@@ -25,7 +25,6 @@ The evidence lives in disclosures, not opinions. Gather, in order:
    - **Board & KMP profiles** — qualification, sector experience, age (succession).
    - **MD&A over multiple years** — durable plans vs fad-chasing; were past plans executed?
    - **Impairments / goodwill write-offs** — owned honestly or rationalised away?
-   Use the `pdf` skill (via Skill) for extraction if a PDF resists direct reading.
 3. **Concall transcripts** — capital-allocation commentary, candour, dodged questions, succession.
 4. **Criminal / regulatory history** — `WebSearch` the company and promoter names with "scam / fraud / SEBI order / warning"; for IPOs read the **RHP** litigation section. Use only filings, the regulator, and well-known financial press.
 

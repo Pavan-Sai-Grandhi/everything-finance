@@ -14,8 +14,10 @@ Two provenance-honest input styles per dimension:
     summing each holding's market value; a missing tag lands in `unknown` and
     lowers that dimension's coverage.
   * pre-aggregated breakdown — `market_cap` and `style` arrive as category→₹ (or
-    →pct) dicts from IndMoney `networth_allocation_breakdown` / mf-analysis
-    look-through, because they are portfolio-level weights, not one tag per row.
+    →pct) dicts from the mf-analysis look-through, because they are portfolio-level
+    weights, not one tag per row. A cap tier is a classification, so it comes from
+    `get_stock_ratios.mrktCapRank` via that look-through, never from a personal
+    source's own breakdown field.
 
 Market value precedence per holding: explicit `value` → `qty*ltp` → `invested`
 → `qty*avg`. A holding that yields no value is dropped with a labelled gap
