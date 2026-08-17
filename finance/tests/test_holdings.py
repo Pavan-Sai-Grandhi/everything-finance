@@ -7,18 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import holdings
-
-PASS = FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
+from finance.tests.harness import check, run
 
 
 # --- captured sample payloads (shapes the skills hand off via temp files) --- #
@@ -212,13 +201,5 @@ def test_num_coercion():
     check("num: bool -> None", holdings._num(True) is None)
 
 
-def main():
-    for fn in sorted(g for g in globals() if g.startswith("test_")):
-        print(f"\n[{fn}]")
-        globals()[fn]()
-    print(f"\n{'='*48}\n{PASS} passed, {FAIL} failed")
-    sys.exit(1 if FAIL else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run(globals())

@@ -7,22 +7,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import ta
+from finance.tests.harness import check, run
 
 pd = ta.pd
 np = ta.np
-
-PASS = 0
-FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
 
 
 def frame(closes, highs=None, lows=None, opens=None, vols=None):
@@ -229,13 +217,5 @@ def test_add_indicators():
     check("add_indicators does not mutate input", "ema20" not in df.columns)
 
 
-def main():
-    for fn in sorted(g for g in globals() if g.startswith("test_")):
-        print(f"\n[{fn}]")
-        globals()[fn]()
-    print(f"\n{'='*48}\n{PASS} passed, {FAIL} failed")
-    sys.exit(1 if FAIL else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run(globals())

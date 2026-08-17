@@ -9,19 +9,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import fund_scan as S
-
-PASS = 0
-FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
+from finance.tests.harness import check, summary
 
 
 # --- percentile_ranks --------------------------------------------------------
@@ -214,5 +202,4 @@ with tempfile.TemporaryDirectory() as tmp:
     check("report with an empty shortlist carries the reason",
           env_empty["gaps"] == ["no fund cleared"], env_empty["gaps"])
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

@@ -5,7 +5,7 @@ Deterministic, no network — every rung runs against saved response fixtures wi
 module's own HTTP/scanner seams swapped out, mirroring test_prices.py /
 test_fundamentals.py / test_filings.py. Artifact roots are temp dirs, so a run never
 touches the user's real ./artifacts. Run:
-    python3 finance/tests/test_market.py    # exits 0 when all pass
+    python3 finance/tests/test_market.py
 """
 import atexit
 import contextlib
@@ -26,19 +26,7 @@ atexit.register(shutil.rmtree, _TMP_ROOT, True)
 from finance import paths  # noqa: E402
 from finance.sources import market  # noqa: E402
 from finance.sources import prices  # noqa: E402
-
-_passed = 0
-_failed = 0
-
-
-def check(name, cond, extra=""):
-    global _passed, _failed
-    if cond:
-        _passed += 1
-        print(f"  ok   {name}")
-    else:
-        _failed += 1
-        print(f"  FAIL {name} {extra}")
+from finance.tests.harness import check, run  # noqa: E402
 
 
 @contextlib.contextmanager
@@ -700,33 +688,25 @@ def test_f_coercion():
     check("_f keeps a negative", market._f("-3,000.00") == -3000.0)
 
 
-def main():
-    for fn in (test_parse_ind_close_csv, test_parse_ind_close_blank_pe_is_none_not_zero,
-               test_parse_ind_close_empty, test_canon,
-               test_month_ends, test_month_ends_ten_years, test_month_ends_on_the_first_of_a_month,
-               test_percentile,
-               test_indices_parses, test_indices_narrows_to_the_names_asked_for,
-               test_index_levels_defaults_to_the_broad_set,
-               test_indices_blocked_degrades, test_indices_empty_payload_gap,
-               test_index_snapshot_skips_weekends, test_index_snapshot_walks_back_over_a_holiday,
-               test_index_snapshot_cache_round_trip, test_index_snapshot_all_blocked,
-               test_valuation_history_offline, test_valuation_history_unknown_index,
-               test_valuation_percentiles_ranks_today_against_its_own_history,
-               test_valuation_percentiles_unpriced_field_is_none_not_zero,
-               test_valuation_percentiles_unknown_index_is_a_labelled_gap,
-               test_breadth_counts_and_denominators,
-               test_breadth_all_fields_missing_gives_empty_denominator,
-               test_breadth_no_rows_degrades,
-               test_flows_categorisation, test_flows_blocked_degrades,
-               test_macro_reduces_each_series_to_three_numbers,
-               test_macro_missing_history_is_a_labelled_gap,
-               test_day_cache_round_trip, test_day_cache_from_a_previous_day_is_ignored,
-               test_indices_cache_round_trip_through_the_public_rung,
-               test_envelope_shape, test_f_coercion):
-        fn()
-    print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
-    sys.exit(1 if _failed else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run((test_parse_ind_close_csv, test_parse_ind_close_blank_pe_is_none_not_zero,
+         test_parse_ind_close_empty, test_canon, test_month_ends,
+         test_month_ends_ten_years, test_month_ends_on_the_first_of_a_month,
+         test_percentile, test_indices_parses,
+         test_indices_narrows_to_the_names_asked_for,
+         test_index_levels_defaults_to_the_broad_set, test_indices_blocked_degrades,
+         test_indices_empty_payload_gap, test_index_snapshot_skips_weekends,
+         test_index_snapshot_walks_back_over_a_holiday,
+         test_index_snapshot_cache_round_trip, test_index_snapshot_all_blocked,
+         test_valuation_history_offline, test_valuation_history_unknown_index,
+         test_valuation_percentiles_ranks_today_against_its_own_history,
+         test_valuation_percentiles_unpriced_field_is_none_not_zero,
+         test_valuation_percentiles_unknown_index_is_a_labelled_gap,
+         test_breadth_counts_and_denominators,
+         test_breadth_all_fields_missing_gives_empty_denominator,
+         test_breadth_no_rows_degrades, test_flows_categorisation,
+         test_flows_blocked_degrades, test_macro_reduces_each_series_to_three_numbers,
+         test_macro_missing_history_is_a_labelled_gap, test_day_cache_round_trip,
+         test_day_cache_from_a_previous_day_is_ignored,
+         test_indices_cache_round_trip_through_the_public_rung, test_envelope_shape,
+         test_f_coercion))

@@ -7,20 +7,10 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))))
 import recurring as R  # noqa: E402
-
-PASS = 0
-FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
+from finance.tests.harness import check, summary  # noqa: E402
 
 
 def txn(date, desc, amount):
@@ -115,5 +105,4 @@ credits = [{"date": "2026-05-01", "description": "SALARY", "amount": 100000,
 res = R.detect(credits, as_of="2026-05-31")
 check("all-credit input yields no subscriptions", res["subscriptions"] == [], res)
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

@@ -14,19 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance import transport
-
-_passed = 0
-_failed = 0
-
-
-def check(name, cond, extra=""):
-    global _passed, _failed
-    if cond:
-        _passed += 1
-        print(f"  ok   {name}")
-    else:
-        _failed += 1
-        print(f"  FAIL {name} {extra}")
+from finance.tests.harness import check, run
 
 
 # --- host labelling: gaps must name where the failure happened -------------- #
@@ -128,17 +116,10 @@ def test_single_user_agent():
         check(f"{mod}.py declares no UA of its own", "_UA = (" not in src)
 
 
-def main():
-    for fn in (test_host_extraction, test_retry_classification,
-               test_unresolvable_host_returns_gap, test_request_never_raises_on_bad_input,
-               test_json_request_labels_non_json,
-               test_json_request_passes_through_upstream_gap,
-               test_json_request_parses_good_json, test_jar_path_uses_the_path_authority,
-               test_single_user_agent):
-        fn()
-    print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
-    sys.exit(1 if _failed else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run((test_host_extraction, test_retry_classification,
+            test_unresolvable_host_returns_gap, test_request_never_raises_on_bad_input,
+            test_json_request_labels_non_json,
+            test_json_request_passes_through_upstream_gap,
+            test_json_request_parses_good_json, test_jar_path_uses_the_path_authority,
+            test_single_user_agent))

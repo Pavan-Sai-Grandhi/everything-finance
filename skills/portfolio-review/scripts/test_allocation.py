@@ -6,19 +6,10 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))))
 import allocation  # noqa: E402
-
-PASS = FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
+from finance.tests.harness import check, summary  # noqa: E402
 
 
 # A ₹10,00,000 mixed book: a 15% single stock, an over-weight sector, a fund. --- #
@@ -137,5 +128,4 @@ check("review: total is ₹10L", rev["total"] == float(TOTAL))
 empty = allocation.review([])
 check("review: empty book ok", empty["total"] == 0.0 and empty["concentration_flags"] == [])
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

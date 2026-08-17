@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the look-through math. No network, no pytest. Run:
+"""Offline tests for the look-through math. No network. Run:
   python3 finance/tests/test_lookthrough.py
 
 Covers the three corrections that flipped real verdicts — rank-based cap classification,
@@ -13,23 +13,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import lookthrough as L
-
-PASS = 0
-FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
-
-
-def approx(a, b, tol=0.01):
-    return a is not None and abs(a - b) <= tol
+from finance.tests.harness import approx, check, summary
 
 
 # --- weighted harmonic: the correct P/E aggregation --------------------------
@@ -303,5 +287,4 @@ check("report below the publishable coverage floor is ok:false — a gap, not a 
       env_thin["ok"] is False and env_thin["data"]["confidence"] == "unusable",
       env_thin["data"]["confidence"])
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

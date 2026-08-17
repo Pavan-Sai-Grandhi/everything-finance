@@ -5,7 +5,7 @@ Deterministic, no network — every rung runs against saved response fixtures wi
 module's own curl/JSON seams swapped out, mirroring test_prices.py / test_fundamentals.py
 / test_market.py. Artifact roots are temp dirs, so a run never touches the user's real
 ./artifacts. Run:
-    python3 finance/tests/test_funds.py    # exits 0 when all pass
+    python3 finance/tests/test_funds.py
 """
 import atexit
 import contextlib
@@ -24,19 +24,7 @@ os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = os.path.join(_TMP_ROOT, "artifacts"
 atexit.register(shutil.rmtree, _TMP_ROOT, True)
 
 from finance.sources import funds  # noqa: E402
-
-_passed = 0
-_failed = 0
-
-
-def check(name, cond, extra=""):
-    global _passed, _failed
-    if cond:
-        _passed += 1
-        print(f"  ok   {name}")
-    else:
-        _failed += 1
-        print(f"  FAIL {name} {extra}")
+from finance.tests.harness import check, run  # noqa: E402
 
 
 @contextlib.contextmanager
@@ -764,33 +752,23 @@ def test_f_coercion():
     check("_f keeps a negative", funds._f("-0.9") == -0.9)
 
 
-def main():
-    for fn in (test_score_name_requires_every_query_token, test_score_name_prefers_direct_growth,
-               test_score_name_penalises_payout_plans, test_score_name_prefers_the_tighter_name,
-               test_amfi_index_parses, test_amfi_index_dash_isin_is_none,
-               test_amfi_index_blocked_degrades, test_amfi_index_unparseable_body_degrades,
-               test_resolve_prefers_direct_growth, test_resolve_regular_only_is_a_labelled_gap,
-               test_resolve_no_match_at_all,
-               test_screen_filters_subsector_and_option_client_side, test_screen_sorts_by_aum_desc,
-               test_screen_whole_universe_when_unfiltered, test_screen_strips_premium_fields,
-               test_screen_403_is_a_labelled_gap, test_screen_blocked_degrades,
-               test_screen_no_match_is_a_labelled_gap,
-               test_holdings_parses_the_full_book, test_holdings_equity_weight_and_sectors,
-               test_holdings_normal_book_is_silent,
-               test_holdings_low_equity_gap, test_holdings_blocked_degrades,
-               test_holdings_empty_allocation_degrades,
-               test_stock_ratios_parses, test_stock_ratios_unlisted_degrades,
-               test_enrich_priced_unpriced_split, test_enrich_fully_priced_book_raises_no_gap,
-               test_enrich_empty_input,
-               test_nav_history_dates_and_order, test_nav_history_blocked_degrades,
-               test_nav_history_empty_series_degrades,
-               test_cache_round_trip_and_ageing, test_cache_max_age,
-               test_holdings_cache_round_trip,
-               test_envelope_shape, test_f_coercion):
-        fn()
-    print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
-    sys.exit(1 if _failed else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run((test_score_name_requires_every_query_token, test_score_name_prefers_direct_growth,
+         test_score_name_penalises_payout_plans,
+         test_score_name_prefers_the_tighter_name, test_amfi_index_parses,
+         test_amfi_index_dash_isin_is_none, test_amfi_index_blocked_degrades,
+         test_amfi_index_unparseable_body_degrades, test_resolve_prefers_direct_growth,
+         test_resolve_regular_only_is_a_labelled_gap, test_resolve_no_match_at_all,
+         test_screen_filters_subsector_and_option_client_side,
+         test_screen_sorts_by_aum_desc, test_screen_whole_universe_when_unfiltered,
+         test_screen_strips_premium_fields, test_screen_403_is_a_labelled_gap,
+         test_screen_blocked_degrades, test_screen_no_match_is_a_labelled_gap,
+         test_holdings_parses_the_full_book, test_holdings_equity_weight_and_sectors,
+         test_holdings_normal_book_is_silent, test_holdings_low_equity_gap,
+         test_holdings_blocked_degrades, test_holdings_empty_allocation_degrades,
+         test_stock_ratios_parses, test_stock_ratios_unlisted_degrades,
+         test_enrich_priced_unpriced_split, test_enrich_fully_priced_book_raises_no_gap,
+         test_enrich_empty_input, test_nav_history_dates_and_order,
+         test_nav_history_blocked_degrades, test_nav_history_empty_series_degrades,
+         test_cache_round_trip_and_ageing, test_cache_max_age,
+         test_holdings_cache_round_trip, test_envelope_shape, test_f_coercion))

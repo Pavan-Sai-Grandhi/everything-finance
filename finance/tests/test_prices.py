@@ -3,26 +3,14 @@
 
 Deterministic, no network — the parsers and the reconcile decision run against saved
 response fixtures, mirroring test_filings.py / test_ta.py. Proves A6. Run:
-    python3 finance/tests/test_prices.py    # exits 0 when all pass
+    python3 finance/tests/test_prices.py
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.sources import prices
-
-_passed = 0
-_failed = 0
-
-
-def check(name, cond, extra=""):
-    global _passed, _failed
-    if cond:
-        _passed += 1
-        print(f"  ok  {name}")
-    else:
-        _failed += 1
-        print(f"  FAIL {name} {extra}")
+from finance.tests.harness import check, run
 
 
 # --- saved fixture: a TradingView scanner response (NSE:RELIANCE single-symbol scan) --- #
@@ -125,15 +113,8 @@ def test_norm():
     check("norm strips an exchange prefix", prices._norm("NSE:TCS") == "TCS")
 
 
-def main():
-    for fn in (test_parse_scan, test_parse_scan_empty, test_quote_body_no_auth,
-               test_screen_body_india_params, test_df_to_candles,
-               test_df_to_candles_multiindex, test_reconcile_decision,
-               test_envelope_shape, test_norm):
-        fn()
-    print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
-    sys.exit(1 if _failed else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run((test_parse_scan, test_parse_scan_empty, test_quote_body_no_auth,
+         test_screen_body_india_params, test_df_to_candles,
+         test_df_to_candles_multiindex, test_reconcile_decision, test_envelope_shape,
+         test_norm))

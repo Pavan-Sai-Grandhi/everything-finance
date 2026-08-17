@@ -6,24 +6,10 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))))
 import relval  # noqa: E402
-
-PASS = 0
-FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
-
-
-def approx(a, b, tol=0.01):
-    return a is not None and abs(a - b) <= tol
+from finance.tests.harness import approx, check, summary  # noqa: E402
 
 
 # --- median (not mean — multiples are skewed) --------------------------------
@@ -81,5 +67,4 @@ check("opposing signals cancel → fair", r["relative_stance"] == "fair", r)
 r = relval.relative_read({"pe": 18.0, "peer_pe": [24, 26, 28], "own_pe_history": [20, 22, 24]})
 check("missing growth → peg None, stance present", r["peg"] is None and "relative_stance" in r, r)
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

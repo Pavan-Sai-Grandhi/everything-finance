@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Offline tests for finance/spine.py — the primitives every data-spine fetcher shares.
 
-These assertions used to live in each fetcher's own test file, one copy per module. They
-belong here now: the coercion and cache rules have one implementation, so they get one
-test. The per-module tests still exercise the names the modules re-export.
+The coercion and cache rules have one implementation, so they get one test here; the
+per-module tests exercise the names those modules re-export.
 
 Run: python3 finance/tests/test_spine.py
 """
@@ -15,19 +14,7 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance import spine
-
-_passed = 0
-_failed = 0
-
-
-def check(name, cond, extra=""):
-    global _passed, _failed
-    if cond:
-        _passed += 1
-        print(f"  ok   {name}")
-    else:
-        _failed += 1
-        print(f"  FAIL {name} {extra}")
+from finance.tests.harness import check, run
 
 
 def test_envelope():
@@ -136,14 +123,6 @@ def test_cache_stamp_key_is_selectable():
     check("the wrong stamp key reads as a miss", spine.read_cache(p, False) is None)
 
 
-def main():
-    for fn in (test_envelope, test_f_coercion, test_first, test_norm_symbol,
-               test_cache_roundtrip, test_cache_never_blocks_a_fetch,
-               test_cache_stamp_key_is_selectable):
-        fn()
-    print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
-    sys.exit(1 if _failed else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run((test_envelope, test_f_coercion, test_first, test_norm_symbol, test_cache_roundtrip,
+         test_cache_never_blocks_a_fetch, test_cache_stamp_key_is_selectable))

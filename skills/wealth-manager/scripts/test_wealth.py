@@ -6,19 +6,10 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))))
 import wealth  # noqa: E402
-
-PASS = FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
+from finance.tests.harness import check, run  # noqa: E402
 
 
 # --- captured sample payloads (shapes the SKILL hands off via a temp file) --- #
@@ -234,8 +225,4 @@ def test_num_scale_suffixes():
 
 
 if __name__ == "__main__":
-    for name, fn in sorted(globals().items()):
-        if name.startswith("test_") and callable(fn):
-            fn()
-    print(f"\n{PASS} passed, {FAIL} failed")
-    sys.exit(1 if FAIL else 0)
+    run(globals())

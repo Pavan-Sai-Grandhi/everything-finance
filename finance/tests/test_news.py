@@ -4,26 +4,14 @@
 Deterministic, no network — the parsers, classifier, dedup and the ladder's degradation
 run against saved response fixtures, mirroring test_prices.py / test_filings.py / test_ta.py.
 Each test names the section-B acceptance criterion it proves. Run:
-    python3 finance/tests/test_news.py   # exits 0
+    python3 finance/tests/test_news.py
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.sources import news
-
-_passed = 0
-_failed = 0
-
-
-def check(name, cond, extra=""):
-    global _passed, _failed
-    if cond:
-        _passed += 1
-        print(f"  ok   {name}")
-    else:
-        _failed += 1
-        print(f"  FAIL {name} {extra}")
+from finance.tests.harness import check, run
 
 
 # --- saved fixture: a Google News RSS search response ----------------------- #
@@ -211,19 +199,11 @@ def test_envelope_shape():
 
 
 # --- B4 is this file passing: every test above runs offline on fixtures ----- #
-def main():
-    for fn in (test_B1_fetch_returns_envelope_with_items,
-               test_B2_items_dated, test_B2_items_classified, test_B2_items_tagged,
-               test_B2_items_deduped, test_B2_each_item_has_source,
-               test_B2_noise_filtered_from_default_view, test_B2_recency_window_drops_stale,
-               test_B2_publisher_tier_ranks_the_wire,
-               test_B2_every_item_carries_a_publisher_tier,
-               test_B3_blocked_source_returns_ok_false_with_gap,
-               test_parse_rss_fixture, test_envelope_shape):
-        fn()
-    print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
-    sys.exit(1 if _failed else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run((test_B1_fetch_returns_envelope_with_items, test_B2_items_dated,
+         test_B2_items_classified, test_B2_items_tagged, test_B2_items_deduped,
+         test_B2_each_item_has_source, test_B2_noise_filtered_from_default_view,
+         test_B2_recency_window_drops_stale, test_B2_publisher_tier_ranks_the_wire,
+         test_B2_every_item_carries_a_publisher_tier,
+         test_B3_blocked_source_returns_ok_false_with_gap, test_parse_rss_fixture,
+         test_envelope_shape))

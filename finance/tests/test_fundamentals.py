@@ -4,26 +4,14 @@
 Deterministic, no network — the screener.in parsers run against a saved page fixture,
 mirroring test_prices.py / test_news.py / test_filings.py / test_ta.py. Each test names the
 section-D acceptance criterion it proves. Run:
-    python3 finance/tests/test_fundamentals.py   # exits 0
+    python3 finance/tests/test_fundamentals.py
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.sources import fundamentals as fz
-
-_passed = 0
-_failed = 0
-
-
-def check(name, cond, extra=""):
-    global _passed, _failed
-    if cond:
-        _passed += 1
-        print(f"  ok   {name}")
-    else:
-        _failed += 1
-        print(f"  FAIL {name} {extra}")
+from finance.tests.harness import check, run
 
 
 # --- saved fixture: a trimmed screener.in consolidated company page --------- #
@@ -336,21 +324,12 @@ def test_envelope_shape():
 
 
 # --- D4 is this file passing: every test above runs offline on fixtures ----- #
-def main():
-    for fn in (test_D1_ratios, test_D1_pnl_10y, test_D1_balance_sheet_and_quarters,
-               test_D1_shareholding, test_D1_peers, test_D1_documents,
-               test_D2_screen_parses_candidates, test_D2_screen_envelope,
-               test_D3_no_html_in_data, test_fetch_envelope_offline,
-               test_fetch_all_blocked_degrades, test_fetch_sections_narrowing,
-               test_fetch_sections_on_a_blocked_page,
-               test_to_number, test_D1b_detects_logged_out_page,
-               test_D1b_does_not_misfire_on_real_results,
-               test_D1b_screen_distinguishes_the_two_failures,
-               test_envelope_shape):
-        fn()
-    print(f"\n{'=' * 48}\n{_passed} passed, {_failed} failed")
-    sys.exit(1 if _failed else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run((test_D1_ratios, test_D1_pnl_10y, test_D1_balance_sheet_and_quarters,
+         test_D1_shareholding, test_D1_peers, test_D1_documents,
+         test_D2_screen_parses_candidates, test_D2_screen_envelope,
+         test_D3_no_html_in_data, test_fetch_envelope_offline,
+         test_fetch_all_blocked_degrades, test_fetch_sections_narrowing,
+         test_fetch_sections_on_a_blocked_page, test_to_number,
+         test_D1b_detects_logged_out_page, test_D1b_does_not_misfire_on_real_results,
+         test_D1b_screen_distinguishes_the_two_failures, test_envelope_shape))

@@ -8,19 +8,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance import paths
-
-PASS = 0
-FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
+from finance.tests.harness import check, summary
 
 
 def _clean_env():
@@ -146,5 +134,4 @@ with tempfile.TemporaryDirectory() as tmp:
           paths.latest_prior("dcf", "INFY", before="2026-06-01") ==
           os.path.join(dd, "dcf.md"))
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

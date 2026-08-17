@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Offline test harness for finance/compute/trade_check.py."""
+"""Offline tests for finance/compute/trade_check.py. No network.
+Run: python3 finance/tests/test_trade_check.py
+"""
 import json, os, subprocess, sys, tempfile, textwrap
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+from finance.tests.harness import check, summary
+
 MODULE = "finance.compute.trade_check"
 D = tempfile.mkdtemp()
 
@@ -72,19 +77,6 @@ TRADE_LONG = textwrap.dedent("""\
       entry_basis: test
     sizing: {capital: 500000, risk_per_trade_pct: 1.0, qty: 50}
     """)
-
-PASS, FAIL = 0, 0
-
-
-def check(label, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  PASS  {label}")
-    else:
-        FAIL += 1
-        print(f"  FAIL  {label}  {detail}")
-
 
 # ---- 1. HOLD: flat at 100, recently entered (5 sessions) -> nothing triggers ----
 t = write("long.yml", TRADE_LONG)
@@ -193,7 +185,6 @@ out, rc = run(ts, c)
 check("SHORT stop precedence over thesis", out["verdict"] == "EXIT_STOP", out["verdict"])
 
 # ---- 9. check(): the envelope the tool layer returns ----
-sys.path.insert(0, ROOT)
 from finance.compute import trade_check as tc  # noqa: E402
 
 flat = bars_to_csv("envelope.csv", [100] * 60)
@@ -217,5 +208,4 @@ check("no price data is a labelled gap, not a fabricated verdict",
       env_nodata["ok"] is False
       and any("no price data" in g for g in env_nodata["gaps"]), env_nodata["gaps"])
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

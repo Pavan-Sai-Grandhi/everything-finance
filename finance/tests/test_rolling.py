@@ -11,23 +11,7 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import rolling as R
-
-PASS = 0
-FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
-
-
-def approx(a, b, tol=0.05):
-    return a is not None and abs(a - b) <= tol
+from finance.tests.harness import approx, check, summary
 
 
 def expo(rate, years, start=date(2016, 1, 1), nav0=100.0):
@@ -45,16 +29,18 @@ def expo(rate, years, start=date(2016, 1, 1), nav0=100.0):
 d10, n10 = expo(0.10, 6)
 for label, yrs in (("1y", 1), ("3y", 3), ("5y", 5)):
     s = R.rolling_stats(R.rolling_returns(d10, n10, yrs))
-    check(f"{label} rolling mean = 10.0 on a 10%/yr series", approx(s["mean"], 10.0), s)
-    check(f"{label} rolling min = mean on a constant-rate series", approx(s["min"], 10.0), s)
+    check(f"{label} rolling mean = 10.0 on a 10%/yr series", approx(s["mean"], 10.0, tol=0.05), s)
+    check(f"{label} rolling min = mean on a constant-rate series",
+          approx(s["min"], 10.0, tol=0.05), s)
 
 # --- point-to-point CAGR matches the known rate ------------------------------
-check("point-to-point 5Y CAGR = 10.0", approx(R.trailing_cagr(d10, n10, 5), 10.0))
-check("point-to-point 1Y CAGR = 10.0", approx(R.trailing_cagr(d10, n10, 1), 10.0))
+check("point-to-point 5Y CAGR = 10.0", approx(R.trailing_cagr(d10, n10, 5), 10.0, tol=0.05))
+check("point-to-point 1Y CAGR = 10.0", approx(R.trailing_cagr(d10, n10, 1), 10.0, tol=0.05))
 
 # --- max drawdown on a hand series -------------------------------------------
-check("max drawdown 100→120→90→130 = 25%", approx(R.max_drawdown([100, 120, 90, 130]), 25.0))
-check("max drawdown monotonic-up series = 0", approx(R.max_drawdown(n10), 0.0))
+check("max drawdown 100→120→90→130 = 25%",
+      approx(R.max_drawdown([100, 120, 90, 130]), 25.0, tol=0.05))
+check("max drawdown monotonic-up series = 0", approx(R.max_drawdown(n10), 0.0, tol=0.05))
 check("max drawdown <2 points → None", R.max_drawdown([100]) is None)
 
 # --- Sharpe on a hand series (rf 6%) -----------------------------------------
@@ -67,9 +53,9 @@ d12, n12 = expo(0.12, 6)
 fund = R.rolling_returns(d12, n12, 1)
 bench = R.rolling_returns(d10, n10, 1)
 check("12% fund beats 10% benchmark in 100% of aligned windows",
-      approx(R.pct_beating(fund, bench), 100.0))
+      approx(R.pct_beating(fund, bench), 100.0, tol=0.05))
 check("10% fund beats 12% benchmark in 0% of aligned windows",
-      approx(R.pct_beating(bench, fund), 0.0))
+      approx(R.pct_beating(bench, fund), 0.0, tol=0.05))
 check("pct_beating None when windows don't align",
       R.pct_beating({"2020-01-01": 12.0}, {"2021-01-01": 10.0}) is None)
 
@@ -94,7 +80,6 @@ check("parse_mfapi sorts ascending and drops bad rows",
 # --- analyze integrates benchmark alignment ----------------------------------
 rep2 = R.analyze(d12, n12, bench=(d10, n10))
 check("analyze reports pct_beating_benchmark on 1Y",
-      approx(rep2["rolling_returns"]["1y"]["pct_beating_benchmark"], 100.0))
+      approx(rep2["rolling_returns"]["1y"]["pct_beating_benchmark"], 100.0, tol=0.05))
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

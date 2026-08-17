@@ -9,19 +9,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import context as mc
-
-PASS = 0
-FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
+from finance.tests.harness import check, summary
 
 
 # --- classify_trend: the taxonomy strategy specs are validated against ------------
@@ -198,5 +186,4 @@ check("frozen: breadth.pct_sectors_above_ema50",
 check("posture key is market_posture (wealth owns risk_posture)",
       "market_posture" in ctx and "risk_posture" not in ctx)
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()

@@ -7,19 +7,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import screen
+from finance.tests.harness import check, run
 
 pd = screen.pd
-PASS = FAIL = 0
-
-
-def check(name, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  ok  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}  {detail}")
 
 
 def row(**kw):
@@ -241,13 +231,5 @@ def test_run_unwritable_report_is_a_gap_not_a_crash():
           len(env["data"]["candidates"]) == 1)
 
 
-def main():
-    for fn in sorted(g for g in globals() if g.startswith("test_")):
-        print(f"\n[{fn}]")
-        globals()[fn]()
-    print(f"\n{'='*48}\n{PASS} passed, {FAIL} failed")
-    sys.exit(1 if FAIL else 0)
-
-
 if __name__ == "__main__":
-    main()
+    run(globals())

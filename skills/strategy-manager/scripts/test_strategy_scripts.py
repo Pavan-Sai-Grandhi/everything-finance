@@ -5,15 +5,9 @@ import json, os, subprocess, sys, tempfile, textwrap
 BASE = os.path.dirname(os.path.abspath(__file__))
 SELECT = f"{BASE}/select_strategy.py"
 AGG = f"{BASE}/aggregate_performance.py"
-PASS = FAIL = 0
 
-
-def check(label, cond, detail=""):
-    global PASS, FAIL
-    if cond:
-        PASS += 1; print(f"  PASS  {label}")
-    else:
-        FAIL += 1; print(f"  FAIL  {label}  {detail}")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(BASE))))
+from finance.tests.harness import check, summary  # noqa: E402
 
 
 def w(path, content):
@@ -174,5 +168,4 @@ check("deactivated_reason recorded",
 check("live_performance written",
       updated["live_performance"]["trades_closed"] == 12, updated.get("live_performance"))
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+summary()
