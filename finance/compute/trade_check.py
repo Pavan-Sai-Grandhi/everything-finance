@@ -22,17 +22,15 @@ testing). Actual broker fill can be injected with --entry / --qty / --ltp so the
 reflects the real position, not the planned one.
 
 Usage:
-  python3 validate_trade.py --trade artifacts/state/trades/TITAN-2026-06-11.yml
-  python3 validate_trade.py --trade t.yml --ohlcv bars.csv --ltp 3650 --entry 3300 --qty 41
+  python3 -m finance.compute.trade_check --trade artifacts/state/trades/TITAN-2026-06-11.yml
+  python3 -m finance.compute.trade_check --trade t.yml --ohlcv bars.csv --ltp 3650 --entry 3300 --qty 41
 Exit code: 0 = HOLD, 10 = an EXIT_* verdict, 2 = error.
 """
 import argparse, json, os, re, sys
 from datetime import date, datetime
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-                   os.path.dirname(os.path.abspath(__file__))))))
-from finance.deps import load_yaml  # noqa: E402
-from finance.sources import prices  # noqa: E402  (data spine — EOD history fetch in one place)
+from finance.deps import load_yaml
+from finance.sources import prices  # data spine — EOD history fetch in one place
 
 def load_ohlcv_csv(path):
     """CSV with header Date,Open,High,Low,Close,Volume -> list of dict rows (floats)."""

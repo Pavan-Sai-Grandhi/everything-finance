@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Offline tests for the look-through math. No network, no pytest. Run:
-  python3 skills/mf-analysis/scripts/test_lookthrough.py
+  python3 finance/tests/test_lookthrough.py
 
 Covers the three corrections that flipped real verdicts — rank-based cap classification,
 the coverage gate that withholds rather than annotates, and harmonic (not arithmetic)
@@ -11,8 +11,8 @@ import os
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lookthrough as L  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import lookthrough as L
 
 PASS = 0
 FAIL = 0

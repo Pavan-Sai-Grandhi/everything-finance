@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Offline tests for the category scanner's pure logic. No network.
-Run: python3 skills/mf-analysis/scripts/test_scanner.py
+Run: python3 finance/tests/test_fund_scan.py
 """
 import json
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import scanner as S  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import fund_scan as S
 
 PASS = 0
 FAIL = 0

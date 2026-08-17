@@ -3,7 +3,7 @@
 
 The ONE place a strategy spec becomes trade logic (`ta.py` turns OHLCV into
 columns; this turns spec + columns into entries/stops/targets/size). The live
-screen (find-trade/screen.py, latest bar) and the backtest (backtest/backtest.py,
+screen (`screen.py`, latest bar) and the backtest (`backtest.py`,
 every bar) both sit on it, so they can't disagree about what a strategy means —
 which is what makes the backtest strategy-agnostic.
 
@@ -14,7 +14,7 @@ Two halves:
      a Backtesting.py Strategy class driven entirely by the spec.
 
 Pure/deterministic except build_bt_strategy (imports Backtesting.py); the filter
-language and signal math are unit-tested offline (find-trade/test_screen.py).
+language and signal math are unit-tested offline (`finance/tests/test_screen.py`).
 """
 from __future__ import annotations
 

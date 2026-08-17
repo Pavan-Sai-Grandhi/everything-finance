@@ -10,7 +10,7 @@ normalization.
 MCP boundary: this module runs in script context and CANNOT call MCP tools. The
 calling skill invokes the MCP tool, writes the raw payload to a temp file
 (`paths.tmp_dir(...)`), and passes the path here — the same file-handoff pattern
-`validate_trade.py` uses. See `finance/contracts.md`.
+`trade_check.py` uses. See `finance/contracts.md`.
 
 Every resolve returns the shared data-spine envelope:
   { "ok": bool, "source": str|None, "fetched_at": ISO8601,

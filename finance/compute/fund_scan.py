@@ -34,26 +34,20 @@ THE GATES (hard, applied before any scoring — Varsity ch. 24-26)
    checked by hand for the shortlist only (never for the whole universe).
 
 CLI:
-  python3 scanner.py --category "Small Cap Fund" --top 5
-  python3 scanner.py --category "Mid Cap Fund" --window 5y --min-aum 1000 --json
-  python3 scanner.py --category "Small Cap Fund" --market-context artifacts/market-analysis/2026-08-16.json
+  python3 -m finance.compute.fund_scan --category "Small Cap Fund" --top 5
+  python3 -m finance.compute.fund_scan --category "Mid Cap Fund" --window 5y --min-aum 1000 --json
+  python3 -m finance.compute.fund_scan --category "Small Cap Fund" --market-context artifacts/market-analysis/2026-08-16.json
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-                   os.path.dirname(os.path.abspath(__file__))))))
-
-import rolling as R  # noqa: E402  (the tested rolling-return math, shared with pillar 1)
-from finance.spine import f as _f  # noqa: E402  (the one scraped-cell -> float coercion)
+from finance.compute import rolling as R  # the tested rolling-return math, shared with pillar 1
+from finance.spine import f as _f         # the one scraped-cell -> float coercion
 
 # --------------------------------------------------------------------------- #
 # the published scoring contract                                              #
@@ -330,7 +324,7 @@ def category_config(category):
 
 def _resolve_and_nav(row, schemes, window_years, fresh):
     """One fund: AMFI identity + NAV history + the NAV-derived metrics."""
-    import funds  # noqa: E402  (imported inside the worker; module-level import is cached)
+    from finance.sources import funds  # imported inside the worker; module-level import is cached
     hit = match_amfi_scheme(row.get("name") or "", schemes)
     if not hit:
         return None, None, ["no AMFI Direct-Growth scheme matched this name"]
@@ -344,7 +338,7 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
          min_age_months=None, agility_ceiling_cr=None, ter_ceiling=DIRECT_TER_CEILING,
          workers=8, fresh=False, market_context=None):
     """The whole pipeline: universe -> hard gates -> NAV compute -> composite -> top N."""
-    import funds  # noqa: E402
+    from finance.sources import funds
 
     cfg = category_config(category)
     if agility_ceiling_cr:
@@ -621,7 +615,7 @@ def _cell(v, suffix="", nd=1):
 
 
 def default_out_path(category):
-    import paths  # noqa: E402  (the single path authority)
+    from finance import paths  # the single path authority
     return os.path.join(paths.fund_dir(f"{category} scan"), "scanner.json")
 
 

@@ -23,7 +23,7 @@ Five rungs:
   * `nav_history()`  -> mfapi.in daily NAV series for the rolling-return math.
 
 This module FETCHES ONLY — no grade, no verdict, no weighted aggregation. Turning
-holdings into portfolio ratios is `skills/mf-analysis/scripts/lookthrough.py`'s job, the
+holdings into portfolio ratios is `finance/compute/lookthrough.py`'s job, the
 same separation `prices.py` keeps from `ta.py`.
 
 Every fetch returns the shared data-spine envelope:

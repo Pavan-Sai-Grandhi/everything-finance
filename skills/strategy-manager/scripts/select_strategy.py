@@ -82,8 +82,7 @@ def main():
     except Exception as e:
         print(json.dumps({
             "error": f"cannot read market context: {e}",
-            "hint": "run: python3 skills/market-analysis/scripts/market_context.py "
-                    "--mode quick",
+            "hint": "run: python3 -m finance.compute.context --mode quick",
         })); sys.exit(2)
 
     files = sorted(glob.glob(os.path.join(args.strategies, "*.yml"))

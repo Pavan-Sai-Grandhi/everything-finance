@@ -36,6 +36,7 @@ if _ROOT not in sys.path:
 
 from finance import paths as _paths  # noqa: E402
 from finance import spine as _spine  # noqa: E402
+from finance.compute import context as _context  # noqa: E402
 from finance.sources import filings as _filings  # noqa: E402
 from finance.sources import fundamentals as _fundamentals  # noqa: E402
 from finance.sources import funds as _funds  # noqa: E402
@@ -214,12 +215,7 @@ def get_macro(period: str = "5y") -> dict:
                 "mode: quick (reuse today's artifact) | standard | deep."
 )
 def get_market_context(mode: str = "quick", years: int = 10) -> dict:
-    _mc_scripts = os.path.join(os.path.dirname(_HERE), "skills",
-                               "market-analysis", "scripts")
-    if _mc_scripts not in sys.path:
-        sys.path.insert(0, _mc_scripts)
-    import market_context  # noqa: PLC0415
-    ctx = market_context.compute(mode=mode, years=years)
+    ctx = _context.compute(mode=mode, years=years)
     # Structured fields ship alongside the prose digest so a caller can branch without
     # parsing it. `fetched_at` is the context's own as-of, not now: it is a daily artifact.
     return {
@@ -227,7 +223,7 @@ def get_market_context(mode: str = "quick", years: int = 10) -> dict:
         "source": "market-analysis",
         "fetched_at": ctx.get("as_of"),
         "data": {
-            "digest": market_context.digest(ctx),
+            "digest": _context.digest(ctx),
             "as_of": ctx.get("as_of"),
             "market_trend": ctx.get("market_trend"),
             "market_posture": ctx.get("market_posture"),

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Offline tests for the find-trade screen engine. No network.
-Run: python3 skills/find-trade/scripts/test_screen.py
+Run: python3 finance/tests/test_screen.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import screen  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import screen
 
 pd = screen.pd
 PASS = FAIL = 0

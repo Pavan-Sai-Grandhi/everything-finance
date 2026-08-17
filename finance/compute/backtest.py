@@ -13,10 +13,10 @@ Indicators come from TA-Lib via finance/compute/ta.py. Commission is charged per
 the round trip ~= 0.25% all-in (charges + slippage).
 
 Usage:
-  python3 backtest.py --spec artifacts/state/strategies/ema-pullback-swing.yml \
+  python3 -m finance.compute.backtest --spec artifacts/state/strategies/ema-pullback-swing.yml \
       --symbols RELIANCE,TCS --years 5 --capital 500000
   # --out defaults to artifacts/backtest/<spec>/<today>/report
-  python3 backtest.py --selftest        # synthetic data, no network
+  python3 -m finance.compute.backtest --selftest        # synthetic data, no network
 """
 
 import argparse
@@ -27,11 +27,9 @@ from datetime import date
 
 # Shared engine: finance/compute/ta.py (indicators) + finance/compute/strategy.py
 # (spec -> signals) + finance/paths.py (artifact locations).
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-                   os.path.dirname(os.path.abspath(__file__))))))
-from finance import paths  # noqa: E402
-from finance.compute import strategy  # noqa: E402
-from finance.compute import ta  # noqa: E402
+from finance import paths
+from finance.compute import strategy
+from finance.compute import ta
 
 pd = ta.pd
 

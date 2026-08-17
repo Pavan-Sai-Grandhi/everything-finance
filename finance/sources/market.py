@@ -24,7 +24,7 @@ Five rungs, each on its cheapest verified path:
 
 This module FETCHES ONLY. It classifies nothing: no regime label, no "expensive/cheap"
 verdict, no score. Turning these series into a market read is
-`skills/market-analysis/scripts/market_context.py`'s single job — the same separation
+`finance/compute/context.py`'s single job — the same separation
 `prices.py` (candles) keeps from `ta.py` (indicators), so there is one market-of-record.
 The one exception is `percentile()`, a pure ranking primitive with no opinion in it.
 

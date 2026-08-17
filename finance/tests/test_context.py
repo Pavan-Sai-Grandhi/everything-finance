@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Offline tests for the market-of-record's pure logic. No network. Each test runs in a
 temp artifacts root so it never touches a real workspace.
-Run: python3 skills/market-analysis/scripts/test_market_context.py
+Run: python3 finance/tests/test_context.py
 """
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import market_context as mc  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import context as mc
 
 PASS = 0
 FAIL = 0

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Offline test harness for trade-tracker/scripts/validate_trade.py."""
+"""Offline test harness for finance/compute/trade_check.py."""
 import json, os, subprocess, sys, tempfile, textwrap
 
-SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "validate_trade.py")
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+MODULE = "finance.compute.trade_check"
 D = tempfile.mkdtemp()
 
 
@@ -22,12 +23,12 @@ def csv(name, bars):
 
 
 def run(trade, ohlcv=None, extra=None):
-    cmd = [sys.executable, SCRIPT, "--trade", trade]
+    cmd = [sys.executable, "-m", MODULE, "--trade", trade]
     if ohlcv:
         cmd += ["--ohlcv", ohlcv]
     if extra:
         cmd += extra
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
     try:
         out = json.loads(r.stdout)
     except json.JSONDecodeError:

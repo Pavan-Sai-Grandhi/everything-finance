@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Offline tests for the rolling-return math (spec §2, §8). No network. Run:
-  python3 skills/mf-analysis/scripts/test_rolling.py
+  python3 finance/tests/test_rolling.py
 
 Validated against a *known* NAV series: exact exponential growth at rate r makes every
 daily-rolled annualised return equal r, so mean = median = min = r — a clean oracle.
@@ -9,8 +9,8 @@ import os
 import sys
 from datetime import date, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import rolling as R  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import rolling as R
 
 PASS = 0
 FAIL = 0

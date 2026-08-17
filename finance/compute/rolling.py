@@ -12,7 +12,7 @@ All figures derive from the cached mfapi.in NAV JSON — nothing fetched here (t
 caches the series first). The math core is pure and offline-tested (`test_rolling.py`).
 
 CLI:
-  python3 rolling.py --navs fund.json [benchmark.json]   # first = subject, second = benchmark
+  python3 -m finance.compute.rolling --navs fund.json [benchmark.json]   # first = subject, second = benchmark
 """
 from __future__ import annotations
 

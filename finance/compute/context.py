@@ -38,9 +38,9 @@ MODES
             + the per-sector valuation table.
 
 CLI:
-  python3 market_context.py --mode standard
-  python3 market_context.py --mode quick --format digest
-  python3 market_context.py --mode deep --format json
+  python3 -m finance.compute.context --mode standard
+  python3 -m finance.compute.context --mode quick --format digest
+  python3 -m finance.compute.context --mode deep --format json
 """
 from __future__ import annotations
 
@@ -51,12 +51,10 @@ import statistics
 import sys
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-                   os.path.dirname(os.path.abspath(__file__))))))
-from finance import paths  # noqa: E402                — the single path authority
-from finance.compute import ta  # noqa: E402           — the indicator-of-record (TA-Lib)
-from finance.sources import market  # noqa: E402       — the market-wide data spine
-from finance.sources import prices  # noqa: E402       — EOD history
+from finance import paths                 # the single path authority
+from finance.compute import ta            # the indicator-of-record (TA-Lib)
+from finance.sources import market        # the market-wide data spine
+from finance.sources import prices        # EOD history
 
 NIFTY = "^NSEI"
 

@@ -36,20 +36,17 @@ The math core is pure and offline-tested (`test_lookthrough.py`); only `load_fun
 touches the network. Uncovered weight is reported, never extrapolated.
 
 CLI:
-  python3 lookthrough.py --fund M_NIMS                  # the default, honest path
-  python3 lookthrough.py --fund M_NIMS --fresh --out lt.json
-  python3 lookthrough.py --holdings rows.json           # offline/testing hatch
+  python3 -m finance.compute.lookthrough --fund M_NIMS                  # the default, honest path
+  python3 -m finance.compute.lookthrough --fund M_NIMS --fresh --out lt.json
+  python3 -m finance.compute.lookthrough --holdings rows.json           # offline/testing hatch
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-                   os.path.dirname(os.path.abspath(__file__))))))
-from finance.spine import f as _num, first as _first  # noqa: E402  (the shared coercions)
+from finance.spine import f as _num, first as _first  # the shared coercions
 
 # --------------------------------------------------------------------------- #
 # gates and thresholds — the tuned constants, in one place                     #
@@ -428,7 +425,7 @@ def load_fund(mf_id, fresh=False, workers=10):
     Returns (holdings, equity_weight, gaps, meta). This is the ONLY network code in the
     file; everything above it is pure and offline-tested.
     """
-    import funds  # noqa: E402  (deferred: the pure math core must not need the fetchers)
+    from finance.sources import funds  # deferred: the pure math core must not need the fetchers
 
     env = funds.holdings(mf_id, fresh=fresh)
     gaps = list(env.get("gaps") or [])
@@ -480,7 +477,7 @@ def enrich_file_rows(rows, fresh=False, workers=10):
     whatever ratios they were given and stay unpriced otherwise."""
     if not any(r.get("sid") for r in rows):
         return rows, []
-    import funds  # noqa: E402
+    from finance.sources import funds
 
     for r in rows:
         r.setdefault("type", "Equity")

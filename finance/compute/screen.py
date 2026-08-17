@@ -17,9 +17,9 @@ The evaluator + signal math live in `finance/compute/strategy.py`, shared verbat
 backtest; this file is just the live-screen orchestration around it.
 
 Usage:
-  python3 screen.py --spec <strategy>.yml --symbols RELIANCE,TCS[,...] \
+  python3 -m finance.compute.screen --spec <strategy>.yml --symbols RELIANCE,TCS[,...] \
       --capital 500000 --years 2 --out artifacts/find-trade/2026-06-12.json
-  python3 screen.py --selftest         # synthetic data, no network
+  python3 -m finance.compute.screen --selftest         # synthetic data, no network
 """
 from __future__ import annotations
 
@@ -29,12 +29,10 @@ import os
 import sys
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-                   os.path.dirname(os.path.abspath(__file__))))))
-from finance import paths  # noqa: E402
-from finance.compute import strategy  # noqa: E402
-from finance.compute import ta  # noqa: E402
-from finance.sources import prices  # noqa: E402  (data spine — EOD history; indicators via ta.py)
+from finance import paths
+from finance.compute import strategy
+from finance.compute import ta
+from finance.sources import prices  # data spine — EOD history; indicators via ta.py
 
 pd = ta.pd
 
