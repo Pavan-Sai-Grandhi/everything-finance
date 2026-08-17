@@ -5,7 +5,7 @@ Grounded in Zerodha Varsity — Personal Finance module (https://zerodha.com/var
 ## Returns: the Varsity hierarchy
 
 - **Point-to-point returns lie** — they depend entirely on the two endpoints. A fund can show a great 5Y CAGR purely because the start date was a crash bottom.
-- **Rolling returns are the standard**: roll a 1/3/5-year window daily across the full NAV history. Report mean, median, min, and consistency (% of windows above benchmark). A fund whose *minimum* 5Y rolling return is positive has never lost money for any 5-year holder — that's the kind of statement this analysis should produce.
+- **Rolling returns are the standard**: roll a 1/3/5-year window daily across the full NAV history. Report mean, median and min — the distribution of what a holder actually earned, and how many windows it rests on. A fund whose *minimum* 5Y rolling return is positive has never lost money for any 5-year holder — that's the kind of statement this analysis should produce.
 - CAGR for periods > 1 year; absolute returns only for < 1 year.
 
 ## Risk & quality metrics (ch. 18–23)
@@ -36,9 +36,7 @@ Everything above measures the *past*. Trailing/rolling returns are backward-look
 
 ### Look-through valuation
 
-A fund's portfolio P/E-P/B is published nowhere, so compute it from the underlying stocks' ratios via `scripts/lookthrough.py`, sourcing the **complete** holdings list through `lib/funds.py`.
-
-Holdings never come from a personal MCP (IndMoney / broker), whose truncated, stale lists make every look-through ratio describe a different fund — CLAUDE.md rule 3 has the measured detail.
+A fund's portfolio P/E-P/B is published nowhere, so `get_fund_lookthrough` computes it from the underlying stocks' ratios over the **complete** holdings list.
 
 - **Aggregation is not averaging.** Portfolio P/E and P/B aggregate by the **weighted harmonic mean** — you sum earnings/book *yields* across holdings, then invert — because multiples don't add. ROE and earnings growth use the weighted arithmetic mean.
 - **Coverage is a gate.** Report the % of AUM priced and **withhold the ratio below ~85%** (see § Coverage is a gate).
@@ -64,7 +62,7 @@ The verdict is a forward-leaning **fund-quality grade** (Hold-worthy / Watch / A
 
 ### Cap classification — by rank, never by rupees
 
-SEBI defines the tiers by **market-cap rank**: top 100 large, 101-250 mid, 251+ small. Classify holdings that way (`cap_rank` from `lib/funds.py`), never by absolute ₹Cr bands. The bands are not merely imprecise — they are systematically wrong in the direction that matters, because a small-cap fund's *largest* holdings are by construction its biggest names. Applied to a real small-cap fund the bands reported **0% small-cap** (true figure: 67%) and invented a 19% large-cap "drift" that did not exist (true figure: 0%).
+SEBI defines the tiers by **market-cap rank**: top 100 large, 101-250 mid, 251+ small. Classify holdings that way (the rank `get_stock_ratios` publishes as `mrktCapRank`), never by absolute ₹Cr bands. The bands are not merely imprecise — they are systematically wrong in the direction that matters, because a small-cap fund's *largest* holdings are by construction its biggest names. Applied to a real small-cap fund the bands reported **0% small-cap** (true figure: 67%) and invented a 19% large-cap "drift" that did not exist (true figure: 0%).
 
 ### Coverage is a gate, not a footnote
 

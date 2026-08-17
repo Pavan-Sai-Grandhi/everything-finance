@@ -14,7 +14,7 @@
 - Lagging today: {{BOTTOM_SECTORS}}
 
 ## ⏰ Alerts & actions
-<!-- From lib/alerts.py. Lead with severity:act. Fired = cheap trigger breached today; Due = date-based; Check = needs a skill run (print the suggested command, never auto-run). Omit a bucket if empty; "No open alerts." if all empty. -->
+<!-- From the alert inbox. Lead with severity:act. Fired = cheap trigger breached today; Due = date-based; Check = needs a skill run (print the suggested command, never auto-run). Omit a bucket if empty; "No open alerts." if all empty. -->
 - {{ALERT_LINE}}  <!-- e.g. "🔴 [act] RELIANCE close < 1450 — stop hit → /trade-tracker RELIANCE" -->
 
 ## Opportunities

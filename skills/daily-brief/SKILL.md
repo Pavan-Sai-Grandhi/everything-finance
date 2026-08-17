@@ -2,7 +2,7 @@
 name: daily-brief
 description: Morning market one-pager — index levels and tone, a market-moving news digest, sector leaders/laggards, the open-alert inbox and any actions due, a strictly-capped opportunities shortlist, watchlist filings and news, and open-position health — formatted for Telegram. Use when the user asks for the daily brief, morning summary, "what's the market doing", "anything I should know today", or wants a pre-market/post-market rundown.
 argument-hint: "[optional: 'send' to push to Telegram immediately]"
-allowed-tools: WebFetch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-data__*
+allowed-tools: Read, Write, Bash, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*
 disable-model-invocation: false
 ---
 
@@ -10,13 +10,13 @@ disable-model-invocation: false
 
 A fast composite — breadth over depth; every section is 2–4 lines. Target: readable in 60 seconds on a phone.
 
-**Sources for this skill only:** the `finance-data` tools — `get_market_context` / `get_indices` / `get_flows` (market state), `get_news` (`India stock market` for the market digest; `<company> share` per name), `get_filings` (NSE announcements + materiality), screener.in (watchlist company pages) — plus `lib/alerts.py` (the alert inbox) and live holdings via the shared `lib/holdings.py` resolver (**IndMoney** first, **broker MCP** Kite/Upstox fallback). Method specifics live in this skill's `references/reference.md`.
+**Sources for this skill only:** `finance-market` — `get_market_context` / `get_indices` / `get_flows` (market state); `finance-company` — `get_news` (`India stock market` for the market digest; `<company> share` per name) and `get_filings` (NSE announcements + materiality); plus `finance/compute/alerts.py` (the alert inbox) and live holdings through the shared `finance/compute/holdings.py` resolver (**IndMoney** first, **broker MCP** Kite/Upstox fallback). Method specifics live in this skill's `references/reference.md`.
 
 ## Inputs
 
-- **Live holdings (preferred) — via `lib/holdings.py`.** Source the real book through the shared resolver, precedence **IndMoney → broker → watchlist positions**. IndMoney (`mcp__indmoney__*`) is net worth across asset classes; the broker MCPs (`mcp__kite__*` = Zerodha, `mcp__upstox__*` = Upstox) are the equity fallback. The resolver runs in script context and cannot call MCP tools, so the **handoff is**: for each connected source, invoke its holdings tool (IndMoney `networth_holdings`; broker holdings + positions), **write the raw payload to a temp file** under `paths.tmp_dir("holdings")`, then resolve and take the equity slice:
+- **Live holdings (preferred) — via `finance/compute/holdings.py`.** Source the real book through the shared resolver, precedence **IndMoney → broker → watchlist positions**. IndMoney (`mcp__indmoney__*`) is net worth across asset classes; the broker MCPs (`mcp__kite__*` = Zerodha, `mcp__upstox__*` = Upstox) are the equity fallback. The resolver runs in script context and cannot call MCP tools, so the **handoff is**: for each connected source, invoke its holdings tool (IndMoney `networth_holdings`; broker holdings + positions), **write the raw payload to a temp file** under `paths.tmp_dir("holdings")`, then resolve and take the equity slice:
   ```bash
-  python3 <plugin>/lib/holdings.py --indmoney <ind.json> --kite <kite.json> --equity-only
+  python3 <plugin>/finance/compute/holdings.py --indmoney <ind.json> --kite <kite.json> --equity-only
   ```
   (pass only the files for sources that are connected; add `--portfolio <watchlist.json>` to fold the hand-maintained positions in as the last fallback). The envelope's `data.positions` give symbol / qty / avg / ltp / pnl for the position-health section — **XIRR is available but not surfaced here** (depth belongs to wealth-manager / portfolio-review). `source` and `gaps` tell you which source won and what was absent. If no source is connected, build the brief without the position sections and suggest connecting one.
 - **Watchlist + open positions (fallback / supplement)** — the managed list at `paths.watchlist_path()` (`artifacts/state/watchlist.json`); its `positions` block is also the `--portfolio` fallback the resolver folds in when no live source is connected. Shape:
@@ -25,7 +25,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
    "positions": [{"ticker","entry","sl","target","qty","entry_date"}]}
   ```
   `entry_date` (YYYY-MM-DD) enables the STALE check. Missing file + no broker → build the brief without those sections and suggest creating one once. Renamed/demerged tickers that 404: report "ticker not found — possibly renamed (corporate action?)", don't silently drop.
-- **Alert inbox** — `lib/alerts.py`. Load open alerts for held + watched names plus portfolio-wide ones with `alerts.load_open()`; this feeds the Alerts & actions section and the vetted half of Opportunities.
+- **Alert inbox** — `finance/compute/alerts.py`. Load open alerts for held + watched names plus portfolio-wide ones with `alerts.load_open()`; this feeds the Alerts & actions section and the vetted half of Opportunities.
 
 ## Sections (in order, using `assets/daily-brief.md` (bundled with this skill))
 

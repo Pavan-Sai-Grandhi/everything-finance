@@ -2,7 +2,7 @@
 name: mf-analysis
 description: The plugin's mutual-fund authority — research or compare any Indian fund, scan a whole SEBI category down to a shortlist, AND review the funds the user holds, across two pillars: past performance (rolling returns, drawdown, Sortino from NAV history) and forward-looking quality (full look-through portfolio valuation, style + drift, AMC & manager trust), read against live market context. Runs `quick` (a fast descriptive digest other skills consume) or `deep` (the full two-pillar verdict). Use whenever the user asks about a mutual fund, SIP choice, comparing funds, "is X fund good", which index/flexicap/smallcap fund to pick, whether to switch or replace a fund, or wants to review their MF portfolio — even casual phrasings like "where should my SIP go".
 argument-hint: "FUND NAME(s) / category / 'review my funds' [--quick] (e.g. 'best smallcap fund', 'Parag Parikh vs UTI Nifty 50')"
-allowed-tools: WebFetch, WebSearch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-data__*
+allowed-tools: WebFetch, WebSearch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*, mcp__finance-funds__*
 ---
 
 # Mutual Fund Analysis
@@ -14,7 +14,9 @@ Read `references/reference.md` for the grounding: the Varsity performance hierar
 ## Sources for this skill only
 
 - **`resolve_fund`** — name → AMFI scheme code + ISIN + plan + Tickertape fund id. Call first; the other tools take ids, not names.
-- **`screen_funds`** — the category scanner (every fund in a SEBI sub-category with AUM, TER, returns, risk, cap mix).
+- **`screen_funds`** — the raw universe of a SEBI sub-category (every fund with AUM, TER, returns, risk, cap mix).
+- **`get_fund_scan`** — that universe gated and scored into a ranked shortlist, rolling returns and drawdown recomputed from NAV history.
+- **`get_fund_lookthrough`** — the priced read of what a fund owns.
 - **`get_fund_holdings`** — the **complete** position list plus sector weights, 90-99% weight coverage.
 - **`get_stock_ratios`** — per-holding P/E, P/B, ROE and **`mrktCapRank`** (the SEBI cap rank).
 - **`get_nav_history`** — the daily NAV series the rolling-return and drawdown math is computed from.
@@ -36,18 +38,19 @@ Read `references/reference.md` for the grounding: the Varsity performance hierar
 
 2. **Resolve or scan.**
    - Named funds → `resolve_fund` (prefers Direct-Growth; says so if only Regular matched).
-   - **A category question** ("best smallcap fund") → run the scanner:
+   - **A category question** ("best smallcap fund") → run the scan:
 
      ```
-     python3 <plugin>/skills/mf-analysis/scripts/scanner.py --category "Small Cap Fund" --top 5
+     get_fund_scan(category="Small Cap Fund", top=5,
+                   market_context="artifacts/market-analysis/<date>.json")
      ```
 
-     It applies the Varsity checklist as **hard gates** (Direct-Growth only, AUM viability floor, fund age ≥ the window being credited, TER ceiling that catches a Regular-plan figure mislabelled Direct), then scores the survivors on rolling return, worst-window return, max drawdown, Sortino, cost and cap purity — **rolling returns and drawdown computed from NAV history, never taken from a vendor field**. It prints only the ranked shortlist and a tally of what was gated out; the full universe stays in the JSON.
+     It applies the Varsity checklist as **hard gates** (Direct-Growth only, AUM viability floor, fund age ≥ the window being credited, TER ceiling that catches a Regular-plan figure mislabelled Direct), then scores the survivors on rolling return, worst-window return, max drawdown, Sortino, cost and cap purity — **rolling returns and drawdown computed from NAV history, never taken from a vendor field**. It returns the ranked shortlist and a tally of what was gated out; the shortlist JSON at `report_path` carries the components behind each score. `market_context` carries the cap tier's valuation stance through verbatim, so the "which fund" and "is this category worth adding to now" answers stay separate.
 
-3. **Pillar 1 — past performance.** `scripts/rolling.py` on the cached NAV series: 1/3/5Y daily-rolled rolling returns (mean/median/**min**), % of windows beating the benchmark, max drawdown over the worst 1-year window, Sortino/Sharpe (compare within category only), and point-to-point CAGR labelled inferior. A fund whose *minimum* 5Y rolling return is positive has never lost money for any 5-year holder — that is the kind of statement to produce.
+3. **Pillar 1 — past performance.** The scan's per-fund `metrics` block *is* the record, recomputed from NAV history: daily-rolled rolling returns (mean / median / **min**) with the count of windows behind them, max drawdown, NAV span and the confidence that span earns. For a **named** fund, scan its own SEBI sub-category with `top` raised until the fund has its own row — that also gives its standing among peers. One window per call, so repeat with `window="1y" | "3y" | "5y"`. Sortino/Sharpe/alpha ride along from the category screen — compare them **within the category only**. Trailing 1/3/5Y arrive as `trailing_unscored` because their endpoints decide them. A fund whose *minimum* 5Y rolling return is positive has never lost money for any 5-year holder — that is the kind of statement to produce.
 
 4. **Pillar 2 — forward-looking quality.**
-   - **Look-through** — `python3 <plugin>/skills/mf-analysis/scripts/lookthrough.py --fund <MF_ID>`. Returns weighted portfolio P/E, P/B, ROE, **P/B ÷ ROE**, cap-tilt by **SEBI market-cap rank**, top-5/top-10 and Herfindahl concentration, sector mix, **earnings-distress dispersion** (share of book at ROE < 8%) and coverage. **Coverage gates the numbers**: below the threshold the ratios are withheld rather than printed as fact.
+   - **Look-through** — `get_fund_lookthrough(mf_id=<MF_ID>)`. Returns weighted portfolio P/E, P/B, ROE, **P/B ÷ ROE**, cap-tilt by **SEBI market-cap rank**, top-5/top-10 and Herfindahl concentration, sector mix, **earnings-distress dispersion** (share of book at ROE < 8%) and coverage. **Coverage gates the numbers**: below the threshold the ratios are withheld rather than printed as fact.
    - **AMC / manager trust** — fund-house pedigree, manager tenure ≥ 3y over the window being credited, alpha consistency, AUM stability, governance flags. Each claim sourced.
    - **Cost & overlap** — Direct-plan TER vs category; for two funds, portfolio overlap % from the two full holdings sets.
 
@@ -63,10 +66,10 @@ Every recommendation carries a **review trigger that is not a price** — a chan
 
 ## Held-fund review
 
-MF rows come through the shared `lib/holdings.py` resolver, **not** a raw IndMoney read (scripts can't call MCP tools): invoke IndMoney `networth_holdings`, write the raw payload under `paths.tmp_dir("holdings")`, then take the fund slice:
+MF rows come through the shared `finance/compute/holdings.py` resolver, **not** a raw IndMoney read. The resolver runs in script context and cannot call MCP tools, so invoke IndMoney `networth_holdings`, write the raw payload under `paths.tmp_dir("holdings")`, then take the fund slice:
 
-```
-python3 <plugin>/lib/holdings.py --indmoney <ind.json> --mf-only
+```bash
+python3 <plugin>/finance/compute/holdings.py --indmoney <ind.json> --mf-only
 ```
 
 Each row carries invested / current / XIRR. Cap-split comes from `networth_allocation_breakdown`. Run each held fund through the pillars above (or `quick` when the caller only needs the digest). If neither IndMoney nor a broker is connected, **say the personalised layer is unavailable and give the generic verdict** — never infer a holding.
@@ -76,11 +79,11 @@ Each row carries invested / current / XIRR. Cap-split comes from `networth_alloc
 Write to `artifacts/funds/<SCHEME>/YYYY-MM-DD/` (`paths.fund_dir`; for a comparison use the slug `<a>-vs-<b>`, for a category scan `<category>-scan`):
 - `mf-analysis.md` — the verdict + both-pillar metrics (the durable record `paths.latest_prior` finds on a re-run).
 - `mf-analysis.html` — the rich render of `assets/fund-comparison.html`.
-- `scanner.json` / look-through JSON — the work papers.
+- the scan and look-through work papers — `get_fund_scan` writes `scanner.json` and returns its `report_path`.
 
 `quick` writes only the compact digest to `mf-analysis.md` — no HTML, no work papers.
 
-Summarize the verdict in chat with the look-through coverage stated ("ratios cover 95% of the book"). End with: "Not investment advice — personal research tool."
+Summarize the verdict in chat with the look-through coverage stated ("ratios cover 95% of the book").
 
 ## Data integrity
 
@@ -91,6 +94,6 @@ Summarize the verdict in chat with the look-through coverage stated ("ratios cov
 - **Low ROE is not automatically a cycle trough.** Distinguish a cyclical industry at the bottom of its cycle from a company underperforming a healthy sector — the first can mean-revert, the second is a mistake in the book. A P/E on collapsed earnings is not cheap.
 - Holdings staleness, look-through coverage and every gated-out fund are always surfaced.
 
-## Alerts this skill raises (via `lib/alerts.py`)
+## Alerts this skill raises (via `finance/compute/alerts.py`)
 
 If the user has (or sets up) a SIP in a researched fund and mentions its date, raise a **`sip_due`** alert (`subject: {type: fund, id: <scheme-slug>}`, `created_by: mf-analysis`, `trigger: {due: <next-SIP-date>}`, `severity: info`, `action.text: "SIP due"`, `dedup_key: sip-<scheme-slug>`). It is a date reminder `daily-brief` lists among due actions; never an instruction to transact.

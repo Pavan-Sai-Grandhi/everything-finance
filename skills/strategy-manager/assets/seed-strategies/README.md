@@ -44,6 +44,6 @@ intraday, per CLAUDE.md, so the 4-hour leg becomes "confirm on the daily close".
 
 Each seed populates the `screening` block: a **screener.in**
 fundamental cut and a **technical** cut that is either `provider: tradingview` (server-side
-filters) or `provider: compute` (local `lib/ta.py`) where TradingView can't express the
+filters) or `provider: compute` (local `finance/compute/ta.py`) where TradingView can't express the
 filter (NR-bars, fib zones). `fallback_compute: true` everywhere means find-trade reproduces
 the cut locally from yfinance if a provider is unreachable. See `find-trade` for how these run.

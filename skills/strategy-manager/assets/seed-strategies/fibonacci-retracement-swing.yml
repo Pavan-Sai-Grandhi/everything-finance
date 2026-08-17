@@ -34,7 +34,7 @@ screening:
       AND Debt to equity < 1
     max_survivors: 60
   technical:
-    # The fib zone (lib/ta.py fib_levels) is computed per-stock on the shortlist; the coarse cut
+    # The fib zone (finance/compute/ta.py fib_levels) is computed per-stock on the shortlist; the coarse cut
     # just finds uptrending names that have recently pulled back into a 38-62% band.
     provider: compute
     market: india

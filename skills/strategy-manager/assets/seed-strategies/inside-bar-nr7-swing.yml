@@ -34,7 +34,7 @@ screening:
       AND Debt to equity < 1.5
     max_survivors: 60
   technical:
-    # NR4/NR7 + inside-bar are computed locally (lib/ta.py nr()/inside_bar()) — TradingView's
+    # NR4/NR7 + inside-bar are computed locally (finance/compute/ta.py nr()/inside_bar()) — TradingView's
     # screener has no native NR filter, so the compute path is primary here.
     provider: compute
     market: india

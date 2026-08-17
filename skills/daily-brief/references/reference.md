@@ -13,7 +13,7 @@ Self-contained: everything the brief needs is here. The deeper versions of the s
 - Indices + 50-EMA + sector tone: `get_market_context` (the shared daily read — preferred, so the brief and every other skill agree) or `get_indices` / `get_history` for a specific index.
 - Headlines: `get_news` (Google News RSS). Every item carries a `publisher_tier` — prefer `established` wires and treat an `aggregator`-only story as unconfirmed. Take only the top 3–5 market-moving items; the noise classifier already drops "multibagger" listicles, so anything still tagged `noise` stays out.
 - Watchlist/holdings filings: `get_filings` (NSE symbol). A blocked fetch is a labelled gap meaning "unknown", never "nothing filed".
-- Watchlist/holdings **news** (per name, distinct from filings): `get_news(company, ticker, days=2)` per name. Keep only 1–2 genuinely market-moving items per name (results, large orders, management/regulatory, rating, M&A); **drop opinion, "multibagger"/listicle, and target-price clickbait**. ET company search is the fallback. Filings are *what the company told the exchange*; news is *what the press is saying* — the brief wants both, deduped (a results filing and a "Q4 results" headline are one item).
+- Watchlist/holdings **news** (per name, distinct from filings): `get_news(company, ticker, days=2)` per name. Keep only 1–2 genuinely market-moving items per name (results, large orders, management/regulatory, rating, M&A); **drop opinion, "multibagger"/listicle, and target-price clickbait**. Filings are *what the company told the exchange*; news is *what the press is saying* — the brief wants both, deduped (a results filing and a "Q4 results" headline are one item).
 
 ## Telegram constraints
 

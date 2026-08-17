@@ -40,15 +40,10 @@ This skill invents **no trade logic of its own** — it always comes from the ar
 2. **Read the market as context.** `get_market_context(mode="quick")` returns trend, India VIX, breadth, cap-tier valuation, flows and macro in one cached digest, so nothing here recomputes the tape. Call `sector-analysis` for leadership. This informs `regime_required`, not the entry trigger.
 3. **Complete the system.** Fill every component the article omits from the framework — sizing (default 1% risk), risk caps (heat 6%), `regime_required` from the article's claimed conditions (minimum structural gate if it's silent), and the **`screening` block** (how find-trade cuts the universe): the `fundamental` cut (provider `screener.in` + a query) and the `technical` cut (provider `tradingview` with server-side filter rows, or `compute` with local `finance/compute/ta.py` predicates when TradingView can't express the filter — e.g. NR-bars, fib zones). A spec missing universe/screening/entry/exit/sizing/risk/regime is incomplete; don't emit it.
    - **Map the article's exit to the engine's exit vocabulary — don't approximate it.** The engine expresses more than a fixed target, so encode the source's *actual* exit: a **trailing stop** → `trail_atr: <mult>` with `target: trailing` (a long `time_stop` is not a substitute — it caps winners and the optimizer misreads it); a **moving-average / indicator exit** (a "close back above the 5-SMA" mean-reversion exit, a "close below the 20-EMA" trend break) → `exit_signal: "<expr>"` in `entry.signal`'s grammar. Reserve `measured_move`/`min_rrr` targets for setups whose source names a fixed objective. If the source's exit genuinely can't be expressed, say so in the rationale — but reach for `trail_atr`/`exit_signal` first.
-4. **Indicator study — REQUIRED, numeric not screenshot.** Confirm the article's entry/exit on 2–3 representative symbols using the **`ta.py` numeric read** (the indicator-of-record), and carry a **static TradingView link** for the human to eyeball. No chart rendering and no screenshots: the substance is the numbers, the chart is a courtesy link.
-   - **Read the indicators from `lib/ta.py`** for each representative symbol+date and check the rule holds — fetch candles through the data spine and compute the standard set, e.g.:
-     ```python
-     import prices, ta
-     df, _ = prices.history_df("NTPC", "3y", adjusted=True)   # spine fetch (yfinance)
-     df = ta.materialize(ta.add_indicators(df), ["ema20", "ema50", "sma200", "rsi14"])
-     # assert the article's rule on df.loc["2023-06-30"] — EMA alignment, RSI band, etc.
-     ```
-     TA-Lib matches TradingView on the standard indicators over the same candles, so the numeric read agrees with the chart. Pick representative *winning* setups from the backtest trade log (TARGET/trailing exits) so the study confirms the rule on real signals.
+4. **Indicator study — REQUIRED, numeric not screenshot.** Confirm the article's entry/exit on 2–3 representative symbols against the indicator-of-record (TA-Lib via `finance/compute/ta.py`), and carry a **static TradingView link** for the human to eyeball. No chart rendering and no screenshots: the substance is the numbers, the chart is a courtesy link. Both reads run the spec's own rules, so write the draft file (step 5) first — it is `status: draft` and untradeable until VALIDATE, so nothing is at risk.
+   - **Latest-bar read:** `run_strategy_screen(spec="artifacts/state/strategies/<name>.yml", symbols="NTPC,TCS,SBIN", years=3)`. It materializes exactly the indicator columns the spec's rules reference and reports, per symbol, either the built signal or the precise expression that failed — read the written report and confirm the condition that fired is the article's.
+   - **Historical read:** take dated *winning* setups (TARGET/trailing exits) from `run_backtest`'s per-trade log — each entry there is the spec's rule firing on a real bar. Cite 2–3 (symbol, entry date, exit reason, R) as the confirmation.
+   - TA-Lib matches TradingView on the standard indicators over the same candles, so the numeric read agrees with the chart.
    - **Put a human-facing chart link in the rationale:** `https://www.tradingview.com/symbols/NSE-<TICKER>/`.
    - Record the numeric confirmation as `indicator_study`; leave it `PENDING` until done — never fabricate it.
 5. **Emit the spec as `status: draft`.** Fill `assets/strategy-spec.example.yml` → `artifacts/state/strategies/<name>.yml` with `source_references` populated, `lifecycle.generated_at` set, `expectancy_assumptions`/`live_performance` null. Write the rationale doc → `artifacts/strategy-manager/YYYY-MM-DD/<name>.md` citing the article for each trade rule and the framework for the risk layer. **A draft is not tradeable** — immediately offer VALIDATE.
@@ -60,15 +55,15 @@ Turn a draft into an active strategy *only if it earns it*.
 
 1. Run the backtest engine via `Skill` → `backtest` against the spec (`strategy:<name>`): it reads `entry`/`exit`/`sizing`, tests the mechanical rules on historical NSE data, and writes results into the spec's `expectancy_assumptions` (`win_rate`, `expectancy_R`, `profit_factor`, `n_trades`, `validated_by`).
 2. **Apply the activation gate (reference.md):** mark `status: active` **only if** `expectancy_R > 0.2` over **≥ ~30 trades**. Otherwise it stays `draft` (0–0.2R = fragile/no edge) or you mark it `inactive` (< 0R = no edge) — say which and why. On activation set `lifecycle.validated_at` and `activated_at`.
-3. If the numeric indicator study never ran (`indicator_study` PENDING) it cannot go active — finish the `ta.py` read first.
+3. If the numeric indicator study never ran (`indicator_study` PENDING) it cannot go active — finish that read first.
 4. Report the verdict honestly with the backtest's own caveats (in-sample, survivorship, regime concentration). A passed backtest is a hypothesis that survived history, not a guaranteed edge.
 
 ## Mode 3 — PICK (select the active strategy that fits now)
 
 Answer "what should I trade in this market" from the **validated library**, not from a fresh opinion.
 
-1. Refresh the market context: `python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick` (writes `artifacts/market-analysis/<date>.json`; reuses today's with zero fetches).
-2. Select: `python3 <skill-dir>/scripts/select_strategy.py --out artifacts/strategy-manager/YYYY-MM-DD/selection.json` (`--regime` defaults to today's market-context artifact, `--strategies` to `artifacts/state/strategies`). It keeps only `status: active` specs, tests each `regime_required` against the live market read, and ranks the fitting ones by edge (live expectancy if available, else backtest).
+1. Refresh the market-of-record: `get_market_context(mode="quick")` — the shared daily read, so this selection tests the regime every other skill sees, not a fresh opinion of the tape.
+2. Select: `python3 <skill-dir>/scripts/select_strategy.py --out artifacts/strategy-manager/YYYY-MM-DD/selection.json` (`--regime` defaults to today's `artifacts/market-analysis/<date>.json`, the digest `market-analysis` persists; `--strategies` to `artifacts/state/strategies`). It keeps only `status: active` specs, tests each `regime_required` against the live market read, and ranks the fitting ones by edge (live expectancy if available, else backtest).
 3. Present the **selected** strategy (and the ranked runners-up), plus the ones rejected for regime-fit and why. If **none fit** (exit 11) say so plainly — the disciplined move is to stand aside, not to force a misfit strategy; suggest GENERATE/OPTIMIZE if the library is thin. If there are **no active specs** (exit 12), there's nothing validated to run — point to GENERATE→VALIDATE.
 4. Hand off: tell the user to run `/find-trade strategy:<selected>` to screen live candidates against it (or just `/find-trade`, which calls this pick itself when no strategy is named).
 
@@ -83,11 +78,9 @@ Close the loop with reality. `trade-tracker` writes a `result` block (realized R
    - **OPTIMIZE** → propose a concrete rule change driven by the diagnostic (e.g. TIME exits dominate the losers → tighten `time_stop_sessions`; stops too tight → widen to structure). **Bump `version`, append an `optimization_log` entry, then re-run VALIDATE** — an optimized strategy must re-pass the backtest gate before it's active again. Never tune parameters and call it active without re-validation (that's in-sample curve-fitting).
    - **KEEP** → record the live numbers, no change.
 
-## Alerts this skill raises (via `lib/alerts.py`)
+## Alerts this skill raises (via `finance/compute/alerts.py`)
 
 When a spec goes stale — the live regime has drifted away from an active strategy's `regime_required`, or OPTIMIZE flags decaying live expectancy — raise a **`revalidate_due`** alert (`subject: {type: strategy, id: <name>}`, `created_by: strategy-manager`, `severity: watch`, `action.text` = why it's stale, `action.suggest: "/strategy-manager validate <name>"` or `optimize <name>`, `trigger: {check: strategy-manager}`, `dedup_key: revalidate-<name>`). `daily-brief` lists it among due actions until a re-validation clears it.
 
 ## How other skills consume this
 `find-trade` runs only an **active, regime-fitting** spec — and when the user names none, it calls this skill's PICK mode to choose one (it has no default of its own); it reads the spec's `screening`/`entry`/`exit`/`sizing`. `backtest` is the validation engine this skill drives; `deep-analysis` checks a ticker against an active strategy's regime/archetype; `trade-tracker` reads a trade's linked strategy `regime_required` for its regime-exit check and feeds closed trades back here for OPTIMIZE.
-
-End every mode with the standard risk note.

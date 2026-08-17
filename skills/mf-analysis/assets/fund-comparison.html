@@ -28,22 +28,22 @@
 </head>
 <body>
   <h1>Mutual Fund Comparison — {{CATEGORY}}</h1>
-  <div class="meta">{{DATE}} · Direct-Growth plans · NAV history: AMFI via mfapi.in · holdings &amp; per-stock ratios: Tickertape via <code>lib/funds.py</code> · market context: market-analysis {{MARKET_AS_OF}} · benchmark: {{BENCHMARK_FUND}}</div>
+  <div class="meta">{{DATE}} · Direct-Growth plans · NAV history: AMFI via mfapi.in · holdings &amp; per-stock ratios: Tickertape · market context: market-analysis {{MARKET_AS_OF}} · benchmark: {{BENCHMARK_FUND}}</div>
   <div class="note">Category context: {{CAP_TIER}} is <strong>{{TIER_STANCE}}</strong> versus its own 10-year history (P/B {{TIER_PB_PCTILE}}th percentile). Whether this category deserves new money is a separate question from which fund inside it is best — both are answered below.</div>
 
   <h2>Rolling returns (the metric that matters)</h2>
-  <div class="note">Rolled daily across full NAV history. "Consistency" = % of windows beating the benchmark.</div>
+  <div class="note">Rolled daily across full NAV history; {{R3_N_WINDOWS}} windows behind the 3Y row. The worst window is the number a holder actually had to sit through.</div>
   <table>
-    <thead><tr><th>Fund</th><th>3Y roll — mean</th><th>3Y roll — median</th><th>3Y roll — worst</th><th>5Y roll — mean</th><th>5Y roll — worst</th><th>Consistency (3Y)</th></tr></thead>
+    <thead><tr><th>Fund</th><th>3Y roll — mean</th><th>3Y roll — median</th><th>3Y roll — worst</th><th>5Y roll — mean</th><th>5Y roll — worst</th></tr></thead>
     <tbody>
       <!-- ROW per fund; benchmark fund gets class="benchmark"; best per column class="best" -->
-      <tr><td><strong>{{FUND_NAME}}</strong></td><td>{{R3_MEAN}}%</td><td>{{R3_MED}}%</td><td>{{R3_MIN}}%</td><td>{{R5_MEAN}}%</td><td>{{R5_MIN}}%</td><td>{{CONSISTENCY}}%</td></tr>
+      <tr><td><strong>{{FUND_NAME}}</strong></td><td>{{R3_MEAN}}%</td><td>{{R3_MED}}%</td><td>{{R3_MIN}}%</td><td>{{R5_MEAN}}%</td><td>{{R5_MIN}}%</td></tr>
     </tbody>
   </table>
 
   <h2>Risk & cost</h2>
   <!-- Sharpe uses 6% risk-free; only meaningful within one category — leave the cell "—" for a
-       cross-category benchmark row. Benchmark fund's own Consistency cell above is also "—". -->
+       cross-category benchmark row. -->
   <table>
     <thead><tr><th>Fund</th><th>Max drawdown</th><th>Worst 1Y window</th><th>Std dev</th><th>Sharpe</th><th>TER</th><th>AUM</th><th>Manager tenure</th></tr></thead>
     <tbody>
@@ -59,7 +59,7 @@
     </tbody>
   </table>
 
-  <!-- Look-through: what the fund actually OWNS. Computed by scripts/lookthrough.py from the
+  <!-- Look-through: what the fund actually OWNS. From get_fund_lookthrough, computed over the
        COMPLETE holdings list. Coverage gates these numbers — if a metric was withheld for low
        coverage, print "withheld (coverage X%)" rather than a figure. Never print an
        uncovered ratio as if it were the whole book. -->

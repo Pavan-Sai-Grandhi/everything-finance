@@ -29,7 +29,7 @@ Record `{mode, reason}` — the synthesis reports both.
 
 **Refer the earlier run first.** Call `paths.latest_prior("deep-analysis", TICKER)` — if a prior report exists, read it before launching the debate so this run builds on it rather than starting cold, and pass the prior verdict/levels to the agents as context. The synthesized report then opens with a **"What changed since `<date>`"** block (see Synthesize). No prior run is the normal first-time case.
 
-**Sources for this skill only:** the `finance-data` tools — `get_company_fundamentals` (financials, annual-report and concall links), `get_history` + `get_quote` (price), `get_news` (publisher-tiered), `get_filings` + `get_shareholding` + `get_corporate_actions`, and `get_market_context`. WebSearch/WebFetch only for the qualitative governance checks the management leg names. A TradingView chart URL may be linked for a human, never scraped.
+**Sources for this skill only:** `finance-company` — `get_company_fundamentals` (financials, annual-report and concall links), `get_news` (publisher-tiered), `get_filings` + `get_shareholding` + `get_corporate_actions`; `finance-market` — `get_quote` + `get_history` (price) and `get_market_context`. The qualitative governance checks belong to the `management-analyst`, which runs its own searches. A TradingView chart URL may be linked for a human, never scraped.
 
 ## Orchestration
 
@@ -37,7 +37,7 @@ Forked subagents in four phases. Phase 0 fetches the fundamentals **once**; phas
 
 | Phase | Agent | Input | Modes |
 |---|---|---|---|
-| 0 | *(no agent — you run it)* | **market context**: `python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick`. Costs nothing after the first caller of the day. Pass `market_posture` + `volatility.band` to the `portfolio-manager` (they govern **sizing**, never the verdict), and the stock's cap-tier `valuation.stance` to the `valuation-analyst` as context for its relative-multiple read. | all |
+| 0 | *(no agent — you run it)* | **market context**: `get_market_context(mode="quick")`. Costs nothing after the first caller of the day. Pass `market_posture` + `volatility.band` to the `portfolio-manager` (they govern **sizing**, never the verdict), and the stock's cap-tier `valuation.stance` to the `valuation-analyst` as context for its relative-multiple read. | all |
 | 0 | `fundamentals-data` | ticker + output path + **fetch depth** (`lite` in `quick`, `full` otherwise) — pulls the screener.in envelope and CMP always; in `full` also the annual-report priority sections (incl. management signals) + concall. One sourced **data-pack**; the only fundamentals fetch in the run. | all |
 | 1 (parallel) | `technical-analyst` | ticker + cached OHLCV if you already fetched any (saves the agent a fetch) | all |
 | 1 (parallel) | `financials-analyst` | **data-pack path** — Varsity checklist + company overview + concall takeaways + relative valuation | all |
@@ -77,7 +77,7 @@ The `portfolio-manager` then runs once on the full transcript (the contest, or a
 The sector body (RS, KPIs, tailwinds/headwinds, leaders/laggards, stance) is cached at `state/sectors/<sector>.md` and refreshed monthly; only the focus-stock positioning is stock-specific. Map the stock → sector (screener industry), then:
 
 - **Cache fresh** (`paths.sector_cache_age_days(sector) ≤ 30`): pass the cached body **and** the focus ticker to `sector-analyst`; it reuses the body and computes only the stock's positioning — no re-fetch of RS/KPIs.
-- **Missing or stale** (`None` or `> 30`): run `sector-analyst` full (sector + focus); write the **sector-level body** of its report to `paths.sector_cache_path(sector)` with frontmatter `generated: <today>` + `rs_class:`; then raise the next-refresh reminder via `lib/alerts.py`: `kind: sector_refresh_due`, `subject: {type: sector, id: <sector>}`, `trigger: {due: <today + 30d>}`, `created_by: deep-analysis`, `severity: watch`, `action.suggest: "/sector-analysis <sector>"`, `dedup_key: sector-refresh-<sector>`.
+- **Missing or stale** (`None` or `> 30`): run `sector-analyst` full (sector + focus); write the **sector-level body** of its report to `paths.sector_cache_path(sector)` with frontmatter `generated: <today>` + `rs_class:`; then raise the next-refresh reminder via `finance/compute/alerts.py`: `kind: sector_refresh_due`, `subject: {type: sector, id: <sector>}`, `trigger: {due: <today + 30d>}`, `created_by: deep-analysis`, `severity: watch`, `action.suggest: "/sector-analysis <sector>"`, `dedup_key: sector-refresh-<sector>`.
 
 ## Synthesize from the work papers
 
@@ -94,9 +94,9 @@ The report **must contain a `## Telegram Brief` section** (≤ 10 lines: verdict
 
 **Persist the embedded leg artifacts.** The valuation leg runs the DCF engine (every mode) and, in `standard`/`deep`, the management leg grades governance; write their outputs as discrete files in the same run-day folder — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (+ `dcf.json`, from the valuation leg's engine run) and `management.md` (when the management leg ran) — so `paths.latest_prior("dcf", TICKER)` / `latest_prior("management", TICKER)` find them regardless of which skill produced them.
 
-In chat, give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — not the whole report. End with the standard risk note.
+In chat, give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — not the whole report.
 
-## Alerts this skill raises (via `lib/alerts.py`)
+## Alerts this skill raises (via `finance/compute/alerts.py`)
 
 On a completed analysis, write watch-items for `daily-brief` (set `dedup_key` so a re-analysis updates in place):
 

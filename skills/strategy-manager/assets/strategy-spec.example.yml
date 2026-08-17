@@ -5,7 +5,7 @@
 #   find-trade     reads universe/screening/entry/exit/sizing of an ACTIVE, regime-fitting spec.
 #   backtest       reads entry/exit/sizing and writes results into expectancy_assumptions.
 #   trade-tracker  reads regime_required of a trade's linked strategy; feeds closed trades back.
-# Every field must be present.  (Full schema doc: <plugin>/lib/contracts.md)
+# Every field must be present.  (Full schema doc: <plugin>/finance/contracts.md)
 
 name: nifty500-momentum-swing        # kebab-case id, also the filename
 version: 1                           # bump on each optimization that changes the rules
@@ -17,7 +17,7 @@ source_references:                    # where the trade logic came from — REQU
 
 # ---- LIFECYCLE (strategy-manager owns these) -------------------------------
 status: draft                         # draft | active | inactive
-# draft    = generated; NOT yet validated by backtest (or visual study pending). Not tradeable.
+# draft    = generated; NOT yet validated by backtest (or numeric study pending). Not tradeable.
 # active   = backtest PASSED (expectancy_R > 0.2 over >= ~30 trades). Eligible to be SELECTED
 #            when the live regime fits regime_required. find-trade runs only active+fitting specs.
 # inactive = retired: failed backtest, OR deactivated by optimization (live edge gone), OR manual.
@@ -31,7 +31,7 @@ lifecycle:
   deactivated_reason: null            # e.g. "live expectancy -0.3R over 14 trades"
 
 regime_required:                      # the conditions the SOURCE ARTICLE claims it works in;
-  market_trend: up                    # checked against live regime.json at selection (mode: pick)
+  market_trend: up                    # checked against the live market context at selection (mode: pick)
   nifty_above: ema200                 # up | range | down
   vix_max: 20                         # stand down / resize above this
   breadth_min_pct: 50                 # % of sectoral indices above their 50-EMA
@@ -49,7 +49,7 @@ universe:
 #   fundamental -> screener.in   (business-quality cut: market cap, ROCE, D/E, growth)
 #   technical   -> tradingview   (chart-state cut: trend/RSI/volume, screened server-side)
 # Provider unreachable + fallback_compute:true -> find-trade reproduces the cut locally
-# from yfinance OHLCV via lib/ta.py (the `compute_*` predicates), and flags the degrade.
+# from yfinance OHLCV via finance/compute/ta.py (the `compute_*` predicates), and flags the degrade.
 screening:
   fundamental:
     provider: screener.in             # screener.in | none  (none = skip the quality gate)
@@ -58,7 +58,7 @@ screening:
       AND Debt to equity < 1 AND Profit growth > 0 AND Sales growth 3Years > 8
     max_survivors: 60                 # cap; tighten the query (e.g. ROCE > 15) if exceeded
   technical:
-    provider: tradingview             # tradingview | compute  (compute = local yfinance + lib/ta.py)
+    provider: tradingview             # tradingview | compute  (compute = local yfinance + finance/compute/ta.py)
     market: india                     # TradingView scanner market (POST scanner.tradingview.com/india/scan)
     # find-trade runs these via the scanner JSON API (no browser/login needed for standard filters);
     # it maps each row to a scanner filter — column names: SMA50, SMA200, RSI, close, volume, market_cap_basic;
@@ -68,11 +68,11 @@ screening:
       - "Price > Simple Moving Average (50)"
       - "Relative Strength Index (14) between 40 and 60"             # healthy-continuation zone
       - "Volume > 1.5 * Average Volume (10)"                          # participation
-    compute_filters:                  # equivalent local predicates (lib/ta.py columns) for the fallback path
+    compute_filters:                  # equivalent local predicates (finance/compute/ta.py columns) for the fallback path
       - "ema50_rising"
       - "Close > ema50"
       - "rsi14 between 40 and 60"
-  fallback_compute: true              # provider down -> screen locally with lib/ta.py instead of aborting
+  fallback_compute: true              # provider down -> screen locally with finance/compute/ta.py instead of aborting
 
 ranking:                              # used by basket/ranked methods (else null)
   metric: return_12m                  # return_12m | return_6m | rs_vs_nifty
@@ -81,15 +81,15 @@ ranking:                              # used by basket/ranked methods (else null
 
 entry:
   trigger: "close > prior_20d_high AND volume > 1.5 * vol10"   # human-readable description
-  # MACHINE-READABLE trigger — the list of filter expressions lib/strategy.py evaluates
+  # MACHINE-READABLE trigger — the list of filter expressions finance/compute/strategy.py evaluates
   # bar-by-bar (backtest) and on the latest bar (live screen), so both fire identically.
   # Same SAFE mini-language as compute_filters: "<col>", "A > B", "A between X and Y",
-  # "k * col", "A or B"; the list is ANDed. Columns can be any lib/ta.py feature:
+  # "k * col", "A or B"; the list is ANDed. Columns can be any finance/compute/ta.py feature:
   #   - parameterized indicators <kind><N>[_rising]: ema21, sma100, rsi9, atr20, adx14,
   #     hh50, ll20, vol30, nr5, ema21_rising  (any period — no plugin change needed)
   #   - registered patterns/signals: inside_bar, outside_bar, engulfing, hammer, doji,
   #     coil_breakout, golden_cross, macd_bullish_cross, rsi_oversold, bb_squeeze,
-  #     volume_surge, gap_up, new_high_20, new_high_52w, ...  (see lib/ta.py FEATURES)
+  #     volume_surge, gap_up, new_high_20, new_high_52w, ...  (see finance/compute/ta.py FEATURES)
   # This is the FINE per-bar trigger; compute_filters above is the COARSE universe cut. If omitted, the
   # backtest falls back to compute_filters (fine for pullback/reversal setups whose state IS
   # the entry); breakout/coil setups need it (e.g. coil_breakout) to fire on the real trigger.

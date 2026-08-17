@@ -2,23 +2,6 @@
 
 Grounded in NSE corporate filings and SEBI LODR materiality framing.
 
-## The four tools
-
-NSE is the only exchange source and the NSE symbol is the primary key.
-
-- **`get_filings(symbol, days)`** — corporate announcements, already classified into
-  act-on / monitor / routine with a reason. The full list is written to `data.items_path`.
-- **`get_corporate_actions(symbol)`** — dividends, splits, bonuses with ex-date and record
-  date.
-- **`get_shareholding(symbol, quarters)`** — quarterly promoter %, public %, employee
-  trusts, plus promoter pledge rows. NSE often returns *no* pledge rows — the tool labels
-  that as a gap, and it means **UNKNOWN, never nil**.
-- **`get_company_fundamentals(symbol, sections=["shareholding"])`** — screener.in's
-  12-quarter FII / DII / public split, which NSE's master does not break out.
-
-A gap here means "unknown", not "nothing filed" — never report an unreachable source as a
-quiet quarter. A company with no NSE listing has no filings to fetch; say so explicitly.
-
 ## Materiality taxonomy
 
 🔴 **Act-on (thesis-relevant within days)**
