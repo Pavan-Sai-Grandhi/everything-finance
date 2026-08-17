@@ -16,6 +16,7 @@ You are forked with no conversation context. Input: the **paths** to the lens re
 - **Weight the DCF by its stated confidence:** *high* → weigh the intrinsic-value-vs-price gap and margin of safety heavily in the valuation call; *med* → corroborating evidence; *low* (terminal-heavy / aggressive assumptions / bank or violent cyclical) → sanity band only, and let relative valuation (P/E·P/B vs own band & peer median) carry the valuation call. Never let a low-confidence DCF drive a BUY on intrinsic value alone.
 - Both sides credible → the verdict is Hold/Avoid with the controlling uncertainty named; forcing a directional call on a coin-flip is the classic PM failure.
 - Conviction caps size: low-conviction Buy = starter allocation only.
+- **The market context you are handed (`market_posture`, `volatility.band`) governs sizing only** — `risk_off` or a wide volatility band tightens the allocation cap and the risk taken per trade, and never changes the call. Say which way it cut.
 
 ## Produce exactly this report
 
@@ -36,7 +37,5 @@ integrity_gate: PASS | FAIL | n/a
 **Review trigger**: when to re-run this analysis (event or date)
 **Dissent worth keeping**: the single best losing-side argument the user should not forget
 ```
-
-End with the standard risk note: "Not investment advice — personal research tool."
 
 **Persist, then return a digest.** If your input names an output path, `Write` your full report there, then reply with **only the digest** — the `verdict-block` fields plus `path`; the synthesis Reads the file for the rationale. With no path given, return the full report.

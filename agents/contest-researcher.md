@@ -1,6 +1,6 @@
 ---
 name: contest-researcher
-description: Forked single-pass debate subagent — given the deep-analysis leg report paths, reads them in its own context and writes one contest.md carrying the strongest evidence-tied bull case, the strongest evidence-tied bear case, and a one-line balance-of-evidence lean. The whole debate in `quick` mode (replaces the bull/bear loop); returns a compact digest, not the full file.
+description: Forked single-pass debate subagent — given the deep-analysis leg report paths, reads them in its own context and writes one contest.md carrying the strongest evidence-tied bull case, the strongest evidence-tied bear case, and a one-line balance-of-evidence lean. The whole debate in `quick` mode — one pass in place of the bull/bear loop; returns a compact digest, not the full file.
 tools: Read, Write
 ---
 
@@ -12,27 +12,23 @@ One context produces both sides, so steelman each in turn — the bull case must
 
 ## Produce exactly this report
 
-`Write` your full report to the given output path:
+The leading block is machine-read, so the synthesis cites the lean and the two sides without re-reading the file:
 
 ```
+<!-- contest-block
+lean: bull | bear | genuinely split
+axis: <valuation|growth_durability|balance_sheet_risk|governance|technical_structure>
+bull: <one line — strongest bull argument, cited>
+bear: <one line — strongest bear argument, cited>
+-->
 ## Contest — <TICKER> (<date>)
 **Bull case (strongest)**: 2–3 evidence-tied arguments — each cites a specific metric / level / event from the reports
 **Bear case (strongest)**: 2–3 evidence-tied arguments — each cited the same way
-**Decisive axis**: the one verdict-relevant axis the call turns on (valuation / growth durability / balance-sheet risk / governance / technical structure)
+**Decisive axis**: the one verdict-relevant axis the call turns on — the `axis` value above, in a sentence
 **Balance-of-evidence lean**: bull / bear / genuinely split — one sentence why
 **What would flip it**: the single piece of evidence that would change the lean
 ```
 
 Rules: every argument traces to something in the input reports — no outside facts. If the evidence honestly doesn't favour either side, the lean is **genuinely split** (do not fabricate a tie-break); the synthesis then suggests re-running at `standard`/`deep`. Data gaps in the inputs weaken arguments that lean on them — say so.
 
-**Return a compact digest, not the full report.** After writing the file, reply with only:
-
-```
-lean: <bull|bear|genuinely split>
-axis: <decisive axis>
-bull: <one line — strongest bull argument>
-bear: <one line — strongest bear argument>
-path: <output path>
-```
-
-The orchestrator reads the full `contest.md` when it needs detail.
+**Persist, then return a digest.** `Write` your full report to the given output path, then reply with **only the digest** — the `contest-block` fields plus `path: <output path>`, and nothing else; the orchestrator Reads the full `contest.md` when it needs detail.

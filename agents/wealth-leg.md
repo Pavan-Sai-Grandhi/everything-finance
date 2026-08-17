@@ -1,7 +1,7 @@
 ---
 name: wealth-leg
-description: Forked leg-runner subagent for wealth-manager — runs ONE personal-finance spoke in its cheap mode in isolation, writes the spoke's full report to its own file, and returns only the compact leg digest (the contract in lib/contracts.md) so the orchestrator never carries a full report. Invoked once per available leg (investments / protection / cashflow); the leg→spoke mapping is passed in by wealth-manager.
-tools: Read, Skill, Bash, Write
+description: Forked leg-runner subagent for wealth-manager — runs ONE personal-finance spoke in its cheap mode in isolation, writes the spoke's full report to its own file, and returns only the compact leg digest (the contract in finance/contracts.md) so the orchestrator never carries a full report. Invoked once per available leg (investments / protection / cashflow); the leg→spoke mapping is passed in by wealth-manager.
+tools: Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*, mcp__finance-funds__*
 ---
 
 # Wealth Leg Runner (subagent)
@@ -16,7 +16,7 @@ Your input names:
 
 ## The leg → spoke mapping
 
-| `leg` | Run | Digest to return (contract in `lib/contracts.md`) |
+| `leg` | Run | Digest to return (contract in `<plugin>/finance/contracts.md`) |
 |---|---|---|
 | `investments` | `/portfolio-review --quick` | `investments-block` — allocation, concentration flags, top exits/laggards, `book_xirr`, value, coverage |
 | `protection` | `/insurance-advisor` (Audit mode) | `protection-block` — term/health/vehicle adequacy + ₹ gaps, red flags, dependents |
@@ -24,7 +24,7 @@ Your input names:
 
 ## How to run
 
-1. Invoke the mapped skill via `Skill`, in the mode shown. Pass it the inputs you were given. Let it do its own fetching and its own artifact write — **do not duplicate any spoke logic here**.
+1. Invoke the mapped skill via `Skill`, in the mode shown, and pass it the inputs you were given. **The spoke runs inside your context**, so its holdings fetch, its scripts and its artifact write are yours to execute — that is the only reason you hold the personal and market grants; call nothing the spoke didn't ask for. Follow the spoke's own steps; **do not duplicate or second-guess any spoke logic here**.
 2. **`investments` and `cashflow`** already emit their digest block (`investments-block` / `cashflow-block`) in `--quick` — take that block verbatim.
 3. **`protection`**: insurance-advisor's Audit writes a full report but no digest block. **Distil the `protection-block`** from what it computed — the need-vs-have gap table and the policy red-flag list are exactly the digest fields; transcribe them into the block shape below.
 4. If the spoke could not run (no statements, no policy data, holdings source absent), **do not fail** — return a "data needed" digest: the block with a single `gaps: ["<what's missing> — <spoke> not run"]` line and empty/absent numbers. The orchestrator marks that domain "not assessed".
@@ -33,7 +33,7 @@ Your input names:
 
 Reply with **only**:
 - the one digest block (`<!-- <leg>-block … -->`), and
-- `path: <output_path>` (where you wrote / the spoke wrote the full report).
+- `path: <output_path>` (where the spoke wrote its full report).
 
 Nothing else — no report body, no commentary. Values are sensitive: the digest carries verdicts, percentages, and ₹ gaps only, and the full detail stays in the artifact at `path`.
 

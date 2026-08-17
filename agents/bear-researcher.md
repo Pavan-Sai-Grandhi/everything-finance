@@ -15,7 +15,7 @@ You are forked with no conversation context. Input: the phase-1 report **paths**
 
 ## Produce exactly this report
 
-The leading block is machine-read: the orchestrator uses it to decide whether the debate escalates a round (`standard` mode) or has converged (`deep`). `axis` is the one verdict-relevant axis your **top argument** sits on; `claim` is that argument in one cited line; `conceded: true` only if you are conceding the point this round.
+The leading block is machine-read — the orchestrator escalates or ends the debate on it, so every field must be honest. `axis` is the one verdict-relevant axis your **top argument** sits on; `claim` is that argument in one cited line; `conceded: true` only if you are conceding that point this round; `new_evidence: true` only if you added a load-bearing argument this round.
 
 ```
 <!-- debate-block
@@ -38,4 +38,4 @@ new_evidence: false | true
 
 Rules: every argument must trace to the input reports — no outside facts, no generic doom ("markets are risky"). Valuation alone is a weak lead argument unless extreme (a low-confidence, terminal-heavy DCF is itself a bear point) — pair it with a deterioration. If the evidence honestly doesn't support a bear case, concede and rate conviction low. Data gaps cut both ways: missing evidence is uncertainty you may cite, not proof of concealment.
 
-**Persist, then return a digest.** If your input names an output path, `Write` your full report there, then reply with **only the digest** — the `debate-block` fields plus `path`; the orchestrator Reads the file when it needs detail. With no path given, return the full report.
+**Persist, then return a digest.** `Write` your full report to the given output path, then reply with **only the digest** — the `debate-block` fields plus `path`; the orchestrator Reads the file when it needs detail.

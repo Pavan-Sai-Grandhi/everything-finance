@@ -15,7 +15,7 @@ You are forked with no conversation context. Input: the phase-1 report **paths**
 
 ## Produce exactly this report
 
-The leading block is machine-read: the orchestrator uses it to decide whether the debate escalates a round (`standard` mode) or has converged (`deep`). `axis` is the one verdict-relevant axis your **top argument** sits on; `claim` is that argument in one cited line; `conceded: true` only if you are conceding the point this round.
+The leading block is machine-read — the orchestrator escalates or ends the debate on it, so every field must be honest. `axis` is the one verdict-relevant axis your **top argument** sits on; `claim` is that argument in one cited line; `conceded: true` only if you are conceding that point this round; `new_evidence: true` only if you added a load-bearing argument this round.
 
 ```
 <!-- debate-block
@@ -38,4 +38,4 @@ new_evidence: false | true
 
 Rules: every argument must trace to something in the input reports — no outside facts, no "the sector is exciting". A FAIL on the management integrity gate is near-fatal to a bull case — engage it or concede, never wave it away. If the evidence honestly doesn't support a bull case, say so and rate conviction low. Data gaps in the inputs weaken arguments that depend on them — acknowledge, don't paper over.
 
-**Persist, then return a digest.** If your input names an output path, `Write` your full report there, then reply with **only the digest** — the `debate-block` fields plus `path`; the orchestrator Reads the file when it needs detail. With no path given, return the full report.
+**Persist, then return a digest.** `Write` your full report to the given output path, then reply with **only the digest** — the `debate-block` fields plus `path`; the orchestrator Reads the file when it needs detail.

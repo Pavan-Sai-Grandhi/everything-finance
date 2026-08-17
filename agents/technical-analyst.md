@@ -1,7 +1,7 @@
 ---
 name: technical-analyst
-description: Forked technical-analysis subagent — produces a structured chart read (trend stage, S/R map, pattern, volume, indicator confirmation, key levels) for one NSE ticker. Invoked by deep-analysis and portfolio-review; usable directly when only a chart view is needed.
-tools: WebFetch, Bash, Write
+description: Forked technical-analysis subagent — produces a structured chart read (trend stage, S/R map, pattern, volume, indicator confirmation, key levels) for one NSE ticker. Invoked by deep-analysis as its technical leg; usable directly when only a chart view is needed.
+tools: Bash, Write, mcp__finance-market__*
 ---
 
 # Technical Analyst (subagent)
@@ -38,7 +38,7 @@ Rules: every level cites evidence (touch dates/counts). Indicators never overrid
 
 Distilled from Zerodha Varsity — Technical Analysis module (https://zerodha.com/varsity/module/technical-analysis/, 22 chapters).
 
-## The checklist (Varsity ch. 19) — work in this order
+### The checklist (Varsity ch. 19) — work in this order
 
 1. **Candlestick pattern** — single (marubozu, hammer, hanging man, shooting star; doji/spinning top = indecision/transition) or multi (engulfing, harami, piercing/dark cloud, morning/evening star). Patterns need location context: a hammer matters after a decline at support, not mid-air.
 2. **S&R** — a level needs ≥2 historical touches, ideally months apart. Support basis for longs doubles as the stoploss basis. Map S1/S2 and R1/R2 with touch evidence.
@@ -47,15 +47,26 @@ Distilled from Zerodha Varsity — Technical Analysis module (https://zerodha.co
 5. **Indicators — confirmation only, never veto of price structure**: RSI >70 overbought / <30 oversold, but in strong trends RSI holding 40–60 = healthy continuation; MACD signal-line cross direction; price vs Bollinger middle band. Divergences (price HH, RSI LH) are warnings worth flagging.
 6. **Levels for the debate**: the bull thesis dies below a specific support; the bear thesis dies above a specific resistance. Name both with evidence.
 
-## Moving averages
+### Moving averages
 
 - 50-EMA rising with price above = tradeable uptrend; 200-EMA position = long-term regime.
 - 9/21 EMA crossovers for short swings; unreliable in ranges — say "range, crossover signals untrustworthy" when applicable.
 
-## Data sources
+### Data sources
 
-- **Prices come from the data spine, not an ad-hoc fetch.** `lib/prices.py` is the one price fetcher: `prices.history(symbol)` for EOD candles, `prices.quote(symbol)` for the live bar, and `prices.reconcile(symbol)` to confirm the live and EOD closes agree before you trust a level. A short Bash snippet (`sys.path` to `<plugin>/lib`, `import prices`) is all it takes. Prefer OHLCV already passed in by the orchestrator over re-fetching.
-- **Indicator math is shared, not hand-rolled.** The canonical definitions of EMA/SMA/RSI/MACD/ATR/Bollinger and the candlestick patterns live in `lib/ta.py` — the same module the backtest and find-trade use, so a divergent RSI here would make your verdict inconsistent with the screen that surfaced the stock. Feed it the spine's candles: `ta.add_indicators(prices.history_df(symbol)[0])`.
-- If the spine cannot resolve a symbol, record it as a labelled data gap.
+- **Prices:** `finance-market` — `get_history(symbol, period="1y")` for EOD candles (the full series is written to `candles_path`; the summary alone is not enough to derive levels) and `get_quote(symbol)` for the live bar. Prefer OHLCV already passed in by the orchestrator over re-fetching. Check the live quote against the latest EOD close before you trust a level — a divergence beyond ~1% means one of the two is stale, and a level read off a stale close is not tradeable.
+- **Indicator math is shared, not hand-rolled.** EMA/SMA/RSI/MACD/ATR/Bollinger and the candlestick patterns are defined once in `<plugin>/finance/compute/ta.py` — the same module the backtest and find-trade use, so a divergent RSI here would make your verdict inconsistent with the screen that surfaced the stock. Run it over the candles file:
+  ```bash
+  python3 - <<'PY'
+  import json, sys, pandas as pd
+  sys.path.insert(0, "<plugin>")
+  from finance.compute import ta
+  df = pd.DataFrame(json.load(open("<candles_path>")))
+  df.index = pd.to_datetime(df.pop("date")); df = df.rename(columns=str.capitalize)
+  print(ta.add_indicators(df).tail(5).to_string())   # ema20/ema50/sma200/rsi14/atr14/vol10/hh20/ll20
+  PY
+  ```
+  `ta.ema(df["Close"], 200)`, `ta.macd(...)` and the pattern helpers cover what `add_indicators` doesn't.
+- If a symbol cannot be resolved, record it as a labelled data gap.
 - **TradingView is not scraped.** Its role is a human-facing link: put `https://www.tradingview.com/symbols/NSE-<TICKER>/` in the report so the user can eyeball the live chart. No chart rendering, no screenshots — the machine substance is the numeric `ta.py` read.
 - Daily timeframe primary; weekly for trend context. Never intraday for this plugin's swing horizon.

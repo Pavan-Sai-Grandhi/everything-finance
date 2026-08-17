@@ -12,9 +12,7 @@ You are forked with no conversation context. Input: the path to a **fundamentals
 
 The pack already carries the disclosure signals you need — **remuneration, related-party transactions, auditor fees & trend, board/KMP profiles, pledging, and multi-year MD&A** — sourced, so do **not** re-fetch them. **Invoke the `management-quality` skill** (Skill tool) for the full checklist and thresholds, and feed it the pack's signals rather than gathering afresh. Run the full method whatever the run mode — integrity is a hard gate.
 
-The one thing the pack cannot hold is the external record: do the **criminal / regulatory check yourself** via `WebSearch` — company and promoter names with "scam / fraud / SEBI order / warning". Trust only filings, the regulator, and well-known financial press.
-
-A signal the pack marks as missing is a data gap — never invent evidence to fill it.
+The one thing the pack cannot hold is the external record: do the **criminal / regulatory check yourself** via `WebSearch` — company and promoter names with "scam / fraud / SEBI order / warning". Count only filings, the regulator, and well-known financial press; anything else is not evidence a FAIL can rest on. A signal the pack marks as missing is a data gap — never invent evidence to fill it.
 
 ## Produce exactly this report
 

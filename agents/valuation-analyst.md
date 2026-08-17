@@ -16,13 +16,13 @@ The pack carries the sourced base inputs — base revenue, historical growth & m
 - **`quick` / `standard`** — use the **distilled DCF checklist** in the *Reference (bundled method)* section below: the life-cycle staging, the levers, and the discipline in compressed form.
 - **`deep`** — additionally **invoke the `dcf-valuation` skill** (Skill tool) for the full method (capitalisation adjustments, the reverse-DCF craft, the edge cases) before you build the model.
 
-Either way the engine is the same: `dcf-valuation`'s `scripts/dcf.py`. Diagnose the life-cycle stage first, build the story, set the lever paths; write the inputs file and run the engine with `--sensitivity --story --reverse`. Use the reverse DCF to read what today's price already assumes — if the gap is a too-short fade of *demonstrated* growth, lengthen the high-growth window rather than calling the stock dear.
+Either way the engine is the same: `<plugin>/skills/dcf-valuation/scripts/dcf.py`. Diagnose the life-cycle stage first, build the story, set the lever paths; write the inputs file and run the engine with `--sensitivity --story --reverse --out artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.json` (the run-day folder `paths.latest_prior("dcf", TICKER)` looks in). Use the reverse DCF to read what today's price already assumes — if the gap is a too-short fade of *demonstrated* growth, lengthen the high-growth window rather than calling the stock dear.
 
 ## 2 · Relative — multiples vs peers
 
-Per Damodaran, multiples are shortcuts to the same DCF drivers, so the relative read is a real second view, not decoration — and it runs in **every mode** (it needs only the screener envelope the lite pack already carries). Compute the deterministic figures with the shared helper rather than by hand, so they are reproducible:
+Per Damodaran, multiples are shortcuts to the same DCF drivers, so the relative read is a real second view, not decoration — and it runs in **every mode** (it needs only the screener envelope the lite pack already carries). Where the orchestrator passes you the stock's **cap-tier valuation stance**, it is context for this read only — a rich small-cap tier raises the bar a "cheap vs peers" verdict must clear; it never overrides the company's own numbers. Compute the deterministic figures with the shared helper rather than by hand, so they are reproducible:
 
-`python3 <plugin>/skills/deep-analysis/scripts/relval.py --figures <figures.json>` — feed it the pack's P/E, the **peer P/E list**, the company's **own historical P/E band**, and the expected-growth input for PEG. It returns the **peer-group median** (median, not mean — multiples are skewed), the company's P/E vs that median, its own-band percentile, **PEG = P/E ÷ expected EPS growth**, and a relative-only stance. Add **EV/EBITDA** vs peers where applicable (banks/NBFCs: use P/B + RoE instead — EV/EBITDA and FCFF are ill-defined there). The expected-growth input is a **labelled estimate** (forward/analyst or historical EPS CAGR, basis stated), never fabricated. The bundled reference carries the guardrails (peer-group construction, median over mean, consistent multiple definitions, PEG's hidden assumptions).
+`python3 <plugin>/skills/deep-analysis/scripts/relval.py --figures <figures.json>` — feed it the pack's P/E, the **peer P/E list**, the company's **own historical P/E band**, and the expected-growth input for PEG. It returns the **peer-group median** (never the mean), the company's P/E vs that median, its own-band percentile, **PEG = P/E ÷ expected EPS growth**, and a relative-only stance. Add **EV/EBITDA** vs peers where applicable (banks/NBFCs: use P/B + RoE instead — EV/EBITDA and FCFF are ill-defined there). The expected-growth input is a **labelled estimate** (forward/analyst or historical EPS CAGR, basis stated), never fabricated. The bundled reference carries the guardrails (peer-group construction, median over mean, consistent multiple definitions, PEG's hidden assumptions).
 
 ## 3 · Reconcile, then grade confidence
 
@@ -62,14 +62,7 @@ axis: valuation
 
 You inform the debate; you do not size a position. A terminal-heavy or fragile DCF is reported with low confidence, never hidden.
 
-**Persist, then return a digest.** `Write` your full report to the given output path. Then reply with **only the digest**, not the full report — the orchestrator Reads the file when it needs detail:
-
-```
-combined_stance: <Undervalued|Fair|Overvalued>
-dcf_mos: <±x%>   dcf_confidence: <low|med|high>
-pe: <x>   peg: <x>   peer_median_pe: <x>   relative_stance: <...>
-path: <output path>
-```
+**Persist, then return a digest.** `Write` your full report to the given output path, then reply with **only the digest** — the `valuation-block` fields plus `path`, never the full report; the orchestrator Reads the file when it needs detail.
 
 ## Reference (bundled method)
 
@@ -79,7 +72,7 @@ path: <output path>
 2. **The story → the levers.** A DCF encodes a narrative; make it explicit in 3–4 sentences, then express it as lever paths: **revenue growth** (fading to ≤ GDP+inflation at terminal), **operating margin** (converging to a defensible industry level), **sales-to-capital** (how much revenue each rupee of reinvestment buys — funds the growth), **WACC** (cost of capital, fading toward a mature beta), **terminal growth ≤ risk-free rate** and terminal **ROIC** (excess returns must compete away over time).
 3. **Discipline.** Reinvestment must fund growth (growth = reinvestment-rate × ROIC). Terminal value should not dominate enterprise value — if it does, the high-growth window or the fade is mis-set. Adjust capitalisation items (net debt, minority interest, non-operating cash & investments, options) to get from enterprise to per-share equity value.
 4. **Reverse DCF.** Solve for the growth/margin the current price implies; compare to history and guidance. Price assuming a faster-than-demonstrated fade of proven growth is an opportunity, not a warning.
-5. **Confidence.** Grade from terminal-value weight and assumption stretch (above). Banks/NBFCs/insurers and violent cyclicals → DCF is low-confidence structurally; value them on P/B·RoE or normalised-through-cycle earnings.
+5. **Confidence.** Graded in §3 — terminal-value weight and assumption stretch, with the structural overrides.
 
 ### Relative valuation & PEG best practices (Damodaran, NYU Stern)
 
