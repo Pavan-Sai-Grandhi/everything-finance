@@ -6,7 +6,7 @@ headline is **daily-rolled rolling returns** — roll a 1/3/5-year window across
 NAV observation and report mean/median/min plus the % of windows that beat a benchmark
 (windows aligned by identical start dates across the compared funds). Max drawdown and
 Sharpe (6% risk-free) round out the risk read; point-to-point CAGR is kept but labelled
-inferior. Extracted from the ad-hoc inline math into one tested, reproducible script.
+inferior.
 
 All figures derive from the cached mfapi.in NAV JSON — nothing fetched here (the skill
 caches the series first). The math core is pure and offline-tested (`test_rolling.py`).
@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
-import sys
 from datetime import datetime, timedelta
 
 YEAR_DAYS = 365.25

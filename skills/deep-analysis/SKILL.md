@@ -11,7 +11,7 @@ Read `references/reference.md` for the fundamental-analysis grounding, the three
 
 ## Depth mode — resolve first
 
-This skill runs at three depths so the common question stops paying full-diligence cost. **Resolve the mode before anything else**, then size the rest of the run to it.
+**Resolve the mode before anything else**, then size the rest of the run to it.
 
 | Mode | Fetch | Legs | Debate | ~Agents |
 |---|---|---|---|---|
@@ -37,7 +37,7 @@ Forked subagents in four phases. Phase 0 fetches the fundamentals **once**; phas
 
 | Phase | Agent | Input | Modes |
 |---|---|---|---|
-| 0 | *(no agent — you run it)* | **market context**: `python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick`. Costs nothing after the first caller of the day. Pass `market_posture` + `volatility.band` to the `portfolio-manager` (they govern **sizing**, never the verdict), and the stock's cap-tier `valuation.stance` to the `valuation-analyst` as context for its relative-multiple read. Without this the portfolio-manager sizes positions regime-blind. | all |
+| 0 | *(no agent — you run it)* | **market context**: `python3 <plugin>/skills/market-analysis/scripts/market_context.py --mode quick`. Costs nothing after the first caller of the day. Pass `market_posture` + `volatility.band` to the `portfolio-manager` (they govern **sizing**, never the verdict), and the stock's cap-tier `valuation.stance` to the `valuation-analyst` as context for its relative-multiple read. | all |
 | 0 | `fundamentals-data` | ticker + output path + **fetch depth** (`lite` in `quick`, `full` otherwise) — pulls the screener.in envelope and CMP always; in `full` also the annual-report priority sections (incl. management signals) + concall. One sourced **data-pack**; the only fundamentals fetch in the run. | all |
 | 1 (parallel) | `technical-analyst` | ticker + cached OHLCV if you already fetched any (saves the agent a fetch) | all |
 | 1 (parallel) | `financials-analyst` | **data-pack path** — Varsity checklist + company overview + concall takeaways + relative valuation | all |
@@ -51,9 +51,9 @@ Forked subagents in four phases. Phase 0 fetches the fundamentals **once**; phas
 
 The fundamental legs (`financials`, `valuation`, and — in `standard`/`deep` — `management`) **must run after** phase 0 — they Read the data-pack and never re-fetch, so all reason off the same sourced numbers. Pass each agent only what it needs — agents are forked and share no context. **Give each agent its output path**: the data-pack at `artifacts/tmp/staging/<TICKER>/fundamentals/data-pack.md`, agent reports at `artifacts/tmp/staging/<TICKER>/agents/<role>.md` (`paths.tmp_dir("staging")`) — `technical.md`, `financials.md`, `management.md`, `valuation.md`, `news.md`, `sector.md`, `contest.md`, `bull-r<N>.md`, `bear-r<N>.md`, `verdict.md`.
 
-**IO hygiene (all modes).** Each agent `Write`s its **full report to its file** and returns to you **only a compact digest** (its structured top block + path), never the full body. Downstream agents (`contest` / `bull` / `bear` / `portfolio-manager`) and your synthesis receive **paths** and Read what they need in their own context — you never hold all six full reports at once. This is the single biggest cost lever after not running all 12 agents.
+**IO hygiene (all modes).** Each agent `Write`s its **full report to its file** and returns to you **only a compact digest** (its structured top block + path), never the full body. Downstream agents (`contest` / `bull` / `bear` / `portfolio-manager`) and your synthesis receive **paths** and Read what they need in their own context — you never hold all six full reports at once.
 
-If phase 0 or any leg fails (scrape block, missing documents), continue with the gap explicitly stated; the portfolio-manager weighs missing evidence as uncertainty, not as neutral. If the management leg's **integrity gate is FAIL** (`standard`/`deep`), that overrides the rest — the verdict is AVOID regardless of numbers or valuation.
+If phase 0 or any leg fails, state the gap and continue; the portfolio-manager weighs missing evidence as uncertainty, not as neutral. If the management leg's **integrity gate is FAIL** (`standard`/`deep`), that overrides the rest — the verdict is AVOID regardless of numbers or valuation.
 
 ## Debate — by mode
 
@@ -81,7 +81,7 @@ The sector body (RS, KPIs, tailwinds/headwinds, leaders/laggards, stance) is cac
 
 ## Synthesize from the work papers
 
-The work papers above are the agents' own output — you do **not** write them. The comprehensive report is built **from** them (the digests they returned, then re-read the staged file for any detail you need), not by pasting them.
+The work papers above are the agents' own output — you do **not** write them. Build the report **from** them: the digests they returned, re-reading the staged file for any detail you need.
 
 Write the synthesized report to `artifacts/tmp/staging/<TICKER>.md` (`paths.tmp_dir("staging")`) using `assets/deep-analysis.md` (bundled with this skill). The template is a **readable synthesis** — you (the orchestrator) author every section in plain prose from the work papers, not by dumping agent output:
 
@@ -92,7 +92,7 @@ Write the synthesized report to `artifacts/tmp/staging/<TICKER>.md` (`paths.tmp_
 
 The report **must contain a `## Telegram Brief` section** (≤ 10 lines: verdict, one bull point, one bear point, sector one-liner, key level, invalidation). The plugin's Stop hook archives `artifacts/tmp/staging/<TICKER>.md` → `artifacts/stocks/<TICKER>/YYYY-MM-DD/deep-analysis.md`, moves the work papers to `artifacts/stocks/<TICKER>/YYYY-MM-DD/deep-analysis/agents/`, and sends the brief to Telegram — do not send Telegram messages yourself and do not move the files.
 
-**Persist the embedded leg artifacts.** The valuation leg runs the DCF engine (every mode) and, in `standard`/`deep`, the management leg grades governance; write their outputs as discrete files in the same run-day folder — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (+ `dcf.json`, from the valuation leg's engine run) and `management.md` (when the management leg ran) — so the stock's history is unified whether the artifact came from a standalone `/dcf-valuation`, `/management-quality`, or `/fundamental-analysis` run or from inside this debate, and `paths.latest_prior("dcf", TICKER)` / `latest_prior("management", TICKER)` find them all.
+**Persist the embedded leg artifacts.** The valuation leg runs the DCF engine (every mode) and, in `standard`/`deep`, the management leg grades governance; write their outputs as discrete files in the same run-day folder — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (+ `dcf.json`, from the valuation leg's engine run) and `management.md` (when the management leg ran) — so `paths.latest_prior("dcf", TICKER)` / `latest_prior("management", TICKER)` find them regardless of which skill produced them.
 
 In chat, give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — not the whole report. End with the standard risk note.
 

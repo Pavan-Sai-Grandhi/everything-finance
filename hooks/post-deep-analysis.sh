@@ -10,11 +10,9 @@
 #   4. sends it via the Telegram bot API
 # No staged files -> exit 0 silently, so the hook is a no-op on ordinary turns.
 #
-# RELIABILITY: Stop hooks do not always run with their process cwd equal to the session cwd, so a
-# bare relative "tmp/staging" can silently miss the files. We read `cwd` from the hook's stdin JSON
-# (Claude Code passes it) and cd there before looking — making the publish deterministic regardless
-# of where the hook process starts. Every run appends to <root>/tmp/deep-analysis-hook.log so a miss
-# is diagnosable instead of silent.
+# A Stop hook's process cwd is not guaranteed to equal the session cwd, so a bare relative
+# "tmp/staging" can silently miss the files. The `cwd` in the hook's stdin JSON is authoritative —
+# cd there first. Every run appends to <root>/tmp/deep-analysis-hook.log so a miss is diagnosable.
 
 set -u
 
@@ -28,6 +26,8 @@ ROOT="${EVERYTHING_FINANCE_ARTIFACTS:-artifacts}"
 STAGING="$ROOT/tmp/staging"
 mkdir -p "$ROOT/tmp"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$1" >> "$ROOT/tmp/deep-analysis-hook.log" 2>/dev/null; }
+# Anything worth logging is worth telling the session about; stderr is the hook's visible channel.
+say() { log "$1"; printf 'everything-finance: %s\n' "$1" >&2; }
 
 [ -d "$STAGING" ] || exit 0
 shopt -s nullglob
@@ -55,16 +55,14 @@ for f in "${staged[@]}"; do
   mkdir -p "$outdir"
   dest="$outdir/deep-analysis.md"
   mv "$f" "$dest"
-  log "archived report -> $dest"
-  echo "everything-finance: archived deep-analysis report -> $dest" >&2
+  say "archived deep-analysis report -> $dest"
 
   # Work papers: <root>/tmp/staging/<TICKER>/  ->  <root>/stocks/<TICKER>/<date>/deep-analysis/
   if [ -d "$STAGING/$ticker" ]; then
     papers="$outdir/deep-analysis"
     rm -rf "$papers"
     mv "$STAGING/$ticker" "$papers"
-    log "archived work papers -> $papers/"
-    echo "everything-finance: archived agent work papers -> $papers/" >&2
+    say "archived agent work papers -> $papers/"
   fi
 
   # Pull the brief: the section under "## Telegram Brief", else head of file.
@@ -78,15 +76,12 @@ for f in "${staged[@]}"; do
         --data-urlencode "text=📊 ${ticker} — deep analysis (${today})
 ${brief}" \
         >/dev/null; then
-      log "telegram brief sent for $ticker"
-      echo "everything-finance: telegram brief sent for $ticker" >&2
+      say "telegram brief sent for $ticker"
     else
-      log "telegram send FAILED for $ticker (report still archived)"
-      echo "everything-finance: telegram send FAILED for $ticker (report still archived)" >&2
+      say "telegram send FAILED for $ticker (report still archived)"
     fi
   else
-    log "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set — brief not sent for $ticker"
-    echo "everything-finance: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set in ~/.claude/.env — brief not sent" >&2
+    say "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set in ~/.claude/.env — brief not sent for $ticker"
   fi
 done
 

@@ -231,7 +231,7 @@ def review(holdings, targets=None, breakdowns=None, thresholds=None):
     ranked concentration flags — with coverage + gaps so partial data reads as
     partial, never as a confident zero."""
     breakdowns = breakdowns or {}
-    _, gaps = _valued(holdings)
+    rows, gaps = _valued(holdings)
     dims = {}
     for key in ("asset_class", "sector", "amc", "market_cap", "style"):
         if key in ("market_cap", "style") and key in breakdowns:
@@ -244,7 +244,7 @@ def review(holdings, targets=None, breakdowns=None, thresholds=None):
             if agg["coverage"] < 1.0:
                 gaps.append(f"{key}: {(1 - agg['coverage']) * 100:.0f}% of book untagged")
     return {
-        "total": round(sum(v for _, v in _valued(holdings)[0]), 2),
+        "total": round(sum(v for _, v in rows), 2),
         "dimensions": dims,
         "asset_drift": asset_drift(holdings, targets, thresholds),
         "concentration_flags": concentration_flags(holdings, breakdowns, thresholds),

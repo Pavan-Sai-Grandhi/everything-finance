@@ -36,46 +36,13 @@ import argparse
 import json
 import os
 import sys
-from datetime import date, datetime
+from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
-
-
-# --------------------------------------------------------------------------- #
-# shared data-spine envelope                                                  #
-# --------------------------------------------------------------------------- #
-def _envelope(ok, source, data, gaps):
-    """The contract every data-spine fetch returns (see lib/contracts.md)."""
-    return {
-        "ok": bool(ok),
-        "source": source,
-        "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "data": data,
-        "gaps": gaps,
-    }
-
-
-
-def _f(v):
-    """Coerce to float, else None — keeps a missing field from poisoning math."""
-    try:
-        if v is None or v == "":
-            return None
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _norm(symbol):
-    """A bare NSE symbol — uppercased, the `.NS`/exchange prefix stripped."""
-    s = str(symbol or "").strip().upper()
-    if ":" in s:
-        s = s.split(":")[-1]
-    if s.endswith(".NS"):
-        s = s[:-3]
-    return s
+from spine import (envelope as _envelope, f as _f, norm_symbol as _norm,
+                   read_cache as _read_cache, write_cache as _write_cache)  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -321,31 +288,6 @@ def reconcile(symbol, tolerance=0.01):
         "agree": bool(ok),
     }
     return _envelope(ok, "TradingView+yfinance", data, gaps)
-
-
-# --------------------------------------------------------------------------- #
-# day-cache (reuse within the day; --fresh bypasses — per the shared contract) #
-# --------------------------------------------------------------------------- #
-def _read_cache(cache_file, fresh):
-    if fresh or not os.path.exists(cache_file):
-        return None
-    try:
-        with open(cache_file) as fh:
-            cached = json.load(fh)
-        if cached.get("data", {}).get("date") == date.today().isoformat():
-            return cached
-    except Exception:  # noqa: BLE001 — a bad cache file never blocks a fetch
-        pass
-    return None
-
-
-def _write_cache(cache_file, env):
-    env.setdefault("data", {}).setdefault("date", date.today().isoformat())
-    try:
-        with open(cache_file, "w") as fh:
-            json.dump(env, fh, ensure_ascii=False)
-    except Exception:  # noqa: BLE001
-        pass
 
 
 # --------------------------------------------------------------------------- #

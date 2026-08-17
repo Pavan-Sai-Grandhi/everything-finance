@@ -11,7 +11,7 @@ The standalone fundamentals path. The same four agents `deep-analysis` uses for 
 
 **Refer the earlier run first.** Call `paths.latest_prior("deep-analysis", TICKER)` and `paths.latest_prior("dcf"/"management", TICKER)` — if prior artifacts exist, read them so this run builds on them, and open the merged report with a one-line `prior run: <path> (<date>)` note where the grade or fair value moved.
 
-**Sites for this skill only:** screener.in (financials, annual reports, concalls), yfinance via `lib/prices.py` (CMP), and the WebSearch the management leg does for the criminal/regulatory record. The fetcher uses the data spine (`lib/fundamentals.py`, `lib/prices.py`); do not wander elsewhere.
+**Sources for this skill only:** screener.in (financials, annual reports, concalls) and yfinance (CMP), both via the data spine (`lib/fundamentals.py`, `lib/prices.py`), plus the WebSearch the management leg does for the criminal/regulatory record.
 
 ## Orchestration
 
@@ -20,11 +20,11 @@ The standalone fundamentals path. The same four agents `deep-analysis` uses for 
    - `financials-analyst` → `financials.md`
    - `management-analyst` → `management.md`
    - `valuation-analyst` → `valuation.md` (pass mode `deep` — this is a full single-stock fundamental read, so the valuation leg loads the full DCF method, not the distilled checklist)
-   Pass each agent only the data-pack path (they Read it themselves) — agents are forked and share no context. If a leg fails, continue and state the gap; do not let one leg abort the report.
+   Pass each agent only the data-pack path (they Read it themselves) — agents are forked and share no context.
 3. **Merge, don't paste.** Author one fundamentals report in plain prose from the three legs: company overview (financials), the checklist scorecard highlights, the management integrity gate + skill grade, and the valuation leg's **combined stance** — the intrinsic DCF range + margin of safety **with its DCF-confidence grade** reconciled with the relative multiples (P/E, PEG, peer-median, EV/EBITDA). If the integrity gate is FAIL, that is the headline — overall AVOID regardless of numbers or valuation.
 
 ## Persist
 
-Write the merged report to `artifacts/stocks/<TICKER>/YYYY-MM-DD/fundamental-analysis.md` (`paths.stock_dir`). Also persist the discrete leg artifacts into the same run-day folder so the stock's history is unified and `paths.latest_prior` finds them whether they came from here or from deep-analysis: `dcf.md`/`dcf.json` (from the valuation leg's engine run), `management.md` (from the management leg). Move the work papers to `artifacts/stocks/<TICKER>/YYYY-MM-DD/fundamental-analysis/agents/`.
+Write the merged report to `artifacts/stocks/<TICKER>/YYYY-MM-DD/fundamental-analysis.md` (`paths.stock_dir`). Also persist the discrete leg artifacts into the same run-day folder so `paths.latest_prior` finds them regardless of which skill produced them: `dcf.md`/`dcf.json` (from the valuation leg's engine run), `management.md` (from the management leg). Move the work papers to `artifacts/stocks/<TICKER>/YYYY-MM-DD/fundamental-analysis/agents/`.
 
 In chat, give the fundamentals verdict, the integrity gate result, the intrinsic-value range + DCF confidence, and the two strongest flags — not the whole report. End with the standard risk note + "Not investment advice — personal research tool."

@@ -1,6 +1,6 @@
 # DCF valuation method — Damodaran's story-driven FCFF (self-contained)
 
-Distilled from Aswath Damodaran's *The Little Book of Valuation* / *Narrative and Numbers* and the connecting-the-story-with-the-numbers framing. This file is the method; `scripts/dcf.py` is the arithmetic. The engine is faithful but dumb — **it computes exactly what you feed it.** Your whole job is to build a coherent *story* and turn it into a small set of *sourced, consistent* inputs. A clean-looking per-share number on top of an incoherent story is worthless and, with real money at stake, dangerous.
+Distilled from Aswath Damodaran's *The Little Book of Valuation* / *Narrative and Numbers*. This file is the method; `scripts/dcf.py` is the arithmetic. Your whole job is to build a coherent *story* and turn it into a small set of sourced, consistent inputs — a clean-looking per-share number on top of an incoherent story is worthless.
 
 ## The one idea
 
@@ -48,9 +48,9 @@ The bundled `--selftest` *is* a worked example; run `python3 scripts/dcf.py --se
 
 > "A ₹1,000 Cr-revenue firm with a real but fading edge: it grows 15%/yr for 3 years while the edge holds, then fades to 4% (≈ the economy) by year 10. Today's 12% operating margin widens to 18% by year 5 as scale kicks in — no higher, because that's where the best peers sit. Each ₹1 of new capital buys ₹2 of sales (sales-to-capital 2.0). Discount at 11%. In perpetuity it grows 4% and earns 13% on new capital (a modest, durable moat). Net debt ₹500 Cr, ₹100 Cr surplus cash, 100 Cr shares."
 
-Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags. If the market price were ₹60, the margin of safety is **−70%** — the story doesn't support the price, so either the story is too conservative (defend a higher growth/margin with evidence) or the stock is dear. That tension *is* the output: the model surfaces where your narrative and the price disagree. Note how every assumption traces to a "why" — that is the whole discipline.
+Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags. If the market price were ₹60, the margin of safety is **−70%** — the story doesn't support the price, so either the story is too conservative (defend a higher growth/margin with evidence) or the stock is dear. That tension *is* the output: the model surfaces where your narrative and the price disagree.
 
-## The valuation levers (and where to source each — authenticity is non-negotiable)
+## The valuation levers (and where to source each)
 
 | Lever | Source it from | Sanity rule |
 |---|---|---|
@@ -60,7 +60,7 @@ Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags.
 | Tax rate | effective tax from P&L; trend toward statutory | India ≈ 25% statutory for most |
 | Sales-to-capital | historical ΔRevenue ÷ Δ(net fixed assets + working capital); peer benchmark | asset-light (software) high (3–5+); capital-heavy (utilities, autos) low (0.5–1.5) |
 | WACC | cost of equity (risk-free + β×mature-ERP + λ×country-risk premium) and after-tax cost of debt, weighted | β is a **bottom-up/sector** beta (business risk), never the stock's raw regression β; country risk scales with operating exposure λ, not incorporation — see § Diagnose first |
-| Terminal growth | ≤ risk-free rate, **in the currency of the cash flows** | for a ₹ domestic firm that is the ~6.5–7% rupee G-sec, not a 4% US habit — see § Diagnose first |
+| Terminal growth | ≤ risk-free rate, **in the currency of the cash flows** | ~6.5–7% rupee G-sec for a ₹ domestic firm — see § Country risk |
 | Terminal ROIC | the return the mature firm earns on new capital | the excess return (ROIC−WACC), not g_T, is what moves terminal value; default to convergence (= WACC), set > WACC only if a durable moat persists — see § Terminal value |
 | Net debt, cash, shares, minority | latest balance sheet + shareholding | consolidated; diluted share count |
 
@@ -77,7 +77,7 @@ Damodaran's first-principles method is identical in every market and at every ag
 | `mature_growth` / `mature_stable` | margins, capital allocation, moat *duration*; history constrains you | numbers dominate — deviations from history need a reason | big but **disciplined by the demonstrated business**; g_T ≈ economy | ≈ 0 for a profitable cash generator — **don't apply it** | ≈ market average; small WACC changes matter |
 | `decline` | cash extraction, asset/liquidation value, return of capital | liquidation mechanics dominate | small / near-zero / negative; **g_T ≤ 0** and cross-check break-up value | elevated again | elevated (distress) |
 
-Reading this table replaces a dozen hardcoded rules: *whether* value should sit in the terminal year, *whether* a failure probability belongs, *whether* you lean on the story or the history, and *where* terminal growth should land all fall out of the stage. The engine's flags are tuned to it (`lifecycle_stage` relaxes the terminal-heavy flag for young firms and turns it into a red flag — plus a positive-terminal-growth warning — for declining ones).
+The engine's flags are tuned to the stage: `lifecycle_stage` relaxes the terminal-heavy flag for young firms and turns it into a red flag — plus a positive-terminal-growth warning — for declining ones.
 
 ### Don't fade high growth prematurely (young / high-growth)
 The default 10-year fade-to-GDP assumes a company decelerates on a fixed schedule for no business reason. India's runways are often long (low penetration, young demographics, formalisation). A firm *demonstrably* compounding 30%+ should keep doing so for as long as its edge and TAM support, then fade to a *durable* rate. Set `years: 15` for a genuinely young firm so a 15–20-year story isn't crushed into 10, and read `story_sensitivity.duration`: if two extra years of the company's **demonstrated** growth closes most of the gap to price, your base case was fading too hard — that, not "overvaluation," is the finding. The discipline that keeps this honest: the **length of the high-growth period** is the moat lever (a firm with a real, durable competitive advantage compounds for *longer* — Damodaran's competitive-advantage period), while the **growth rate** stays anchored to TAM × share and history (over-optimism on the *rate* is the single most common valuation error). So when the reverse DCF shows the price-implied growth is roughly what the company has *already demonstrated* and you can name the edge that sustains it, **lengthen the runway and re-run, then report that as your base case** — don't leave a too-short fade standing and call the stock expensive. Extend the duration; never just bump the rate to close a gap. Build the revenue top-down from **TAM × share × take-rate** (Zomato, SpaceX) so the growth answers to a market size you can defend, and remember the **big-market delusion** both ways: a big market is already in the growth (don't add a separate premium), and a bigger market invites competition that *compresses* margins (SpaceX cut its target margin from 45%→25% when it chased the larger market) — bigger TAM travels with lower margin and heavier reinvestment, never a free margin bump.
@@ -129,7 +129,7 @@ The script emits a per-year FCFF table, EV/equity/per-share, the **story-driver 
 ## The flags the engine raises (read them as Damodaran's reality checks)
 
 - `TERMINAL_GROWTH_ABOVE_RISKFREE` — cap g_T at the risk-free rate (in the cash-flow currency). Always.
-- `TERMINAL_VALUE_HEAVY` — value concentrated in the terminal year. **Stage-aware** (set `lifecycle_stage`): for a young/high-growth firm this is *expected* (the cash flows live in the future) and only fires above ~90% with reassuring wording; for a mature firm it fires above ~75% as a prompt to look *harder* at the high-growth path and the terminal excess return (ROIC−WACC), **not** as evidence the model is broken — a heavy terminal is normal for a going concern; for a declining firm it is a red flag pointing you to liquidation/break-up value.
+- `TERMINAL_VALUE_HEAVY` — value concentrated in the terminal year. **Stage-aware** (set `lifecycle_stage`): for a young/high-growth firm this is *expected* and only fires above ~90%; for a mature firm it fires above ~75% (read it per § Terminal value); for a declining firm it is a red flag pointing you to liquidation/break-up value.
 - `BETA_LOOKS_LIKE_REGRESSION` — the input beta is above ~1.3, the tell-tale of a raw regression beta on a volatile stock rather than a bottom-up/sector (business-risk) beta. Confirm it's the unlevered-relevered industry beta; a regression beta over-discounts and depresses value for no business reason.
 - `DECLINE_POSITIVE_TERMINAL_GROWTH` — a positive perpetual growth on a firm you classified as declining; a shrinking business usually warrants g_T ≤ 0 and a liquidation cross-check.
 - `NEGATIVE_ENTERPRISE_VALUE` — explicit cash flows are net-negative; reinvestment too heavy or margins too thin for the growth assumed. The model is unusable until the story is fixed.
@@ -159,4 +159,4 @@ When it returns `solved: false`, that is a finding, not a failure: either the pr
 3. **Break your own story.** If a competitor launched a cheaper product tomorrow, which input collapses? If the whole thesis hangs on one heroic assumption, say that out loud.
 4. **Know when DCF is fragile — and when it merely *looks* fragile.** Genuinely fragile: banks/NBFCs/insurers (FCFF ill-defined → use P/B–RoE) and violently cyclical/commodity firms (normalise through the cycle, treat DCF as one weak input). *Not* fragile, despite appearances: young loss-makers — that is precisely what story-driven DCF is for (Zomato, SpaceX), valued with a TAM-built revenue, a country-risk WACC, and a failure probability. Don't retreat to multiples just because today's earnings are negative.
 
-Every number in the output must trace back to a sourced input. If you had to estimate one, label it an estimate. Not investment advice — personal research tool.
+Not investment advice — personal research tool.

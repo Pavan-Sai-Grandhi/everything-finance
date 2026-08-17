@@ -14,7 +14,7 @@ Grounded in Zerodha Varsity — Personal Finance module (https://zerodha.com/var
 - **Beta**: <1 defensive vs benchmark, >1 amplifies. Only meaningful vs the right benchmark.
 - **Sharpe**: excess return per unit of total risk — compare within category only. **Sortino** (downside-only) is Varsity's preferred refinement.
 - **Capture ratios**: upside capture >100 and downside capture <100 is the ideal asymmetry; downside capture matters more for staying invested.
-- **Expense ratio (TER)**: compounding drag — 1% extra TER ≈ 10%+ of corpus over 20 years. Always Direct plan. Index funds: TER < 0.2% expected; active equity: < 1% (Direct) preferred.
+- **Expense ratio (TER)**: compounding drag — 1% extra TER costs ≈**16%** of the final corpus over 20 years (12% gross → 11% net compounds to 8.06× instead of 9.65×). State it as a share of corpus, never as "1% a year", which reads as trivial. Always Direct plan. Index funds: TER < 0.2% expected; active equity: < 1% (Direct) preferred.
 - **Alpha**: active fund must beat benchmark *after* TER over rolling 3Y+; most large-cap active funds don't → index-first default for large-cap.
 
 ## Fund selection checklist (ch. 24–26)
@@ -38,10 +38,10 @@ Everything above measures the *past*. Trailing/rolling returns are backward-look
 
 A fund's portfolio P/E-P/B is published nowhere, so compute it from the underlying stocks' ratios via `scripts/lookthrough.py`, sourcing the **complete** holdings list through `lib/funds.py`.
 
-> **Never source holdings from the IndMoney MCP.** `get_mf_funds_details.holdings` caps at 20 rows with no pagination, reports that cap as the total, and claims 91-98% coverage beside a list summing to 6-27%. Real funds hold 64-278 positions. One fund's 20-row slice omitted its actual top three holdings; another was nine months stale. Every ratio built on it was wrong.
+Holdings never come from a personal MCP (IndMoney / broker), whose truncated, stale lists make every look-through ratio describe a different fund — CLAUDE.md rule 3 has the measured detail.
 
 - **Aggregation is not averaging.** Portfolio P/E and P/B aggregate by the **weighted harmonic mean** — you sum earnings/book *yields* across holdings, then invert — because multiples don't add. ROE and earnings growth use the weighted arithmetic mean.
-- **Coverage is a gate.** Report the % of AUM priced, and **withhold the ratio below ~85%** rather than caveating it (see "Coverage is a gate" below); never extrapolate the uncovered remainder.
+- **Coverage is a gate.** Report the % of AUM priced and **withhold the ratio below ~85%** (see § Coverage is a gate).
 - **Read:** a flexicap trading at a large P/E premium to its category while carrying only average look-through ROE/growth is priced for perfection — a forward risk no trailing chart shows.
 
 ### Style & drift
@@ -54,7 +54,7 @@ A fund's portfolio P/E-P/B is published nowhere, so compute it from the underlyi
 ### AMC & manager trust (each claim sourced)
 
 - **Fund-house pedigree** — process discipline and breadth; a track record of investor-first conduct vs mis-selling, expense abuse, or penalties.
-- **Manager tenure ≥ 3y** over the window being credited (ties back to the ch. 24–26 checklist) and **alpha consistency** — is the record the current manager's, or a predecessor's?
+- **Alpha consistency** — is the record the current manager's or a predecessor's? (tenure rule: § Is it the manager's record?)
 - **AUM stability/trend** — sudden inflows into a small/midcap strategy erode agility; persistent outflows can force selling.
 - **Governance & regulatory flags** — SEBI actions, front-running/expense-abuse cases, side-pocketing history.
 
@@ -92,7 +92,7 @@ Then make the distinction that decides how to read it:
 
 ### Is it the manager's record?
 
-Manager tenure must cover **the window being credited**. A fund whose 3-year number was earned by a manager who left 22 months ago has a 3-year record that belongs to someone else. Check tenure before ranking, not after — in a live small-cap scan this single check removed the top-scoring fund and the fourth, because both had turned over their management inside the credited window. Also weigh **AUM trend** (sudden inflows erode a small/midcap manager's agility; persistent outflows force selling) and any **capital gating** by the AMC — a fund closing to lump-sum money is telling you it thinks size is hurting it.
+Manager tenure must cover **the window being credited**. A fund whose 3-year number was earned by a manager who left 22 months ago has a 3-year record that belongs to someone else. Check tenure before ranking, not after — in a live small-cap scan this single check removed the top-scoring fund and the fourth, because both had turned over their management inside the credited window. Also weigh any **capital gating** by the AMC — a fund closing to lump-sum money is telling you it thinks size is hurting it.
 
 ### Rejected sources — tested and dead, do not re-test
 
@@ -101,7 +101,6 @@ Manager tenure must cover **the window being credited**. A fund whose 3-year num
 | Morningstar India `detailed-portfolio.aspx` | Paywalled — data behind "Unlock" |
 | AMFI portfolio-disclosure portal | JS-driven; WebFetch sees an empty dropdown, and the plugin has no browser. Tickertape's API already returns the complete book |
 | AdvisorKhoj monthly-disclosure pages | Lists months, but every link bounces to a generic AMC downloads page |
-| Legacy AMC monthly-portfolio XLSX URLs | HTTP 200 with `content-type: text/html` — dead pattern |
 | ValueResearch portfolio-holdings page | Partial / top-N only |
 | Tickertape **HTML** fund page | Top-5 plus "See All" — the **API** is the right door |
 | mfapi.in for holdings | NAV-only by design |

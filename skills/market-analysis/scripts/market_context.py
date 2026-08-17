@@ -3,13 +3,10 @@
 
 WHAT THIS IS
 ------------
-Every skill in this plugin used to answer "what is the market doing?" for itself, and they
-disagreed: two incompatible definitions of sector strength, "risk-on" computed twice with
-different inputs, the same ten index downloads repeated by three skills in one morning, and
-a hand-rolled EMA that drifted from `lib/ta.py`'s TA-Lib reference. This script replaces all
-of that. It absorbs the former `strategy-manager/scripts/regime.py` and extends it with the
-dimensions that were missing entirely: real stock-level breadth, cap-tier valuation
-percentiles, institutional flows, and the cross-asset backdrop.
+The one place the plugin decides what the market is doing: trend, posture, stock-level
+breadth, cap-tier valuation percentiles, institutional flows and the cross-asset backdrop.
+Every other skill reads this answer instead of computing its own, so they cannot disagree
+about the tape or re-download the same indices on the same morning.
 
 THE DESIGN RULE — compute wide, report narrow
 ---------------------------------------------
@@ -23,13 +20,13 @@ Indicator values come from `lib/ta.py` (TA-Lib) and raw data from `lib/market.py
 `lib/prices.py`, so this script owns *interpretation* only — never a second definition of
 an EMA or a second path to an endpoint.
 
-BACKWARD COMPATIBILITY (do not rename these)
---------------------------------------------
-`strategy-manager/scripts/select_strategy.py` reads exactly four key paths, so they keep
-their original spelling forever: `market_trend`, `trend_detail.above_ema200`,
-`volatility.vix`, `breadth.pct_sectors_above_ema50`. The former `risk_posture` is renamed
-`market_posture` — `lib/wealth` already uses `risk_posture` for a personal balance-sheet
-posture, and the two would have collided the moment wealth-manager read market context.
+FROZEN KEY NAMES (do not rename)
+--------------------------------
+`strategy-manager/scripts/select_strategy.py` gates on exactly four key paths, so renaming
+one silently breaks every strategy spec's `regime_required`: `market_trend`,
+`trend_detail.above_ema200`, `volatility.vix`, `breadth.pct_sectors_above_ema50`. The
+posture key is `market_posture`, never `risk_posture` — wealth-manager uses that name for a
+personal balance-sheet posture and the two would collide.
 
 MODES
 -----
@@ -72,8 +69,8 @@ STANCE_BANDS = [(25, "cheap"), (45, "below average"), (65, "fair"), (85, "rich")
 # pure classifiers (offline-testable; no fetching, no I/O)                     #
 # --------------------------------------------------------------------------- #
 def classify_trend(above50, above200, slope_up):
-    """up / range / down — unchanged from the absorbed regime gate so that every
-    strategy spec's `regime_required.market_trend` keeps meaning what it meant."""
+    """up / range / down — the taxonomy every strategy spec's `regime_required.
+    market_trend` is written against, so the labels are part of the contract."""
     if above50 and above200 and slope_up:
         return "up"
     if (not above50) and (not above200) and not slope_up:
@@ -82,7 +79,7 @@ def classify_trend(above50, above200, slope_up):
 
 
 def classify_vol_band(vix):
-    """low / normal / high. The 13/20 India-VIX cut-points are the absorbed gate's."""
+    """low / normal / high on the 13/20 India-VIX cut-points."""
     if vix is None:
         return "unknown"
     return "low" if vix < 13 else ("high" if vix > 20 else "normal")
@@ -126,11 +123,7 @@ def classify_stance(pe_pct, pb_pct, dy_pct):
 
 
 def classify_posture(trend, vol_band, breadth_pct):
-    """risk_on / neutral / risk_off + the one-line reason.
-
-    Renamed from `risk_posture` (see the module docstring) but the logic is the absorbed
-    gate's, so a strategy validated under the old labels still gates identically.
-    """
+    """risk_on / neutral / risk_off + the one-line reason."""
     strong = breadth_pct is not None and breadth_pct >= 60
     weak = breadth_pct is not None and breadth_pct < 40
     if trend == "up" and vol_band != "high" and not weak:
@@ -197,11 +190,11 @@ def _volatility(gaps):
 
 
 def _breadth(gaps):
-    """Two breadth reads: real stock-level participation, plus the legacy sector count.
+    """Two breadth reads: stock-level participation, plus the sector count.
 
-    `pct_sectors_above_ema50` is retained under its exact original name because strategy
-    specs gate on it; the stock-level numbers are the ones actually worth reasoning about,
-    since 10 sector indices cannot tell a broad advance from five heavyweights.
+    `pct_sectors_above_ema50` keeps its exact name because strategy specs gate on it; the
+    stock-level numbers are the ones worth reasoning about, since 10 sector indices
+    cannot tell a broad advance from five heavyweights.
     """
     env = market.breadth(universe=500)
     gaps.extend(env.get("gaps") or [])
@@ -236,9 +229,8 @@ def _breadth(gaps):
 def _valuation(gaps, years=10):
     """Cap-tier valuation: level + own-history percentile for P/E, P/B and dividend yield.
 
-    This is the dimension the plugin had none of, and the one that decides whether a
-    CATEGORY is worth adding money to — a separate question from which fund inside it is
-    best.
+    Decides whether a CATEGORY is worth adding money to — a separate question from which
+    fund inside it is best.
     """
     live = market.indices()
     gaps.extend(live.get("gaps") or [])
@@ -357,7 +349,7 @@ def compute(mode="standard", years=10):
         "generated": str(date.today()),
         "mode": mode,
         "market_trend": trend,               # consumed by select_strategy.py
-        "market_posture": posture,           # renamed from risk_posture (see docstring)
+        "market_posture": posture,
         "rationale": why,
         "trend_detail": trend_detail,
         "volatility": vol,

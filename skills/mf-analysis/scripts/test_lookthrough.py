@@ -35,7 +35,7 @@ def approx(a, b, tol=0.01):
 # --- weighted harmonic: the correct P/E aggregation --------------------------
 pe, w = L.weighted_harmonic([(50, 10), (50, 30)])
 check("harmonic 50/50 of 10 & 30 = 15", approx(pe, 15.0) and w == 100)
-check("harmonic differs materially from arithmetic (20 vs 15) — the old bug",
+check("harmonic differs materially from arithmetic (20 vs 15)",
       approx(pe, 15.0) and abs(20.0 - pe) / pe > 0.20)
 pe, w = L.weighted_harmonic([(40, 20), (60, None)])
 check("harmonic ignores a None multiple and excludes its weight from coverage",
@@ -79,11 +79,11 @@ check("label fallback tolerates spacing/case", L.cap_bucket(cap_label="Mid Cap")
 check("micro-cap label folds into small", L.cap_bucket(cap_label="Microcap") == ("small", "label"))
 check("no rank and no label → unclassified, never guessed",
       L.cap_bucket(None, None) == (None, None))
-check("a ₹Cr market cap alone classifies nothing (the deleted bug)",
+check("a ₹Cr market cap alone classifies nothing",
       L.cap_bucket(cap_rank=None, cap_label=None) == (None, None))
 
-# The exact regression: a small-cap fund's biggest holdings are its largest names. Under
-# absolute ₹Cr bands these read as large/mid-cap "drift"; under SEBI rank they are small.
+# A small-cap fund's biggest holdings are its largest names: under absolute ₹Cr bands
+# these read as large/mid-cap "drift"; under SEBI rank they are small.
 SMALLCAP_BOOK = [
     {"weight": 5.0, "cap_rank": 260, "cap_label": "Smallcap", "market_cap_cr": 48000},
     {"weight": 4.0, "cap_rank": 310, "cap_label": "Smallcap", "market_cap_cr": 31000},
@@ -201,9 +201,9 @@ check("cap tilt from ranks: 44.4% large / 38.9% mid / 16.7% small",
 check("unpriced weight surfaced explicitly", pm["unpriced_weight_pct"] == 10.0)
 check("overall confidence is decision-grade", pm["confidence"] == "decision-grade")
 
-# --- the regression the gate exists for --------------------------------------
-# A 20-row slice of a real book: the weights sum to a fifth of the fund, yet every ratio
-# looks perfectly computable. Before the gate this printed "P/E 45.07" as fact.
+# --- what the gate exists for ------------------------------------------------
+# A truncated feed: the weights sum to a fifth of the fund, yet every ratio still looks
+# perfectly computable.
 TRUNCATED = [{"weight": 2.0, "pe": 45, "pb": 6, "roe": 14, "cap_rank": 300, "priced": True}
              for _ in range(10)]
 pm_t = L.portfolio_metrics(TRUNCATED, equity_weight=97.0)

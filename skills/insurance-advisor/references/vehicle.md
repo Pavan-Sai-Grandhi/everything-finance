@@ -1,12 +1,10 @@
 # Vehicle insurance — best-practice reference
 
-Motor cover (car / two-wheeler). Read with `reference.md`. Interview, scoring, and Q&A on motor policies all draw on this.
+Motor cover (car / two-wheeler). Read with `reference.md`.
 
 ## Interview — what to ask (one at a time)
 
 Make / model / year / variant · current IDV + no-claim bonus (NCB) % · usage pattern (personal / commercial, annual km) · city (claim frequency, garage network) · prior claims (last 3–5 years) · existing add-ons. Also useful: ex-showroom price of the variant (anchors the IDV sanity check), whether a loan/hypothecation is on the vehicle.
-
-Missing → stated assumption in the Assumptions table.
 
 ## Comprehensive vs third-party
 

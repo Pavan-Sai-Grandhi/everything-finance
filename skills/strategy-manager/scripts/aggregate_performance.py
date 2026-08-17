@@ -19,31 +19,16 @@ Usage:
   python3 aggregate_performance.py --strategy nifty500-momentum-swing --update-spec
 Exit: 0 ok, 2 error.
 """
-import argparse, glob, json, os, sys, subprocess
+import argparse, glob, json, os, sys
 from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "lib"))
 import paths
+from deps import need as _need, load_yaml
 
 MIN_SAMPLE = 10           # below this, never act — too few trades to judge
 DECAY_FLOOR_R = 0.1       # live expectancy below this (but >=0) with backtest edge -> OPTIMIZE
-
-
-def _need(mod, pip_name=None):
-    try:
-        return __import__(mod)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet",
-                               "--break-system-packages", pip_name or mod])
-        return __import__(mod)
-
-
-def load_yaml(path):
-    yaml = _need("yaml", "pyyaml")
-    with open(path) as f:
-        return yaml.safe_load(f)
-
 
 def dump_yaml(obj, path):
     yaml = _need("yaml", "pyyaml")

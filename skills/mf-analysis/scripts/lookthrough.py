@@ -7,35 +7,30 @@ verdict can rest on *what the fund holds today* rather than on what it returned 
 
 Holdings and per-stock ratios both come from `lib/funds.py` (Tickertape), the one
 sanctioned path — `--fund <MF_ID>` fetches the COMPLETE position list (64-278 names at
-90-99% weight coverage), threaded and disk-cached. `--holdings FILE` survives only as an
-offline/testing hatch. That default matters: callers used to hand-type a 20-row holdings
-JSON, which is precisely the fabrication surface the plugin forbids, and they did it
-because the honest path was the slow one. It no longer is.
+90-99% weight coverage), threaded and disk-cached. `--holdings FILE` is an
+offline/testing hatch only.
 
-Three corrections are baked into the math, each of which flipped a real verdict:
+Three rules are baked into the math, each of which can flip a verdict:
 
 1. **Cap-tilt is RANK-based, not ₹Cr-band-based.** SEBI classifies by market-cap rank
-   (top 100 large, 101-250 mid, 251+ small) and Tickertape publishes that rank. The old
-   absolute-₹Cr bands reported a 74%-small-cap fund as "0% small-cap" and invented
-   "19% large-cap drift" in the purest small-cap book of its peer set — because a
-   small-cap fund's biggest holdings are, by construction, its largest names.
+   (top 100 large, 101-250 mid, 251+ small) and Tickertape publishes that rank.
+   Absolute-₹Cr bands fabricate style drift, because a small-cap fund's biggest holdings
+   are, by construction, its largest names.
 
-2. **Coverage is a GATE, not a footnote.** Ratios computed on 20-65% of the book were
-   printed as fact and went straight into a recommendation; recomputed at 92-100% one
-   fund's P/E moved 46 -> 27.75 and another's 12 -> 17.29. Below `MIN_PUBLISHABLE`
-   coverage the ratio is withheld (`value: null`, `confidence: "unusable"`), not
-   annotated. A blank beats a confident wrong number.
+2. **Coverage is a GATE, not a footnote.** Below `MIN_PUBLISHABLE_COVERAGE` the ratio is
+   withheld (`value: null`, `confidence: "unusable"`), not annotated — the same book
+   priced at 20% and at 95% coverage yields wildly different multiples, so a blank beats
+   a confident wrong number.
 
 3. **A multiple aggregates by the weighted HARMONIC mean.** A portfolio P/E is total
-   price / total earnings = 1 / Sum(w_i / PE_i). Weighted-arithmetic averaging inflated
-   every fund in the peer set to P/E 44-56 and mis-ranked the whole comparison.
+   price / total earnings = 1 / Sum(w_i / PE_i); weighted-arithmetic averaging inflates
+   every multiple and mis-ranks a peer comparison.
 
-Beyond the ratios it emits the analytics that actually decided a real comparison:
-`pb_over_roe` (the only valuation cut stable across three rounds of data revision),
-earnings-distress dispersion (share of book at ROE < 8% — "cheap" means nothing if the
-earnings are at a trough), weighted ROE, weighted earnings yield (which, unlike P/E, can
-carry loss-makers), sector concentration + Herfindahl, top-5/top-10 concentration, and
-the unpriced/unlisted weight that every ratio silently excludes.
+Beyond the ratios it emits `pb_over_roe` (the valuation cut most stable under data
+revision), earnings-distress dispersion (share of book at ROE < 8% — "cheap" means
+nothing if the earnings are at a trough), weighted ROE, weighted earnings yield (which,
+unlike P/E, can carry loss-makers), sector concentration + Herfindahl, top-5/top-10
+concentration, and the unpriced/unlisted weight that every ratio silently excludes.
 
 The math core is pure and offline-tested (`test_lookthrough.py`); only `load_fund()`
 touches the network. Uncovered weight is reported, never extrapolated.
@@ -51,6 +46,10 @@ import argparse
 import json
 import os
 import sys
+
+_LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "lib")
+sys.path.insert(0, _LIB)
+from spine import f as _num, first as _first  # noqa: E402  (the shared coercions)
 
 # --------------------------------------------------------------------------- #
 # gates and thresholds — the tuned constants, in one place                     #
@@ -74,25 +73,6 @@ ROE_QUALITY = 18.0
 # Unlisted/unpriced weight above this is a named risk, not a footnote (SEBI caps a
 # scheme's unlisted exposure at 10%; a single unlisted top holding has been seen at 2.5%).
 UNPRICED_RISK_PCT = 2.0
-
-
-def _num(x):
-    """Coerce to float; None for anything non-numeric or boolean."""
-    if isinstance(x, bool):
-        return None
-    if isinstance(x, (int, float)):
-        return float(x)
-    try:
-        return float(str(x).strip())
-    except (TypeError, ValueError):
-        return None
-
-
-def _first(d, *keys):
-    for k in keys:
-        if isinstance(d, dict) and d.get(k) not in (None, ""):
-            return d[k]
-    return None
 
 
 def _round(v, n=2):
@@ -392,12 +372,11 @@ def pb_over_roe(pb, roe, pb_w, roe_w, total):
     """Price-to-book per unit of return on equity — price paid for each point of
     profitability.
 
-    The quality-adjusted valuation cut, and the ONLY one that survived three rounds of
-    data revision unchanged in a real four-fund comparison: P/E collapses whenever the
-    earnings denominator does, so it flip-flops; book value does not collapse, and
-    dividing by ROE asks the right question — am I paying up for a business that earns,
-    or for one that doesn't? Lower is cheaper. Undefined for a non-positive ROE (paying
-    anything for no return on equity is not a ratio, it is a red flag).
+    The quality-adjusted valuation cut, and the one most stable under data revision:
+    P/E collapses whenever the earnings denominator does, so it flip-flops; book value
+    does not collapse, and dividing by ROE asks whether you are paying up for a business
+    that earns. Lower is cheaper. Undefined for a non-positive ROE (paying anything for
+    no return on equity is not a ratio, it is a red flag).
     """
     p, r = _num(pb), _num(roe)
     if p is None or r is None or r <= 0:
@@ -443,18 +422,13 @@ def metric_gaps(metrics):
 # --------------------------------------------------------------------------- #
 # holdings input                                                               #
 # --------------------------------------------------------------------------- #
-def _lib_dir():
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "lib")
-
-
 def load_fund(mf_id, fresh=False, workers=10):
     """The default path: full holdings + threaded, cached per-stock ratios via lib/funds.
 
     Returns (holdings, equity_weight, gaps, meta). This is the ONLY network code in the
     file; everything above it is pure and offline-tested.
     """
-    sys.path.insert(0, _lib_dir())
-    import funds  # noqa: E402  (three-dirs-up to the shared data spine)
+    import funds  # noqa: E402  (deferred: the pure math core must not need the fetchers)
 
     env = funds.holdings(mf_id, fresh=fresh)
     gaps = list(env.get("gaps") or [])
@@ -506,7 +480,6 @@ def enrich_file_rows(rows, fresh=False, workers=10):
     whatever ratios they were given and stay unpriced otherwise."""
     if not any(r.get("sid") for r in rows):
         return rows, []
-    sys.path.insert(0, _lib_dir())
     import funds  # noqa: E402
 
     for r in rows:

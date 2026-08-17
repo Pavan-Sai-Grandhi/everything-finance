@@ -3,7 +3,6 @@
 
 Run: python3 test_dcf.py    (exit 0 = all pass)
 """
-import math
 import os
 import sys
 
@@ -291,7 +290,7 @@ check("story grid: higher margin -> higher value", ss["cells"][2][2] > ss["cells
 check("story grid: duration read present for a glide spec", "duration" in ss and len(ss["duration"]) == 3)
 check("story grid: more high-growth years -> higher value",
       ss["duration"][2]["per_share"] > ss["duration"][0]["per_share"], ss["duration"])
-# The point of the fix: the story range is WIDER than the WACC×g range (it moves the levers that matter).
+# The story range must be WIDER than the WACC×g range — it moves the levers that matter.
 story_flat = [c for row in ss["cells"] for c in row if c is not None]
 wacc_g = dcf.sensitivity(rspec)
 wg_flat = [c for row in wacc_g["cells"] for c in row if c is not None]

@@ -64,7 +64,7 @@ regime_up = json.dumps({
     "as_of": "2026-06-11", "market_trend": "up",
     "trend_detail": {"above_ema200": True},
     "volatility": {"vix": 12.0, "regime": "low"},
-    "breadth": {"pct_sectors_above_ema50": 60.0}, "risk_posture": "risk-on"})
+    "breadth": {"pct_sectors_above_ema50": 60.0}, "market_posture": "risk_on"})
 rpath = os.path.join(D, "regime_up.json"); w(rpath, regime_up)
 
 out, rc = run([sys.executable, SELECT, "--strategies", sdir, "--regime", rpath])
@@ -87,7 +87,7 @@ check("A wins when live expectancy 0.9 > B backtest 0.5",
 regime_down = json.dumps({"as_of": "x", "market_trend": "down",
                           "trend_detail": {"above_ema200": False},
                           "volatility": {"vix": 26.0}, "breadth": {"pct_sectors_above_ema50": 25.0},
-                          "risk_posture": "risk-off"})
+                          "market_posture": "risk_off"})
 rd = os.path.join(D, "rd.json"); w(rd, regime_down)
 out, rc = run([sys.executable, SELECT, "--strategies", sdir, "--regime", rd])
 check("none fit in down regime -> selected None", out["selected"] is None, out["selected"])

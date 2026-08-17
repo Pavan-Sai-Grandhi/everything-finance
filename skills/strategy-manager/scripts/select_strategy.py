@@ -2,43 +2,27 @@
 """Pick the active strategy that fits the current market regime (everything-finance).
 
 Responsibility 3 of strategy-manager. Reads every strategy spec in a directory, keeps the
-ones with status==active, tests each one's `regime_required` against the live regime read
-(the market-context artifact from the market-analysis skill), and ranks the fitting ones by their
-validated edge (live expectancy if available, else backtest expectancy). Selection is a
-RUNTIME decision — an active spec is simply not selected while the tape doesn't fit it; its
-status does not change here.
+ones with status==active, tests each one's `regime_required` against the market-context
+artifact from the market-analysis skill, and ranks the fitting ones by validated edge (live
+expectancy if available, else backtest expectancy). Selection is a RUNTIME decision — an
+active spec is simply not selected while the tape doesn't fit it; its status is unchanged.
 
 Usage:
   python3 select_strategy.py
-  # --regime defaults to today's artifacts/market-analysis/<date>.json
-  #          (a legacy artifacts/regime/<date>.json is still accepted)
+  # --regime     defaults to today's artifacts/market-analysis/<date>.json
   # --strategies defaults to artifacts/state/strategies
 Exit: 0 = a strategy selected, 11 = none fit, 12 = no active specs, 2 = error.
 """
-import argparse, glob, json, os, sys, subprocess
+import argparse, glob, json, os, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "lib"))
 import paths
-
-
-def _need(mod, pip_name=None):
-    try:
-        return __import__(mod)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet",
-                               "--break-system-packages", pip_name or mod])
-        return __import__(mod)
-
-
-def load_yaml(path):
-    yaml = _need("yaml", "pyyaml")
-    with open(path) as f:
-        return yaml.safe_load(f)
+from deps import load_yaml
 
 
 def regime_fit(req, regime):
-    """Return (fits: bool, fails: [str]) for a spec's regime_required vs live regime.json."""
+    """Return (fits: bool, fails: [str]) for a spec's regime_required vs the market read."""
     fails = []
     if not req:
         return True, []
@@ -84,15 +68,13 @@ def main():
     p.add_argument("--strategies", default=None,
                    help="dir of <name>.yml specs (default: artifacts/state/strategies)")
     p.add_argument("--regime", default=None,
-                   help="market-context JSON (default: today's artifacts/market-analysis/"
-                        "<date>.json; a legacy regime.json is still accepted)")
+                   help="market-context JSON "
+                        "(default: today's artifacts/market-analysis/<date>.json)")
     p.add_argument("--out")
     args = p.parse_args()
     if args.strategies is None:
         args.strategies = paths.state_dir("strategies")
     if args.regime is None:
-        # The market-of-record is market-analysis. Its digest is a superset of the old
-        # regime.json on every key gated below, so no spec needs rewriting.
         args.regime = paths.report_path("market-analysis", ext="json")
 
     try:
@@ -132,11 +114,8 @@ def main():
     selected = fitting[0] if fitting else None
     out = {
         "as_of": regime.get("as_of"),
-        # `market_posture` is the canonical name; `risk_posture` is the legacy shim's
-        # mirror, read only so an older regime.json still resolves during migration.
         "regime": {"market_trend": regime.get("market_trend"),
-                   "market_posture": (regime.get("market_posture")
-                                      or regime.get("risk_posture")),
+                   "market_posture": regime.get("market_posture"),
                    "vix": (regime.get("volatility") or {}).get("vix")},
         "active_specs": actives,
         "selected": selected,

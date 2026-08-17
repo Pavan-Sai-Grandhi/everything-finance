@@ -1,12 +1,10 @@
 # Term life — best-practice reference
 
-Pure protection for dependents. Read with `reference.md`. Interview, scoring, and Q&A on term policies all draw on this.
+Pure protection for dependents. Read with `reference.md`.
 
 ## Interview — what to ask (one at a time)
 
 Age · annual income · dependents + their ages · outstanding loans (home/auto/personal) · existing life cover · smoker/tobacco · target retirement age. Also useful: existing liquid corpus (nets down the goals method), any known health conditions (affects insurability + premium honesty).
-
-Missing → stated assumption in the Assumptions table (e.g. retirement age 60, education corpus ₹50L/child).
 
 ## Cover sizing (feeds `insurance_math.term_cover_need`)
 

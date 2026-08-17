@@ -214,6 +214,25 @@ def test_snapshot_mode():
     check("snapshot: mode labelled", out["mode"] == "snapshot")
 
 
+def test_num_scale_suffixes():
+    """A spelled-out magnitude must parse. Silently reading "5 lakh" as missing turns a
+    real figure into "not assessed" in the emergency-fund and risk-posture logic."""
+    for text, want in (("5L", 5e5), ("5 lakh", 5e5), ("5 Lakh", 5e5), ("5 lakhs", 5e5),
+                       ("5lakh", 5e5), ("12L", 12e5),
+                       ("2.5 Cr", 2.5e7), ("2.5 crore", 2.5e7), ("3 crores", 3e7),
+                       ("2.5cr", 2.5e7)):
+        check(f"_num({text!r}) == {want:g}", wealth._num(text) == want, wealth._num(text))
+    check("_num strips ₹ and Indian grouping", wealth._num("₹1,20,000") == 120000.0)
+    check("_num keeps a plain percent number", wealth._num("45%") == 45.0)
+    check("_num keeps a real zero", wealth._num(0) == 0.0)
+    check("_num keeps a negative", wealth._num(-3.5) == -3.5)
+    for blank in (None, "", "-", "NA", "N/A", "abc", True):
+        check(f"_num({blank!r}) is None", wealth._num(blank) is None, wealth._num(blank))
+    for bare in ("L", "cr", "lakh"):
+        check(f"a bare suffix {bare!r} is None, not a multiplier",
+              wealth._num(bare) is None, wealth._num(bare))
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

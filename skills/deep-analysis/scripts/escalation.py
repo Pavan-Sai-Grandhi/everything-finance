@@ -9,9 +9,8 @@ digests each side emits:
   - each cites a distinct, evidence-tied claim (not a restatement, not a concession).
 
 If the top points talk past each other (different axes), agree, one side conceded,
-or a claim is empty → stop at round 1 and go to the PM. This inverts the old
-always-two-rounds behaviour: one round is the baseline, a second is opt-in on
-evidence. `deep` keeps its own up-to-3-rounds convergence loop and does not use this.
+or a claim is empty → stop at round 1 and go to the PM. `deep` keeps its own
+up-to-3-rounds convergence loop and does not use this.
 
 A digest is `{axis, claim, conceded}`. CLI:
   python3 escalation.py --bull bull-r1.json --bear bear-r1.json

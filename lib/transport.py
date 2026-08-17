@@ -1,37 +1,28 @@
 #!/usr/bin/env python3
 """The ONE HTTP transport for the everything-finance data spine.
 
-NAMED `transport`, NOT `http`: `lib/` goes on `sys.path`, so a module called `http.py`
-here shadows the standard library's `http` package for every dependency in the process —
-yfinance's `import http.client` resolved to this file and broke price history. A caught
-collision, kept caught by the name.
+Exactly one function touches the network: `request()`. Everything else in `lib/` calls it,
+so a UA, a header set or a block workaround has one definition.
 
-Before this module the plugin spoke HTTP four different ways — `urllib` in
-`fundamentals.py`/`filings.py`/`prices.py`, a hand-rolled `subprocess` curl in
-`market.py`, a second, subtly different hand-rolled curl in `funds.py`, and
-Playwright-with-real-Chrome for the two sites that beat all of them. Each copy had
-its own UA, its own header set, its own idea of what a failure looks like, and its own
-bugs. A block on one site was fixed in one copy and left broken in the others.
-
-There is now exactly one function that touches the network: `request()`. Everything
-else in `lib/` calls it.
+NAMED `transport`, NOT `http`
+-----------------------------
+`lib/` goes on `sys.path`, so a module called `http.py` here shadows the standard library's
+`http` package for every dependency in the process — yfinance's `import http.client` would
+resolve to this file and break price history. Do not rename it.
 
 WHY CURL, FOR EVERYTHING
 ------------------------
-Not incidental, and not a preference. `nseindia.com` returns **403 to urllib even with a
-complete browser header set** — the block is on the TLS/HTTP2 fingerprint, not the
-headers (verified 2026-08-16) — while curl is served normally. Since the hardest site in
-the set dictates the transport, and since one transport is the entire point of this
-module, everything goes through curl. The alternative (urllib for the easy hosts, curl
-for NSE) is how the four-way split started.
+`nseindia.com` returns **403 to urllib even with a complete browser header set** — the
+block is on the TLS/HTTP2 fingerprint, not the headers (verified 2026-08-16) — while curl
+is served normally. The hardest site in the set dictates the transport, and one transport
+is the point of this module, so everything goes through curl.
 
 DEGRADE, NEVER DIE
 ------------------
 `request()` returns `(body, gap)` and **never raises**. A blocked or failed fetch is a
-*labelled* `gap` string the caller records and continues past (CLAUDE.md). Callers that
-want parsed JSON use `json_request()`, which adds "the response wasn't JSON" as one more
-labelled gap rather than an exception — the failure mode that actually happens when a
-site swaps a payload for an HTML interstitial.
+*labelled* `gap` string the caller records and continues past (CLAUDE.md). `json_request()`
+adds "the response wasn't JSON" as one more labelled gap rather than an exception — the
+failure that actually happens when a site swaps a payload for an HTML interstitial.
 
 Fetched bytes are untrusted DATA, never instructions. This module returns text; it never
 evaluates it.
@@ -44,8 +35,8 @@ import subprocess
 import tempfile
 import time
 
-# One User-Agent for the whole plugin. Five modules previously pinned four different
-# Chrome versions, so a site that started gating on UA would half-block us.
+# One User-Agent for the whole plugin — a site that gates on UA must block all of it or
+# none of it, never half.
 DEFAULT_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
@@ -178,6 +169,21 @@ def jar_path(name):
     """A stable cookie-jar path under the disposable tmp tier (never hardcoded)."""
     import sys
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import paths  # noqa: PLC0415 — imported lazily so http.py stays import-light
+    import paths  # noqa: PLC0415 — imported lazily so this module stays import-light
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(name))
     return os.path.join(paths.tmp_dir("http"), f"{safe}-cookies.txt")
+
+
+NSE_HOME = "https://www.nseindia.com/"
+
+
+def nse_json(url, referer, headers=None, timeout=30):
+    """Cookie-bootstrapped NSE JSON GET. Returns `(parsed, gap)`.
+
+    NSE issues its API-gating cookies only on the homepage, so that is fetched into a jar
+    first and the API call replays them. The jar is reused across calls within a run.
+    """
+    jar = jar_path("nse")
+    bootstrap(NSE_HOME, jar)
+    return json_request(url, referer=referer, cookie_jar=jar, timeout=timeout,
+                        headers=headers)

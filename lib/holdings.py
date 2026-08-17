@@ -33,21 +33,11 @@ CLI:
 """
 import argparse
 import json
+import os
 import sys
-from datetime import datetime
 
-
-# --------------------------------------------------------------------------- #
-# shared data-spine envelope (see lib/contracts.md)                           #
-# --------------------------------------------------------------------------- #
-def _envelope(ok, source, data, gaps):
-    return {
-        "ok": bool(ok),
-        "source": source,
-        "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "data": data,
-        "gaps": gaps,
-    }
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from spine import envelope as _envelope  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #

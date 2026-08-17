@@ -159,16 +159,16 @@ with tempfile.TemporaryDirectory() as tmp:
           mc.load_today() is None)
     os.environ.pop("EVERYTHING_FINANCE_ARTIFACTS", None)
 
-# --- backward-compatibility guard ------------------------------------------------
+# --- frozen key names -------------------------------------------------------------
 # select_strategy.py gates on exactly these paths. Renaming one silently breaks every
 # strategy spec's regime_required check, so the contract is asserted here.
 for key in ("market_trend", "trend_detail", "volatility", "breadth"):
-    check(f"compat: top-level {key!r} survives", key in ctx)
-check("compat: trend_detail.above_ema200 survives", "above_ema200" in ctx["trend_detail"])
-check("compat: volatility.vix survives", "vix" in ctx["volatility"])
-check("compat: breadth.pct_sectors_above_ema50 survives",
+    check(f"frozen: top-level {key!r} present", key in ctx)
+check("frozen: trend_detail.above_ema200", "above_ema200" in ctx["trend_detail"])
+check("frozen: volatility.vix", "vix" in ctx["volatility"])
+check("frozen: breadth.pct_sectors_above_ema50",
       "pct_sectors_above_ema50" in ctx["breadth"])
-check("risk_posture was renamed to market_posture (wealth owns risk_posture)",
+check("posture key is market_posture (wealth owns risk_posture)",
       "market_posture" in ctx and "risk_posture" not in ctx)
 
 print(f"\n{PASS} passed, {FAIL} failed")

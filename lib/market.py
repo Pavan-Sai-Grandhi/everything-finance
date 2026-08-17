@@ -7,7 +7,7 @@ Where `prices.py` answers "what is this stock doing", this module answers "what 
 MARKET doing" — and it is the only place those endpoints live, so the regime gate, the
 fund scanner and the daily brief cannot drift to three different Nifty P/Es.
 
-Five rungs, each on its cheapest verified path (CLAUDE.md access matrix):
+Five rungs, each on its cheapest verified path:
 
   * `indices()`      -> NSE `/api/allIndices`: live level + **P/E, P/B, dividend yield**
                         for all ~139 NSE indices in ONE call (cookie-bootstrapped).
@@ -51,27 +51,13 @@ import io
 import json
 import os
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — never hardcode a cache string)
+from spine import envelope as _envelope, f as _f  # noqa: E402
 import prices  # noqa: E402  (the TradingView scanner rung is already solved there)
-
-
-# --------------------------------------------------------------------------- #
-# shared data-spine envelope                                                   #
-# --------------------------------------------------------------------------- #
-def _envelope(ok, source, data, gaps):
-    """The contract every data-spine fetch returns (see lib/contracts.md)."""
-    return {
-        "ok": bool(ok),
-        "source": source,
-        "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "data": data,
-        "gaps": gaps,
-    }
-
 
 
 # The indices the plugin actually reasons about, in canonical NSE spelling. Callers pass
@@ -89,10 +75,9 @@ SECTOR_INDICES = [
     "NIFTY HEALTHCARE INDEX", "NIFTY COMMODITIES",
 ]
 
-# The verified yfinance tickers for the NSE sectoral indices — **the one copy**. This map
-# previously existed in three places (the regime script, the sector-analyst agent, and the
-# sector-analysis prose), which is how two skills ended up with different ideas of which
-# sectors even exist. Anything needing sector price history reads it from here.
+# The verified yfinance tickers for the NSE sectoral indices — **the one copy**. Anything
+# needing sector price history reads it from here, so no two skills can disagree about
+# which sectors exist.
 SECTOR_YF = {
     "Bank": "^NSEBANK", "FinServ": "NIFTY_FIN_SERVICE.NS", "IT": "^CNXIT",
     "Pharma": "^CNXPHARMA", "Auto": "^CNXAUTO", "FMCG": "^CNXFMCG",
@@ -113,17 +98,6 @@ _MACRO_TICKERS = {
     "us_10y": "^TNX",
 }
 
-
-def _f(v):
-    """Coerce to float, else None — keeps a missing field from poisoning math."""
-    try:
-        if v is None or v == "" or str(v).strip() in {"-", "NA", "N.A.", "--"}:
-            return None
-        return float(str(v).replace(",", "").strip())
-    except (TypeError, ValueError):
-        return None
-
-
 def _canon(name):
     """Canonical index key: upper-cased, whitespace-collapsed. Makes the live JSON's
     'NIFTY SMALLCAP 250' and the archive CSV's 'Nifty Smallcap 250' the same key."""
@@ -138,14 +112,7 @@ def _http_get(url, timeout=25, referer=None, cookie_jar=None):
     return transport.request(url, timeout=timeout, referer=referer, cookie_jar=cookie_jar)
 
 
-def _nse_json(url, referer):
-    """Cookie-bootstrapped NSE JSON GET. Returns (parsed, gap).
-
-    NSE blocks naive clients, so the homepage is fetched first into a cookie jar and the
-    API call replays those bot cookies."""
-    jar = transport.jar_path("nse")
-    transport.bootstrap("https://www.nseindia.com/", jar)
-    return transport.json_request(url, referer=referer, cookie_jar=jar, timeout=30)
+_nse_json = transport.nse_json
 
 
 # --------------------------------------------------------------------------- #

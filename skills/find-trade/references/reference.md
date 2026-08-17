@@ -33,9 +33,9 @@ Run every shortlisted candidate through this order before emitting a signal — 
 - **Position size from risk, never conviction**: `qty = (capital × risk%) / (entry − stop)`, default 1%. Conviction changes nothing; only the stop distance does. Never widen a stop to "give it room".
 - **Expectancy mindset**: any single signal can fail; the edge is statistical, and it lives in the strategy's validated backtest — which is why find-trade refuses to run an unvalidated (`draft`) or retired (`inactive`) strategy.
 
-## Why no built-in default strategy
+## No built-in default strategy
 
-Earlier this engine carried three hardcoded setups and a default fundamental query. That made it the one "strategy" that never passed the generate→validate→pick lifecycle — an un-backtested edge masquerading as the house default. find-trade now runs **only** specs from the validated library, and when the user names none it asks `strategy-manager pick` for the regime-fit choice. If the library is empty or nothing fits the tape, the correct output is **no trade**, with a pointer to build/validate a strategy — not a fabricated signal. The seed library in `strategy-manager/assets/seed-strategies/` (the common swing methods, as `draft` specs) is the starting stock to validate, not a shortcut around validation.
+find-trade runs **only** specs from the validated library; when the user names none it asks `strategy-manager pick` for the regime-fit choice. A hardcoded house setup would be the one "strategy" that never passed the generate→validate→pick lifecycle — an un-backtested edge masquerading as a default. If the library is empty or nothing fits the tape, the correct output is **no trade**, with a pointer to build/validate a strategy — never a fabricated signal. The seed library in `strategy-manager/assets/seed-strategies/` ships as `draft` specs: stock to validate, not a shortcut around validation.
 
 ## Failure modes to flag in output
 

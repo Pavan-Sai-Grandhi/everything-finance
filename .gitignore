@@ -2,9 +2,6 @@
 artifacts/
 *.log
 
-# Playwright MCP scratch (page snapshots/console logs written during browser runs)
-.playwright-mcp/
-
 # Local source material distilled into skills (kept for provenance, not shipped)
 .refs/
 
@@ -29,4 +26,6 @@ venv/
 .env
 *.env
 
-docs/
+# Working notes stay local; the data-source decision record ships.
+docs/*
+!docs/data-sources.md

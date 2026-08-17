@@ -6,19 +6,10 @@ The canonical *fund-level* fetcher of the data spine, sitting beside `prices.py`
 (market-wide state). Everything `mf-analysis` needs about a fund that is not price
 history lives here, in one place.
 
-WHY THIS MODULE EXISTS — a correctness fix, not a refactor
-----------------------------------------------------------
-The plugin previously read fund holdings from the IndMoney MCP. That feed is **capped at
-20 rows with no pagination**, its `holdings_count` reports the cap as the total, and its
-`perc` field advertises 91-98% coverage next to a list that actually sums to 6-27% of the
-portfolio. Funds really hold 64-278 positions. Look-through valuation computed on that
-slice is not an approximation — it is a different fund: one small-cap fund's 20-row slice
-omitted its true top three holdings entirely, and another's was a nine-month-stale
-snapshot. Every ratio built on it was wrong, and wrong numbers here move real money.
-
-So holdings come from Tickertape's public JSON API (free, no auth), which returns the
-**complete** current allocation at 90-99% weight coverage. IndMoney remains authoritative
-for what it is actually good at — the user's own holdings, returns and category tables.
+Holdings come from Tickertape's public JSON API (free, no auth), which returns the
+**complete** current allocation at 90-99% weight coverage. Never source them from a
+personal MCP: that feed caps at 20 rows while funds hold 64-278 positions, so a
+look-through built on it describes a different fund (CLAUDE.md rule 3).
 
 Five rungs:
   * `resolve()`      -> name -> {mf_id (Tickertape), scheme_code (mfapi), isin, plan}.
@@ -55,24 +46,13 @@ import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority)
-
-
-def _envelope(ok, source, data, gaps):
-    """The contract every data-spine fetch returns (see lib/contracts.md)."""
-    return {
-        "ok": bool(ok),
-        "source": source,
-        "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "data": data,
-        "gaps": gaps,
-    }
-
-
+from spine import (envelope as _envelope, f as _f,
+                   read_cache as _read_cache, write_cache as _write_cache)  # noqa: E402
 
 _TT = "https://api.tickertape.in"
 _AMFI_NAV_ALL = "https://portal.amfiindia.com/spages/NAVAll.txt"
@@ -97,16 +77,6 @@ SCREEN_FIELDS = [
 PREMIUM_FIELDS = {"maxDrawdown", "avg3yRollingRet", "percTop10H", "percTop3H",
                   "percTop5H", "ret3yVsCat", "ret1yVsCat", "ret5yVsCat", "cashncasheq"}
 
-
-def _f(v):
-    try:
-        if v is None or v == "":
-            return None
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
 # --------------------------------------------------------------------------- #
 # HTTP (curl — same transport choice as market.py; see its _http_get docstring) #
 # --------------------------------------------------------------------------- #
@@ -128,37 +98,6 @@ def _json(url, payload=None, timeout=30):
 def _cache_path(kind, key):
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(key))
     return os.path.join(paths.cache_dir(os.path.join("mf", kind)), f"{safe}.json")
-
-
-def _read_cache(path, fresh, max_age_days=0):
-    """Cached blob, or None. `max_age_days=0` means 'must be from today'."""
-    if fresh or not os.path.exists(path):
-        return None
-    try:
-        with open(path) as fh:
-            blob = json.load(fh)
-    except Exception:  # noqa: BLE001 — a bad cache file never blocks a fetch
-        return None
-    stamp = blob.get("data", {}).get("date")
-    if not stamp:
-        return None
-    if max_age_days <= 0:
-        return blob if stamp == date.today().isoformat() else None
-    try:
-        age = (date.today() - date.fromisoformat(stamp)).days
-    except ValueError:
-        return None
-    return blob if age <= max_age_days else None
-
-
-def _write_cache(path, env):
-    env.setdefault("data", {}).setdefault("date", date.today().isoformat())
-    try:
-        with open(path, "w") as fh:
-            json.dump(env, fh, ensure_ascii=False)
-    except Exception:  # noqa: BLE001
-        pass
-
 
 # --------------------------------------------------------------------------- #
 # rung 1 — identity (AMFI scheme code + ISIN, Tickertape mfId)                  #
@@ -472,9 +411,9 @@ def stock_ratios(sid, fresh=False):
 def enrich(positions, workers=10, fresh=False):
     """Attach ratios to every equity position, in parallel and cached.
 
-    Serial enrichment of a 278-position book is slow enough that callers were previously
-    hand-typing holdings JSON to avoid it — which is exactly the fabrication surface the
-    plugin forbids. Making the real path fast is what keeps the honest path the easy one.
+    Parallel and cached because serial enrichment of a 278-position book is slow enough to
+    tempt a caller into hand-typing holdings JSON — the exact fabrication the plugin
+    forbids. Keeping the real path fast keeps the honest path the easy one.
     Returns (enriched_positions, gaps).
     """
     equity = [p for p in positions if str(p.get("type", "")).lower() == "equity"]

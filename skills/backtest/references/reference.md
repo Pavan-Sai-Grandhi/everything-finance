@@ -1,13 +1,13 @@
 # Backtesting methodology reference
 
-Compiled 2026-06-10 from web research and Varsity Trading Systems framing. Sources: QuantInsti backtesting guide (https://www.quantinsti.com/articles/backtesting-trading/), Marketcalls on look-ahead bias (https://www.marketcalls.in/python/understanding-look-ahead-bias-and-how-to-avoid-it-in-trading-strategies.html), ForTraders bias guide (https://www.fortraders.com/blog/how-to-avoid-bias-in-backtesting), library comparison (https://www.qmr.ai/best-backtesting-library-for-python/).
+Sources (fetched 2026-06-10): Varsity *Trading Systems*; QuantInsti backtesting guide (https://www.quantinsti.com/articles/backtesting-trading/); Marketcalls on look-ahead bias (https://www.marketcalls.in/python/understanding-look-ahead-bias-and-how-to-avoid-it-in-trading-strategies.html); ForTraders bias guide (https://www.fortraders.com/blog/how-to-avoid-bias-in-backtesting).
 
 ## The four biases that fake an edge
 
 1. **Look-ahead bias** — using information not available at decision time. Defenses baked into the bundled script: signals computed on bar *t* close, execution at bar *t+1* open; indicators use only trailing windows; no same-bar entry+exit on the signal bar. When both SL and target fall inside one bar's range, assume **SL hit first** (pessimistic tie-break).
 2. **Survivorship bias** — testing only today's index members overstates returns (the delisted losers are missing). Our data source (yfinance, current symbols) **has this bias and it cannot be fully fixed for free** — always disclose it; treat absolute returns as optimistic by roughly 1–4%/yr at portfolio level.
 3. **Overfitting / data-snooping** — tuning parameters until the past looks great. Defense: parameters here are fixed from Varsity rules (20-day breakout, 50-EMA, 1.5× volume), not optimized. If the user asks to tune, insist on a train/test split: tune on the older 70%, report only the untouched recent 30% (simple walk-forward).
-4. **Cost blindness** — Indian delivery round trip ≈ 0.10–0.12% in charges (STT 0.1% both sides dominates; brokerage ₹0 on delivery for discount brokers) plus slippage; the script defaults to 0.25% round trip total as a conservative all-in figure.
+4. **Cost blindness** — Indian delivery charges run ≈0.22% round trip **before slippage**: STT 0.1% on *each* side dominates (0.2% by itself), plus stamp duty 0.015% on the buy, exchange + SEBI charges, and a flat DP charge on the sell; brokerage is ₹0 on delivery at discount brokers. The script's 0.25% round-trip default is therefore an all-in figure with only thin room for slippage, not a padded one — an edge below ~0.3% per trade is noise.
 
 ## Metrics and how to read them
 
@@ -23,12 +23,12 @@ Compiled 2026-06-10 from web research and Varsity Trading Systems framing. Sourc
 
 ## Engine (what runs under the hood)
 
-The backtester is **strategy-agnostic** and built on credible libraries, not a hand-rolled loop:
-- **Backtesting.py** runs the simulation. Its defaults are the discipline a real-money test needs: no lookahead (signal on bar *t* → fill at *t+1* open) and **pessimistic intrabar exits** (when stop and target are both touched in one bar, the **stop** is taken). Verified against synthetic bars where the answer is known.
+The backtester is **strategy-agnostic**:
+- **Backtesting.py** runs the simulation. Its defaults are the discipline a real-money test needs: no lookahead (signal on bar *t* → fill at *t+1* open) and **pessimistic intrabar exits** (when stop and target are both touched in one bar, the **stop** is taken).
 - **`lib/strategy.py`** turns the spec into entry/stop/target/size — the *same* module find-trade's live screen uses, so a stock can't pass the live screen on logic the backtest computes differently.
 - **TA-Lib** (via `lib/ta.py`) computes the indicators — the industry-standard reference (EMA is SMA-seeded, ATR is Wilder).
 
-If the user later needs **parameter sweeps** across many symbols/params, `vectorbt` is the right addition (vectorized, fast) — reserve it for `strategy-manager optimize`, keeping Backtesting.py as the auditable validation engine. `backtrader` is featureful but maintenance has slowed; avoid for new work.
+For **parameter sweeps** across many symbols/params, `vectorbt` is the right addition (vectorized, fast) — reserve it for `strategy-manager optimize`, keeping Backtesting.py as the auditable validation engine.
 
 ## What this backtest does NOT test (state in every report)
 

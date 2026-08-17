@@ -25,7 +25,7 @@ When P/E and P/B percentiles diverge sharply, the divergence is itself the findi
 
 ## Regime taxonomy
 
-**Trend** (Nifty 50, from `lib/ta.py`'s TA-Lib EMA — never a hand-rolled one):
+**Trend** (Nifty 50, EMA from `lib/ta.py`):
 - `up` — price above both the 50- and 200-EMA, with the 50-EMA rising.
 - `down` — price below both, with the 50-EMA falling.
 - `range` — anything else. Most of the time is `range`, and that is a real answer, not a failure to decide.
@@ -40,7 +40,7 @@ An index is a weighted average, so a handful of heavyweights can carry it while 
 
 - **`pct_above_sma50` / `pct_above_sma200`** over the top 500 NSE names by market cap — the numbers actually worth reasoning about. Above 60% is broad participation; below 40% is narrow.
 - **`pct_near_52w_high` vs `pct_near_52w_low`** — the leadership/distress balance.
-- **`pct_sectors_above_ema50`** — the legacy 10-sector count. Retained under its exact original name only because strategy specs gate on it; ten indices cannot distinguish a broad advance from five heavyweights, so never let it outvote the stock-level numbers.
+- **`pct_sectors_above_ema50`** — a coarse 10-sector count, kept under a frozen name because strategy specs gate on it. Ten indices cannot distinguish a broad advance from five heavyweights, so the stock-level numbers above should outweigh it.
 
 **Index at highs + falling breadth** is the classic warning: fewer names doing more of the work. **Index flat + rising breadth** is the opposite and is usually constructive.
 
@@ -60,7 +60,7 @@ FII/FPI and DII net cash-market flows, in ₹ Cr, from the exchange's own daily 
 
 India VIX, USDINR, gold, Brent, US 10-Year — each as level, 1-month change, and 5-year percentile. These are context for risk appetite (a rising US 10Y and a weakening rupee tighten conditions for Indian equity), never signals on their own.
 
-**The rate cycle has no whitelisted source.** The access matrix carries no RBI or MoSPI row, so the repo rate, CPI and the policy stance are a **labelled data gap** unless the user supplies them. Reporting a remembered repo rate as fact is exactly the fabrication the plugin forbids — a number that moves money must be traceable to a primary source or marked missing.
+**The rate cycle has no approved source.** No RBI or MoSPI row exists, so the repo rate, CPI and the policy stance are a **labelled data gap** unless the user supplies them — a remembered repo rate is never reported as fact.
 
 ## Reading rules
 

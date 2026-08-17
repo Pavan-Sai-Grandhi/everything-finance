@@ -7,11 +7,11 @@ allowed-tools: Read, Write, Bash, Agent, Skill, mcp__indmoney__*, mcp__kite__*, 
 
 # Wealth Manager
 
-The capstone of the personal-finance cluster. Every spoke owns one domain and sees only that domain; **this is the only thing that sees the whole picture and the interactions between domains**. It does two things no spoke can: it builds the total net-worth spine across the asset classes no spoke touches (real estate, gold, EPF, FDs, cash, US equity, insurance value), and it weighs investments, protection, and cashflow *together* to answer "where does my next rupee go" — often overruling the single-domain instinct (protection before a hot stock; emergency fund before more equity).
+Every spoke owns one domain and sees only that domain; **this is the only thing that sees the whole picture and the interactions between domains**. It does two things no spoke can: it builds the total net-worth spine across the asset classes no spoke touches (real estate, gold, EPF, FDs, cash, US equity, insurance value), and it weighs investments, protection, and cashflow *together* to answer "where does my next rupee go" — often overruling the single-domain instinct (protection before a hot stock; emergency fund before more equity).
 
-It **orchestrates, it does not re-derive**: each domain's depth is a forked leg-runner that invokes the spoke in its cheap mode and returns a compact digest. The orchestrator holds digests, not full reports — the deep-analysis IO hygiene, binding from day one. Read `references/reference.md` for the financial-health framework and the prioritization rubric.
+It **orchestrates, it does not re-derive**: each domain's depth is a forked leg-runner that invokes the spoke in its cheap mode and returns a compact digest, and the orchestrator holds digests, not full reports. Read `references/reference.md` for the financial-health framework and the prioritization rubric.
 
-**Sources for this skill only:** live net worth + holdings via the shared spine — **IndMoney** (`networth_snapshot` / `networth_allocation_breakdown` / `networth_holdings`, read-only) first, **broker MCP** (Kite/Upstox) equity fallback, `portfolio.yml` last — normalized through `lib/holdings.py`. All domain depth is delegated to the spokes; fetch nothing a spoke owns here.
+**Sources for this skill only:** live net worth + holdings via the shared spine — **IndMoney** (`networth_snapshot` / `networth_allocation_breakdown` / `networth_holdings`) first, **broker MCP** (Kite/Upstox) equity fallback, `portfolio.yml` last — normalized through `lib/holdings.py`. All domain depth is delegated to the spokes; fetch nothing a spoke owns here.
 
 ## Depth mode — resolve first
 
@@ -20,16 +20,14 @@ It **orchestrates, it does not re-derive**: each domain's depth is a forked leg-
 
 ## Section 1 — Net-worth spine
 
-The data foundation, and the only place the non-tradeable classes are seen. `lib/holdings.py` and `scripts/wealth.py` run in script context and **cannot call MCP tools** — so the handoff (same file-pattern as everywhere in this plugin) is:
+The data foundation, and the only place the non-tradeable classes are seen. `lib/holdings.py` and `scripts/wealth.py` run in script context and **cannot call MCP tools**, so the handoff is:
 
 1. Invoke IndMoney `networth_snapshot`, `networth_allocation_breakdown`, and `networth_holdings` (and, if IndMoney is absent, any connected broker's holdings+positions). **Write each raw payload to a temp file** under `paths.tmp_dir("wealth")`.
 2. Normalize the holdings into canonical positions:
    ```
    python3 <plugin>/lib/holdings.py --indmoney <networth_holdings.json> [--kite <k.json>|--upstox <u.json>] [--portfolio <portfolio.yml>] > positions.json
    ```
-3. Build the spine — total net worth, per-class allocation, liquid pool, equity share, XIRR summary — from the two net-worth payloads + the positions envelope. This is done inside `wealth.py` (Section 3); you assemble the **picture JSON** it reads (Section 3).
-
-Degradation: IndMoney not connected → the spine is built from broker + `portfolio.yml` (tradeable-only), the net-worth-level allocation is flagged incomplete, and the non-tradeable classes are named as gaps. Never fabricate an asset value.
+3. Build the spine — total net worth, per-class allocation, liquid pool, equity share, XIRR summary — from the two net-worth payloads + the positions envelope. `wealth.py` does this (Section 3); you assemble the **picture JSON** it reads.
 
 ## Section 2 — Orchestrate the three legs (full-review only)
 
@@ -41,7 +39,7 @@ Fork **one `wealth-leg` sub-agent per available leg, in parallel** (all Agent ca
 | Protection | `insurance-advisor` (Audit) | `protection-block` (distilled from the audit) |
 | Cashflow | `budget-tracker --quick` | `cashflow-block` |
 
-Funds are **not** a separate leg — they ride inside the investments leg. Pass each leg-runner the connected data source it needs and an `output_path` under `paths.report_dir("wealth")`. A leg whose data is absent returns a "data needed" digest rather than failing; a leg agent that errors is a labelled scorecard gap, never an abort of the run.
+Funds are **not** a separate leg — they ride inside the investments leg. Pass each leg-runner the connected data source it needs and an `output_path` under `paths.report_dir("wealth")`.
 
 **IO hygiene:** you receive digests + paths, not report bodies. Transcribe each returned digest block into the `legs` object of the picture JSON below — Read a leg's full report only if you need a specific detail for the write-up.
 
@@ -61,7 +59,9 @@ Picture shape (leg blocks are the digests you transcribed; omit a leg that didn'
   "profile": { "age": <n>, "dependents": <n>, "monthly_expenses": <₹|absent> } }
 ```
 
-`wealth.py` owns every number: the spine, the **emergency-fund runway**, the **protection-vs-net-worth** read, the **risk posture** (all gated by the foundation — see reference.md; this is a *personal balance-sheet* posture and is deliberately distinct from market-analysis's `market_posture`, which describes the tape — never conflate the two, and never let a `risk_on` market loosen a personal posture the foundation has gated), and the **financial-health scorecard** with the prioritized action plan. Deterministic; you never eyeball a figure. Ask once for age / dependents / monthly expenses if not derivable — missing expenses makes the emergency-fund read "not assessed", not fabricated.
+`wealth.py` owns every number: the spine, the **emergency-fund runway**, the **protection-vs-net-worth** read, the **risk posture** (all gated by the foundation — see reference.md), and the **financial-health scorecard** with the prioritized action plan. Deterministic; you never eyeball a figure. Ask once for age / dependents / monthly expenses if not derivable — missing expenses makes the emergency-fund read "not assessed", not fabricated.
+
+`risk_posture` here is the *personal balance-sheet* posture, distinct from market-analysis's `market_posture` (the tape). Never conflate them, and never let a `risk_on` market loosen a personal posture the foundation has gated.
 
 ## Section 4 — Synthesis & output
 
@@ -76,12 +76,9 @@ Net-worth values are sensitive: the **full net-worth detail lives in the artifac
 
 `snapshot` writes a compact spine-only note (net worth, allocation, emergency-fund + gross-protection flags) — no scorecard, no plan.
 
-## Section 5 — Error handling & degradation (CLAUDE.md)
-
-A missing source or leg never aborts the review — continue and label the gap:
+## Section 5 — Degradation specifics
 
 - **IndMoney not connected** → partial spine from broker + `portfolio.yml`, tradeable-only; net-worth-level allocation flagged incomplete; non-tradeable classes named as gaps.
 - **A leg's data absent** → that leg returns "data needed"; the scorecard marks the domain "not assessed — run /<spoke>"; the run still verdicts on the rest.
 - **A leg agent fails** → labelled scorecard gap, never an aborted review.
-- **Missing age / expenses** → the read that needs them (risk band, emergency-fund runway) is labelled not-assessed, never fabricated.
-- Never fabricate a missing asset value or premium — a labelled gap beats a confident fabrication.
+- **Missing age / expenses** → the read that needs them (risk band, emergency-fund runway) is labelled not-assessed.

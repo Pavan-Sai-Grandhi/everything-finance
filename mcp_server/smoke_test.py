@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Live end-to-end smoke test for the finance-data MCP server.
 
-Speaks the real MCP wire protocol over stdio to a real server process and calls EVERY
-tool against its real upstream. This is deliberately not mocked: the failure this catches
-is a source changing its shape or starting to block, which no fixture can see. It is the
-counterpart to the offline unit tests in `lib/test_*.py`, not a replacement for them.
+Speaks the real MCP wire protocol over stdio to a real server process and calls EVERY tool
+against its real upstream. Deliberately not mocked: the failure this catches is a source
+changing shape or starting to block, which no fixture can see. It complements the offline
+unit tests in `lib/test_*.py` rather than replacing them.
 
-A tool that returns `ok:false` with a labelled gap is reported as DEGRADED, not FAILED —
-that is the contract working. Only a protocol error, an exception, or a malformed
-envelope is a failure.
+A tool returning `ok:false` with a labelled gap is DEGRADED, not FAILED — that is the
+contract working. Only a protocol error, an exception, or a malformed envelope fails.
 
 Run:  python3 mcp_server/smoke_test.py [--quick]
 """
@@ -18,6 +17,7 @@ import argparse
 import json
 import os
 import subprocess
+import threading
 import sys
 import time
 
@@ -35,12 +35,13 @@ CASES = [
     ("get_indices", {"names": ["NIFTY 50", "NIFTY SMALLCAP 250"]}, ["indices"]),
     ("get_index_valuation_history", {"index_name": "NIFTY 50", "years": 3}, ["pe"]),
     ("get_breadth", {"universe": 100}, ["counts"]),
-    ("get_flows", {}, []),
+    ("get_flows", {}, ["flows"]),
     ("get_macro", {}, ["macro"]),
     ("get_company_fundamentals",
      {"symbol": "RELIANCE", "sections": ["ratios"]}, ["ratios"]),
     ("run_fundamental_screen",
-     {"query": "Market Capitalization > 100000 AND Price to Earning < 25"}, []),
+     {"query": "Market Capitalization > 100000 AND Price to Earning < 25"},
+     ["candidates", "count"]),
     ("resolve_fund", {"name": "Bandhan Small Cap"}, ["scheme_code"]),
     ("screen_funds", {"subsector": "Small Cap Fund", "min_aum": 500, "limit": 5},
      ["funds_total"]),
@@ -50,11 +51,13 @@ CASES = [
     ("get_filings", {"symbol": "RELIANCE", "days": 30}, ["material_count"]),
     ("get_corporate_actions", {"symbol": "RELIANCE"}, ["corporate_actions"]),
     ("get_shareholding", {"symbol": "VEDL", "quarters": 4}, ["quarters"]),
-    # These two need an id resolved at runtime; filled in by `main`.
     ("get_fund_holdings", {"mf_id": None, "limit": 3}, ["positions_total"]),
-    ("get_stock_ratios", {"sid": None}, []),
+    ("get_stock_ratios", {"sid": None}, ["ticker"]),
     ("get_market_context", {"mode": "quick"}, ["digest", "market_trend"]),
 ]
+
+# tool -> the argument only an earlier call can supply; skipped if unresolved.
+RUNTIME_ARG = {"get_fund_holdings": "mf_id", "get_stock_ratios": "sid"}
 
 
 class Client:
@@ -64,11 +67,17 @@ class Client:
         self.proc = subprocess.Popen(
             [python_exe, SERVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, bufsize=1, cwd=ROOT)
+        self.errlog = []
+        threading.Thread(target=self._drain_stderr, daemon=True).start()
         self._id = 0
         self._rpc("initialize", {
             "protocolVersion": "2025-06-18", "capabilities": {},
             "clientInfo": {"name": "smoke", "version": "1.0"}})
         self._notify("notifications/initialized")
+
+    def _drain_stderr(self):
+        for line in self.proc.stderr:
+            self.errlog.append(line.rstrip())
 
     def _send(self, obj):
         self.proc.stdin.write(json.dumps(obj) + "\n")
@@ -125,22 +134,18 @@ def main():
     skip = {"get_index_valuation_history", "get_market_context"} if args.quick else set()
     client = Client(args.python)
     passed = degraded = failed = 0
-    mf_id = sid = None
+    resolved = {"mf_id": None, "sid": None}
     try:
         for name, call_args, must_have in CASES:
             if name in skip:
                 continue
             call_args = dict(call_args)
-            if name == "get_fund_holdings":
-                if not mf_id:
-                    print(f"SKIP     {name:<30} no mf_id resolved upstream")
+            arg = RUNTIME_ARG.get(name)
+            if arg:
+                if not resolved[arg]:
+                    print(f"SKIP     {name:<30} no {arg} resolved upstream")
                     continue
-                call_args["mf_id"] = mf_id
-            if name == "get_stock_ratios":
-                if not sid:
-                    print(f"SKIP     {name:<30} no sid resolved upstream")
-                    continue
-                call_args["sid"] = sid
+                call_args[arg] = resolved[arg]
             try:
                 env = client.call(name, call_args)
             except Exception as exc:  # noqa: BLE001
@@ -155,10 +160,10 @@ def main():
 
             data = env.get("data") or {}
             if name == "resolve_fund":
-                mf_id = data.get("mf_id")
+                resolved["mf_id"] = data.get("mf_id")
             if name == "get_fund_holdings":
                 rows = data.get("positions") or []
-                sid = (rows[0] or {}).get("sid") if rows else None
+                resolved["sid"] = (rows[0] or {}).get("sid") if rows else None
 
             missing = [k for k in must_have if k not in data]
             if not env.get("ok"):
@@ -171,9 +176,14 @@ def main():
                 passed += 1
                 print(f"PASS     {name:<30} src={env.get('source')}")
     finally:
+        errlog = list(client.errlog)
         client.close()
 
     print(f"\n{passed} passed, {degraded} degraded, {failed} failed")
+    if failed and errlog:
+        print("\nserver stderr (last 20 lines):")
+        for line in errlog[-20:]:
+            print(f"  {line}")
     sys.exit(1 if failed else 0)
 
 

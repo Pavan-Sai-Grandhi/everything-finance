@@ -1,6 +1,6 @@
 # Daily brief reference
 
-Compiled 2026-06-10. Self-contained: everything the brief needs is here (the deep versions live in sector-analysis and filings-watch for their own skills).
+Self-contained: everything the brief needs is here. The deeper versions of the same material live in sector-analysis and filings-watch, for their own skills.
 
 ## Materiality cheat-sheet (for the watchlist section)
 
@@ -8,7 +8,7 @@ Compiled 2026-06-10. Self-contained: everything the brief needs is here (the dee
 - 🟡 monitor: investor-meet PPTs, capex/JV updates, rating affirmations, modest order wins
 - ⚪ routine (never in the brief): trading-window closures, ESOP allotments, newspaper-ad copies, compliance certificates
 
-## Sources — all via the `finance-data` MCP server
+## Which tool serves which section
 
 - Indices + 50-EMA + sector tone: `get_market_context` (the shared daily read — preferred, so the brief and every other skill agree) or `get_indices` / `get_history` for a specific index.
 - Headlines: `get_news` (Google News RSS). Every item carries a `publisher_tier` — prefer `established` wires and treat an `aggregator`-only story as unconfirmed. Take only the top 3–5 market-moving items; the noise classifier already drops "multibagger" listicles, so anything still tagged `noise` stays out.

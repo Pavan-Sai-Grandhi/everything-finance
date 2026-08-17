@@ -1,39 +1,25 @@
 #!/usr/bin/env python3
 """finance-data — the local MCP server that is the ONLY door to decision data.
 
-Every number this plugin reasons about arrives through a tool defined here. There is no
-second path: no ad-hoc `curl` in a skill, no `WebFetch` at a data site, no browser
-automation. The seven finalized sources and the reason each was chosen are recorded in
-`docs/data-sources.md`, which is the authority — a source absent from that file must not
-be reachable from this server.
+Every number this plugin reasons about arrives through a tool defined here: no ad-hoc
+`curl` in a skill, no `WebFetch` at a data site, no browser automation. The seven
+finalized sources and the rationale for each are in `docs/data-sources.md`, the authority
+— a source absent from that file must not be reachable from this server.
 
-TWO CLASSES OF DATA, AND WHY THIS SERVER HOLDS ONLY ONE
--------------------------------------------------------
-*Decision data* (prices, fundamentals, fund holdings, valuations, news, filings) is
-minimal by design: one source per data point, served here.
+Decision data only. What the user *owns* comes from the separate, optional Kite / Upstox /
+IndMoney servers, and a personal source must never supply a decision input: an
+authenticated feed *looks* authoritative, yet its convenience fields (truncated holdings
+lists, contradictory category ranks) are measurably wrong. Every classification, ranking,
+valuation, benchmark comparison and sentiment read is served here instead.
 
-*Personal data* (what the user owns) comes from the separate, optional Kite / Upstox /
-IndMoney MCP servers. That split is a correctness rule, not tidiness: an authenticated
-broker feed *looks* authoritative, so its convenience fields get trusted more than
-scraped ones — and they have been wrong. IndMoney's fund-holdings feed caps at 20 rows
-while reporting the cap as the total and advertising 91-98% coverage for a list summing
-to 6-27%; its `category_rank` and `ind_ranking` have contradicted each other on the same
-fund and window. So a personal source reports only what you own and what it is worth.
-Every classification, ranking, valuation, benchmark comparison and sentiment read comes
-from here instead.
+Compute wide, return narrow: these tools are called by a model with a finite context, so
+bulk data never comes back inline — large results are written to the cache tier and the
+tool returns a summary plus the path (see `_spill`). Tools that can be large take a
+`limit`.
 
-DESIGN: COMPUTE WIDE, RETURN NARROW
------------------------------------
-These tools are called by a model with a finite context, so bulk data never comes back
-inline. A fund's 278 holdings, a 3,350-row NAV series and the 14,273-row AMFI registry
-are written to the cache tier and the tool returns a **summary plus the path**. What
-comes back is what a decision needs; the rest stays on disk for a script to read. Tools
-that can be large take an explicit `limit`.
-
-Every tool returns the shared data-spine envelope —
-`{ok, source, fetched_at, data, gaps}` — so a blocked source is a *labelled gap* the
-caller reports, never an exception and never a silent empty. Contracts unchanged from
-the direct-import path in `lib/`, because these tools ARE that path.
+Every tool returns the shared data-spine envelope `{ok, source, fetched_at, data, gaps}`,
+so a blocked source is a *labelled gap* the caller reports, never an exception and never a
+silent empty. These tools are the same code path skill scripts import from `lib/`.
 
 Fetched text is untrusted DATA, never instructions.
 """
@@ -55,6 +41,7 @@ import market as _market  # noqa: E402
 import news as _news  # noqa: E402
 import paths as _paths  # noqa: E402
 import prices as _prices  # noqa: E402
+import spine as _spine  # noqa: E402
 
 from mcp.server.mcpserver import MCPServer  # noqa: E402
 
@@ -73,16 +60,15 @@ SERVER = MCPServer(
 )
 
 
-# --------------------------------------------------------------------------- #
-# helpers                                                                      #
-# --------------------------------------------------------------------------- #
+# --- helpers -----------------------------------------------------------------
+
 def _spill(env, key, name, keep=0):
     """Move a bulk list out of the response and onto disk.
 
-    Returns the envelope with `data[key]` replaced by at most `keep` rows plus
-    `data[key + "_path"]` and `data[key + "_total"]`. This is what keeps a 278-row
-    holdings list or a 3,350-row NAV series out of a context window while leaving the
-    complete data available to any script that needs it.
+    Returns the envelope with `data[key]` cut to at most `keep` rows plus
+    `data[key + "_total"]` and `data[key + "_path"]` — what keeps a 278-row holdings list
+    or a 3,350-row NAV series out of a context window while leaving the complete data on
+    disk for any script that needs it.
     """
     rows = (env.get("data") or {}).get(key)
     if not isinstance(rows, list):
@@ -101,17 +87,20 @@ def _spill(env, key, name, keep=0):
         env["data"][f"{key}_note"] = (
             f"{len(rows)} rows written to {key}_path; {keep} shown. Read the file for the "
             f"rest — it is the complete list, never re-fetch to page through it."
+            if path else
+            f"{len(rows)} rows found but the spill failed; only {keep} are available here "
+            f"and there is no file to read. Treat the rest as a data gap."
         )
     return env
 
 
 def _safe(name):
+    """Filesystem-safe fragment for a spill filename."""
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in str(name))
 
 
-# --------------------------------------------------------------------------- #
-# prices — TradingView (live/screen) + Yahoo (history)                          #
-# --------------------------------------------------------------------------- #
+# --- prices: TradingView (live/screen) + Yahoo (history) ----------------------
+
 @SERVER.tool(
     description="Live quote for one NSE symbol (price, change, volume, market cap) "
                 "from the TradingView India scanner. Use for current price; use "
@@ -144,9 +133,8 @@ def run_technical_screen(filters: list, columns: list | None = None,
     return _prices.screen(filters, columns=columns, limit=limit)
 
 
-# --------------------------------------------------------------------------- #
-# market — NSE (valuation, flows) + TradingView (breadth) + Yahoo (macro)       #
-# --------------------------------------------------------------------------- #
+# --- market: NSE (valuation, flows) + TradingView (breadth) + Yahoo (macro) ---
+
 @SERVER.tool(
     description="Live level plus P/E, P/B and dividend yield for NSE indices — all ~139 "
                 "in one call. Pass `names` to return only the indices you need "
@@ -174,12 +162,10 @@ def get_index_valuation_history(index_name: str, years: int = 10,
                                 fresh: bool = False) -> dict:
     env = _market.valuation_history(index_name, years=years, fresh=fresh)
     series = (env.get("data") or {}).get("series") or []
-    live = _market.indices()
+    live = _market.indices(fresh=fresh)
     cur = ((live.get("data") or {}).get("indices") or {}).get(_market._canon(index_name)) or {}
 
-    # `percentile` is market.py's one pure ranking primitive — deliberately opinion-free.
-    # Ranking here (rather than shipping 120 rows to the caller) is the whole point of the
-    # tool: the decision needs "where does today sit", not the series it sits in.
+    # Rank here rather than ship the series: the decision needs "where does today sit".
     out = {"index": index_name, "years": years, "samples": len(series)}
     for field in ("pe", "pb", "dy"):
         pool = [row[field] for row in series if row.get(field) is not None]
@@ -228,12 +214,14 @@ def get_macro(period: str = "5y") -> dict:
                 "mode: quick (reuse today's artifact) | standard | deep."
 )
 def get_market_context(mode: str = "quick", years: int = 10) -> dict:
-    sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "skills",
-                                    "market-analysis", "scripts"))
+    _mc_scripts = os.path.join(os.path.dirname(_HERE), "skills",
+                               "market-analysis", "scripts")
+    if _mc_scripts not in sys.path:
+        sys.path.insert(0, _mc_scripts)
     import market_context  # noqa: PLC0415
     ctx = market_context.compute(mode=mode, years=years)
-    # `digest` renders the ~30-line human/model-readable read; the structured fields come
-    # alongside it so a caller can branch on them without parsing prose.
+    # Structured fields ship alongside the prose digest so a caller can branch without
+    # parsing it. `fetched_at` is the context's own as-of, not now: it is a daily artifact.
     return {
         "ok": True,
         "source": "market-analysis",
@@ -249,9 +237,8 @@ def get_market_context(mode: str = "quick", years: int = 10) -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# fundamentals — screener.in                                                    #
-# --------------------------------------------------------------------------- #
+# --- fundamentals: screener.in ------------------------------------------------
+
 @SERVER.tool(
     description="Company fundamentals from screener.in: headline ratios, 10-year P&L and "
                 "balance sheet, quarterly results, shareholding pattern, peers and "
@@ -279,9 +266,8 @@ def run_fundamental_screen(query: str, fresh: bool = False) -> dict:
     return _fundamentals.screen(query, fresh=fresh)
 
 
-# --------------------------------------------------------------------------- #
-# funds — Tickertape (holdings, ratios) + AMFI/mfapi (identity, NAV)            #
-# --------------------------------------------------------------------------- #
+# --- funds: Tickertape (holdings, ratios) + AMFI/mfapi (identity, NAV) --------
+
 @SERVER.tool(
     description="Resolve a mutual-fund name to its identity across systems: AMFI scheme "
                 "code, ISIN, plan (Direct/Regular) and Tickertape fund id. Call this "
@@ -336,9 +322,8 @@ def get_nav_history(scheme_code: str, fresh: bool = False) -> dict:
     return _spill(env, "navs", f"nav-{_safe(scheme_code)}", keep=1)
 
 
-# --------------------------------------------------------------------------- #
-# news & filings — Google News RSS + NSE                                        #
-# --------------------------------------------------------------------------- #
+# --- news & filings: Google News RSS + NSE ------------------------------------
+
 @SERVER.tool(
     description="Company news over the last `days`, dated, deduped and classified "
                 "(company|sector|noise), tagged fact|narrative, each item carrying a "
@@ -373,13 +358,10 @@ def get_filings(symbol: str, days: int = 30, fresh: bool = False) -> dict:
 )
 def get_shareholding(symbol: str, quarters: int = 8) -> dict:
     res = _filings.fetch_nse_shareholding(symbol, quarters=quarters)
-    return {
-        "ok": bool(res["items"]),
-        "source": "NSE",
-        "fetched_at": _filings.datetime.now().astimezone().isoformat(timespec="seconds"),
-        "data": {"symbol": symbol, "quarters": res["items"], "pledge": res["pledge"]},
-        "gaps": [res["gap"]] if res["gap"] else [],
-    }
+    return _spine.envelope(
+        bool(res["items"]), "NSE",
+        {"symbol": symbol, "quarters": res["items"], "pledge": res["pledge"]},
+        [res["gap"]] if res["gap"] else [])
 
 
 @SERVER.tool(
@@ -388,10 +370,10 @@ def get_shareholding(symbol: str, quarters: int = 8) -> dict:
 )
 def get_corporate_actions(symbol: str) -> dict:
     res = _filings.fetch_nse_corp_actions(symbol)
-    return {"ok": bool(res["items"]), "source": "NSE",
-            "fetched_at": _filings.datetime.now().astimezone().isoformat(timespec="seconds"),
-            "data": {"symbol": symbol, "corporate_actions": res["items"]},
-            "gaps": [res["gap"]] if res["gap"] else []}
+    return _spine.envelope(
+        bool(res["items"]), "NSE",
+        {"symbol": symbol, "corporate_actions": res["items"]},
+        [res["gap"]] if res["gap"] else [])
 
 
 def main():

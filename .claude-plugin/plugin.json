@@ -14,7 +14,6 @@
     "mutual-funds",
     "budgeting",
     "nse",
-    "bse",
     "zerodha",
     "upstox",
     "trade-tracker",
@@ -25,6 +24,7 @@
     "wealth-management"
   ],
   "skills": [
+    "./skills/market-analysis",
     "./skills/find-trade",
     "./skills/deep-analysis",
     "./skills/fundamental-analysis",

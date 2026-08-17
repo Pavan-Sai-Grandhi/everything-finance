@@ -1,29 +1,23 @@
 # Exchange filings reference
 
-Compiled 2026-06-10. Sources: NSE/BSE corporate filings sections, SEBI LODR materiality framing.
+Grounded in NSE corporate filings and SEBI LODR materiality framing.
 
-## Sources — all via the `finance-data` MCP server
+## The four tools
 
-Every filing datum comes from one exchange, NSE, through four tools. There is no ladder,
-no browser, and no BSE rung any more (see `docs/data-sources.md` for why BSE was dropped:
-NSE serves both announcements and corporate actions in full, and BSE fingerprint-blocked
-often enough that its fallback was the common path rather than the exception).
+NSE is the only exchange source and the NSE symbol is the primary key.
 
 - **`get_filings(symbol, days)`** — corporate announcements, already classified into
   act-on / monitor / routine with a reason. The full list is written to `data.items_path`.
 - **`get_corporate_actions(symbol)`** — dividends, splits, bonuses with ex-date and record
   date.
 - **`get_shareholding(symbol, quarters)`** — quarterly promoter %, public %, employee
-  trusts, plus promoter pledge rows. **This was believed to need a real browser and does
-  not**: the same cookie-bootstrapped request that serves announcements serves the
-  shareholding master. NSE often returns *no* pledge rows — the tool labels that as a gap,
-  and it means **UNKNOWN, never nil**.
+  trusts, plus promoter pledge rows. NSE often returns *no* pledge rows — the tool labels
+  that as a gap, and it means **UNKNOWN, never nil**.
 - **`get_company_fundamentals(symbol, sections=["shareholding"])`** — screener.in's
   12-quarter FII / DII / public split, which NSE's master does not break out.
 
-A blocked source returns `ok:false` with a labelled gap. That means "unknown", not
-"nothing filed" — never report an unreachable source as a quiet quarter. A company listed
-only on BSE has no NSE filings to fetch; say so explicitly.
+A gap here means "unknown", not "nothing filed" — never report an unreachable source as a
+quiet quarter. A company with no NSE listing has no filings to fetch; say so explicitly.
 
 ## Materiality taxonomy
 
@@ -51,7 +45,7 @@ only on BSE has no NSE filings to fetch; say so explicitly.
 ## Shareholding pattern reading
 
 - **Promoter %**: rising = confidence; falling needs a reason (dilution? sale?). Compare 4 quarters.
-- **Pledge % of promoter holding**: any increase is a flag; > 20% pledged is structurally risky (forced-sale spiral if stock falls). Pledge rising + price falling = the classic pre-crash signature — always call out. Data caveat: pledge % lives reliably only in the NSE/BSE SHP detail tables (browser path); screener.in omits it for many companies. If unreachable, report the gap and the last-known value — never imply nil from absence.
+- **Pledge % of promoter holding**: any increase is a flag; > 20% pledged is structurally risky (forced-sale spiral if stock falls). Pledge rising + price falling = the classic pre-crash signature — always call out. Data caveat: pledge % lives reliably only in the NSE shareholding-pattern detail; screener.in omits it for many companies. If unreachable, report the gap and the last-known value — never imply nil from absence.
 - **FII + DII %**: direction of institutional flow; retail % rising while institutions exit is distribution.
 - Quarterly granularity only — for intra-quarter moves, check bulk/block deal disclosures.
 

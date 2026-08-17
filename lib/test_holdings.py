@@ -65,7 +65,7 @@ UPSTOX = [
 PORTFOLIO = {
     "positions": [
         {"ticker": "HDFCBANK", "entry": 1500.0, "sl": 1420.0, "target": 1700.0,
-         "qty": 25, "entry_date": "2026-05-01", "bse_code": "500180"},
+         "qty": 25, "entry_date": "2026-05-01"},
     ],
 }
 

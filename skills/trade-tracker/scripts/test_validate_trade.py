@@ -36,16 +36,6 @@ def run(trade, ohlcv=None, extra=None):
     return out, r.returncode
 
 
-def flat(n, price, name, start=1):
-    from datetime import date, timedelta
-    base = date(2026, 1, 1)
-    bars = []
-    for i in range(n):
-        d = (base + timedelta(days=i)).isoformat()
-        bars.append((d, price, price, price, price, 100000))
-    return csv(name, bars)
-
-
 def bars_to_csv(name, closes, start="2026-01-01"):
     from datetime import date, timedelta
     y, m, dd = map(int, start.split("-"))
@@ -119,8 +109,8 @@ c = bars_to_csv("target.csv", closes)
 out, rc = run(t, c)
 check("EXIT_TARGET verdict", out["verdict"] == "EXIT_TARGET", out["verdict"])
 
-# ---- 4. EXIT_THESIS via 50-EMA: 55 flat @100 then drop to 80 (above stop? 80<90 stop!) ----
-# To isolate thesis, raise so stop(90) not hit but close below ema50. Use 95 (>90) end.
+# ---- 4. EXIT_THESIS via 50-EMA ----
+# End at 95: above the 90 stop (so STOP can't win) but below the ~100 ema50.
 closes = [100] * 55 + [95, 95, 95, 95, 95]
 c = bars_to_csv("ema.csv", closes)
 out, rc = run(t, c)
@@ -129,10 +119,9 @@ check("EXIT_THESIS (50-EMA) verdict", out["verdict"] == "EXIT_THESIS", out["verd
 check("EXIT_THESIS reason mentions 50-EMA",
       any("50-EMA" in r or "ema" in r.lower() for r in out["reasons"]), out["reasons"])
 
-# ---- 5. EXIT_THESIS via numeric pivot 85 (stop is 90, so pivot break needs stop not hit) ----
-# Make a trade whose stop is BELOW the pivot so pivot-break fires before stop.
-TRADE_PIVOT = TRADE_LONG.replace("stop: 90", "stop: 80").replace(
-    'plan:\n      entry: 100', 'plan:\n      entry: 100')
+# ---- 5. EXIT_THESIS via numeric pivot 85 ----
+# Stop is BELOW the pivot, so the pivot break fires before the stop.
+TRADE_PIVOT = TRADE_LONG.replace("stop: 90", "stop: 80")
 t2 = write("pivot.yml", TRADE_PIVOT)
 closes = [100] * 59 + [84]   # 84 < pivot 85, but > stop 80
 c = bars_to_csv("pivot.csv", closes)

@@ -32,41 +32,16 @@ import json
 import os
 import re
 import sys
-from datetime import date, datetime
+from datetime import date
 from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
-
-
-# --------------------------------------------------------------------------- #
-# shared data-spine envelope                                                  #
-# --------------------------------------------------------------------------- #
-def _envelope(ok, source, data, gaps):
-    """The contract every data-spine fetch returns (see lib/contracts.md)."""
-    return {
-        "ok": bool(ok),
-        "source": source,
-        "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "data": data,
-        "gaps": gaps,
-    }
-
+from spine import envelope as _envelope, norm_symbol as _norm  # noqa: E402
 
 
 _BASE = "https://www.screener.in"
-
-
-def _norm(symbol):
-    """A bare NSE/BSE screener symbol — uppercased, `.NS`/exchange prefix stripped."""
-    s = str(symbol or "").strip().upper()
-    if ":" in s:
-        s = s.split(":")[-1]
-    if s.endswith(".NS"):
-        s = s[:-3]
-    return s
-
 
 def _screener_cookies():
     """The optional screener.in auth cookies — used ONLY for login-walled screens (D1).

@@ -32,21 +32,16 @@ import hashlib
 import os
 import re
 import sys
-from datetime import date as _date_cls
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
+from spine import today as _today  # noqa: E402
 
 import yaml  # noqa: E402
 
 OPEN_STATUSES = ("open", "triggered", "snoozed")
 _OPS = {"<": lambda a, b: a < b, ">": lambda a, b: a > b,
         "<=": lambda a, b: a <= b, ">=": lambda a, b: a >= b}
-
-
-def _today():
-    return _date_cls.today().isoformat()
-
 
 def _slug(s):
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", str(s).strip().lower())).strip("-")

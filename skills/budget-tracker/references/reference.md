@@ -1,6 +1,6 @@
 # Budget framework reference
 
-Mirrors the user's workbook: `~/Downloads/Monthly Budget Planning.xlsx` (Money Purse-style planner; sheets: Monthly Budget, Retirement Cal, Child Education Cal, Incremental SIP Cal). Inspected 2026-06-10 — the workbook is a blank template, so targets below are the framework defaults until the user fills it in or states their own.
+Mirrors the user's workbook `~/Downloads/Monthly Budget Planning.xlsx` (Money Purse-style planner; sheets: Monthly Budget, Retirement Cal, Child Education Cal, Incremental SIP Cal). The workbook ships blank, so the targets below are the framework defaults until the user fills it in or states their own.
 
 ## The five buckets (from the Monthly Budget sheet)
 

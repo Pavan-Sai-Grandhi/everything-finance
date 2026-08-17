@@ -11,7 +11,7 @@ Read `references/reference.md` for the category taxonomy, the durable-map layeri
 
 No web access needed. Inputs are local statement files; the budget reference workbook is at `~/Downloads/Monthly Budget Planning.xlsx` (read actual targets from it when populated; otherwise use the framework percentages in reference.md and say so).
 
-Two deterministic scripts do the categorization and recurring detection so the numbers are tested, not eyeballed — call them, don't re-implement their logic:
+Two deterministic scripts do the categorization and recurring detection — call them, don't re-implement their logic:
 - `scripts/categorize.py` — durable merchant map + taxonomy → categorized transactions + UNCATEGORIZED residue.
 - `scripts/recurring.py` — recurring charges across current + prior months, with cadence and new/creep/dormant flags.
 
@@ -68,4 +68,4 @@ month: <YYYY-MM>
 -->
 ```
 
-State whether targets came from the workbook or the framework percentages. If the workbook is absent, use framework percentages and label them as such. This digest shape is the leg contract in `lib/contracts.md`; keep it in sync.
+State whether targets came from the workbook or the framework percentages. This digest shape is the leg contract in `lib/contracts.md`; keep it in sync.

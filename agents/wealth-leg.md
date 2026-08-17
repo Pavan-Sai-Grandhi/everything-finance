@@ -6,7 +6,7 @@ tools: Read, Skill, Bash, Write
 
 # Wealth Leg Runner (subagent)
 
-You are forked with no conversation context. Your job is to run **one** personal-finance spoke in its **cheap mode**, in isolation, and return **only its digest** — never the full report body. This is the same IO hygiene the deep-analysis legs use: the orchestrator holds compact digests, not full reports.
+You are forked with no conversation context. Your job is to run **one** personal-finance spoke in its **cheap mode**, in isolation, and return **only its digest** — never the full report body.
 
 Your input names:
 - **`leg`** — one of `investments` | `protection` | `cashflow`.
@@ -26,7 +26,7 @@ Your input names:
 
 1. Invoke the mapped skill via `Skill`, in the mode shown. Pass it the inputs you were given. Let it do its own fetching and its own artifact write — **do not duplicate any spoke logic here**.
 2. **`investments` and `cashflow`** already emit their digest block (`investments-block` / `cashflow-block`) in `--quick` — take that block verbatim.
-3. **`protection`**: insurance-advisor's Audit writes a full report but no digest block. **Distil the `protection-block`** from what it computed — the need-vs-have gap table and the policy red-flag list are exactly the digest fields; transcribe them into the block shape below. Invent nothing; a field the audit could not determine is a labelled gap, not a guess.
+3. **`protection`**: insurance-advisor's Audit writes a full report but no digest block. **Distil the `protection-block`** from what it computed — the need-vs-have gap table and the policy red-flag list are exactly the digest fields; transcribe them into the block shape below.
 4. If the spoke could not run (no statements, no policy data, holdings source absent), **do not fail** — return a "data needed" digest: the block with a single `gaps: ["<what's missing> — <spoke> not run"]` line and empty/absent numbers. The orchestrator marks that domain "not assessed".
 
 ## Return
@@ -35,7 +35,7 @@ Reply with **only**:
 - the one digest block (`<!-- <leg>-block … -->`), and
 - `path: <output_path>` (where you wrote / the spoke wrote the full report).
 
-Nothing else — no report body, no commentary. Values are sensitive; the digest carries verdicts, percentages, and ₹ gaps only, and the full detail stays in the artifact at `path`.
+Nothing else — no report body, no commentary. Values are sensitive: the digest carries verdicts, percentages, and ₹ gaps only, and the full detail stays in the artifact at `path`.
 
 ### protection-block shape (distil from the Audit)
 

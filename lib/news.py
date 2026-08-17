@@ -1,30 +1,20 @@
 #!/usr/bin/env python3
 """News fetch — the company-news rung of the data spine (everything-finance plugin).
 
-The canonical news fetcher — lives in `lib/` next to `ta.py`, `strategy.py`, `prices.py`
-and `paths.py` so news is fetched in exactly one place instead of being re-derived by hand
-inside the `news-sentiment` agent (the drift this data spine removes). One entry point:
+The canonical news fetcher, so news is pulled in exactly one place rather than re-derived
+by hand inside the `news-sentiment` agent. One entry point:
 
   * `fetch(company, ticker, days=60)` reads Google News RSS for the company and window.
-    A block records a *labelled* gap and returns `ok:false` — never an empty crash (B3).
+    A block records a *labelled* gap and returns `ok:false` — never an empty crash.
 
-ONE SOURCE, DELIBERATELY
-------------------------
-This was an Economic Times → Moneycontrol → Google-News-RSS ladder. A 30-day probe showed
-the RSS rung already indexes both outlets it was falling back from (Moneycontrol 10, ET 9
-of 100 items) plus Business Today, NDTV Profit, Business Standard and Mint — a strict
-superset, structured and dated, with no bot wall. The two HTML rungs above it were
-scraping anchor tags out of drifting markup for a subset of what the bottom rung already
-returned, and Moneycontrol's Akamai wall was the plugin's ONLY reason to run Playwright
-with real Chrome. See `docs/data-sources.md`.
+Google News RSS is the single source (`docs/data-sources.md`): it indexes the mainstream
+Indian outlets, structured and dated, with no bot wall. Because it also indexes low-quality
+aggregators, the quality filter is explicit rather than implicit in a hand-picked outlet
+list — every item carries a `publisher_tier` of `established` | `aggregator` | `unknown`.
 
-What one aggregator costs us is the implicit quality filter of hand-picked outlets, so
-that becomes explicit: every item carries a `publisher_tier` of `established` |
-`aggregator` | `unknown`.
-
-Every item it returns is **dated, deduped, classified** (`company` | `sector` | `noise`)
-and tagged `fact` | `narrative` with its `source` and `publisher_tier` (B2). Noise
-(generic "stocks to watch" listicles) is filtered from the default `data.items` view.
+Every item is **dated, deduped, classified** (`company` | `sector` | `noise`) and tagged
+`fact` | `narrative` with its `source` and `publisher_tier`. Noise (generic "stocks to
+watch" listicles) is filtered from the default `data.items` view.
 
 Every fetch returns the shared data-spine envelope:
     { "ok": bool, "source": str|None, "fetched_at": ISO8601,
@@ -49,46 +39,18 @@ from datetime import date, datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
+from spine import envelope as _envelope, norm_symbol as _norm  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
-# shared data-spine envelope                                                  #
-# --------------------------------------------------------------------------- #
-def _envelope(ok, source, data, gaps):
-    """The contract every data-spine fetch returns (see lib/contracts.md)."""
-    return {
-        "ok": bool(ok),
-        "source": source,
-        "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "data": data,
-        "gaps": gaps,
-    }
-
-
-def _norm(symbol):
-    """A bare NSE ticker — uppercased, the `.NS`/exchange prefix stripped."""
-    s = str(symbol or "").strip().upper()
-    if ":" in s:
-        s = s.split(":")[-1]
-    if s.endswith(".NS"):
-        s = s[:-3]
-    return s
-
-
-def _http_get(url, timeout=20, headers=None):
-    """GET via the single shared transport. Returns (text, gap) — never raises."""
-    return transport.request(url, timeout=timeout, headers=headers)
-
-
-# --------------------------------------------------------------------------- #
-# date normalisation — every item is dated (B2); unknown -> None, never guessed #
+# date normalisation — every item is dated; unknown -> None, never guessed        #
 # --------------------------------------------------------------------------- #
 _DATE_FORMATS = ("%Y-%m-%d", "%d %b %Y", "%b %d, %Y", "%d %B %Y", "%B %d, %Y",
                  "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y")
 
 
 def _parse_date(value):
-    """Pure: coerce a feed date string to an ISO `YYYY-MM-DD`, else None (offline, B2).
+    """Pure: coerce a feed date string to an ISO `YYYY-MM-DD`, else None (offline).
 
     Handles RSS RFC-822 `pubDate` ("Fri, 19 Jun 2026 10:30:00 GMT"), ISO, and the common
     Indian-outlet display formats. An unparseable date is left None — a labelled unknown
@@ -122,7 +84,7 @@ def _parse_date(value):
 
 def _within_window(iso_date, days, today=None):
     """Pure: is an ISO date within the last `days`? An unknown (None) date is kept — we
-    cannot prove it stale, so the window narrows on recency, never drops the undated (B2)."""
+    cannot prove it stale, so the window narrows on recency, never drops the undated."""
     if not iso_date or not days:
         return True
     today = today or date.today()
@@ -134,7 +96,7 @@ def _within_window(iso_date, days, today=None):
 
 
 # --------------------------------------------------------------------------- #
-# classify (company | sector | noise) + tag (fact | narrative) — pure (B2)     #
+# classify (company | sector | noise) + tag (fact | narrative) — pure           #
 # --------------------------------------------------------------------------- #
 # Generic market listicles carry no company signal — filtered from the default view.
 _NOISE_RE = re.compile(
@@ -144,7 +106,7 @@ _NOISE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Sector words — a headline that is relevant but not company-specific (B2 `sector`).
+# Sector words — a headline that is relevant but not company-specific.
 _SECTOR_RE = re.compile(
     r"\b(bank(ing|s)?|pharma|auto(mobile|s)?|it\s+sector|metals?|fmcg|realty|real\s+estate|"
     r"psu|nbfc|cement|telecom|energy|oil|gas|infra(structure)?|defen[cs]e|sector)\b",
@@ -175,7 +137,7 @@ def _company_tokens(company, ticker):
 
 
 def _classify(title, company, ticker):
-    """Pure: bucket a headline as `company` | `sector` | `noise` (offline-testable, B2).
+    """Pure: bucket a headline as `company` | `sector` | `noise` (offline-testable).
 
     Order matters: a generic listicle is noise even if it names the company; a headline that
     names the company is company-specific; an un-named headline that carries a sector word is
@@ -192,13 +154,13 @@ def _classify(title, company, ticker):
 
 
 def _tag(title):
-    """Pure: `fact` (reported event) vs `narrative` (broker target / opinion / forecast) — B2.
+    """Pure: `fact` (reported event) vs `narrative` (broker target / opinion / forecast).
     A title carrying an opinion/forward marker is narrative; a plain reported event is fact."""
     return "narrative" if _NARRATIVE_RE.search(title or "") else "fact"
 
 
 # --------------------------------------------------------------------------- #
-# dedup — same story across rungs/wires collapses to one (B2)                   #
+# dedup — same story across wires collapses to one                             #
 # --------------------------------------------------------------------------- #
 def _dedup_key(title):
     """A title's identity for dedup — lowercased, punctuation and runs of space removed."""
@@ -206,7 +168,7 @@ def _dedup_key(title):
 
 
 def _dedup(items):
-    """Pure: drop repeat headlines, keeping the first (offline-testable, B2)."""
+    """Pure: drop repeat headlines, keeping the first (offline-testable)."""
     seen, out = set(), []
     for it in items:
         key = _dedup_key(it.get("title"))
@@ -219,7 +181,7 @@ def _dedup(items):
 
 
 # --------------------------------------------------------------------------- #
-# parsers — feed text -> raw item dicts (pure, offline-testable on fixtures B4) #
+# parsers — feed text -> raw item dicts (pure, offline-testable on fixtures) #
 # --------------------------------------------------------------------------- #
 def _parse_rss(xml_text, origin):
     """Pure: parse an RSS feed (Google News and most outlet feeds) into raw items.
@@ -259,7 +221,7 @@ def _parse_rss(xml_text, origin):
 
 
 # --------------------------------------------------------------------------- #
-# publisher trust — Google News indexes everyone, so rank the wire (B2)         #
+# publisher trust — Google News indexes everyone, so rank the wire         #
 # --------------------------------------------------------------------------- #
 # Consolidating onto one aggregator buys reliability but loses the implicit quality
 # filter that "we only read ET and Moneycontrol" gave us: the same query also returns
@@ -313,23 +275,23 @@ def _fetch_google_rss(company, ticker, days):
     q = f'"{company}" stock when:{int(days or 60)}d'
     url = ("https://news.google.com/rss/search?q=" + urllib.parse.quote(q) +
            "&hl=en-IN&gl=IN&ceid=IN:en")
-    xml_text, gap = _http_get(url)
+    xml_text, gap = transport.request(url, timeout=20)
     if gap:
         return [], gap
     items = _parse_rss(xml_text, "Google News RSS")
     return items, (None if items else "no RSS items returned")
 
 
-# Resolved by name at call time so a test can monkeypatch it to a saved fixture (B1/B3).
+# Resolved by name at call time so a test can monkeypatch it to a saved fixture.
 _LADDER = ("_fetch_google_rss",)
 _LABELS = {"_fetch_google_rss": "Google News RSS"}
 
 
 # --------------------------------------------------------------------------- #
-# pipeline — raw items -> dated, windowed, classified, tagged, deduped (B2)     #
+# pipeline — raw items -> dated, windowed, classified, tagged, deduped     #
 # --------------------------------------------------------------------------- #
 def _process(raw, company, ticker, days, today=None):
-    """Pure: turn raw rung items into the finished, classified item list (offline, B2/B4)."""
+    """Pure: turn raw rung items into the finished, classified item list (offline)."""
     out = []
     for r in raw:
         title = (r.get("title") or "").strip()
@@ -356,11 +318,11 @@ def _process(raw, company, ticker, days, today=None):
 
 
 def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
-    """Fetch one company's news and return the data-spine envelope with `data.items` (B1).
+    """Fetch one company's news and return the data-spine envelope with `data.items`.
 
     A blocked source records a labelled gap and returns `ok:false` rather than raising or
-    returning a silent empty (B3). Noise is filtered from the default view unless
-    `include_noise` (B2), and every item carries a `publisher_tier`."""
+    returning a silent empty. Noise is filtered from the default view unless
+    `include_noise`, and every item carries a `publisher_tier`."""
     company = (company or "").strip()
     ticker = _norm(ticker or company)
     cache_file = os.path.join(paths.cache_dir("news"),
@@ -373,7 +335,7 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
     for name in _LADDER:
         items, gap = getattr(sys.modules[__name__], name)(company, ticker, days)
         if gap:
-            gaps.append(f"{_LABELS[name]}: {gap}")  # B3 — a labelled degradation
+            gaps.append(f"{_LABELS[name]}: {gap}")  # a labelled degradation, not a failure
         if items:
             raw, source_used = items, _LABELS[name]
             break
@@ -386,13 +348,13 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
         "ticker": ticker,
         "days": days,
         "count": len(visible),
-        "items": visible,            # B2 — noise filtered from the default view
+        "items": visible,            # noise filtered from the default view
         "noise_filtered": len(noise),
         "established_count": sum(1 for it in visible
                                  if it["publisher_tier"] == "established"),
     }
     if source_used is None:
-        # B3 — all rungs blocked: a labelled gap, ok:false, never an empty crash.
+        # Blocked: a labelled gap and ok:false, never a silent empty.
         if not gaps:
             gaps.append("all news rungs returned no items")
         return _envelope(False, None, data, gaps)

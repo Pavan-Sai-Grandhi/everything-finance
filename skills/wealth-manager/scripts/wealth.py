@@ -25,14 +25,26 @@ CLI:
 """
 import argparse
 import json
+import os
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "lib"))
+from spine import first as _first  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
 # tolerant coercion (mirrors lib/holdings.py — fetched values arrive ₹/%-formatted)
 # --------------------------------------------------------------------------- #
+_SCALE_SUFFIXES = (
+    ("crores", 1e7), ("crore", 1e7), ("cr", 1e7),
+    ("lakhs", 1e5), ("lakh", 1e5), ("l", 1e5),
+)
+
+
 def _num(x):
-    """Coerce to float, tolerating ₹/comma/%/Cr/L-formatted strings; None on failure."""
+    """Coerce to float, tolerating ₹/comma/%/Cr/L-formatted strings; None on failure.
+    Wider than `spine.f`, which does not carry the Cr/L multipliers."""
     if x is None or isinstance(x, bool):
         return None
     if isinstance(x, (int, float)):
@@ -41,28 +53,16 @@ def _num(x):
         s = x.replace(",", "").replace("₹", "").replace("%", "").strip()
         mult = 1.0
         low = s.lower()
-        if low.endswith("cr"):
-            mult, s = 1e7, s[:-2].strip()
-        elif low.endswith("l") or low.endswith("lakh"):
-            mult, s = 1e5, s.rstrip("Ll").replace("akh", "").strip()
+        for suffix, factor in _SCALE_SUFFIXES:
+            if low.endswith(suffix):
+                mult, s = factor, s[:-len(suffix)].strip()
+                break
         if s in ("", "-", "NA", "N/A", "null", "None"):
             return None
         try:
             return float(s) * mult
         except ValueError:
             return None
-    return None
-
-
-def _first(d, *keys):
-    """First present, non-empty value among keys of a dict."""
-    if not isinstance(d, dict):
-        return None
-    for k in keys:
-        if k in d:
-            v = d[k]
-            if v not in (None, "", [], {}):
-                return v
     return None
 
 
@@ -375,7 +375,6 @@ def _score_cashflow(cf):
 def build_scorecard(spine, legs, cross):
     """One status per domain + the ranked cross-domain action plan (max 5)."""
     inv = (legs or {}).get("investments")
-    prot = (legs or {}).get("protection")
     cf = (legs or {}).get("cashflow")
 
     domains = {

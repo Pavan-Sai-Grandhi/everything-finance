@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 """Category scanner — turns "which small-cap fund?" into a deterministic shortlist.
 
-Without this, picking a fund in a category meant naming whichever funds the model
-happened to recall, which is selection by recall bias dressed as research. This script
-takes the WHOLE SEBI sub-category from `lib/funds.screen()`, applies the Varsity
+Takes the WHOLE SEBI sub-category from `lib/funds.screen()`, applies the Varsity
 checklist as HARD gates, scores the survivors on a fixed published weight table, and
-emits the top N. Same inputs, same answer, every run — and the reasoning is auditable
-because the weights and the per-component scores are in the output.
-
-WHAT IT REFUSES TO DO
----------------------
-It never prints the universe. Heavy computation stays deterministic and local; the model
-receives only the decision-grade rows it needs to choose between. A 36-fund table dumped
-into context is 36 chances to anchor on a number nobody gated.
+emits the top N. Same inputs, same answer, every run, and auditable because the weights
+and the per-component scores are in the output. The universe is never printed — only the
+decision-grade rows reach stdout.
 
 WHERE THE NUMBERS COME FROM
 ---------------------------
@@ -21,15 +14,15 @@ WHERE THE NUMBERS COME FROM
 * Rolling returns and max drawdown -> **computed here from AMFI NAV history**
   (`funds.nav_history()` + `rolling.py`'s tested math). Tickertape gates `maxDrawdown` and
   `avg3yRollingRet` behind a paywall, and a NAV-derived version is reproducible from a
-  primary source anyway — which the paywalled field would not be.
+  primary source — which the paywalled field would not be.
 * Nothing is estimated. A fund missing an input is scored on the rest with the weight
   redistributed, and if too little is left it is gated out rather than guessed at.
 
 THE GATES (hard, applied before any scoring — Varsity ch. 24-26)
 ---------------------------------------------------------------
 1. **Direct-Growth plan only.** `option == Growth`, and the expense ratio must sit under
-   a Direct-plan ceiling — a Regular-plan TER served on a Direct-plan page is the single
-   most common identity error in fund research, and it is ~1.1%/yr of guaranteed drag.
+   a Direct-plan ceiling — a Regular-plan TER served on a Direct-plan page is the most
+   common identity error in fund research, and it is ~1.1%/yr of guaranteed drag.
 2. **AUM viability floor.** Below it, an equity scheme has liquidity and viability
    questions (and its expense ratio has nowhere to fall).
 3. **Fund age >= the window being credited.** You cannot credit a 3-year record to a
@@ -37,8 +30,8 @@ THE GATES (hard, applied before any scoring — Varsity ch. 24-26)
 4. **NAV independently resolvable.** No AMFI Direct-Growth scheme match means rolling
    returns and drawdown cannot be recomputed from a primary source, so the fund cannot
    be verified — it is listed as gated, never silently scored on vendor numbers.
-5. **Fund-manager tenure** is named as a pending MANUAL gate: no free API publishes it,
-   so it is checked by hand for the shortlist only (never for the whole universe).
+5. **Fund-manager tenure** is a pending MANUAL gate: no free API publishes it, so it is
+   checked by hand for the shortlist only (never for the whole universe).
 
 CLI:
   python3 scanner.py --category "Small Cap Fund" --top 5
@@ -59,6 +52,7 @@ sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(_HERE, "..", "..", "..", "lib"))
 
 import rolling as R  # noqa: E402  (the tested rolling-return math, shared with pillar 1)
+from spine import f as _f  # noqa: E402  (the one scraped-cell -> float coercion)
 
 # --------------------------------------------------------------------------- #
 # the published scoring contract                                              #
@@ -127,15 +121,6 @@ _BAD_PLAN_TOKENS = {"idcw", "dividend", "payout", "bonus", "reinvestment", "rein
 _NOISE_TOKENS = {"fund", "plan", "direct", "growth", "option", "scheme", "the", "of"}
 
 
-def _f(v):
-    try:
-        if v is None or isinstance(v, bool) or v == "":
-            return None
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
 # --------------------------------------------------------------------------- #
 # pure scoring primitives                                                      #
 # --------------------------------------------------------------------------- #
@@ -189,8 +174,7 @@ def cap_purity(pct_in_mandate_cap):
     """0-1: the share of the book actually inside the cap tier the fund's name promises.
 
     A "small-cap" fund parking a third of its book in mid-caps is selling mid-cap beta
-    under a small-cap label — the exact finding that reframed a real comparison, where the
-    fund with the best headline 1Y turned out to carry the largest mid-cap tilt.
+    under a small-cap label, and its headline return is partly another tier's.
     """
     p = _f(pct_in_mandate_cap)
     if p is None:
@@ -311,11 +295,10 @@ def nav_metrics(navs, window_years):
     Returns rolling mean/median/min over the window, max drawdown, span in years and the
     confidence that span earns. Pure — the caller does the fetching.
     """
-    from datetime import date as _d
     dates, values = [], []
     for r in navs or []:
         try:
-            dates.append(_d.fromisoformat(r["date"]))
+            dates.append(date.fromisoformat(r["date"]))
             values.append(float(r["nav"]))
         except (KeyError, TypeError, ValueError):
             continue

@@ -3,7 +3,6 @@
 Starter strategy specs distilled from common Indian swing-trading methods
 (`.refs/swing-strategies.txt`). They exist so you don't start from a blank page —
 **but every one ships as `status: draft` and is NOT tradeable until you validate it.**
-strategy-manager's discipline still binds: a draft is a hypothesis, not an edge.
 
 ## How to use one
 
@@ -17,9 +16,9 @@ mkdir -p artifacts/state/strategies && cp ema-pullback-swing.yml artifacts/state
 ```
 
 Validation is not a formality: the **mechanical EMA-pullback backtested to *negative*
-expectancy** in the bundled backtest when stripped of its reversal-candle + tested-S/R
-filters (see `find-trade/references/reference.md`). Seeds encode the *idea*; only your
-backtest tells you whether this parameterisation has an edge on a real basket.
+expectancy** when stripped of its reversal-candle + tested-S/R filters. Seeds encode the
+*idea*; only your backtest tells you whether this parameterisation has an edge on a real
+basket.
 
 ## What's here, and how it relates to the breakout example spec
 
@@ -43,7 +42,7 @@ intraday, per CLAUDE.md, so the 4-hour leg becomes "confirm on the daily close".
 
 ## The screening block
 
-Each seed populates the `screening` block the schema now carries: a **screener.in**
+Each seed populates the `screening` block: a **screener.in**
 fundamental cut and a **technical** cut that is either `provider: tradingview` (server-side
 filters) or `provider: compute` (local `lib/ta.py`) where TradingView can't express the
 filter (NR-bars, fib zones). `fallback_compute: true` everywhere means find-trade reproduces

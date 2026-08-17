@@ -43,19 +43,12 @@ Exit: 0 = valued, 2 = input/usage error, 3 = model-invalid (e.g. wacc<=g).
 import argparse
 import json
 import os
-import subprocess
 import sys
 from functools import reduce
 
-
-def _need(mod, pip_name=None):
-    try:
-        return __import__(mod)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet",
-                               "--break-system-packages", pip_name or mod])
-        return __import__(mod)
-
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "lib"))
+from deps import need as _need  # noqa: E402
 
 # ----------------------------------------------------------------------------- helpers
 
@@ -145,8 +138,10 @@ def resolve_wacc(spec, n):
     coe = rf + beta * mature_erp + lam * crp
     erp_total = mature_erp + lam * crp
     cod = float(b.get("cost_of_debt_pretax", coe))
-    tax = float(b.get("tax_rate", spec.get("tax_rate", 0.25)) if not isinstance(
-        spec.get("tax_rate"), (list, tuple)) else b.get("tax_rate", 0.25))
+    # the buildup needs a SCALAR tax rate, so a per-year spec `tax_rate` path cannot
+    # stand in as the default.
+    scalar_spec_tax = not isinstance(spec.get("tax_rate"), (list, tuple))
+    tax = float(b.get("tax_rate", spec.get("tax_rate", 0.25) if scalar_spec_tax else 0.25))
     we = float(b.get("equity_weight", 1.0))
     wd = float(b.get("debt_weight", 1.0 - we))
     wacc = we * coe + wd * cod * (1.0 - tax)
@@ -189,8 +184,7 @@ def value(spec):
     growth = resolve_growth(spec, n)
     margin = resolve_margin(spec, n)
     tax = _as_path(spec.get("tax_rate", 0.25), n, 0.25)
-    s2c = _as_path(spec.get("sales_to_capital"), n, None) if spec.get("sales_to_capital") is not None \
-        else _as_path(spec.get("sales_to_capital", 2.0), n, 2.0)
+    s2c = _as_path(spec.get("sales_to_capital"), n, 2.0)
     wacc, wacc_detail = resolve_wacc(spec, n)
 
     # terminal assumptions
@@ -399,15 +393,15 @@ def sensitivity(spec, wacc_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01),
     base_wacc_T = float(spec.get("terminal_wacc", _as_path(spec.get("wacc", 0.11),
                         int(spec.get("years", 10)), 0.11)[-1]))
     base_g_T = float(spec.get("terminal_growth", 0.04))
-    grid = {"wacc_axis": [], "growth_axis": [round(base_g_T + d, 6) for d in g_deltas], "cells": []}
-    grid["wacc_axis"] = [round(base_wacc_T + d, 6) for d in wacc_deltas]
+    grid = {"wacc_axis": [round(base_wacc_T + d, 6) for d in wacc_deltas],
+            "growth_axis": [round(base_g_T + d, 6) for d in g_deltas], "cells": []}
     for wd in wacc_deltas:
         row = []
         for gd in g_deltas:
+            # only the terminal discount rate shifts; explicit years keep their own path
             trial = dict(spec)
             trial["terminal_wacc"] = base_wacc_T + wd
             trial["terminal_growth"] = base_g_T + gd
-            # only the terminal discount rate shifts; explicit years keep their own path
             try:
                 row.append(round(value(trial)["intrinsic_value_per_share"], 2))
             except ValueError:

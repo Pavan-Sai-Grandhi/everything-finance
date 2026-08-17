@@ -56,6 +56,13 @@ def load_ohlcv(symbol, years, cache_dir):
     return ta.load_ohlcv(SYMBOL_ALIASES.get(symbol, symbol), years, cache_dir)
 
 
+def strategy_load(path):
+    """Load a strategy spec YAML (shares find-trade's loader convention)."""
+    yaml = ta._need("yaml", "pyyaml")
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+
 def run_symbol(df, spec, symbol, capital, risk_pct):
     """Backtest one symbol's enriched frame against the spec. Returns a list of
     trade dicts with cost-inclusive R multiples (R = net PnL / risk-at-entry)."""
@@ -150,10 +157,7 @@ def _synth(kind):
     np = ta.np
     n = 400
     idx = pd.date_range("2022-01-03", periods=n, freq="B")
-    if kind == "up":
-        base = ta.np.linspace(100, 240, n)
-    else:
-        base = ta.np.linspace(240, 100, n)
+    base = np.linspace(100, 240, n) if kind == "up" else np.linspace(240, 100, n)
     close = pd.Series(base + np.sin(np.arange(n) / 7) * 4, index=idx)
     high = close + 2.0
     low = close - 2.0
@@ -251,13 +255,6 @@ def main():
     print(json.dumps(result, indent=2, default=str))
     print(f"\nwrote {args.out}-summary.json"
           + (f" and {args.out}-trades.csv ({len(all_trades)} trades)" if all_trades else ""))
-
-
-def strategy_load(path):
-    """Load a strategy spec YAML (shares find-trade's loader convention)."""
-    yaml = ta._need("yaml", "pyyaml")
-    with open(path) as f:
-        return yaml.safe_load(f)
 
 
 if __name__ == "__main__":

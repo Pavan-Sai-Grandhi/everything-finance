@@ -42,7 +42,7 @@ One status per domain — **strong / adequate / weak / critical / not_assessed**
 | Cashflow | saving ≥ 20% of inflow | saving < 10% |
 | Emergency fund | ≥ 6 months runway | < 3 months |
 
-**Overall** = the worst *assessed* domain (a `not_assessed` domain never sets the overall — it's a gap to fill, not a failure). A domain whose leg didn't run is marked "not assessed — run /<spoke>", and the review still produces a verdict on the rest (graceful degradation).
+**Overall** = the worst *assessed* domain (a `not_assessed` domain never sets the overall — it's a gap to fill, not a failure). A domain whose leg didn't run is marked "not assessed — run /<spoke>", and the review still produces a verdict on the rest.
 
 ## Prioritised action plan (max 5)
 
@@ -60,9 +60,8 @@ If the foundation is sound and the equity share has room, the last slot surfaces
 
 Defined in `lib/contracts.md` — `investments-block` (portfolio-review quick), `cashflow-block` (budget-tracker quick), `protection-block` (insurance-advisor audit, distilled by the leg-runner). The orchestrator transcribes each returned block into the `legs` object of the picture JSON that `wealth.py` consumes; it never re-derives a leg's numbers.
 
-## Guardrails (CLAUDE.md, restated for this skill)
+## Guardrails specific to this skill
 
-- Every number reproducible and sourced — IndMoney first-party net-worth state, spoke digests. Never fabricate an asset value, a premium, or a need; surface it as a gap.
 - Net-worth values are sensitive: **full detail in the artifact, summary (scorecard + plan) in chat**.
-- Graceful degradation: run whatever legs have data; label the rest "not assessed". A failed leg is a scorecard gap, never an abort.
-- Standard not-advice close on every output.
+- Every figure is either IndMoney first-party net-worth state or a spoke digest — the hub never re-derives or estimates one.
+- A failed leg is a scorecard gap ("not assessed"), never an abort.

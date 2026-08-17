@@ -1,57 +1,68 @@
 # Data contracts — the handoffs that make everything-finance one system
 
-The skills in this plugin are not islands: they pass structured artifacts to each
-other. This file is the **single description of those contracts** so that when you
-edit one side of a handoff you can see the other. If you change a field name or
-meaning here, change it in every named producer and consumer. (Keeping these in one
-place is what stops the schemas from drifting apart as individual skills evolve.)
+The skills pass structured artifacts to each other. This file is the **single description
+of those contracts**, so that editing one side of a handoff shows you the other. Change a
+field name or meaning here and you must change it in every named producer and consumer.
 
-There are two kinds of shared dependency: **artifacts** (files written by one skill,
-read by another) and **shared code** (`lib/` modules imported by several scripts).
+Two kinds of shared dependency: **artifacts** (files written by one skill, read by another)
+and **shared code** (`lib/` modules imported by several scripts).
 
 ---
 
 ## The data layer: one door, one transport
 
-**`mcp_server/finance_data.py` — the `finance-data` MCP server.** The only door to
-decision data for a *model*. 20 tools over the seven finalized sources
-(`docs/data-sources.md`). Every tool returns the shared data-spine **envelope**
-`{ok, source, fetched_at, data, gaps}`, unchanged from the direct-import path — because
-the tools ARE that path: each one wraps the matching `lib/` domain module.
+**`mcp_server/finance_data.py` — the `finance-data` MCP server.** The only door to decision
+data for a *model*. 20 tools over the seven finalized sources (`docs/data-sources.md`), each
+wrapping the matching `lib/` domain module and returning the shared **envelope**
+`{ok, source, fetched_at, data, gaps}`.
 
-Two entry points onto one implementation, and the reason there are two: compute scripts
-(`market_context.py`, `scanner.py`, `lookthrough.py`, `backtest.py`, `screen.py`) run as
-Python and **cannot call MCP tools**, so they import `lib/` directly. If the server owned
-the fetch logic those scripts would need a second copy of it. **Never add a third path,
-and never add fetching to a skill script.**
+Compute scripts (`market_context.py`, `scanner.py`, `lookthrough.py`, `backtest.py`,
+`screen.py`) run as Python and **cannot call MCP tools**, so they import `lib/` directly.
+Two entry points onto one implementation: **never add a third path, and never add fetching
+to a skill script.**
 
 Bulk lists (`candles`, `positions`, `navs`, `items`, `funds`) are **spilled to disk**: the
 tool writes the full list to the cache tier and returns `data[<key>]` truncated plus
 `data[<key>_total]` and `data[<key>_path]`. Read the file for the rest; never re-call a
 tool to page through data it already wrote.
 
-**`lib/transport.py` — the one function that touches the network.** `request(url, ...) ->
-(body, gap)` and `json_request(...) -> (parsed, gap)`, never raising; plus `bootstrap()`
-for cookie-gated hosts and `jar_path()`. curl-based, because nseindia.com 403s urllib on
-the TLS/HTTP2 fingerprint. Every `lib/` fetcher calls it and no module opens its own
-socket. Named `transport`, **not `http`** — `lib/` is on `sys.path`, so an `http.py` here
-shadows the stdlib `http` package for every dependency in the process (it broke
-yfinance's `import http.client`).
+**`lib/spine.py` — the primitives every fetcher shares.** `envelope(ok, source, data, gaps)`
+builds the one envelope shape; `f(value)` coerces to float-or-`None`; `first(row, *keys,
+default=None)` picks the first present key from a vendor row; `norm_symbol(value)` and
+`today()` normalize the two universal keys; `read_cache(path, fresh, stamp_key="date",
+max_age_days=0)` / `write_cache(path, env, stamp_key="date")` are the day-stamped disk cache.
+Imported by every `lib/` domain module, the MCP server, and the compute scripts — one
+definition, so envelopes and cache staleness cannot diverge. Covered by `lib/test_spine.py`.
 
-**The personal/decision boundary.** `kite` / `upstox` / `indmoney` are separate, optional
-MCP servers normalized through `lib/holdings.py`. They supply **only** what the user owns
-and what it is worth. They must never supply a decision input — no returns-vs-benchmark,
-rank, valuation, cap classification, news or sentiment. See CLAUDE.md rule 3 for the
-measured reasons.
+**`lib/transport.py` — the one function that touches the network.** `request(url, ...) ->
+(body, gap)` and `json_request(...) -> (parsed, gap)`, never raising; `bootstrap()` +
+`jar_path()` for cookie-gated hosts; and **`nse_json(url, referer, headers=None)`**, the
+cookie-bootstrapped NSE GET shared by `market.py` and `filings.py`. curl-based, because
+nseindia.com 403s urllib on the TLS/HTTP2 fingerprint. Every `lib/` fetcher calls it and no
+module opens its own socket. Named `transport`, **not `http`** — `lib/` is on `sys.path`, so
+an `http.py` here shadows the stdlib `http` package for every dependency in the process (it
+broke yfinance's `import http.client`).
+
+**The personal/decision boundary.** `kite` / `upstox` / `indmoney` are separate, optional MCP
+servers normalized through `lib/holdings.py`. They supply **only** what the user owns and
+what it is worth, never a decision input. See CLAUDE.md rule 3.
 
 ---
 
 ## Shared code: `lib/`
 
+### `lib/deps.py` — lazy third-party imports
+`need(mod, pip_name=None)` imports a module, pip-installing it (PEP 668 override) on first
+miss; `load_yaml(path)` parses YAML via `need`. Skill scripts are run directly rather than
+installed, so a missing dependency self-heals instead of tracebacking. Consumers:
+`strategy-manager/scripts/{select_strategy,aggregate_performance}.py`,
+`trade-tracker/scripts/validate_trade.py`, `dcf-valuation/scripts/dcf.py`. Kept out of
+`ta.py` so a script needing only PyYAML does not drag in pandas and the TA-Lib bootstrap.
+
 ### `lib/paths.py` — the artifact-path authority
 Every skill script asks this module where to read and write instead of hardcoding strings, so
-the layout cannot drift between skills (the same reason `ta.py`/`strategy.py` are one engine
-each). Root is `$EVERYTHING_FINANCE_ARTIFACTS` or `./artifacts` (cwd). Three lifecycle tiers:
+the layout cannot drift between skills. Root is `$EVERYTHING_FINANCE_ARTIFACTS` or
+`./artifacts` (cwd). Three lifecycle tiers:
 **dated output** (`stocks/<TICKER>/<date>/`, `funds/<SCHEME>/<date>/`, and skill-first
 singletons like `daily-brief/<date>.md`), **durable state** (`state/strategies/`, `state/trades/`,
 `state/alerts/`, `state/watchlist.json`), and **disposable** (`cache/`, `tmp/`). Helpers:
@@ -61,8 +72,7 @@ watchlist_path, cache_dir, tmp_dir, sector_cache_path, merchant_map_path` (all c
 missing/undated), and **`latest_prior(skill, subject, before=None)`** — the prior-run lookup
 that powers "refer the earlier run"
 (deep-analysis, dcf, management, filings, mf-analysis). Import via the same three-dirs-up
-`sys.path.insert` idiom as `ta`/`strategy`. `lib/migrate_artifacts.py` does a one-time
-(dry-run-by-default) move of an old flat tree into this layout. Covered by `lib/test_paths.py`.
+`sys.path.insert` idiom as `ta`/`strategy`. Covered by `lib/test_paths.py`.
 
 ### `lib/alerts.py` — the alert contract (see "Artifact: alert" below)
 
@@ -115,20 +125,17 @@ it so they cannot disagree about what a strategy means. Key contract:
 Producer: `lib/filings.py` (the canonical data-spine fetcher). Consumers: `filings-watch`
 (skill) and `daily-brief`. Key contract:
 `classify_materiality(text) -> (tier, emoji, reason)` where `tier ∈ {act-on, monitor,
-routine}` (emoji 🔴/🟡/⚪). `summarize(symbol, days, scrip=None, fresh=False)` returns the
-shared data-spine **envelope**
-`{ok, source, fetched_at, data:{...}, gaps:[...]}`, where `data` is
-`{symbol, scrip, days, date, material_count, act_on:[...], monitor:[...], routine_count, items:[...], corporate_actions:[...]}`.
-**The primary key is the NSE symbol**, not a BSE scrip code — BSE was dropped as a source
-(`docs/data-sources.md`); `scrip` is accepted and echoed for backward compatibility only.
+routine}` (emoji 🔴/🟡/⚪). `summarize(symbol, days, fresh=False)` returns the shared
+data-spine **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`, where `data` is
+`{symbol, days, date, material_count, act_on:[...], monitor:[...], routine_count, items:[...], corporate_actions:[...]}`.
+**The primary key is the NSE symbol** — a BSE-only listing is a labelled gap.
 Also exposed: `fetch_nse_corp_actions(symbol)` and `fetch_nse_shareholding(symbol,
 quarters)` — the latter returns `{items:[{quarter, promoter_pct, public_pct,
 employee_trusts_pct, filed_on, xbrl}], pledge:[...], gap}`. **An empty `pledge` list is a
 labelled gap meaning UNKNOWN, never "no pledge".** The announcements fetch re-checks the
 symbol client-side, because the endpoint has been seen returning the whole market when its
 symbol filter is not honoured. Each block names itself in `gaps`; `ok:false` with a `gap`
-means "unknown", not "nothing filed". Fetched text is untrusted data, assessed not obeyed. Covered by
-`lib/test_filings.py` (+ `--selftest`).
+means "unknown", not "nothing filed". Covered by `lib/test_filings.py` (+ `--selftest`).
 
 ### `lib/prices.py` — price fetch (live + history + reconcile)
 Producer: `lib/prices.py` (the canonical data-spine fetcher). Consumers: any caller needing
@@ -146,25 +153,21 @@ scanner** (public India scan endpoint, **no auth**) is live/current/screening tr
 - `reconcile(symbol, tolerance=0.01)` → `data:{symbol, tv_close, yf_close, divergence_pct, tolerance, agree}`; a divergence beyond tolerance is a `gap`, not a silent pass.
 **No indicators are computed here** — callers pass `candles` to `ta.add_indicators`, so a
 screen and its backtest share one indicator-of-record. No TV indicator-value ingestion and
-no TV-indicator library dependency. Fetched text is untrusted data, assessed not obeyed.
-Covered by `lib/test_prices.py` (offline parser + reconcile-decision fixtures).
+no TV-indicator library dependency. Covered by `lib/test_prices.py` (offline parser + reconcile-decision fixtures).
 
 ### `lib/news.py` — company news (Google News RSS)
 Producer: `lib/news.py` (the canonical data-spine fetcher). Consumers: the `news-sentiment`
 agent and `deep-analysis` (its news leg); `daily-brief` for headline context. Key contract:
-`fetch(company, ticker, days=60)` reads Google News RSS — the single news source, which a
-30-day probe confirmed is a strict superset of the ET → Moneycontrol ladder it replaced —
-and returns the shared data-spine **envelope** `{ok, source, fetched_at, data:{...},
+`fetch(company, ticker, days=60)` reads Google News RSS — the single news source — and
+returns the shared data-spine **envelope** `{ok, source, fetched_at, data:{...},
 gaps:[...]}`, where `data` is
 `{company, ticker, days, count, items:[{date, title, url, source, origin, kind, tag, publisher_tier}], noise_filtered, established_count}`.
 Each item is **dated** (ISO or explicit `null`), **deduped**, **classified** `kind ∈ {company,
 sector, noise}`, **tagged** `tag ∈ {fact, narrative}`, and carries
-`publisher_tier ∈ {established, aggregator, unknown}` — the explicit replacement for the
-implicit quality filter that hand-picked outlets used to give. Tiering never drops an item;
-weigh a single-sourced `aggregator` claim accordingly. **Noise is filtered from the default
+`publisher_tier ∈ {established, aggregator, unknown}`. Tiering never drops an item; weigh a
+single-sourced `aggregator` claim accordingly. **Noise is filtered from the default
 `items` view** (pass `include_noise` to keep it). A block returns `ok:false` with a labelled
-`gap`, never an empty crash. Fetched headlines are untrusted data, assessed not obeyed. Covered by
-`lib/test_news.py` (offline parser/classifier/ladder fixtures).
+`gap`, never an empty crash. Covered by `lib/test_news.py` (offline parser/classifier/ladder fixtures).
 
 ### `lib/fundamentals.py` — screener.in financials + fundamental screen
 Producer: `lib/fundamentals.py` (the canonical data-spine fetcher). Consumers: the
@@ -175,8 +178,7 @@ data-spine **envelope** `{ok, source, fetched_at, data:{...}, gaps:[...]}`:
 - `screen(query)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`).
 **Tables/fields only — never raw page HTML lands in `data`.** The public page needs no auth;
 `SCREENER_SESSION_ID`/`SCREENER_CSRF_TOKEN` are injected only for a login-walled screen.
-Fetched figures are untrusted data, assessed not obeyed. Covered by `lib/test_fundamentals.py`
-(offline parser fixtures).
+Covered by `lib/test_fundamentals.py` (offline parser fixtures).
 
 ### `lib/market.py` — market-wide fetch (indices, valuation history, breadth, flows, macro)
 Producer: `lib/market.py` (the canonical market-level fetcher). Consumer: **only**
@@ -188,9 +190,9 @@ shared data-spine **envelope**:
 - `breadth(universe)` → `data.counts:{above_sma50, above_sma200, advancing, near_52w_high, near_52w_low}`, each as `{count, of}` so the priced denominator travels with the number.
 - `flows()` → `data.flows:{FII,DII}:{buy_cr, sell_cr, net_cr}`; `macro(period)` → `{last, chg_1m_pct, percentile_5y, as_of}` per series.
 - `percentile(values, value)` — the one pure primitive here; it ranks, it does not judge.
-`SECTOR_YF` is the **single** NSE-sectoral yfinance ticker map (it previously existed in three
-places, which is how two skills disagreed about which sectors exist). Fetches only — no regime
-label, no stance, no score. Covered by `lib/test_market.py` (offline fixtures).
+`SECTOR_YF` is the **single** NSE-sectoral yfinance ticker map — the one answer to which
+sectors exist. Fetches only: no regime label, no stance, no score. Covered by
+`lib/test_market.py` (offline fixtures).
 
 ### `lib/funds.py` — mutual-fund fetch (identity, category screen, full holdings, NAV)
 Producer: `lib/funds.py` (the canonical fund-level fetcher). Consumers: `mf-analysis`
@@ -200,13 +202,13 @@ Producer: `lib/funds.py` (the canonical fund-level fetcher). Consumers: `mf-anal
 - `holdings(mf_id)` → `data.positions:[{sid, ticker, name, weight, change3m, type}]` — the **complete** book (64-278 positions at 90-99% coverage), plus `equity_weight`, `sector_weights`, `allocation_history`. `sid` is the join key and genuinely differs from `ticker` (REC: ticker `RECLTD`, sid `RECM`).
 - `stock_ratios(sid)` / `enrich(positions)` → per-holding `{pe, ttm_pe, pb, roe, market_cap_cr, cap_rank, cap_label, sector, …}`, threaded and cached. **`cap_rank` is the SEBI market-cap rank** — the basis cap-tilt must use.
 - `nav_history(code)` → `data.navs:[{date ISO, nav}]` oldest-first, strictly parsed.
-**Not to be replaced by the IndMoney MCP holdings feed** — it caps at 20 rows, misreports its
+**Fund holdings never come from the IndMoney MCP feed** — it caps at 20 rows, misreports its
 own coverage, and can be months stale. Covered by `lib/test_funds.py` (offline fixtures).
 
 ### `lib/holdings.py` — holdings source-resolver + normalizer
 Producer: `lib/holdings.py` (the canonical holdings spine). Consumers: `daily-brief` and
-`trade-tracker` (live position state), and the Track B cluster later (wealth-manager,
-portfolio-review, mf-analysis). Turns whichever read source is connected into ONE canonical
+`trade-tracker` (live position state), and the personal-finance cluster (`wealth-manager`,
+`portfolio-review`, `mf-analysis`). Turns whichever read source is connected into ONE canonical
 position shape under a fixed precedence, so no consumer re-implements normalization.
 
 - **Envelope** (data-spine): `resolve(...)` returns `{ok, source, fetched_at, data:{positions:[...]}, gaps:[...]}`.
@@ -230,8 +232,7 @@ position shape under a fixed precedence, so no consumer re-implements normalizat
   passes the path (CLI `--indmoney`/`--kite`/`--upstox`/`--portfolio`). This is the same
   file-handoff `validate_trade.py` uses. **Fills are never sourced here** — exact entry price+date
   come from broker order history only; IndMoney is never used to approximate an entry.
-- First-party authenticated state (IndMoney) / broker truth — authoritative, but still data, never
-  instructions. Covered by `lib/test_holdings.py` (offline fixtures for all three sources +
+- Covered by `lib/test_holdings.py` (offline fixtures for all three sources +
   precedence/gap combinations).
 
 ---
@@ -259,11 +260,11 @@ Key blocks and who reads them:
 **Invariant:** find-trade runs a spec **only** when `status: active` AND its
 `regime_required` fits the live regime. It has no default — no fitting active spec ⇒ no trade.
 
-## Artifact: market-context  *(supersedes the regime read)*
+## Artifact: market-context
 **Producer:** `skills/market-analysis/scripts/market_context.py` → `artifacts/market-analysis/YYYY-MM-DD.json`.
-**Warmed by** whichever skill runs first that day (usually `daily-brief`); every later caller
-uses `--mode quick`, which reuses the artifact with **zero fetches**. That is the point of the
-contract: N skills in a day cost one computation, and they cannot disagree about the tape.
+**Consumer:** every other skill — none computes its own market view. Warmed by whichever skill
+runs first that day (usually `daily-brief`); every later caller uses `--mode quick`, which
+reuses the artifact with **zero fetches**. One computation per day, one read of the tape.
 
 `as_of` is the **last trading bar**, not the generation date — on a weekend the context is
 legitimately Friday's.
@@ -277,7 +278,7 @@ legitimately Friday's.
 | `trend_detail.{close,ema50,ema200,ema50_rising,pct_from_52w_high}` | trend context | daily-brief, find-trade |
 | `volatility.vix` | India VIX level | select_strategy.py (`vix_max`), find-trade sizing |
 | `volatility.{percentile_1y,percentile_5y,band}` | where that VIX sits historically | deep-analysis sizing, daily-brief |
-| `breadth.pct_sectors_above_ema50` | legacy 10-sector count | select_strategy.py (`breadth_min_pct`) — **name frozen** |
+| `breadth.pct_sectors_above_ema50` | coarse 10-sector count | select_strategy.py (`breadth_min_pct`) — **name frozen** |
 | `breadth.{pct_above_sma50,pct_above_sma200,pct_near_52w_high,pct_near_52w_low,universe}` | real stock-level participation over the top 500 | find-trade, daily-brief, sector-analysis |
 | `valuation.<index>.{pe,pe_pctile,pb,pb_pctile,dy,dy_pctile,stance,blended_pctile}` | cap-tier valuation vs that index's own 10y history, for `NIFTY 50` / `NIFTY MIDCAP 150` / `NIFTY SMALLCAP 250` | **mf-analysis** (is the category worth adding to), portfolio-review (smallcap-sleeve flag), deep-analysis (valuation leg context) |
 | `relative.{smallcap_vs_largecap_pb_ratio,percentile_spread,read}` | cap-tier richness against each other | mf-analysis, portfolio-review |
@@ -287,17 +288,11 @@ legitimately Friday's.
 | `gaps` | labelled degradations | every consumer — surfaced, never swallowed |
 
 **Two naming rules that are load-bearing.** `market_trend`, `trend_detail.above_ema200`,
-`volatility.vix` and `breadth.pct_sectors_above_ema50` keep their original spelling forever
-because `select_strategy.py:regime_fit` gates on them — renaming one silently breaks every
-strategy spec's `regime_required`. And the former `risk_posture` is now **`market_posture`**:
-`risk_posture` already means a *personal balance-sheet* posture in the wealth contract
+`volatility.vix` and `breadth.pct_sectors_above_ema50` are frozen spellings because
+`select_strategy.py:regime_fit` gates on them — renaming one silently breaks every strategy
+spec's `regime_required`. And the market posture is **`market_posture`**, never
+`risk_posture`: that name means a *personal balance-sheet* posture in the wealth contract
 (see Cross-domain, below), and the two collide the moment wealth-manager reads market context.
-
-### Superseded: `artifacts/regime/YYYY-MM-DD.json`
-Produced **only** by `strategy-manager/scripts/regime.py`, now a thin deprecation shim that
-delegates to `market_context.py` and re-emits the legacy shape (including a `risk_posture`
-mirror) for one release. No new caller should read it. `select_strategy.py` defaults to the
-market-context artifact and accepts the legacy file only as a fallback.
 
 ## Artifact: trade-idea
 **Producer:** `find-trade` (on user confirmation), or `trade-tracker` (when it captures a
@@ -308,9 +303,8 @@ position with no prior rationale). **Consumer:** `trade-tracker` (re-validates t
 
 Lifecycle of `status`: `idea` → (broker fill matched) `open` → (exit) `closed`. Fields
 `trade-tracker` re-checks every run: `plan` (entry/stop/target/time_stop_sessions),
-`thesis_invalidation` (machine-checkable kill conditions), `strategy` (link back to the
-spec — never null now that find-trade always runs a named/picked strategy),
-`regime_at_creation`. On close, trade-tracker writes a `result` block (`realized_R`,
+`thesis_invalidation` (machine-checkable kill conditions), `strategy` (link back to the spec —
+never null; find-trade only ever runs a named or picked strategy), `regime_at_creation`. On close, trade-tracker writes a `result` block (`realized_R`,
 `exit_reason`) — **that block is what `strategy-manager optimize` aggregates**, so closing
 a trade without it breaks the learning loop.
 
@@ -398,7 +392,7 @@ runs (no cron); `daily-brief` and `alert-manager` never place an order or auto-r
 **Producer/consumer:** `daily-brief` (auto-adds *vetted* opportunities, recommends pruning; never
 auto-removes). **Location:** `artifacts/state/watchlist.json` (`paths.watchlist_path()`). Shape:
 `{"watchlist": [{ticker, added, source, note}], "positions": [{ticker, entry, sl, target, qty,
-entry_date, bse_code}]}`. A bare-string legacy watchlist is still read.
+entry_date}]}`.
 
 ## Artifact: budget merchant map
 **Producer/consumer:** `budget-tracker` (`scripts/categorize.py`). **Location:**
@@ -415,10 +409,9 @@ correction resolves the merchant it was made against. Missing/corrupt map ⇒ ta
 rebuild — never a crash. Covered by `skills/budget-tracker/scripts/test_categorize.py`.
 
 ## Convention: cashflow-leg digest (budget-tracker `quick`)
-**Producer:** `budget-tracker` in `quick` mode. **Consumer:** `wealth-manager` (the Track B
-personal-finance cluster) — the cheap cashflow read, mirroring the deep-analysis/mf-analysis
-digest hygiene (return a compact block, not the full render). `quick` writes **no HTML** and no
-transaction detail; it returns only:
+**Producer:** `budget-tracker` in `quick` mode. **Consumer:** `wealth-manager` — the cheap cashflow
+read, following the same digest hygiene as the deep-analysis agents (a compact block, not the
+full render). `quick` writes **no HTML** and no transaction detail; it returns only:
 
 ```
 <!-- cashflow-block
@@ -438,9 +431,9 @@ percentages (graceful degradation — labelled, never silently defaulted). Trans
 stays in the artifact, never in the digest.
 
 ## Convention: investments-leg digest (portfolio-review `quick`)
-**Producer:** `portfolio-review` in `quick` mode. **Consumer:** `wealth-manager` (the Track B
-personal-finance cluster) — the cheap investments read, the sibling of the cashflow-leg digest
-above; same hygiene (a compact block, no per-holding deep fan-out, no report render). `quick`
+**Producer:** `portfolio-review` in `quick` mode. **Consumer:** `wealth-manager` — the cheap
+investments read, the sibling of the cashflow-leg digest above; same hygiene (a compact block,
+no per-holding deep fan-out, no report render). `quick`
 runs the multi-dimensional allocation + concentration engine (`scripts/allocation.py`) and the
 cheap per-holding drift/exit flags, but **not** the bounded `deep-analysis`/`mf-analysis`
 fan-out (that is `deep`-only). It returns only:
@@ -534,5 +527,4 @@ deep-analysis / dcf / management-quality ── rationale ──▶ trade-tracke
 filings.py ──▶ filings-watch / daily-brief        (promotes idea→open, closes→result)
 funds.py ──▶ mf-analysis (scanner → shortlist → look-through) ──▶ portfolio-review
 ```
-Every arrow is one of the contracts above. Break an arrow and you break the system, not
-just one skill — which is why they are documented here together.
+Every arrow is one of the contracts above.

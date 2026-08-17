@@ -13,17 +13,8 @@ Two layers:
   * fetch_nse_announcements / fetch_nse_corp_actions — the fetch layer, both NSE, both
     cookie-bootstrapped through the shared transport.
 
-NSE ONLY — WHY BSE WAS DROPPED
-------------------------------
-This module used to lead with BSE's JSON API and fall back to NSE, carrying a whole
-scrip→symbol resolution rung to cross the gap. BSE fingerprint-blocked often enough that
-the fallback was the common path, not the exception, and NSE's `corporate-announcements`
-and `corporates-corporateActions` were verified to serve both data points in full. One
-exchange, no resolution step, no ladder. Residual loss: companies listed **only** on BSE,
-which is recorded as a labelled gap rather than silently absorbed. See
-`docs/data-sources.md`.
-
-The primary key is therefore the **NSE symbol**, not a BSE scrip code.
+NSE is the only exchange source, so the primary key is the **NSE symbol**. A company listed
+only on BSE is reported as a labelled gap rather than silently absorbed.
 
 Every fetch returns the shared data-spine envelope:
     { "ok": bool, "source": str|None, "fetched_at": ISO8601,
@@ -42,11 +33,13 @@ import argparse
 import json
 import os
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import transport  # noqa: E402  (the single HTTP transport — no module opens its own socket)
 import paths  # noqa: E402  (the single path authority — cache tier reused, never hardcode)
+import spine  # noqa: E402
+from spine import envelope as _envelope, f as _f, norm_symbol as _norm_symbol  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # materiality taxonomy (deterministic core — keep in sync with references/reference.md)
@@ -135,20 +128,6 @@ def classify_materiality(text):
 
 
 # --------------------------------------------------------------------------- #
-# shared data-spine envelope                                                  #
-# --------------------------------------------------------------------------- #
-def _envelope(ok, source, data, gaps):
-    """The contract every data-spine fetch returns (see lib/contracts.md)."""
-    return {
-        "ok": bool(ok),
-        "source": source,
-        "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "data": data,
-        "gaps": gaps,
-    }
-
-
-# --------------------------------------------------------------------------- #
 # response shape helpers (pure, offline-testable)                              #
 # --------------------------------------------------------------------------- #
 def _rows(data):
@@ -165,37 +144,14 @@ def _rows(data):
 
 
 def _first(row, *keys):
-    for k in keys:
-        if k in row and row[k] not in (None, ""):
-            return row[k]
-    return ""
-
-
-def _f(value):
-    """Pure: coerce a cell to float, else None. A blank is None, never 0 — a fabricated
-    zero would silently poison a percentage series."""
-    if value in (None, "", "-", "None"):
-        return None
-    try:
-        return float(str(value).replace(",", "").replace("%", "").strip())
-    except (TypeError, ValueError):
-        return None
-
-
-def _norm_symbol(value):
-    """A bare NSE symbol — uppercased, exchange prefix and `.NS` suffix stripped."""
-    s = str(value or "").strip().upper()
-    if ":" in s:
-        s = s.split(":")[-1]
-    if s.endswith(".NS"):
-        s = s[:-3]
-    return s
+    """Exchange rows name the same field differently; absent reads as "" so it can be
+    passed straight to a string helper."""
+    return spine.first(row, *keys, default="")
 
 
 # --------------------------------------------------------------------------- #
 # NSE rung — homepage cookie-bootstrap, then corporate-announcements API       #
 # --------------------------------------------------------------------------- #
-_NSE_HOME = "https://www.nseindia.com/"
 _ANN_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-announcements"
 _CA_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-actions"
 _ANN_URL = "https://www.nseindia.com/api/corporate-announcements"
@@ -203,16 +159,10 @@ _CA_URL = "https://www.nseindia.com/api/corporates-corporateActions"
 
 
 def _nse_json(url, referer):
-    """Cookie-bootstrapped NSE JSON GET. Returns (rows, gap).
-
-    NSE issues its API-gating cookies only on the homepage, so that is fetched into a
-    jar first and the API call replays them. The jar is reused across calls within a run.
-    """
-    jar = transport.jar_path("nse")
-    transport.bootstrap(_NSE_HOME, jar)
-    payload, gap = transport.json_request(
-        url, referer=referer, cookie_jar=jar, timeout=30,
-        headers={"X-Requested-With": "XMLHttpRequest"})
+    """`transport.nse_json` narrowed to the row list these endpoints wrap. Returns
+    (rows, gap)."""
+    payload, gap = transport.nse_json(
+        url, referer, headers={"X-Requested-With": "XMLHttpRequest"})
     if gap:
         return [], gap
     return _rows(payload), None
@@ -307,12 +257,10 @@ _PLEDGE_URL = "https://www.nseindia.com/api/corporate-pledgedata"
 def fetch_nse_shareholding(symbol, quarters=8):
     """Quarterly shareholding pattern + promoter pledge for one NSE symbol.
 
-    This used to be documented as browser-only — it was the reason the plugin carried
-    Playwright with real Chrome. It is not: the same cookie-bootstrapped curl that serves
-    announcements serves the shareholding master too (verified 2026-08-16). Pledge comes
-    from a separate endpoint that is frequently empty; an empty pledge list is reported as
-    a labelled gap rather than as "no pledge", because those are different facts and only
-    one of them is safe to act on.
+    Served by the same cookie-bootstrapped request as announcements. Pledge comes from a
+    separate endpoint that is frequently empty; an empty pledge list is reported as a
+    labelled gap rather than as "no pledge" — those are different facts, and only one of
+    them is safe to act on.
 
     Returns {items: [...], pledge: [...], gap: str|None}."""
     symbol = _norm_symbol(symbol)
@@ -359,18 +307,14 @@ def _dedupe(items):
     return out
 
 
-def summarize(symbol, days=30, scrip=None, fresh=False):
+def summarize(symbol, days=30, fresh=False):
     """Full best-effort pull for one NSE symbol, in the data-spine envelope.
 
-    Announcements + corporate actions, both from NSE. A blocked call records a
-    *labelled* gap and the run returns whatever it gathered; `ok` is true when at least
-    one announcement came back.
-
-    `scrip` (a BSE code) is accepted and echoed for backward compatibility with callers
-    that still pass one, but it is no longer used to fetch — see the module docstring.
+    Announcements + corporate actions. A blocked call records a *labelled* gap and the run
+    returns whatever it gathered; `ok` is true when at least one announcement came back.
     """
     symbol = _norm_symbol(symbol)
-    cache_file = os.path.join(paths.cache_dir("filings"), f"{symbol or scrip}_{days}.json")
+    cache_file = os.path.join(paths.cache_dir("filings"), f"{symbol}_{days}.json")
     if not fresh and os.path.exists(cache_file):
         try:
             with open(cache_file) as fh:
@@ -382,7 +326,7 @@ def summarize(symbol, days=30, scrip=None, fresh=False):
 
     gaps, sources, items, corp_actions = [], [], [], []
     if not symbol:
-        gaps.append("no NSE symbol given — filings are fetched by NSE symbol, not BSE scrip")
+        gaps.append("no NSE symbol given — filings are fetched by NSE symbol")
     else:
         ann = fetch_nse_announcements(symbol, days)
         items += ann["items"]
@@ -401,7 +345,6 @@ def summarize(symbol, days=30, scrip=None, fresh=False):
     monitor = [a for a in items if a["tier"] == "monitor"]
     data = {
         "symbol": symbol,
-        "scrip": scrip,
         "days": days,
         "date": date.today().isoformat(),
         "material_count": len(act_on) + len(monitor),
@@ -448,7 +391,6 @@ def _selftest():
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--symbol", help="NSE symbol (e.g. RELIANCE) — the primary key")
-    p.add_argument("--scrip", help="deprecated: BSE scrip code, echoed but not fetched")
     p.add_argument("--days", type=int, default=30)
     p.add_argument("--fresh", action="store_true", help="bypass the day cache")
     p.add_argument("--classify", help="classify a single headline and exit")
@@ -465,7 +407,7 @@ def main():
     if not args.symbol:
         print("error: --symbol required (or --classify / --selftest)", file=sys.stderr)
         sys.exit(2)
-    res = summarize(args.symbol, args.days, scrip=args.scrip, fresh=args.fresh)
+    res = summarize(args.symbol, args.days, fresh=args.fresh)
     out = json.dumps(res, indent=2, ensure_ascii=False)
     print(out)
     if args.out:

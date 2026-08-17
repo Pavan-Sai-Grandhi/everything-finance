@@ -26,28 +26,13 @@ Usage:
   python3 validate_trade.py --trade t.yml --ohlcv bars.csv --ltp 3650 --entry 3300 --qty 41
 Exit code: 0 = HOLD, 10 = an EXIT_* verdict, 2 = error.
 """
-import argparse, json, os, re, sys, subprocess
+import argparse, json, os, re, sys
 from datetime import date, datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "lib"))
 import prices  # noqa: E402  (data spine — EOD history fetch in one place)
-
-
-def _need(mod, pip_name=None):
-    try:
-        return __import__(mod)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet",
-                               "--break-system-packages", pip_name or mod])
-        return __import__(mod)
-
-
-def load_yaml(path):
-    yaml = _need("yaml", "pyyaml")
-    with open(path) as f:
-        return yaml.safe_load(f)
-
+from deps import load_yaml  # noqa: E402
 
 def load_ohlcv_csv(path):
     """CSV with header Date,Open,High,Low,Close,Volume -> list of dict rows (floats)."""
@@ -286,7 +271,6 @@ def main():
     }
     print(json.dumps(out, indent=2))
     if args.out:
-        import os
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
         with open(args.out, "w") as f:
             json.dump(out, f, indent=2)

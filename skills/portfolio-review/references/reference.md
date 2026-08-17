@@ -1,6 +1,6 @@
 # Portfolio review rubric
 
-Compiled 2026-06-10, grounded in Varsity Fundamental Analysis (due-diligence checklist), Trading Systems (expectancy, position discipline), and Personal Finance (asset allocation chapters).
+Grounded in Varsity Fundamental Analysis (due-diligence checklist), Trading Systems (expectancy, position discipline), and Personal Finance (asset allocation chapters).
 
 ## The two-book separation
 
