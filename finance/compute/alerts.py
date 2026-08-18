@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
-"""The alert contract: durable "watch this / do this" items that skills raise as a
-side-effect of a normal run and `daily-brief` surfaces every morning.
-
-One alert is one file at `state/alerts/<id>.yml`. Skills are the producers; this
-module owns the schema, deduplication, and the *cheap* evaluation (metric/date
-triggers checked against data the caller already has — never its own network call,
-so `daily-brief` stays fast). Triggers that need a skill run to resolve carry a
-`{check: <skill>}` form and are surfaced as a suggested command, never auto-run.
-
-Field-by-field schema, producers and consumers: `finance/contracts.md`
-("Artifact: alert") — the one authority, so the two cannot drift.
+"""Alert schema, producers, consumers and invariants: `finance/contracts.md`
+("Artifact: alert"). This module owns the storage, dedup and cheap evaluation.
 """
 import hashlib
 import os
