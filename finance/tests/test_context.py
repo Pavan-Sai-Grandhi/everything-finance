@@ -4,6 +4,7 @@ temp artifacts root so it never touches a real workspace.
 Run: python3 finance/tests/test_context.py
 """
 import os
+import shutil
 import sys
 import tempfile
 
@@ -148,10 +149,15 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ.pop("EVERYTHING_FINANCE_ARTIFACTS", None)
 
 # --- report: the envelope the market tool returns ----------------------------------
+# `report` persists the day's context, so every call here is pinned to a throwaway
+# artifact dir — a test must never read or write the live artifact tier.
 _orig_compute = mc.compute
+_orig_artifact_path = mc.artifact_path
+_report_tmp = tempfile.mkdtemp()
+mc.artifact_path = lambda day=None: os.path.join(_report_tmp, "market.json")
 mc.compute = lambda mode="standard", years=10: dict(ctx, mode=mode)
 try:
-    env = mc.report(mode="quick", years=5)
+    env = mc.report(mode="quick", years=5, fresh=True)
 finally:
     mc.compute = _orig_compute
 check("report returns the data-spine envelope",
@@ -168,9 +174,11 @@ check("report stays narrow — digest plus the branch fields, no raw blocks",
 
 mc.compute = lambda mode="standard", years=10: dict(ctx, gaps=["India VIX unavailable"])
 try:
-    env_gappy = mc.report()
+    env_gappy = mc.report(fresh=True)
 finally:
     mc.compute = _orig_compute
+    mc.artifact_path = _orig_artifact_path
+    shutil.rmtree(_report_tmp, ignore_errors=True)
 check("report surfaces the context's gaps as the envelope's gaps",
       env_gappy["gaps"] == ["India VIX unavailable"], env_gappy["gaps"])
 
@@ -185,5 +193,58 @@ check("frozen: breadth.pct_sectors_above_ema50",
       "pct_sectors_above_ema50" in ctx["breadth"])
 check("posture key is market_posture (wealth owns risk_posture)",
       "market_posture" in ctx and "risk_posture" not in ctx)
+
+
+import json  # noqa: E402
+# --- the daily artifact: computed once, reused by every caller -------------- #
+
+tmp = tempfile.mkdtemp()
+calls = []
+
+def fake_compute(mode="standard", years=10):
+    calls.append(mode)
+    return {"as_of": "2026-08-18", "mode": mode, "market_trend": "uptrend",
+            "market_posture": "risk-on", "rationale": "synthetic", "gaps": []}
+
+orig_compute = mc.compute
+orig_path = mc.artifact_path
+mc.compute = fake_compute
+mc.artifact_path = lambda day=None: os.path.join(tmp, "market.json")
+try:
+    # first call computes and writes the artifact
+    ctx = mc.resolve(mode="quick")
+    check("quick computes when no artifact exists", len(calls) == 1)
+    check("the artifact is written", os.path.exists(mc.artifact_path()))
+    with open(mc.artifact_path()) as fh:
+        check("what is written is what is returned", json.load(fh) == ctx)
+
+    # second call reuses it — this is what makes quick cheap for every later skill
+    ctx2 = mc.resolve(mode="quick")
+    check("quick reuses the day's artifact", len(calls) == 1, f"computed {len(calls)}x")
+    check("the reused context is the same", ctx2 == ctx)
+
+    # fresh forces a recompute and rewrites
+    mc.resolve(mode="quick", fresh=True)
+    check("fresh bypasses the artifact", len(calls) == 2)
+
+    # a deeper mode never serves a shallower cached read
+    mc.resolve(mode="deep")
+    check("deep always recomputes", len(calls) == 3)
+    check("deep mode reaches compute", calls[-1] == "deep")
+
+    # report() carries the same reuse, or the tool and the CLI would disagree
+    before = len(calls)
+    env = mc.report(mode="quick")
+    check("report reuses too", len(calls) == before, "report recomputed")
+    for k in ("ok", "source", "fetched_at", "data", "gaps"):
+        check(f"report envelope has {k}", k in env)
+    check("fetched_at is the context's as-of, not now",
+          env["fetched_at"] == "2026-08-18")
+    check("report exposes fresh", mc.report(mode="quick", fresh=True) is not None)
+    check("report's fresh recomputed", len(calls) == before + 1)
+finally:
+    mc.compute = orig_compute
+    mc.artifact_path = orig_path
+    shutil.rmtree(tmp, ignore_errors=True)
 
 summary()

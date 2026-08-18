@@ -109,10 +109,13 @@ def get_macro(period: str = "5y") -> dict:
                 "(trend, volatility band, breadth, valuation percentiles by cap tier, "
                 "flows, stance and posture) as a compact digest. Prefer this over "
                 "assembling a market view from the raw tools yourself, so reads cannot "
-                "drift between skills. mode: quick | standard | deep."
+                "drift between skills. mode: quick reuses the day's computed context "
+                "(what makes it cheap for every caller after the first) | standard | "
+                "deep; `fresh` forces a recompute."
 )
-def get_market_context(mode: str = "quick", years: int = 10) -> dict:
-    return _context.report(mode=mode, years=years)
+def get_market_context(mode: str = "quick", years: int = 10,
+                       fresh: bool = False) -> dict:
+    return _context.report(mode=mode, years=years, fresh=fresh)
 
 
 # --- strategy engines: a spec plus price history ------------------------------

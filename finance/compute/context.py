@@ -417,14 +417,14 @@ def digest(ctx):
     return "\n".join(L)
 
 
-def report(mode="quick", years=10):
+def report(mode="quick", years=10, fresh=False):
     """The market-of-record in the shared data-spine envelope: the digest plus the few
     structured fields a caller branches on without parsing prose.
 
     `fetched_at` is the context's own as-of, not the moment of the call — this is a daily
     artifact, and dating it now would claim a freshness it does not have.
     """
-    ctx = compute(mode=mode, years=years)
+    ctx = resolve(mode=mode, years=years, fresh=fresh)
     return {
         "ok": True,
         "source": "market-analysis",
@@ -455,6 +455,32 @@ def load_today():
         return None
 
 
+def persist(ctx, out=None):
+    """Write the day's context to the artifact every other caller reads."""
+    out = out or artifact_path()
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    with open(out, "w") as fh:
+        json.dump(ctx, fh, indent=2, ensure_ascii=False)
+    return out
+
+
+def resolve(mode="standard", years=10, fresh=False, out=None):
+    """Today's context, computed once a day and shared.
+
+    `quick` returns the day's artifact when it exists — that reuse is what lets every
+    skill read the same market without N recomputations, so it has to live here rather
+    than in a CLI, or a caller that never touches the CLI silently refetches and the
+    reads drift apart. Any other mode, or `fresh`, recomputes and rewrites the artifact.
+    """
+    if mode == "quick" and not fresh:
+        ctx = load_today()
+        if ctx is not None:
+            return ctx
+    ctx = compute(mode=mode, years=years)
+    persist(ctx, out)
+    return ctx
+
+
 def main():
     p = argparse.ArgumentParser(description="the plugin's single market-of-record")
     p.add_argument("--mode", choices=["quick", "standard", "deep"], default="standard")
@@ -464,16 +490,7 @@ def main():
     p.add_argument("--fresh", action="store_true", help="ignore today's artifact")
     a = p.parse_args()
 
-    ctx = None
-    if a.mode == "quick" and not a.fresh:
-        ctx = load_today()          # the whole point of quick: N callers, one computation
-    if ctx is None:
-        ctx = compute(mode=a.mode, years=a.years)
-        out = a.out or artifact_path()
-        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-        with open(out, "w") as fh:
-            json.dump(ctx, fh, indent=2, ensure_ascii=False)
-        print(f"wrote {out}", file=sys.stderr)
+    ctx = resolve(mode=a.mode, years=a.years, fresh=a.fresh, out=a.out)
 
     if a.format == "json":
         json.dump(ctx, sys.stdout, indent=2, ensure_ascii=False)
