@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import date, timedelta
 
 from finance import paths  # the single path authority — cache tier reused, never hardcode
@@ -247,6 +248,46 @@ _SHP_URL = "https://www.nseindia.com/api/corporate-share-holdings-master"
 _PLEDGE_URL = "https://www.nseindia.com/api/corporate-pledgedata"
 
 
+_PLEDGE_TAGS = {
+    "pledged_pct": "EncumberedShareUnderPledgedAsPercentageOfTotalNumberOfShares",
+    "encumbered_pct": "EncumberedSharesHeldAsPercentageOfTotalNumberOfShares",
+    "pledged_shares": "NumberOfSharesEncumberedUnderPledged",
+    "encumbered_shares": "NumberOfSharesEncumbered",
+}
+_PLEDGE_FLAG = "WhetherAnySharesHeldByPromotersAreEncumberedUnderPledged"
+
+
+def pledge_from_xbrl(url):
+    """Promoter pledge from the quarter's SEBI shareholding XBRL — the filed source.
+
+    NSE's pledge JSON endpoint is usually empty, which leaves pledge UNKNOWN. The XBRL
+    behind the same filing always carries it, including an explicit `false` that settles
+    the one distinction that matters: a company that filed "no pledge" versus one whose
+    pledge nobody could read.
+
+    Percentages are filed as fractions of the promoter holding (0.7299 = 72.99%).
+    Returns {declared, pledged_pct, encumbered_pct, ..., source} or None.
+    """
+    if not url:
+        return None
+    body, gap = transport.request(url, timeout=45, referer=_SHP_REFERER)
+    if gap or not body:
+        return None
+    flag = re.search(rf"<[^>]*:{_PLEDGE_FLAG}[^>]*>([^<]*)<", body)
+    declared = flag.group(1).strip().lower() == "true" if flag else None
+    out = {"declared": declared, "source": url}
+    for key, tag in _PLEDGE_TAGS.items():
+        m = re.search(rf"<[^>]*:{tag}[^>]*>([^<]*)<", body)
+        val = _f(m.group(1)) if m else None
+        out[key] = round(val * 100, 2) if val is not None and key.endswith("_pct") else val
+    if declared is False:
+        for key in _PLEDGE_TAGS:
+            out.setdefault(key, None)
+            if out[key] is None:
+                out[key] = 0.0 if key.endswith("_pct") else 0
+    return out
+
+
 def fetch_nse_shareholding(symbol, quarters=8):
     """Quarterly shareholding pattern + promoter pledge for one NSE symbol.
 
@@ -280,12 +321,16 @@ def fetch_nse_shareholding(symbol, quarters=8):
     gaps = []
     if pgap:
         gaps.append(f"NSE pledge data: {pgap}")
-    elif not pledge:
-        gaps.append("NSE returned no pledge rows — treat promoter pledge as UNKNOWN, "
-                    "not as nil")
+
+    # The JSON endpoint is usually empty; the filing's own XBRL is not.
+    summary = pledge_from_xbrl(out[0]["xbrl"]) if out else None
+    if summary is None and not pledge:
+        gaps.append("promoter pledge unreadable from both the NSE endpoint and the "
+                    "quarter's XBRL — UNKNOWN, not nil")
     if not out:
         gaps.append("NSE shareholding: no quarters returned for this symbol")
-    return {"items": out, "pledge": pledge, "gap": "; ".join(gaps) or None}
+    return {"items": out, "pledge": pledge, "pledge_summary": summary,
+            "gap": "; ".join(gaps) or None}
 
 
 def shareholding(symbol, quarters=8):
@@ -296,7 +341,8 @@ def shareholding(symbol, quarters=8):
     """
     res = fetch_nse_shareholding(symbol, quarters=quarters)
     return _envelope(bool(res["items"]), "NSE",
-                     {"symbol": symbol, "quarters": res["items"], "pledge": res["pledge"]},
+                     {"symbol": symbol, "quarters": res["items"], "pledge": res["pledge"],
+                      "pledge_summary": res.get("pledge_summary")},
                      [res["gap"]] if res["gap"] else [])
 
 

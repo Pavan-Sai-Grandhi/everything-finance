@@ -176,7 +176,9 @@ check("portfolio P/E coverage = 0.90 (the unlisted 10% counts against it)",
 check("portfolio P/E is decision-grade at 90%", pm["portfolio_pe"]["confidence"] == "decision-grade")
 check("portfolio P/B harmonic", approx(pm["portfolio_pb"]["value"], 2.97))
 check("portfolio ROE weighted mean", approx(pm["portfolio_roe"]["value"], 18.56))
-check("earnings growth weighted mean", approx(pm["earnings_growth"]["value"], 17.72))
+check("no earnings-growth metric: no sanctioned source publishes it per holding, and a\n"
+      "      permanently-unavailable metric is a permanent gap",
+      "earnings_growth" not in pm, sorted(pm))
 check("pb_over_roe computed from the portfolio's own P/B and ROE",
       approx(pm["pb_over_roe"]["value"], 2.97 / 18.56, 0.001))
 check("cap tilt from ranks: 44.4% large / 38.9% mid / 16.7% small",

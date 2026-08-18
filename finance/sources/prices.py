@@ -219,11 +219,12 @@ def history(symbol, period="1y", fresh=False, adjusted=False):
                if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
     dropped = len(candles) - len(settled)
     candles = settled
-    data = {"symbol": sym, "period": period, "bars": len(candles), "candles": candles}
+    # `bars_dropped_unsettled` rather than a gap: nothing that existed was lost, and the
+    # series is complete through its last settled session, which `as_of` states.
+    data = {"symbol": sym, "period": period, "bars": len(candles), "candles": candles,
+            "as_of": candles[-1]["date"] if candles else None,
+            "bars_dropped_unsettled": dropped}
     gaps = [] if candles else [f"yfinance returned no bars for {yf_t} (delisted/renamed?)"]
-    if dropped:
-        gaps.append(f"{dropped} unsettled bar(s) dropped for {yf_t} — series is as of "
-                    f"{candles[-1]['date'] if candles else 'n/a'}")
     env = _envelope(bool(candles), "yfinance", data, gaps)
     if candles:
         _write_cache(cache_file, env)

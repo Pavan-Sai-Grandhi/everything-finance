@@ -449,9 +449,6 @@ def macro(period="5y", fresh=False):
         if not settled:
             gaps.append(f"{key} ({ticker}): no history")
             continue
-        if len(settled) < len(candles):
-            gaps.append(f"{key} ({ticker}): {len(candles) - len(settled)} unsettled bar(s) "
-                        f"dropped — read is as of {settled[-1].get('date')}")
         closes = [c["close"] for c in settled]
         last = closes[-1]
         month_ago = closes[-22] if len(closes) > 22 else closes[0]

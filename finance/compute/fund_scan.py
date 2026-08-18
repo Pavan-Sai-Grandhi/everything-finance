@@ -416,12 +416,15 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     shortlist = [_shortlist_row(i + 1, s, purity_field, years)
                  for i, s in enumerate(scored[:max(1, top)])]
 
-    if any(r["flags"] for r in shortlist):
-        gaps.append("one or more shortlisted funds carry a flag — read the `flags` field "
-                    "before treating a rank as a recommendation")
+    # An advisory, not a data gap: `gaps` means a figure is missing or degraded, and
+    # diluting it with commentary trains a caller to skim past the entries that matter.
+    advisories = ["one or more shortlisted funds carry a flag — read the `flags` field "
+                  "before treating a rank as a recommendation"] \
+        if any(r["flags"] for r in shortlist) else []
 
     return {
         "as_of": date.today().isoformat(),
+        "advisories": advisories,
         "category": category,
         "window_credited": window,
         "universe": {"screened": len(universe), "passed_gates": len(survivors),

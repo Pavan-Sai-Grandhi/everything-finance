@@ -321,7 +321,7 @@ def portfolio_metrics(holdings, equity_weight=None):
     """Every look-through metric for one fund, from enriched holdings.
 
     Each holding carries `weight` and, when priced, `pe`/`pb`/`roe`/`cap_rank`/
-    `cap_label`/`sector`/`market_cap_cr` (+ optional `growth`). `equity_weight` is the
+    `cap_label`/`sector`/`market_cap_cr`. `equity_weight` is the
     fund's total equity allocation (%) — the honest denominator for coverage, because
     positions the provider never listed must count against coverage, not vanish from it.
     """
@@ -333,7 +333,6 @@ def portfolio_metrics(holdings, equity_weight=None):
                                  for h in holdings)
     pb, pb_w = weighted_harmonic((h.get("weight"), h.get("pb")) for h in holdings)
     roe, roe_w = weighted_mean((h.get("weight"), h.get("roe")) for h in holdings)
-    gro, gro_w = weighted_mean((h.get("weight"), h.get("growth")) for h in holdings)
     ey, ey_w = weighted_mean(earnings_yields(holdings))
 
     priced_w = sum(_num(h.get("weight")) or 0.0 for h in holdings if h.get("priced"))
@@ -344,7 +343,6 @@ def portfolio_metrics(holdings, equity_weight=None):
         "portfolio_pb": gated(pb, pb_w, total),
         "portfolio_roe": gated(roe, roe_w, total),
         "earnings_yield_pct": gated(ey, ey_w, total),
-        "earnings_growth": gated(gro, gro_w, total),
         "pb_over_roe": pb_over_roe(pb, roe, pb_w, roe_w, total),
         "cap_tilt": cap_tilt(holdings),
         "concentration": concentration(holdings),
@@ -381,7 +379,7 @@ def metric_gaps(metrics):
     """The labelled degradations implied by a metrics block — the "Data gaps" line."""
     gaps = []
     for key in ("portfolio_pe", "portfolio_pb", "portfolio_roe", "pb_over_roe",
-                "earnings_yield_pct", "earnings_growth"):
+                "earnings_yield_pct"):
         m = metrics.get(key) or {}
         if m.get("confidence") == "unavailable":
             gaps.append(f"{key}: no source — nothing in the sanctioned data path publishes "

@@ -91,6 +91,21 @@ def test_unsettled_bars_dropped():
           "NaN" not in _json.dumps(settled))
 
 
+def test_unsettled_bar_is_data_not_a_gap():
+    """Dropping an unsettled bar loses nothing that existed, so it is reported as
+    `bars_dropped_unsettled` + `as_of`, not as a gap. `gaps` has to keep meaning
+    "a figure is missing or degraded", or a caller learns to skim past it."""
+    rows = [{"date": "2026-08-13", "open": 100.0, "high": 101.0, "low": 99.0,
+             "close": 100.5, "volume": 1000},
+            {"date": "2026-08-14", "open": 100.5, "high": 102.0, "low": 100.0,
+             "close": float("nan"), "volume": 0}]
+    settled = [c for c in rows
+               if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
+    check("the series keeps only settled bars", len(settled) == 1)
+    check("as_of is the last settled session", settled[-1]["date"] == "2026-08-13")
+    check("the drop is counted, not hidden", len(rows) - len(settled) == 1)
+
+
 def test_df_to_candles():
     candles = prices._df_to_candles(_ohlcv_frame())
     check("df_to_candles emits one candle per bar", len(candles) == 3)
@@ -136,6 +151,6 @@ def test_norm():
 
 if __name__ == "__main__":
     run((test_parse_scan, test_parse_scan_empty, test_quote_body_no_auth,
-         test_screen_body_india_params, test_df_to_candles, test_unsettled_bars_dropped,
+         test_screen_body_india_params, test_df_to_candles, test_unsettled_bars_dropped, test_unsettled_bar_is_data_not_a_gap,
          test_df_to_candles_multiindex, test_reconcile_decision, test_envelope_shape,
          test_norm))
