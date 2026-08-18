@@ -6,6 +6,8 @@ Most skills carry a `references/reference.md` distilled from [Zerodha Varsity](h
 
 The rules every skill runs under — data integrity, the personal-vs-decision source boundary, artifact paths, output and trading discipline — live in [CLAUDE.md](CLAUDE.md). This file is the map: what is here, how to install it, how to test it.
 
+It ships in two formats from one tree: Claude Code's native layout (`.claude-plugin/`, `.mcp.json`) and the portable [Agent Plugins 1.0.0](https://agent-plugins.org/specification) standard (`plugin.json`, `mcp.json`) that Codex, Cursor, Copilot, VS Code and others read. The skills and MCP servers are shared; only the manifests differ.
+
 > Personal research tool. Nothing it outputs is investment advice.
 
 ## Install
@@ -17,7 +19,7 @@ claude plugin install <path-to>/everything-finance
 #   /plugin install everything-finance@everything-finance
 ```
 
-Credentials live in `~/.claude/.env`, never in the repo — [CLAUDE.md](CLAUDE.md) → *Secrets* has the full list. Only the Telegram pair is needed for briefs; every other secret is optional and its absence degrades to a labelled gap:
+Credentials live in a `.env`, never in the repo. Copy [`.env.example`](.env.example) to a `.env` the plugin loads — next to the plugin (`$PLUGIN_ROOT/.env`) or in the client's persistent dir (`$PLUGIN_DATA/.env`); `bin/load-env.sh` takes the first that exists. [CLAUDE.md](CLAUDE.md) → *Secrets* has the full list. Only the Telegram pair is needed for briefs; every other secret is optional and its absence degrades to a labelled gap:
 
 ```bash
 TELEGRAM_BOT_TOKEN=...
@@ -28,7 +30,7 @@ TELEGRAM_CHAT_ID=...
 
 Six servers ([`.mcp.json`](.mcp.json)) in two classes with deliberately opposite rules.
 
-**`finance-market` (12 tools), `finance-company` (7), `finance-funds` (6)** — local, all three launched by `bin/finance-mcp.sh <market|company|funds>`, together the only door to every number the plugin reasons about. 25 tools over seven verified sources (TradingView, Yahoo, screener.in, NSE, Tickertape, AMFI, Google News RSS); no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once. Source rationale and the per-data-point inventory: [`docs/data-sources.md`](docs/data-sources.md).
+**`finance-market` (12 tools), `finance-company` (7), `finance-funds` (6)** — local, all three launched by `bin/finance-mcp.sh <market|company|funds>`, together the only door to every number the plugin reasons about. 25 tools over seven verified sources (TradingView, Yahoo, screener.in, NSE, Tickertape, AMFI, Google News RSS); no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
 
 **`kite`** (Zerodha), **`upstox`**, **`indmoney`** — optional, read-only, personal. They answer only *what you own and what it is worth* and never feed a view (CLAUDE.md rule 3). Connect whichever you use: IndMoney is the broadest — every asset class, per-position P&L and XIRR — but carries no order history, so exact entry fills come from a broker MCP. All three run through `bin/mcp-bridge.sh`, an `mcp-remote` wrapper that gives each Claude session its own OAuth config dir (`~/.mcp-auth-sessions/<pid>`) so concurrent sessions register on independent callback ports instead of colliding on one; it reaps the dirs of exited sessions and any orphaned bridge. The cost of that isolation is authenticating once per session.
 

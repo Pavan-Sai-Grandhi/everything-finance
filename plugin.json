@@ -1,0 +1,37 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "everything-finance",
+  "version": "0.8.0",
+  "description": "Personal India-focused financial intelligence: strategy-driven trade finding on the Nifty 500, multi-agent deep stock analysis, DCF valuation, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, live trade tracking against your broker (Zerodha/Upstox), and whole-picture wealth management — total net worth across every asset class with a cross-domain financial-health scorecard.",
+  "author": {
+    "name": "Pavan Sai Grandhi"
+  },
+  "keywords": [
+    "finance",
+    "india",
+    "swing-trading",
+    "find-trade",
+    "nifty500",
+    "mutual-funds",
+    "budgeting",
+    "nse",
+    "zerodha",
+    "upstox",
+    "trade-tracker",
+    "dcf",
+    "valuation",
+    "governance",
+    "net-worth",
+    "wealth-management"
+  ],
+  "extensions": {
+    "com.anthropic.claude-code": {
+      "manifest": ".claude-plugin/plugin.json",
+      "marketplace": ".claude-plugin/marketplace.json",
+      "mcp": ".mcp.json",
+      "agents": "agents/",
+      "hooks": "hooks/hooks.json",
+      "instructions": "CLAUDE.md"
+    }
+  }
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """News fetch — the company-news rung of the data spine.
 
-Google News RSS is the single source (`docs/data-sources.md`): it indexes the mainstream
+Google News RSS is the single source: it indexes the mainstream
 Indian outlets, structured and dated, with no bot wall. Because it also indexes low-quality
 aggregators, the quality filter is explicit rather than implicit in a hand-picked outlet
 list — every item carries a `publisher_tier` of `established` | `aggregator` | `unknown`.

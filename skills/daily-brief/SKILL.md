@@ -58,4 +58,4 @@ The watchlist at `paths.watchlist_path()` is a managed, stamped list — keep it
 
 ## Output
 
-Fill `assets/daily-brief.md` (bundled with this skill), save to `paths.report_path("daily-brief")` (`artifacts/daily-brief/YYYY-MM-DD.md`, date = the day the run started), and print it in chat. If the user said "send" (or asks to), also send the Telegram-compressed version via `assets/telegram-brief.md` format using `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` from `~/.claude/.env` (curl to the Bot API). Any section that fails to fetch becomes "— data unavailable" rather than blocking the rest.
+Fill `assets/daily-brief.md` (bundled with this skill), save to `paths.report_path("daily-brief")` (`artifacts/daily-brief/YYYY-MM-DD.md`, date = the day the run started), and print it in chat. If the user said "send" (or asks to), also send the Telegram-compressed version via `assets/telegram-brief.md` format using `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` from the plugin's `.env` (curl to the Bot API). Any section that fails to fetch becomes "— data unavailable" rather than blocking the rest.

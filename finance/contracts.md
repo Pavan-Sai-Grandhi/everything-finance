@@ -12,7 +12,7 @@ and **shared code** (`finance/` modules imported by several callers).
 ## The data layer: one door, one transport
 
 **`finance/mcp/{market,company,funds}.py` — the three servers.** The only door to decision
-data. 25 tools over the seven finalized sources (`docs/data-sources.md`), each delegating to
+data. 25 tools over the seven finalized sources (CLAUDE.md's source table), each delegating to
 the matching `finance/sources/` or `finance/compute/` module and returning the shared
 **envelope** `{ok, source, fetched_at, data, gaps}`. No name appears on two servers.
 
@@ -50,8 +50,7 @@ module opens its own socket. Covered by `finance/tests/test_transport.py`.
 
 **The personal/decision boundary.** `kite` / `upstox` / `indmoney` are separate, optional MCP
 servers normalized through `finance/compute/holdings.py`. They supply **only** what the user
-owns and what it is worth, never a decision input. See CLAUDE.md rule 3 and the measured
-evidence in `docs/data-sources.md` → *Why the boundary is enforced*.
+owns and what it is worth, never a decision input. See CLAUDE.md rule 3.
 
 ---
 
@@ -223,8 +222,7 @@ Consumers: `resolve_fund` / `screen_funds` / `get_fund_holdings` / `get_nav_hist
 - `stock_ratios(sid)` / `enrich(positions)` → per-holding `{pe, ttm_pe, pb, roe, market_cap_cr, cap_rank, cap_label, sector, …}`, threaded and cached. **`cap_rank` is the SEBI market-cap rank** (`SEBI_CAP_RANKS`: top 100 large, 101-250 mid, 251+ small) — the basis cap-tilt must use.
 - `nav_history(code)` → `data.navs:[{date ISO, nav}]` oldest-first, strictly parsed.
 **Fund holdings never come from the IndMoney MCP feed** — it caps at 20 rows, misreports its
-own coverage, and can be months stale (`docs/data-sources.md` → *Why the boundary is
-enforced*). Covered by `finance/tests/test_funds.py` (offline fixtures).
+own coverage, and can be months stale. Covered by `finance/tests/test_funds.py` (offline fixtures).
 
 ### `finance/compute/holdings.py` — holdings source-resolver + normalizer
 Consumers: `daily-brief` and `trade-tracker` (live position state), and the personal-finance

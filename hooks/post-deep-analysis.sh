@@ -16,6 +16,9 @@
 
 set -u
 
+# Resolve the plugin dir before the cd below moves us to the session cwd.
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+
 # --- Anchor to the session cwd from the hook's stdin payload -------------------------------------
 input=""
 if [ ! -t 0 ]; then input=$(cat); fi
@@ -42,12 +45,9 @@ today=$(date +%F)
 log "stop hook fired in $(pwd); ${#staged[@]} staged report(s)"
 
 # Secrets: optional. Missing token => archive only, note the gap.
-if [ -f "$HOME/.claude/.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$HOME/.claude/.env"
-  set +a
-fi
+# shellcheck source=../bin/load-env.sh
+. "$PLUGIN_DIR/bin/load-env.sh"
+ef_load_secrets "$PLUGIN_DIR" "${CLAUDE_PLUGIN_DATA:-}"
 
 for f in "${staged[@]}"; do
   ticker=$(basename "$f" .md)
@@ -81,7 +81,7 @@ ${brief}" \
       say "telegram send FAILED for $ticker (report still archived)"
     fi
   else
-    say "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set in ~/.claude/.env — brief not sent for $ticker"
+    say "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set in .env — brief not sent for $ticker"
   fi
 done
 

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "finance-market": {
+      "type": "stdio",
+      "command": "./bin/finance-mcp.sh",
+      "args": ["market"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "finance-company": {
+      "type": "stdio",
+      "command": "./bin/finance-mcp.sh",
+      "args": ["company"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "finance-funds": {
+      "type": "stdio",
+      "command": "./bin/finance-mcp.sh",
+      "args": ["funds"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "kite": {
+      "type": "stdio",
+      "command": "./bin/mcp-bridge.sh",
+      "args": ["https://mcp.kite.trade/mcp"]
+    },
+    "upstox": {
+      "type": "stdio",
+      "command": "./bin/mcp-bridge.sh",
+      "args": ["https://mcp.upstox.com/mcp"]
+    },
+    "indmoney": {
+      "type": "stdio",
+      "command": "./bin/mcp-bridge.sh",
+      "args": ["https://mcp.indmoney.com/mcp"]
+    }
+  }
+}

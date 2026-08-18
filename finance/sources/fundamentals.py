@@ -350,7 +350,7 @@ def screen(query, fresh=False):
         gaps.append(
             "screener.in session expired or not logged in — this is NOT an empty result. "
             "Re-copy `sessionid` and `csrftoken` from a logged-in browser "
-            "(DevTools -> Application -> Cookies -> screener.in) into ~/.claude/.env as "
+            "(DevTools -> Application -> Cookies -> screener.in) into the plugin's .env as "
             "SCREENER_SESSION_ID / SCREENER_CSRF_TOKEN.")
         return _envelope(False, "screener.in",
                          {"query": query, "count": 0, "candidates": []}, gaps)

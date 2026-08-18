@@ -22,12 +22,13 @@ venv/
 .idea/
 .vscode/
 
-# Local secrets never live here (they're in ~/.claude/.env) — belt and braces:
+# Local secrets never live in the repo — belt and braces. The template ships; a
+# filled-in .env (in the plugin dir or $PLUGIN_DATA) never does.
 .env
 *.env
+!.env.example
 
-# Working notes stay local; the data-source decision record and the live
-# authenticity findings ship.
-docs/*
-!docs/data-sources.md
-!docs/data-authenticity-report.md
+# Working notes and vendored design material stay local — the dot prefix marks
+# a docs/ subtree that never ships. Anything else under docs/ is shippable.
+docs/.local/
+docs/.superpowers/
