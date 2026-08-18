@@ -2,13 +2,13 @@
 """Offline tests for finance/compute/trade_check.py. No network.
 Run: python3 finance/tests/test_trade_check.py
 """
-import json, os, subprocess, sys, tempfile, textwrap
+import os, sys, tempfile, textwrap
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
+from finance.compute import trade_check
 from finance.tests.harness import check, summary
 
-MODULE = "finance.compute.trade_check"
 D = tempfile.mkdtemp()
 
 
@@ -27,19 +27,26 @@ def csv(name, bars):
     return write(name, "\n".join(lines) + "\n")
 
 
+# Flag names the callers used, mapped to check()'s keywords.
+_KW = {"--sessions-held": "sessions_held", "--ltp": "ltp",
+       "--entry": "entry", "--qty": "qty"}
+
+
 def run(trade, ohlcv=None, extra=None):
-    cmd = [sys.executable, "-m", MODULE, "--trade", trade]
-    if ohlcv:
-        cmd += ["--ohlcv", ohlcv]
-    if extra:
-        cmd += extra
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
-    try:
-        out = json.loads(r.stdout)
-    except json.JSONDecodeError:
-        print("STDOUT:", r.stdout, "STDERR:", r.stderr)
-        raise
-    return out, r.returncode
+    """Call the checker and derive the old CLI's status code from the verdict.
+
+    The status was only ever `10 if verdict.startswith("EXIT") else 0`, so the
+    verdict assertions below carry over unchanged.
+    """
+    kw = {}
+    extra = list(extra or [])
+    for i in range(0, len(extra), 2):
+        kw[_KW[extra[i]]] = float(extra[i + 1])
+    env = trade_check.check(trade, ohlcv=ohlcv, **kw)
+    if not env.get("ok"):
+        return env, 2
+    rec = env["data"]
+    return rec, 10 if str(rec.get("verdict", "")).startswith("EXIT") else 0
 
 
 def bars_to_csv(name, closes, start="2026-01-01"):

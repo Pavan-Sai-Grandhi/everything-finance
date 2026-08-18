@@ -37,18 +37,13 @@ MODES
   deep      standard + regime-transition history (free: diffs prior dated artifacts)
             + the per-sector valuation table.
 
-CLI:
-  python3 -m finance.compute.context --mode standard
-  python3 -m finance.compute.context --mode quick --format digest
-  python3 -m finance.compute.context --mode deep --format json
+Reached through: get_market_context (finance-market)
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import statistics
-import sys
 from datetime import date
 
 from finance import paths                 # the single path authority
@@ -479,25 +474,3 @@ def resolve(mode="standard", years=10, fresh=False, out=None):
     ctx = compute(mode=mode, years=years)
     persist(ctx, out)
     return ctx
-
-
-def main():
-    p = argparse.ArgumentParser(description="the plugin's single market-of-record")
-    p.add_argument("--mode", choices=["quick", "standard", "deep"], default="standard")
-    p.add_argument("--format", choices=["digest", "json"], default="digest")
-    p.add_argument("--years", type=int, default=10, help="valuation-percentile lookback")
-    p.add_argument("--out", default=None)
-    p.add_argument("--fresh", action="store_true", help="ignore today's artifact")
-    a = p.parse_args()
-
-    ctx = resolve(mode=a.mode, years=a.years, fresh=a.fresh, out=a.out)
-
-    if a.format == "json":
-        json.dump(ctx, sys.stdout, indent=2, ensure_ascii=False)
-        print()
-    else:
-        print(digest(ctx))
-
-
-if __name__ == "__main__":
-    main()

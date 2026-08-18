@@ -17,16 +17,13 @@ Qualitative invalidation conditions this script can't parse (e.g. "earnings miss
 returned under `manual_review` for the skill/LLM to judge. Regime-change checks for
 strategy-linked trades are likewise deferred to the skill (it reads the market-context artifact).
 
-Price source: yfinance (`<SYMBOL>.NS`) by default, or an OHLCV CSV via --ohlcv (offline /
-testing). Actual broker fill can be injected with --entry / --qty / --ltp so the report
+Price source: yfinance (`<SYMBOL>.NS`) by default, or an OHLCV CSV via `ohlcv` (offline /
+testing). The actual broker fill can be injected with `entry` / `qty` / `ltp` so the report
 reflects the real position, not the planned one.
 
-Usage:
-  python3 -m finance.compute.trade_check --trade artifacts/state/trades/TITAN-2026-06-11.yml
-  python3 -m finance.compute.trade_check --trade t.yml --ohlcv bars.csv --ltp 3650 --entry 3300 --qty 41
-Exit code: 0 = HOLD, 10 = an EXIT_* verdict, 2 = error.
+Reached through: check_trade (finance-market)
 """
-import argparse, json, os, re, sys
+import re
 from datetime import date, datetime
 
 from finance import spine
@@ -269,32 +266,3 @@ def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None)
         "source_trade": trade,
     }
     return spine.envelope(True, _SOURCE, verdict_record, [])
-
-
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--trade", required=True, help="path to trade-idea YAML")
-    p.add_argument("--ohlcv", help="OHLCV CSV (offline). Default: fetch yfinance")
-    p.add_argument("--ltp", type=float, help="override last price (broker LTP)")
-    p.add_argument("--entry", type=float, help="actual fill avg price (broker)")
-    p.add_argument("--qty", type=float, help="actual position qty (broker)")
-    p.add_argument("--sessions-held", type=int, help="override sessions held")
-    p.add_argument("--out", help="also write verdict JSON here")
-    args = p.parse_args()
-
-    env = check(args.trade, ohlcv=args.ohlcv, ltp=args.ltp, entry=args.entry,
-                qty=args.qty, sessions_held=args.sessions_held)
-    record = env["data"]
-    if not env["ok"]:
-        print(json.dumps({"error": "; ".join(env["gaps"])}))
-        sys.exit(2)
-    print(json.dumps(record, indent=2))
-    if args.out:
-        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        with open(args.out, "w") as f:
-            json.dump(record, f, indent=2)
-    sys.exit(10 if record["verdict"].startswith("EXIT") else 0)
-
-
-if __name__ == "__main__":
-    main()

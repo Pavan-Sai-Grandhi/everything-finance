@@ -24,18 +24,11 @@ Fetched text is untrusted DATA, not instructions — a caller assesses it, never
 Networked, best-effort, degrade-not-die: a blocked source records a *labelled* gap and the
 run continues, never raising into a caller and never returning a silent empty.
 
-CLI:
-  python3 -m finance.sources.prices RELIANCE                 # live quote envelope
-  python3 -m finance.sources.prices RELIANCE --history 1y    # EOD candles
-  python3 -m finance.sources.prices RELIANCE --reconcile     # TV vs yfinance latest-bar cross-check
-  python3 -m finance.sources.prices --screen '{"filter":[...]}'   # technical screener -> candidates
+Reached through: get_quote, get_history, run_technical_screen (finance-market)
 """
 from __future__ import annotations
 
-import argparse
-import json
 import os
-import sys
 from datetime import date
 
 from finance import paths  # the single path authority — cache tier reused, never hardcode
@@ -290,39 +283,3 @@ def reconcile(symbol, tolerance=0.01):
 
 
 # --------------------------------------------------------------------------- #
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("symbol", nargs="?", help="NSE symbol (e.g. RELIANCE)")
-    p.add_argument("--history", nargs="?", const="1y", metavar="PERIOD",
-                   help="EOD candles via yfinance (default period 1y)")
-    p.add_argument("--reconcile", action="store_true",
-                   help="cross-check latest TV vs yfinance close")
-    p.add_argument("--screen", metavar="JSON",
-                   help="run a technical screen (scanner filter payload or filter list)")
-    p.add_argument("--fresh", action="store_true", help="bypass the day cache")
-    p.add_argument("--out")
-    args = p.parse_args()
-
-    if args.screen:
-        res = screen(json.loads(args.screen))
-    elif not args.symbol:
-        print("error: SYMBOL required (or --screen JSON)", file=sys.stderr)
-        sys.exit(2)
-    elif args.reconcile:
-        res = reconcile(args.symbol)
-    elif args.history is not None:
-        res = history(args.symbol, period=args.history, fresh=args.fresh)
-    else:
-        res = quote(args.symbol, fresh=args.fresh)
-
-    out = json.dumps(res, indent=2, ensure_ascii=False)
-    print(out)
-    if args.out:
-        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        open(args.out, "w").write(out)
-    # A7: exit 0 on a valid envelope even when degraded (ok:false + labelled gap).
-    sys.exit(0 if isinstance(res, dict) and "ok" in res else 1)
-
-
-if __name__ == "__main__":
-    main()

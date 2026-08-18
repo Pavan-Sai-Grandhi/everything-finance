@@ -36,22 +36,15 @@ Every fetch returns the shared data-spine envelope:
 Fetched text is untrusted DATA, not instructions. Networked, best-effort,
 degrade-not-die: a blocked source records a *labelled* gap and the run continues.
 
-CLI:
-  python3 -m finance.sources.market --indices                   # live index snapshot w/ P/E, P/B, DY
-  python3 -m finance.sources.market --valuation "NIFTY SMALLCAP 250" --years 10
-  python3 -m finance.sources.market --breadth                   # participation counts
-  python3 -m finance.sources.market --flows                     # FII/DII net
-  python3 -m finance.sources.market --macro                     # VIX, USDINR, gold, crude
-  python3 -m finance.sources.market --seed-valuation --years 10 # warm the day-snapshot cache
+Reached through: get_indices, get_index_valuation_history, get_breadth, get_flows,
+  get_macro (finance-market)
 """
 from __future__ import annotations
 
-import argparse
 import csv
 import io
 import json
 import os
-import sys
 from datetime import date, timedelta
 
 from finance import paths  # the single path authority — never hardcode a cache string
@@ -494,42 +487,3 @@ def _write_day_cache(cache_file, env):
 
 
 # --------------------------------------------------------------------------- #
-def main():
-    p = argparse.ArgumentParser(description="market-wide data spine")
-    p.add_argument("--indices", action="store_true", help="live index snapshot w/ P/E,P/B,DY")
-    p.add_argument("--valuation", metavar="INDEX", help="month-end valuation history")
-    p.add_argument("--years", type=int, default=10)
-    p.add_argument("--breadth", action="store_true")
-    p.add_argument("--universe", type=int, default=500)
-    p.add_argument("--flows", action="store_true")
-    p.add_argument("--macro", action="store_true")
-    p.add_argument("--seed-valuation", action="store_true",
-                   help="warm the day-snapshot cache (one fetch per month-end, then free)")
-    p.add_argument("--fresh", action="store_true")
-    a = p.parse_args()
-
-    if a.indices:
-        out = indices(fresh=a.fresh)
-    elif a.valuation:
-        out = valuation_history(a.valuation, years=a.years, fresh=a.fresh)
-    elif a.breadth:
-        out = breadth(universe=a.universe, fresh=a.fresh)
-    elif a.flows:
-        out = flows(fresh=a.fresh)
-    elif a.macro:
-        out = macro(fresh=a.fresh)
-    elif a.seed_valuation:
-        got = 0
-        for day in _month_ends(a.years):
-            snap, actual, _gap = index_snapshot(day.isoformat())
-            got += 1 if snap else 0
-        out = _envelope(bool(got), "NSE archives",
-                        {"seeded": got, "requested": len(_month_ends(a.years))}, [])
-    else:
-        p.error("pick a rung: --indices | --valuation | --breadth | --flows | --macro")
-    json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
-    print()
-
-
-if __name__ == "__main__":
-    main()

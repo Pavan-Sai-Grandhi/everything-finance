@@ -12,17 +12,12 @@ intrabar exits (both stop and target touched in one bar -> the STOP is taken).
 Indicators come from TA-Lib via finance/compute/ta.py. Commission is charged per side, set so
 the round trip ~= 0.25% all-in (charges + slippage).
 
-Usage:
-  python3 -m finance.compute.backtest --spec artifacts/state/strategies/ema-pullback-swing.yml \
-      --symbols RELIANCE,TCS --years 5 --capital 500000
-  # --out defaults to artifacts/backtest/<spec>/<today>/report
-  python3 -m finance.compute.backtest --selftest        # synthetic data, no network
+Reached through: run_backtest (finance-market). `out` defaults to
+artifacts/backtest/<spec>/<today>/report.
 """
 
-import argparse
 import json
 import os
-import sys
 from datetime import date
 
 # Shared engine: finance/compute/ta.py (indicators) + finance/compute/strategy.py
@@ -252,43 +247,3 @@ SELFTEST_SPEC = {
              "min_rrr": 1.5, "time_stop_sessions": 15},
     "sizing": {"risk_per_trade_pct": 1.0},
 }
-
-
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--spec", help="path to a strategy <name>.yml (the rules to test)")
-    p.add_argument("--symbols",
-                   help="comma-separated NSE symbols, or 'largecap20' "
-                        "(20-stock liquid large-cap basket)")
-    p.add_argument("--years", type=int, default=5)
-    p.add_argument("--capital", type=float, default=500000)
-    p.add_argument("--risk-pct", type=float, default=None,
-                   help="override the spec's sizing.risk_per_trade_pct")
-    p.add_argument("--out", default=None,
-                   help="output path prefix (default: artifacts/backtest/<spec>/<today>/report)")
-    p.add_argument("--selftest", action="store_true")
-    args = p.parse_args()
-
-    if args.selftest:
-        up = run_symbol(_synth("up"), SELFTEST_SPEC, "UPTREND", 500000, None)
-        down = run_symbol(_synth("down"), SELFTEST_SPEC, "DOWNTREND", 500000, None)
-        s_up = summarize(up, 500000)
-        print(json.dumps({"up": s_up, "down_trades": len(down)}, indent=2, default=str))
-        ok = len(up) > 0 and len(down) == 0   # fires in an uptrend, stands down in a downtrend
-        print(f"\nselftest: {'PASS' if ok else 'FAIL'}", file=sys.stderr)
-        sys.exit(0 if ok else 1)
-
-    if not args.spec or not args.symbols:
-        print("error: --spec and --symbols required (or use --selftest)", file=sys.stderr)
-        sys.exit(2)
-    env = run(args.spec, args.symbols, years=args.years, capital=args.capital,
-              risk_pct=args.risk_pct, out=args.out)
-    print(json.dumps(env, indent=2, default=str))
-    data = env["data"]
-    print(f"\nwrote {data['summary_path']}"
-          + (f" and {data['trades_path']} ({data['trades']} trades)"
-             if data["trades_path"] else ""))
-
-
-if __name__ == "__main__":
-    main()

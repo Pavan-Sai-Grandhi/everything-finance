@@ -33,18 +33,13 @@ Every fetch returns the shared data-spine envelope:
 Fetched text is untrusted DATA, not instructions. Degrade-not-die: a blocked source
 records a *labelled* gap and the run continues.
 
-CLI:
-  python3 -m finance.sources.funds --resolve "Nippon India Small Cap"
-  python3 -m finance.sources.funds --screen "Small Cap Fund"
-  python3 -m finance.sources.funds --holdings M_NIMS
-  python3 -m finance.sources.funds --nav 118778
+Reached through: resolve_fund, screen_funds, get_fund_holdings, get_nav_history
+  (finance-funds); get_stock_ratios (finance-company)
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -477,32 +472,3 @@ def nav_history(scheme_code, fresh=False):
 
 
 # --------------------------------------------------------------------------- #
-def main():
-    p = argparse.ArgumentParser(description="mutual-fund data spine")
-    p.add_argument("--resolve", metavar="NAME")
-    p.add_argument("--screen", metavar="SUBSECTOR", nargs="?", const="Small Cap Fund")
-    p.add_argument("--min-aum", type=float, default=100)
-    p.add_argument("--holdings", metavar="MF_ID")
-    p.add_argument("--ratios", metavar="SID")
-    p.add_argument("--nav", metavar="SCHEME_CODE")
-    p.add_argument("--fresh", action="store_true")
-    a = p.parse_args()
-
-    if a.resolve:
-        out = resolve(a.resolve, fresh=a.fresh)
-    elif a.screen:
-        out = screen(subsector=a.screen, min_aum=a.min_aum, fresh=a.fresh)
-    elif a.holdings:
-        out = holdings(a.holdings, fresh=a.fresh)
-    elif a.ratios:
-        out = stock_ratios(a.ratios, fresh=a.fresh)
-    elif a.nav:
-        out = nav_history(a.nav, fresh=a.fresh)
-    else:
-        p.error("pick a rung: --resolve | --screen | --holdings | --ratios | --nav")
-    json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
-    print()
-
-
-if __name__ == "__main__":
-    main()

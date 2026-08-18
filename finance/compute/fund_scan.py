@@ -33,14 +33,10 @@ THE GATES (hard, applied before any scoring — Varsity ch. 24-26)
 5. **Fund-manager tenure** is a pending MANUAL gate: no free API publishes it, so it is
    checked by hand for the shortlist only (never for the whole universe).
 
-CLI:
-  python3 -m finance.compute.fund_scan --category "Small Cap Fund" --top 5
-  python3 -m finance.compute.fund_scan --category "Mid Cap Fund" --window 5y --min-aum 1000 --json
-  python3 -m finance.compute.fund_scan --category "Small Cap Fund" --market-context artifacts/market-analysis/2026-08-16.json
+Reached through: get_fund_scan (finance-funds)
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -352,7 +348,7 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     gaps = list(env.get("gaps") or [])
     if not universe:
         gaps.append(f"no funds returned for category {category!r} — check the SEBI "
-                    f"sub-category spelling against `python3 -m finance.sources.funds --screen`")
+                    f"sub-category spelling against screen_funds")
 
     # --- hard gates ---------------------------------------------------------
     survivors, rejected = [], {}
@@ -645,44 +641,3 @@ def report(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     data = {k: v for k, v in result.items() if k != "gaps"}
     data["report_path"] = path
     return _envelope(bool(result["shortlist"]), "finance.compute.fund_scan", data, gaps)
-
-
-def main():
-    ap = argparse.ArgumentParser(description="Rank a SEBI fund sub-category deterministically.")
-    ap.add_argument("--category", default="Small Cap Fund",
-                    help='SEBI sub-category, e.g. "Small Cap Fund", "Flexi Cap Fund"')
-    ap.add_argument("--top", type=int, default=5)
-    ap.add_argument("--window", default="3y", choices=sorted(WINDOW_YEARS),
-                    help="the return window being credited; also the minimum fund age")
-    ap.add_argument("--min-aum", type=float, default=500, metavar="CR",
-                    help="AUM viability floor in ₹Cr (Varsity: <500 = viability questions)")
-    ap.add_argument("--min-age-months", type=int, default=None,
-                    help="override the age gate (default: the credited window)")
-    ap.add_argument("--agility-ceiling", type=float, default=None, metavar="CR",
-                    help="AUM above which size starts costing agility in this category")
-    ap.add_argument("--ter-ceiling", type=float, default=DIRECT_TER_CEILING,
-                    help="Direct-plan TER ceiling; above it the plan label is suspect")
-    ap.add_argument("--market-context", metavar="FILE",
-                    help="artifacts/market-analysis/<date>.json — carried through verbatim")
-    ap.add_argument("--out", metavar="FILE", help="shortlist JSON destination")
-    ap.add_argument("--json", action="store_true",
-                    help="print the shortlist JSON to stdout instead of the table")
-    ap.add_argument("--fresh", action="store_true")
-    ap.add_argument("--workers", type=int, default=8)
-    a = ap.parse_args()
-
-    env = report(category=a.category, top=a.top, window=a.window, min_aum_cr=a.min_aum,
-                 min_age_months=a.min_age_months, agility_ceiling_cr=a.agility_ceiling,
-                 ter_ceiling=a.ter_ceiling, workers=a.workers, fresh=a.fresh,
-                 market_context=a.market_context, out=a.out)
-    result = {**env["data"], "gaps": env["gaps"]}
-
-    if a.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    else:
-        print(render_table(result))
-        print(f"\nshortlist JSON: {env['data']['report_path']}")
-
-
-if __name__ == "__main__":
-    main()

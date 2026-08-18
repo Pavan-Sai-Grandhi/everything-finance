@@ -16,17 +16,12 @@ spec's screening + signal rules on price data:
 The evaluator + signal math live in `finance/compute/strategy.py`, shared verbatim with the
 backtest; this file is just the live-screen orchestration around it.
 
-Usage:
-  python3 -m finance.compute.screen --spec <strategy>.yml --symbols RELIANCE,TCS[,...] \
-      --capital 500000 --years 2 --out artifacts/find-trade/2026-06-12.json
-  python3 -m finance.compute.screen --selftest         # synthetic data, no network
+Reached through: run_strategy_screen (finance-market)
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
-import sys
 from datetime import date
 
 from finance import paths
@@ -178,34 +173,3 @@ SELFTEST_SPEC = {
     "exit": {"stop": "ema50_minus_2atr", "target": "next_resistance", "min_rrr": 1.5},
     "sizing": {"risk_per_trade_pct": 1.0},
 }
-
-
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--spec", help="path to a strategy <name>.yml")
-    p.add_argument("--symbols", help="comma list of NSE symbols, or a file with one per line")
-    p.add_argument("--years", type=int, default=2)
-    p.add_argument("--capital", type=float, default=500000)
-    p.add_argument("--out")
-    p.add_argument("--selftest", action="store_true")
-    args = p.parse_args()
-
-    if args.selftest:
-        res = screen_compute(["UPTREND", "DOWNTREND"], SELFTEST_SPEC, 2, 500000,
-                             "/tmp", loader=lambda s: _synth(s.lower()))
-        print(json.dumps(res, indent=2, default=str))
-        ok = (len(res["candidates"]) == 1 and res["candidates"][0]["symbol"] == "UPTREND"
-              and any(r["symbol"] == "DOWNTREND" for r in res["rejected"]))
-        print(f"\nselftest: {'PASS' if ok else 'FAIL'}", file=sys.stderr)
-        sys.exit(0 if ok else 1)
-
-    if not args.spec or not args.symbols:
-        print("error: --spec and --symbols required (or use --selftest)", file=sys.stderr)
-        sys.exit(2)
-    env = run(args.spec, args.symbols, years=args.years, capital=args.capital,
-              out=args.out)
-    print(json.dumps(env, indent=2, default=str))
-
-
-if __name__ == "__main__":
-    main()

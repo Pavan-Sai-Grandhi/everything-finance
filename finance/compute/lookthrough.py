@@ -35,16 +35,10 @@ concentration, and the unpriced/unlisted weight that every ratio silently exclud
 The math core is pure and offline-tested (`test_lookthrough.py`); only `load_fund()`
 touches the network. Uncovered weight is reported, never extrapolated.
 
-CLI:
-  python3 -m finance.compute.lookthrough --fund M_NIMS                  # the default, honest path
-  python3 -m finance.compute.lookthrough --fund M_NIMS --fresh --out lt.json
-  python3 -m finance.compute.lookthrough --holdings rows.json           # offline/testing hatch
+Reached through: get_fund_lookthrough (finance-funds)
 """
 from __future__ import annotations
 
-import argparse
-import json
-import os
 
 from finance.spine import envelope as _envelope, f as _num, first as _first  # shared spine
 
@@ -512,44 +506,3 @@ def report(mf_id, fresh=False, workers=10):
     data = {k: v for k, v in rep.items() if k != "gaps"}
     return _envelope(bool(holdings) and rep["ratios_publishable"],
                      "finance.compute.lookthrough", data, rep["gaps"])
-
-
-def main():
-    ap = argparse.ArgumentParser(
-        description="Look-through portfolio metrics for a mutual fund.")
-    src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--fund", metavar="MF_ID",
-                     help="Tickertape scheme id (e.g. M_NIMS) — the default, honest path")
-    src.add_argument("--holdings", metavar="FILE",
-                     help="offline/testing hatch: holdings JSON")
-    ap.add_argument("--fresh", action="store_true", help="bypass the on-disk cache")
-    ap.add_argument("--workers", type=int, default=10)
-    ap.add_argument("--out", metavar="FILE", help="also write the JSON report here")
-    args = ap.parse_args()
-
-    if args.fund:
-        holdings, eqw, gaps, meta = load_fund(args.fund, fresh=args.fresh,
-                                              workers=args.workers)
-    else:
-        with open(args.holdings) as f:
-            rows = load_holdings_file(json.load(f))
-        rows, gaps = enrich_file_rows(rows, fresh=args.fresh, workers=args.workers)
-        holdings = rows
-        eqw = sum(_num(r.get("weight")) or 0.0 for r in rows)
-        gaps = list(gaps) + [
-            f"holdings read from {os.path.basename(args.holdings)}, not from finance.sources.funds — "
-            f"coverage is measured against the listed rows only, so a truncated file "
-            f"cannot be detected from inside this script"]
-        meta = {"source": f"file:{os.path.basename(args.holdings)}"}
-
-    report = build_report(holdings, eqw, gaps, meta)
-    text = json.dumps(report, indent=2, ensure_ascii=False)
-    if args.out:
-        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-        with open(args.out, "w") as f:
-            f.write(text + "\n")
-    print(text)
-
-
-if __name__ == "__main__":
-    main()

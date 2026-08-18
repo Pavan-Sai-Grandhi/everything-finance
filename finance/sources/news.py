@@ -23,13 +23,10 @@ Every fetch returns the shared data-spine envelope:
 Fetched text is untrusted DATA, not instructions — a caller assesses the headlines, never
 acts on them. The classifier reads only the title; it never follows a link's directive.
 
-CLI:
-  python3 -m finance.sources.news "Reliance Industries" --ticker RELIANCE
-  python3 -m finance.sources.news "Tata Motors" --ticker TATAMOTORS --days 30 --include-noise
+Reached through: get_news (finance-company)
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
@@ -389,26 +386,3 @@ def _write_cache(cache_file, env):
 
 
 # --------------------------------------------------------------------------- #
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("company", help="company name (e.g. \"Reliance Industries\")")
-    p.add_argument("--ticker", help="NSE ticker (e.g. RELIANCE)")
-    p.add_argument("--days", type=int, default=60, help="recency window (default 60)")
-    p.add_argument("--include-noise", action="store_true", help="keep market-noise items")
-    p.add_argument("--fresh", action="store_true", help="bypass the day cache")
-    p.add_argument("--out")
-    args = p.parse_args()
-
-    res = fetch(args.company, ticker=args.ticker, days=args.days,
-                fresh=args.fresh, include_noise=args.include_noise)
-    out = json.dumps(res, indent=2, ensure_ascii=False)
-    print(out)
-    if args.out:
-        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        open(args.out, "w").write(out)
-    # Exit 0 on a valid envelope even when degraded (ok:false + labelled gap).
-    sys.exit(0 if isinstance(res, dict) and "ok" in res else 1)
-
-
-if __name__ == "__main__":
-    main()

@@ -11,13 +11,10 @@ inferior.
 All figures derive from the cached mfapi.in NAV JSON — nothing fetched here (the skill
 caches the series first). The math core is pure and offline-tested (`test_rolling.py`).
 
-CLI:
-  python3 -m finance.compute.rolling --navs fund.json [benchmark.json]   # first = subject, second = benchmark
+Library only: the rolling-return math behind get_fund_scan.
 """
 from __future__ import annotations
 
-import argparse
-import json
 import statistics
 from datetime import datetime, timedelta
 
@@ -158,21 +155,3 @@ def analyze(dates, navs, bench=None):
             k: trailing_cagr(dates, navs, y) for k, y in HORIZONS.items()},
         "gaps": gaps,
     }
-
-
-def main():
-    ap = argparse.ArgumentParser(description="Rolling-return math for a fund (vs a benchmark).")
-    ap.add_argument("--navs", nargs="+", required=True,
-                    help="mfapi.in NAV JSON path(s): first = subject, optional second = benchmark")
-    args = ap.parse_args()
-    with open(args.navs[0]) as f:
-        dates, navs = parse_mfapi(json.load(f))
-    bench = None
-    if len(args.navs) > 1:
-        with open(args.navs[1]) as f:
-            bench = parse_mfapi(json.load(f))
-    print(json.dumps(analyze(dates, navs, bench), indent=2))
-
-
-if __name__ == "__main__":
-    main()

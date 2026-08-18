@@ -20,17 +20,13 @@ Every fetch returns the shared data-spine envelope:
     { "ok": bool, "source": str|None, "fetched_at": ISO8601,
       "data": {...}, "gaps": ["<labelled degradation>", ...] }
 
-CLI:
-  python3 -m finance.sources.fundamentals RELIANCE
-  python3 -m finance.sources.fundamentals --screen "Market Capitalization > 50000 AND Price to Earning < 20"
+Reached through: get_company_fundamentals, run_fundamental_screen (finance-company)
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
-import sys
 from datetime import date
 from html.parser import HTMLParser
 
@@ -407,28 +403,3 @@ def _write_cache(cache_file, env):
 
 
 # --------------------------------------------------------------------------- #
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("symbol", nargs="?", help="screener symbol (e.g. RELIANCE)")
-    p.add_argument("--screen", metavar="QUERY", help="run a fundamental screen → symbol list")
-    p.add_argument("--fresh", action="store_true", help="bypass the day cache")
-    p.add_argument("--out")
-    args = p.parse_args()
-
-    if args.screen:
-        res = screen(args.screen, fresh=args.fresh)
-    elif args.symbol:
-        res = fetch(args.symbol, fresh=args.fresh)
-    else:
-        print("error: SYMBOL required (or --screen QUERY)", file=sys.stderr)
-        sys.exit(2)
-    out = json.dumps(res, indent=2, ensure_ascii=False)
-    print(out)
-    if args.out:
-        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        open(args.out, "w").write(out)
-    sys.exit(0 if isinstance(res, dict) and "ok" in res else 1)
-
-
-if __name__ == "__main__":
-    main()
