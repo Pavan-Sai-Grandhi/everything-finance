@@ -123,6 +123,18 @@ def test_cache_stamp_key_is_selectable():
     check("the wrong stamp key reads as a miss", spine.read_cache(p, False) is None)
 
 
+def test_f_rejects_nonfinite():
+    """NaN survives every `is not None` filter, so the one coercion must kill it.
+    A NaN close reaching percentile math reports the value as the lowest ever seen."""
+    check("NaN -> None", spine.f(float("nan")) is None)
+    check("string nan -> None", spine.f("nan") is None)
+    check("+inf -> None", spine.f(float("inf")) is None)
+    check("-inf -> None", spine.f(float("-inf")) is None)
+    check("a real float still passes", spine.f(11.31) == 11.31)
+    check("zero still passes, not falsy-dropped", spine.f(0) == 0.0)
+    check("negative still passes", spine.f(-2.5) == -2.5)
+
+
 if __name__ == "__main__":
     run((test_envelope, test_f_coercion, test_first, test_norm_symbol, test_cache_roundtrip,
-         test_cache_never_blocks_a_fetch, test_cache_stamp_key_is_selectable))
+         test_cache_never_blocks_a_fetch, test_cache_stamp_key_is_selectable, test_f_rejects_nonfinite))

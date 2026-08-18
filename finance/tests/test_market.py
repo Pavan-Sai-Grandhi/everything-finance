@@ -688,6 +688,20 @@ def test_f_coercion():
     check("_f keeps a negative", market._f("-3,000.00") == -3000.0)
 
 
+def test_percentile_rejects_nan():
+    """percentile() is the module's one piece of math, so it guards for every caller.
+    Comparisons against NaN are all False, so an unguarded NaN scores 0.0 — the
+    strongest possible 'cheapest ever' signal, from a value that does not exist."""
+    pool = [10.0, 20.0, 30.0, 40.0]
+    check("NaN target -> None, never 0.0", market.percentile(pool, float("nan")) is None)
+    # mid-rank: 30 against a cleaned pool of [10, 30] is (1 below + 0.5 tie)/2 = 75.0.
+    # If the NaN counted, the denominator would be 3 and the answer 50.0.
+    check("NaN inside the pool is excluded from the denominator",
+          market.percentile([10.0, float("nan"), 30.0], 30.0) == 75.0)
+    check("a real target still ranks", market.percentile(pool, 25.0) == 50.0)
+    check("None target still -> None", market.percentile(pool, None) is None)
+
+
 if __name__ == "__main__":
     run((test_parse_ind_close_csv, test_parse_ind_close_blank_pe_is_none_not_zero,
          test_parse_ind_close_empty, test_canon, test_month_ends,
@@ -709,4 +723,4 @@ if __name__ == "__main__":
          test_macro_missing_history_is_a_labelled_gap, test_day_cache_round_trip,
          test_day_cache_from_a_previous_day_is_ignored,
          test_indices_cache_round_trip_through_the_public_rung, test_envelope_shape,
-         test_f_coercion))
+         test_f_coercion, test_percentile_rejects_nan))

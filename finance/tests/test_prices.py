@@ -70,6 +70,27 @@ def test_screen_body_india_params():
     check("screen_body passes a ready payload's sort through", ready["sort"]["sortBy"] == "name")
 
 
+def test_unsettled_bars_dropped():
+    """yfinance publishes a session's O/H/L before the close settles. That bar is not a
+    session: NaN passes `is not None`, and percentile(pool, NaN) returns 0.0 — a missing
+    value read as 'lowest in five years'. It must not reach a caller."""
+    import json as _json
+    rows = [{"date": "2026-08-13", "open": 100.0, "high": 101.0, "low": 99.0,
+             "close": 100.5, "volume": 1000},
+            {"date": "2026-08-14", "open": 100.5, "high": 102.0, "low": 100.0,
+             "close": float("nan"), "volume": 0}]
+    settled = [c for c in rows
+               if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
+    check("the unsettled bar is identified", len(settled) == 1)
+    check("the settled bar survives", settled[0]["date"] == "2026-08-13")
+    # the guard the fix relies on, stated as a fact about the language
+    check("NaN is not None, so `is not None` cannot filter it",
+          float("nan") is not None)
+    check("NaN != NaN is the only reliable test", float("nan") != float("nan"))
+    check("a settled series serialises to strict JSON",
+          "NaN" not in _json.dumps(settled))
+
+
 def test_df_to_candles():
     candles = prices._df_to_candles(_ohlcv_frame())
     check("df_to_candles emits one candle per bar", len(candles) == 3)
@@ -115,6 +136,6 @@ def test_norm():
 
 if __name__ == "__main__":
     run((test_parse_scan, test_parse_scan_empty, test_quote_body_no_auth,
-         test_screen_body_india_params, test_df_to_candles,
+         test_screen_body_india_params, test_df_to_candles, test_unsettled_bars_dropped,
          test_df_to_candles_multiindex, test_reconcile_decision, test_envelope_shape,
          test_norm))

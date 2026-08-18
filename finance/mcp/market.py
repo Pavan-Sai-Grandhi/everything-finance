@@ -100,8 +100,8 @@ def get_flows(fresh: bool = False) -> dict:
     description="Cross-asset macro backdrop from Yahoo: India VIX, USD-INR, gold, crude "
                 "and the US 10-year, each with its latest level and change."
 )
-def get_macro(period: str = "5y") -> dict:
-    return _market.macro(period=period)
+def get_macro(period: str = "5y", fresh: bool = False) -> dict:
+    return _market.macro(period=period, fresh=fresh)
 
 
 @SERVER.tool(

@@ -179,7 +179,8 @@ def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None)
                               {"symbol": symbol, "source_trade": trade},
                               [f"no price data for {symbol}"])
 
-    closes = [r["close"] for r in rows if r.get("close") is not None]
+    closes = [r["close"] for r in rows
+              if isinstance(r.get("close"), (int, float)) and r["close"] == r["close"]]
     last_close = closes[-1]
     last_low = rows[-1].get("low", last_close)
     last_high = rows[-1].get("high", last_close)

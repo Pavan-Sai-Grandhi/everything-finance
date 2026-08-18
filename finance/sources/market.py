@@ -327,8 +327,8 @@ def percentile(values, value):
     The one piece of math in this module, and it carries no opinion — whether the 92nd
     percentile means 'expensive' is the market-analysis skill's call, not the spine's.
     """
-    pool = [v for v in (values or []) if v is not None]
-    if not pool or value is None:
+    pool = [v for v in (values or []) if v is not None and v == v]
+    if not pool or value is None or value != value:
         return None
     below = sum(1 for v in pool if v < value)
     ties = sum(1 for v in pool if v == value)
@@ -443,17 +443,22 @@ def macro(period="5y", fresh=False):
     for key, ticker in _MACRO_TICKERS.items():
         env = prices.history(ticker, period=period, fresh=fresh)
         candles = (env.get("data") or {}).get("candles") or []
-        closes = [c.get("close") for c in candles if c.get("close") is not None]
-        if not closes:
+        settled = [c for c in candles
+                   if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
+        if not settled:
             gaps.append(f"{key} ({ticker}): no history")
             continue
+        if len(settled) < len(candles):
+            gaps.append(f"{key} ({ticker}): {len(candles) - len(settled)} unsettled bar(s) "
+                        f"dropped — read is as of {settled[-1].get('date')}")
+        closes = [c["close"] for c in settled]
         last = closes[-1]
         month_ago = closes[-22] if len(closes) > 22 else closes[0]
         out[key] = {
             "last": round(last, 2),
             "chg_1m_pct": round(100.0 * (last - month_ago) / month_ago, 2) if month_ago else None,
             "percentile_5y": percentile(closes, last),
-            "as_of": candles[-1].get("date"),
+            "as_of": settled[-1].get("date"),
         }
     env = _envelope(bool(out), "yfinance", {"period": period, "macro": out}, gaps)
     if out:

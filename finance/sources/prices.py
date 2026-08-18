@@ -211,8 +211,19 @@ def history(symbol, period="1y", fresh=False, adjusted=False):
         return _envelope(False, "yfinance", {"symbol": sym, "period": period, "candles": []},
                          [f"yfinance download failed for {yf_t}: {exc}"])
     candles = _df_to_candles(df)
+    # A bar with no close has not settled — yfinance publishes the session's O/H/L
+    # before the close is final. It is not a session, and NaN survives every
+    # `is not None` filter downstream, so it is dropped here at the source rather
+    # than left to become a confident wrong number in someone's arithmetic.
+    settled = [c for c in candles
+               if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
+    dropped = len(candles) - len(settled)
+    candles = settled
     data = {"symbol": sym, "period": period, "bars": len(candles), "candles": candles}
     gaps = [] if candles else [f"yfinance returned no bars for {yf_t} (delisted/renamed?)"]
+    if dropped:
+        gaps.append(f"{dropped} unsettled bar(s) dropped for {yf_t} — series is as of "
+                    f"{candles[-1]['date'] if candles else 'n/a'}")
     env = _envelope(bool(candles), "yfinance", data, gaps)
     if candles:
         _write_cache(cache_file, env)

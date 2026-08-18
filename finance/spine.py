@@ -34,9 +34,13 @@ def f(value):
         text = str(value).strip()
         if text.upper() in _BLANKS:
             return None
-        return float(text.replace(",", "").replace("%", ""))
+        out = float(text.replace(",", "").replace("%", ""))
     except (TypeError, ValueError):
         return None
+    # NaN and inf are not values. yfinance hands back a NaN close for a bar that has
+    # not settled, and NaN survives every `is not None` filter — it must die here, or
+    # it reaches arithmetic that silently produces a confident wrong number.
+    return out if out == out and out not in (float("inf"), float("-inf")) else None
 
 
 def first(row, *keys, default=None):
