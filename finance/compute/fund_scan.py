@@ -334,7 +334,6 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
         else:
             rejected[reasons[0]] = rejected.get(reasons[0], 0) + 1
 
-    # NAV-derived metrics, for the gate survivors only.
     schemes = (funds.amfi_index(fresh=fresh).get("data") or {}).get("schemes") or []
     if not schemes:
         gaps.append("AMFI scheme list unavailable — rolling returns and drawdown could "
@@ -356,7 +355,6 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     if not scored:
         return _empty(category, window, cfg, universe, rejected, gaps, market_context)
 
-    # Relative components are percentile-ranked within the survivor set.
     raw = {
         "roll_mean":  [s["nav"]["roll_mean"] for s in scored],
         "roll_min":   [s["nav"]["roll_min"] for s in scored],

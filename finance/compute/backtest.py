@@ -24,7 +24,6 @@ from finance.compute import ta
 
 pd = ta.pd
 
-# What every report built on this engine must carry alongside its numbers.
 CAVEATS = [
     "survivorship bias: current symbols only (delisted losers absent)",
     "in-sample, spec parameters as written (not optimized; not walk-forward validated)",

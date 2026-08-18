@@ -492,7 +492,7 @@ def add_indicators(df):
     df["rsi14"] = rsi(df["Close"], 14)
     df["vol10"] = vol_avg(df["Volume"], 10)
     df["atr14"] = atr(df, 14)
-    df["hh20"] = rolling_high(df["High"], 20)   # prior 20-session high
+    df["hh20"] = rolling_high(df["High"], 20)
     df["ll20"] = rolling_low(df["Low"], 20)
     return df
 

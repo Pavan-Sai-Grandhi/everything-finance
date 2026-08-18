@@ -296,7 +296,7 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
     for name in _LADDER:
         items, gap = getattr(sys.modules[__name__], name)(company, ticker, days)
         if gap:
-            gaps.append(f"{_LABELS[name]}: {gap}")  # a labelled degradation, not a failure
+            gaps.append(f"{_LABELS[name]}: {gap}")
         if items:
             raw, source_used = items, _LABELS[name]
             break
@@ -309,7 +309,7 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
         "ticker": ticker,
         "days": days,
         "count": len(visible),
-        "items": visible,            # noise filtered from the default view
+        "items": visible,
         "noise_filtered": len(noise),
         "established_count": sum(1 for it in visible
                                  if it["publisher_tier"] == "established"),
