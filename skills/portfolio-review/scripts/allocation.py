@@ -17,10 +17,6 @@ Two provenance-honest input styles per dimension:
     `get_stock_ratios.mrktCapRank` via that look-through, never from a personal
     source's own breakdown field.
 
-Market value precedence per holding: explicit `value` → `qty*ltp` → `invested`
-→ `qty*avg`. A holding that yields no value is dropped with a labelled gap
-rather than counted as zero.
-
 CLI:
   python3 allocation.py --book book.json      # {holdings, targets?, breakdowns?, thresholds?}
 """

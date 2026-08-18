@@ -8,25 +8,8 @@ triggers checked against data the caller already has — never its own network c
 so `daily-brief` stays fast). Triggers that need a skill run to resolve carry a
 `{check: <skill>}` form and are surfaced as a suggested command, never auto-run.
 
-Alert schema (all keys optional unless noted):
-
-    id:          <kind>-<subject>-<shorthash>   (generated)
-    created_by:  producing skill                (required)
-    created_at / updated_at: ISO date
-    subject:     {type: stock|fund|strategy|portfolio|sector, id: RELIANCE}   (required)
-    kind:        price_cross | filing_act_on | time_stop | regime_change |
-                 revalidate_due | reanalyze_due | rebalance_due | sip_due |
-                 sector_refresh_due | opportunity | investigate | custom   (required)
-    trigger:     exactly one of                 (required)
-                   {metric: close|low|high|day_change_pct|dist_to_sl_pct, op: "<", level: 1450}
-                   {due: 2026-09-15}
-                   {check: trade-tracker, args: {symbol: RELIANCE}}
-    action:      {text: "...", suggest: "/trade-tracker RELIANCE"}     (required: text)
-    severity:    info | watch | act             (default: watch)
-    status:      open | triggered | snoozed | done | expired
-    snooze_until / expires_at: ISO date         (optional)
-    dedup_key:   producers set this so re-runs update in place           (recommended)
-    log:         [{date, note}]
+Field-by-field schema, producers and consumers: `finance/contracts.md`
+("Artifact: alert") — the one authority, so the two cannot drift.
 """
 import hashlib
 import os

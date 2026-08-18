@@ -25,12 +25,6 @@ Three rules are baked into the math, each of which can flip a verdict:
    price / total earnings = 1 / Sum(w_i / PE_i); weighted-arithmetic averaging inflates
    every multiple and mis-ranks a peer comparison.
 
-Beyond the ratios it emits `pb_over_roe` (the valuation cut most stable under data
-revision), earnings-distress dispersion (share of book at ROE < 8% — "cheap" means
-nothing if the earnings are at a trough), weighted ROE, weighted earnings yield (which,
-unlike P/E, can carry loss-makers), sector concentration + Herfindahl, top-5/top-10
-concentration, and the unpriced/unlisted weight that every ratio silently excludes.
-
 Only `load_fund()` touches the network; the math core is pure. Uncovered weight is
 reported, never extrapolated.
 
