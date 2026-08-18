@@ -130,9 +130,11 @@ def test_corporate_actions_envelope():
     check("corporate_actions returns the data-spine envelope",
           set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
     check("corporate_actions ok:true with rows", env["ok"] is True)
-    check("corporate_actions carries ex and record dates",
-          env["data"]["corporate_actions"][0]["ex_date"] == "10-Aug-2026",
-          env["data"]["corporate_actions"])
+    # NSE serves DD-Mon-YYYY; everything this plugin emits is ISO, so filings, news and
+    # candles can be compared and sorted against each other.
+    row = env["data"]["corporate_actions"][0]
+    check("corporate_actions normalises ex/record dates to ISO",
+          (row["ex_date"], row["record_date"]) == ("2026-08-10", "2026-08-11"), row)
     check("corporate_actions reports no gap when rows came back", env["gaps"] == [])
 
 

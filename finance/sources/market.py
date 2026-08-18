@@ -48,6 +48,7 @@ import os
 from datetime import date, timedelta
 
 from finance import paths  # the single path authority — never hardcode a cache string
+from finance import spine
 from finance import transport  # the single HTTP transport — no module opens its own socket
 from finance.spine import envelope as _envelope, f as _f
 from finance.sources import prices  # the TradingView scanner rung is already solved there
@@ -416,7 +417,7 @@ def flows(fresh=False):
         out[cat] = {"buy_cr": _f(row.get("buyValue")),
                     "sell_cr": _f(row.get("sellValue")),
                     "net_cr": _f(row.get("netValue"))}
-        day = row.get("date") or day
+        day = spine.iso_date(row.get("date")) or spine.iso_date(day) or day
     gaps = [] if out else ["NSE FII/DII returned no rows"]
     env = _envelope(bool(out), "NSE", {"session": day, "flows": out}, gaps)
     if out:
@@ -483,7 +484,10 @@ def _read_day_cache(cache_file, fresh):
 
 
 def _write_day_cache(cache_file, env):
-    env.setdefault("data", {}).setdefault("date", date.today().isoformat())
+    # The stamp records when WE cached, so it is assigned, never setdefault:
+    # upstream payloads carry their own "date" and an inherited one would let
+    # the freshness check read a source's date as our fetch time.
+    env.setdefault("data", {})["date"] = date.today().isoformat()
     try:
         with open(cache_file, "w") as fh:
             json.dump(env, fh, ensure_ascii=False)

@@ -8,8 +8,11 @@ section-D acceptance criterion it proves. Run:
 """
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from datetime import date
+
 from finance.sources import fundamentals as fz
 from finance.tests.harness import check, run
 
@@ -324,6 +327,28 @@ def test_envelope_shape():
 
 
 # --- D4 is this file passing: every test above runs offline on fixtures ----- #
+def test_thin_ratio_parse_is_labelled():
+    """A partial or substituted page parses cleanly and reads as authoritative. The live
+    smoke test caught a cached RELIANCE page carrying 4 ratios and a pre-bonus ₹2,951
+    against a true ₹1,316 — the parse succeeded, so nothing flagged it."""
+    check("the threshold is below a real page's ~9 ratios",
+          0 < fz._MIN_RATIOS <= 9, fz._MIN_RATIOS)
+    thin = {"Market Cap": 1.0, "Current Price": 2.0, "High / Low": "3 / 1", "Stock P/E": 4.0}
+    check("a 4-ratio page is under the bar", len(thin) < fz._MIN_RATIOS)
+    full = dict(thin, **{"Book Value": 5.0, "Dividend Yield": 0.4, "ROCE": 10.0,
+                         "ROE": 8.9, "Face Value": 10.0})
+    check("a 9-ratio page clears it", len(full) >= fz._MIN_RATIOS)
+
+
+def test_cache_stamp_is_assigned_not_inherited():
+    """The stamp answers 'when did WE cache this', so an upstream payload carrying the
+    same key must not be able to supply it."""
+    env = {"data": {"cached_on": "2019-01-01", "ratios": {}}}
+    fz._write_cache(os.path.join(tempfile.mkdtemp(), "X.json"), env)
+    check("an inherited stamp is overwritten with today",
+          env["data"]["cached_on"] == date.today().isoformat(), env["data"]["cached_on"])
+
+
 if __name__ == "__main__":
     run((test_D1_ratios, test_D1_pnl_10y, test_D1_balance_sheet_and_quarters,
          test_D1_shareholding, test_D1_peers, test_D1_documents,
@@ -332,4 +357,4 @@ if __name__ == "__main__":
          test_fetch_all_blocked_degrades, test_fetch_sections_narrowing,
          test_fetch_sections_on_a_blocked_page, test_to_number,
          test_D1b_detects_logged_out_page, test_D1b_does_not_misfire_on_real_results,
-         test_D1b_screen_distinguishes_the_two_failures, test_envelope_shape))
+         test_D1b_screen_distinguishes_the_two_failures, test_envelope_shape, test_thin_ratio_parse_is_labelled, test_cache_stamp_is_assigned_not_inherited))

@@ -43,6 +43,33 @@ def f(value):
     return out if out == out and out not in (float("inf"), float("-inf")) else None
 
 
+_MONTHS = {m: i for i, m in enumerate(
+    ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"], 1)}
+
+
+def iso_date(value):
+    """Coerce a source's date string to YYYY-MM-DD, else None.
+
+    NSE serves DD-Mon-YYYY ("17-Aug-2026") and DD-MON-YYYY, Yahoo and mfapi serve ISO.
+    Left as-is they cannot be compared or sorted against each other, and a consumer
+    doing date arithmetic across two tools raises or silently mis-orders.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return text[:10]
+    parts = text.replace("/", "-").split("-")
+    if len(parts) >= 3:
+        d, mon, y = parts[0].strip(), parts[1].strip().upper()[:3], parts[2].strip()[:4]
+        month = _MONTHS.get(mon)
+        if month and d.isdigit() and y.isdigit():
+            return f"{int(y):04d}-{month:02d}-{int(d):02d}"
+    return None
+
+
 def first(row, *keys, default=None):
     """First present, non-empty value among `keys`, else `default`."""
     if not isinstance(row, dict):

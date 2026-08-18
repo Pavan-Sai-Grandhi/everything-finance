@@ -198,7 +198,7 @@ def fetch_nse_announcements(symbol, days=30):
             continue
         tier, emoji, reason = classify_materiality(head)
         out.append({
-            "date": _first(r, "an_dt", "sort_date")[:11],
+            "date": spine.iso_date(_first(r, "an_dt", "sort_date")),
             "headline": head[:240],
             "category": category,
             "tier": tier, "emoji": emoji, "why": reason,
@@ -233,8 +233,8 @@ def fetch_nse_corp_actions(symbol):
             continue
         out.append({
             "subject": str(subject)[:200],
-            "ex_date": _first(r, "exDate"),
-            "record_date": _first(r, "recDate"),
+            "ex_date": spine.iso_date(_first(r, "exDate")),
+            "record_date": spine.iso_date(_first(r, "recDate")),
             "series": _first(r, "series"),
             "isin": _first(r, "isin"),
             "exchange": "NSE",
@@ -266,11 +266,11 @@ def fetch_nse_shareholding(symbol, quarters=8):
     out = []
     for r in rows[:quarters]:
         out.append({
-            "quarter": _first(r, "date"),
+            "quarter": spine.iso_date(_first(r, "date")),
             "promoter_pct": _f(_first(r, "pr_and_prgrp")),
             "public_pct": _f(_first(r, "public_val")),
             "employee_trusts_pct": _f(_first(r, "employeeTrusts")),
-            "filed_on": _first(r, "submissionDate"),
+            "filed_on": spine.iso_date(_first(r, "submissionDate")),
             "xbrl": _first(r, "xbrl"),
         })
 

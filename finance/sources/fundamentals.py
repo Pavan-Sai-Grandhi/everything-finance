@@ -307,6 +307,9 @@ def _select_sections(env, sections):
     return env
 
 
+_MIN_RATIOS = 6   # a complete screener page carries ~9 headline ratios
+
+
 def fetch(symbol, sections=None, fresh=False):
     """Read the public consolidated company page once and parse it into the typed envelope
     (D1). Falls back to the standalone page (with a labelled gap) if consolidated is missing;
@@ -335,6 +338,12 @@ def fetch(symbol, sections=None, fresh=False):
     data = _parse_company(html, sym)
     if not data["pnl_10y"]["rows"]:
         gaps.append("profit-loss table: not found (page layout changed or symbol unknown?)")
+    # A real company page publishes ~9 headline ratios. A handful means a partial or
+    # substituted page, which parses cleanly and reads as authoritative — the failure
+    # mode that put a stale price into a valuation.
+    if 0 < len(data["ratios"]) < _MIN_RATIOS:
+        gaps.append(f"only {len(data['ratios'])} headline ratios parsed "
+                    f"(expected >= {_MIN_RATIOS}) — partial page, treat figures as unverified")
     ok = bool(data["ratios"] or data["pnl_10y"]["rows"])
     env = _envelope(ok, source, data, gaps)
     if ok:
@@ -394,7 +403,10 @@ def _read_cache(cache_file, fresh):
 
 
 def _write_cache(cache_file, env):
-    env.setdefault("data", {}).setdefault("cached_on", date.today().isoformat())
+    # The stamp records when WE cached, so it is assigned, never setdefault:
+    # upstream payloads carry their own "cached_on" and an inherited one would let
+    # the freshness check read a source's date as our fetch time.
+    env.setdefault("data", {})["cached_on"] = date.today().isoformat()
     try:
         with open(cache_file, "w") as fh:
             json.dump(env, fh, ensure_ascii=False)

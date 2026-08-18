@@ -538,7 +538,10 @@ def test_flows_categorisation():
     check("'DII **' is categorised as DII", f["DII"]["net_cr"] == 3000.25, f["DII"])
     check("flows strips thousands separators from buy/sell",
           f["DII"]["buy_cr"] == 12000.50 and f["DII"]["sell_cr"] == 9000.25, f["DII"])
-    check("flows keeps the session date", env["data"]["session"] == "16-Aug-2026", env["data"])
+    # NSE serves DD-Mon-YYYY; every date this plugin emits is ISO, so a consumer can
+    # sort filings against news against candles without knowing the source.
+    check("flows normalises NSE's session date to ISO",
+          env["data"]["session"] == "2026-08-16", env["data"])
     check("flows skips non-dict rows", len(f) == 2)
 
 

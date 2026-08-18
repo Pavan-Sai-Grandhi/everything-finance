@@ -135,6 +135,22 @@ def test_f_rejects_nonfinite():
     check("negative still passes", spine.f(-2.5) == -2.5)
 
 
+def test_iso_date():
+    """Every date this plugin emits is YYYY-MM-DD. NSE serves DD-Mon-YYYY, so an
+    un-normalised filing date cannot be compared against a news or candle date — a
+    consumer doing that arithmetic raises, or silently mis-orders."""
+    check("NSE DD-Mon-YYYY", spine.iso_date("17-Aug-2026") == "2026-08-17")
+    check("NSE DD-MON-YYYY upper", spine.iso_date("30-JUN-2026") == "2026-06-30")
+    check("single-digit day", spine.iso_date("5-Jun-2026") == "2026-06-05")
+    check("ISO passes through", spine.iso_date("2026-08-17") == "2026-08-17")
+    check("ISO timestamp is truncated", spine.iso_date("2026-08-17T09:15:00") == "2026-08-17")
+    check("slashes tolerated", spine.iso_date("17/Aug/2026") == "2026-08-17")
+    check("garbage -> None, never a wrong date", spine.iso_date("garbage") is None)
+    check("empty -> None", spine.iso_date("") is None)
+    check("None -> None", spine.iso_date(None) is None)
+    check("bad month -> None", spine.iso_date("17-Xyz-2026") is None)
+
+
 if __name__ == "__main__":
     run((test_envelope, test_f_coercion, test_first, test_norm_symbol, test_cache_roundtrip,
-         test_cache_never_blocks_a_fetch, test_cache_stamp_key_is_selectable, test_f_rejects_nonfinite))
+         test_cache_never_blocks_a_fetch, test_cache_stamp_key_is_selectable, test_f_rejects_nonfinite, test_iso_date))

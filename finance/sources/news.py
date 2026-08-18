@@ -377,7 +377,10 @@ def _read_cache(cache_file, fresh):
 
 
 def _write_cache(cache_file, env):
-    env.setdefault("data", {}).setdefault("cached_on", date.today().isoformat())
+    # The stamp records when WE cached, so it is assigned, never setdefault:
+    # upstream payloads carry their own "cached_on" and an inherited one would let
+    # the freshness check read a source's date as our fetch time.
+    env.setdefault("data", {})["cached_on"] = date.today().isoformat()
     try:
         with open(cache_file, "w") as fh:
             json.dump(env, fh, ensure_ascii=False)
