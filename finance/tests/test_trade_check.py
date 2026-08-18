@@ -215,4 +215,25 @@ check("no price data is a labelled gap, not a fabricated verdict",
       env_nodata["ok"] is False
       and any("no price data" in g for g in env_nodata["gaps"]), env_nodata["gaps"])
 
+
+# --- a HOLD with nothing to check is not a HOLD ------------------------------
+t = write("vacuous.yml", "symbol: TESTCO\nstatus: open\ndirection: long\n"
+                         "entry: 100\nstop: 90\ntarget: 130\n")
+c = bars_to_csv("vacuous.csv", [100.0] * 30)
+out, rc = run(t, c)
+check("a file with no plan/invalidation still answers", out.get("verdict") == "HOLD", out.get("verdict"))
+
+env = trade_check.check(t, ohlcv=c)
+check("the vacuous HOLD carries a gap, not silence",
+      any("absence of a check" in g for g in env["gaps"]), env["gaps"])
+check("and is flagged for manual review",
+      any("nothing mechanical was checked" in m for m in env["data"]["manual_review"]),
+      env["data"]["manual_review"])
+
+t2 = write("checked.yml", "symbol: TESTCO\nstatus: open\ndirection: long\n"
+                          "plan: {entry: 100, stop: 90, target: 130}\n")
+env2 = trade_check.check(t2, ohlcv=c)
+check("a real plan produces no such gap", env2["gaps"] == [], env2["gaps"])
+
+
 summary()

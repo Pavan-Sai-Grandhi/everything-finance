@@ -236,6 +236,12 @@ def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None)
         verdict = "HOLD"
         reasons.append("rationale intact: no stop/target/thesis/time trigger")
 
+    # A HOLD only means something if there was a level to breach. With no stop, no
+    # target and no invalidation, every mechanical check is vacuous and the verdict
+    # would read as "checked, nothing wrong" when nothing was checked at all —
+    # typically a hand-written or mis-keyed file whose levels are not under `plan:`.
+    unchecked = stop is None and target is None and not invalidations
+
     # metrics
     unreal_R = None
     if entry is not None and stop is not None and (entry - stop) != 0:
@@ -266,4 +272,12 @@ def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None)
         },
         "source_trade": trade,
     }
+    if unchecked:
+        verdict_record["manual_review"] = list(manual) + [
+            "no stop, target or thesis_invalidation in this trade file — nothing "
+            "mechanical was checked; confirm the levels by hand"]
+        return spine.envelope(
+            True, _SOURCE, verdict_record,
+            ["no stop/target/invalidation found (are the levels under `plan:`?) — "
+             "this HOLD is the absence of a check, not a passed one"])
     return spine.envelope(True, _SOURCE, verdict_record, [])
