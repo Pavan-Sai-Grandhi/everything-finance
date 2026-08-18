@@ -26,6 +26,8 @@ venv/
 .env
 *.env
 
-# Working notes stay local; the data-source decision record ships.
+# Working notes stay local; the data-source decision record and the live
+# authenticity findings ship.
 docs/*
 !docs/data-sources.md
+!docs/data-authenticity-report.md
