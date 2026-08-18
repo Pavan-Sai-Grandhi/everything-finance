@@ -5,10 +5,9 @@ A fund does not publish its own P/E, P/B or ROE, but it does publish what it own
 This script aggregates the underlying stocks' ratios into the portfolio's ratios, so a
 verdict can rest on *what the fund holds today* rather than on what it returned last year.
 
-Holdings and per-stock ratios both come from `finance/sources/funds.py` (Tickertape), the one
-sanctioned path — `--fund <MF_ID>` fetches the COMPLETE position list (64-278 names at
-90-99% weight coverage), threaded and disk-cached. `--holdings FILE` is an
-offline/testing hatch only.
+Holdings and per-stock ratios both come from `finance/sources/funds.py` (Tickertape), the
+one sanctioned path — it fetches the COMPLETE position list (64-278 names at 90-99% weight
+coverage), threaded and disk-cached. A holdings file is an offline/testing hatch only.
 
 Three rules are baked into the math, each of which can flip a verdict:
 
@@ -32,22 +31,18 @@ nothing if the earnings are at a trough), weighted ROE, weighted earnings yield 
 unlike P/E, can carry loss-makers), sector concentration + Herfindahl, top-5/top-10
 concentration, and the unpriced/unlisted weight that every ratio silently excludes.
 
-The math core is pure and offline-tested (`test_lookthrough.py`); only `load_fund()`
-touches the network. Uncovered weight is reported, never extrapolated.
+Only `load_fund()` touches the network; the math core is pure. Uncovered weight is
+reported, never extrapolated.
 
-Reached through: get_fund_lookthrough (finance-funds)
+Reached through: get_fund_lookthrough.
 """
 from __future__ import annotations
 
 
-from finance.spine import envelope as _envelope, f as _num, first as _first  # shared spine
+from finance.spine import envelope as _envelope, f as _num, first as _first
 
-# --------------------------------------------------------------------------- #
-# gates and thresholds — the tuned constants, in one place                     #
-# --------------------------------------------------------------------------- #
-
-# SEBI's own definition: caps are RANKS, not sizes. Top 100 large, 101-250 mid, 251+
-# small. Mirrors `finance.sources.funds.SEBI_CAP_RANKS`; restated here so the pure math core stays
+# SEBI's own definition: caps are RANKS, not sizes. Top 100 large, 101-250 mid, 251+ small.
+# Mirrors `finance.sources.funds.SEBI_CAP_RANKS`; restated here so the pure math core stays
 # importable with no dependency on the network module.
 SEBI_CAP_RANKS = {"large": 100, "mid": 250}
 
@@ -70,9 +65,6 @@ def _round(v, n=2):
     return round(v, n) if isinstance(v, (int, float)) else None
 
 
-# --------------------------------------------------------------------------- #
-# pure aggregation                                                             #
-# --------------------------------------------------------------------------- #
 def weighted_harmonic(pairs):
     """(weight, multiple) -> (portfolio multiple, covered weight).
 
@@ -131,9 +123,6 @@ def cagr(series):
     return ((xs[-1] / xs[0]) ** (1.0 / (len(xs) - 1)) - 1.0) * 100.0
 
 
-# --------------------------------------------------------------------------- #
-# cap classification — rank first, provider label second                       #
-# --------------------------------------------------------------------------- #
 def cap_bucket(cap_rank=None, cap_label=None):
     """-> ("large"|"mid"|"small"|None, source).
 
@@ -190,9 +179,6 @@ def cap_tilt(holdings):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# concentration, sectors, distress                                             #
-# --------------------------------------------------------------------------- #
 def concentration(holdings):
     """Top-5 / top-10 weight share and the Herfindahl index of position weights."""
     ws = sorted((_num(h.get("weight")) or 0.0 for h in holdings), reverse=True)
@@ -279,9 +265,6 @@ def earnings_distress(holdings, top=10):
     }
 
 
-# --------------------------------------------------------------------------- #
-# the coverage gate                                                            #
-# --------------------------------------------------------------------------- #
 def coverage_grade(fraction):
     """Coverage fraction (0-1) -> "decision-grade" | "indicative" | "unusable"."""
     f = _num(fraction) or 0.0
@@ -314,9 +297,6 @@ def gated(value, covered_weight, total_weight, ndigits=2):
     }
 
 
-# --------------------------------------------------------------------------- #
-# the portfolio read                                                           #
-# --------------------------------------------------------------------------- #
 def portfolio_metrics(holdings, equity_weight=None):
     """Every look-through metric for one fund, from enriched holdings.
 
@@ -408,14 +388,11 @@ def metric_gaps(metrics):
     return gaps
 
 
-# --------------------------------------------------------------------------- #
-# holdings input                                                               #
-# --------------------------------------------------------------------------- #
 def load_fund(mf_id, fresh=False, workers=10):
-    """The default path: full holdings + threaded, cached per-stock ratios via finance.sources.funds.
+    """The default path: full holdings + threaded, cached per-stock ratios.
 
-    Returns (holdings, equity_weight, gaps, meta). This is the ONLY network code in the
-    file; everything above it is pure and offline-tested.
+    Returns (holdings, equity_weight, gaps, meta). The ONLY network code in the file;
+    everything above it is pure.
     """
     from finance.sources import funds  # deferred: the pure math core must not need the fetchers
 
@@ -477,7 +454,6 @@ def enrich_file_rows(rows, fresh=False, workers=10):
     return enriched, gaps
 
 
-# --------------------------------------------------------------------------- #
 def build_report(holdings, equity_weight, gaps, meta):
     """Assemble the artifact the skill and the HTML template consume."""
     metrics = portfolio_metrics(holdings, equity_weight)

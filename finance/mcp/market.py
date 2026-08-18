@@ -26,8 +26,6 @@ SERVER = create(
 )
 
 
-# --- prices: TradingView (live/screen) + Yahoo (history) ----------------------
-
 @SERVER.tool(
     description="Live quote for one NSE symbol (price, change, volume, market cap) "
                 "from the TradingView India scanner. Use get_history for anything "
@@ -57,8 +55,6 @@ def run_technical_screen(filters: list, columns: list | None = None,
                          limit: int = 50) -> dict:
     return _prices.screen(filters, columns=columns, limit=limit)
 
-
-# --- market: NSE (valuation, flows) + TradingView (breadth) + Yahoo (macro) ---
 
 @SERVER.tool(
     description="Live level plus P/E, P/B and dividend yield for NSE indices — all ~139 "
@@ -117,8 +113,6 @@ def get_market_context(mode: str = "quick", years: int = 10,
                        fresh: bool = False) -> dict:
     return _context.report(mode=mode, years=years, fresh=fresh)
 
-
-# --- strategy engines: a spec plus price history ------------------------------
 
 @SERVER.tool(
     description="Run a strategy spec's screening and signal rules over a universe today: "

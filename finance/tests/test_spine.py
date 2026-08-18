@@ -63,7 +63,8 @@ def test_norm_symbol():
     check("None yields empty, never a raise", spine.norm_symbol(None) == "")
 
 
-def _blob(stamp, key="date"):
+def _blob(stamp, key=None):
+    key = key or spine.CACHE_STAMP
     return {"ok": True, "data": {key: stamp, "v": 1}}
 
 
@@ -73,7 +74,15 @@ def test_cache_roundtrip():
 
     env = {"ok": True, "data": {"v": 1}}
     spine.write_cache(p, env)
-    check("write stamps today's date", env["data"]["date"] == spine.today())
+    check("write stamps today's date", env["data"][spine.CACHE_STAMP] == spine.today())
+    # the stamp lives under a reserved key so a source's own `date` cannot shadow it,
+    # and is assigned, not setdefault — an inherited value would make it a no-op
+    p2 = os.path.join(d, "src.json")
+    src = {"ok": True, "data": {"date": "2019-01-01", "v": 2}}
+    spine.write_cache(p2, src)
+    check("a source's own date survives the stamp", src["data"]["date"] == "2019-01-01")
+    check("...and does not become the freshness stamp",
+          src["data"][spine.CACHE_STAMP] == spine.today())
     check("a written cache reads back", (spine.read_cache(p, False) or {}).get("data", {}).get("v") == 1)
     check("fresh=True bypasses the cache", spine.read_cache(p, True) is None)
 

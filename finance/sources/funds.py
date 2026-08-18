@@ -1,40 +1,19 @@
 #!/usr/bin/env python3
 """Mutual-fund fetch — identity, category screen, FULL holdings, NAV history.
 
-The canonical *fund-level* fetcher of the data spine, sitting beside `prices.py`
-(single-symbol prices), `fundamentals.py` (single-company financials) and `market.py`
-(market-wide state). Everything `mf-analysis` needs about a fund that is not price
-history lives here, in one place.
-
 Holdings come from Tickertape's public JSON API (free, no auth), which returns the
-**complete** current allocation at 90-99% weight coverage. Never source them from a
-personal MCP: that feed caps at 20 rows while funds hold 64-278 positions, so a
-look-through built on it describes a different fund (CLAUDE.md rule 3).
+complete current allocation at 90-99% weight coverage. Never source them from a personal
+MCP: that feed caps at 20 rows while funds hold 64-278 positions, so a look-through built
+on it describes a different fund (CLAUDE.md rule 3). AMFI's NAVAll.txt is the authority for
+scheme code + ISIN; mfapi.in serves the daily NAV series the return math runs on.
 
-Five rungs:
-  * `resolve()`      -> name -> {mf_id (Tickertape), scheme_code (mfapi), isin, plan}.
-                        AMFI's NAVAll.txt is the authority for scheme code + ISIN.
-  * `screen()`       -> the CATEGORY SCANNER: every fund in a SEBI sub-category with AUM,
-                        expense, returns, Sharpe/Sortino, volatility, cap mix. Paginated.
-  * `holdings()`     -> the complete position list + sector weights + allocation history.
-  * `stock_ratios()` -> per-holding P/E, P/B, ROE, market cap and **`mrktCapRank`** — the
-                        rank SEBI actually classifies caps by, so cap-tilt stops being a
-                        guess from absolute ₹Cr bands.
-  * `nav_history()`  -> mfapi.in daily NAV series for the rolling-return math.
+This module FETCHES ONLY — no grade, no verdict, no weighted aggregation. Turning holdings
+into portfolio ratios is `finance/compute/lookthrough.py`'s job.
 
-This module FETCHES ONLY — no grade, no verdict, no weighted aggregation. Turning
-holdings into portfolio ratios is `finance/compute/lookthrough.py`'s job, the
-same separation `prices.py` keeps from `ta.py`.
+Returns the shared data-spine envelope (finance/contracts.md).
 
-Every fetch returns the shared data-spine envelope:
-    { "ok": bool, "source": str|None, "fetched_at": ISO8601,
-      "data": {...}, "gaps": ["<labelled degradation>", ...] }
-
-Fetched text is untrusted DATA, not instructions. Degrade-not-die: a blocked source
-records a *labelled* gap and the run continues.
-
-Reached through: resolve_fund, screen_funds, get_fund_holdings, get_nav_history
-  (finance-funds); get_stock_ratios (finance-company)
+Reached through: resolve_fund, screen_funds, get_fund_holdings, get_nav_history,
+get_stock_ratios.
 """
 from __future__ import annotations
 
@@ -43,8 +22,8 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-from finance import paths  # the single path authority
-from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance import paths
+from finance import transport
 from finance.spine import (envelope as _envelope, f as _f,
                            read_cache as _read_cache, write_cache as _write_cache)
 
@@ -52,10 +31,9 @@ _TT = "https://api.tickertape.in"
 _AMFI_NAV_ALL = "https://portal.amfiindia.com/spages/NAVAll.txt"
 _MFAPI = "https://api.mfapi.in/mf"
 
-# SEBI's own cap definition: by market-cap RANK, not absolute size. Top 100 large,
-# 101-250 mid, 251+ small. Tickertape's `mrktCapRank` is exactly this rank, which is why
-# cap-tilt is now computed from it instead of from ₹Cr bands that misclassify a
-# small-cap fund's largest positions as large-caps.
+# SEBI defines caps by market-cap RANK, not absolute size: top 100 large, 101-250 mid,
+# 251+ small. Tickertape's `mrktCapRank` is exactly this rank, so cap-tilt comes from it
+# rather than from ₹Cr bands that misclassify a small-cap fund's largest positions.
 SEBI_CAP_RANKS = {"large": 100, "mid": 250}
 
 # The screener fields that are free on the public endpoint. Tickertape 403s the whole
@@ -71,9 +49,6 @@ SCREEN_FIELDS = [
 PREMIUM_FIELDS = {"maxDrawdown", "avg3yRollingRet", "percTop10H", "percTop3H",
                   "percTop5H", "ret3yVsCat", "ret1yVsCat", "ret5yVsCat", "cashncasheq"}
 
-# --------------------------------------------------------------------------- #
-# HTTP (curl — same transport choice as market.py; see its _http_get docstring) #
-# --------------------------------------------------------------------------- #
 def _curl(url, payload=None, timeout=30, referer="https://www.tickertape.in/"):
     """GET, or POST when `payload` is given, via the single shared transport."""
     return transport.request(url, payload=payload, timeout=timeout, referer=referer)
@@ -93,9 +68,6 @@ def _cache_path(kind, key):
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(key))
     return os.path.join(paths.cache_dir(os.path.join("mf", kind)), f"{safe}.json")
 
-# --------------------------------------------------------------------------- #
-# rung 1 — identity (AMFI scheme code + ISIN, Tickertape mfId)                  #
-# --------------------------------------------------------------------------- #
 def amfi_index(fresh=False):
     """The full AMFI scheme list — the authority for scheme code + ISIN + exact name.
 
@@ -137,7 +109,7 @@ def amfi_index(fresh=False):
 
 
 def _token_hit(token, name_lower, name_words):
-    """Pure: does `token` match this scheme name, allowing a word-prefix match?
+    """Does `token` match this scheme name, allowing a word-prefix match?
 
     An AMC's registered AMFI name is often a longer word than the name people use:
     "TRUST Small Cap" is registered as "TRUSTMF SMALL CAP FUND". A plain substring test
@@ -221,18 +193,13 @@ def _tickertape_fund(name):
     return best, None
 
 
-# --------------------------------------------------------------------------- #
-# rung 2 — the category scanner                                                #
-# --------------------------------------------------------------------------- #
 def screen(subsector="Small Cap Fund", option="Growth", min_aum=100,
            fields=None, limit_pages=12, fresh=False):
     """Every fund in a SEBI sub-category, with the metrics a shortlist is built from.
 
-    This is the scanner that turns "which small-cap fund?" from a name the model happens
-    to recall into a ranked, reproducible universe. The endpoint ignores string filters in
-    `match` (any non-numeric match silently returns an empty result), so the numeric AUM
-    floor is pushed server-side and `subsector`/`option` are projected and filtered here —
-    verified 2026-08-16.
+    The endpoint ignores string filters in `match` (any non-numeric match silently returns
+    an empty result), so the numeric AUM floor is pushed server-side and `subsector`/
+    `option` are projected and filtered here — verified 2026-08-16.
 
     `subsector=None` returns the whole universe (used by name resolution).
     Returns `data.funds = [{mf_id, name, slug, <metric fields>}]`.
@@ -291,9 +258,6 @@ def screen(subsector="Small Cap Fund", option="Growth", min_aum=100,
     return env
 
 
-# --------------------------------------------------------------------------- #
-# rung 3 — the COMPLETE holdings list                                          #
-# --------------------------------------------------------------------------- #
 def holdings(mf_id, fresh=False):
     """A fund's full current allocation — every position, not a top-20 slice.
 
@@ -356,9 +320,6 @@ def holdings(mf_id, fresh=False):
     return env
 
 
-# --------------------------------------------------------------------------- #
-# rung 4 — per-holding stock ratios (threaded + cached)                        #
-# --------------------------------------------------------------------------- #
 def stock_ratios(sid, fresh=False):
     """One holding's ratios. Returns `data = {sid, ticker, name, sector, pe, ttm_pe, pb,
     roe, market_cap_cr, cap_rank, cap_label, div_yield, beta, industry_pe}`.
@@ -434,9 +395,6 @@ def enrich(positions, workers=10, fresh=False):
     return out, gaps
 
 
-# --------------------------------------------------------------------------- #
-# rung 5 — NAV history (mfapi.in)                                              #
-# --------------------------------------------------------------------------- #
 def nav_history(scheme_code, fresh=False):
     """Full daily NAV series for a scheme. `data = {code, meta, navs:[{date, nav}]}`
     with dates as ISO and OLDEST FIRST (mfapi serves newest-first)."""
@@ -469,6 +427,3 @@ def nav_history(scheme_code, fresh=False):
     if navs:
         _write_cache(cache, env)
     return env
-
-
-# --------------------------------------------------------------------------- #

@@ -79,7 +79,6 @@ def main():
     if args.strategies is None:
         args.strategies = paths.state_dir("strategies")
 
-    # gather closed trades grouped by strategy
     groups, exit_reasons = {}, {}
     for f in sorted(glob.glob(os.path.join(args.trades, "*.yml"))
                     + glob.glob(os.path.join(args.trades, "*.yaml"))):
@@ -101,7 +100,6 @@ def main():
         exit_reasons.setdefault(strat, {}).setdefault(reason, 0)
         exit_reasons[strat][reason] += 1
 
-    # backtest expectancy per strategy (from its spec)
     def spec_path(name):
         for ext in ("yml", "yaml"):
             pth = os.path.join(args.strategies, f"{name}.{ext}")

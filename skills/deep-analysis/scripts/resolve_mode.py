@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Resolve the deep-analysis depth mode for a run — quick / standard / deep.
 
-deep-analysis runs three depth modes; this is the deterministic half of the
-selection (spec §2). Resolution order, first match wins:
+deep-analysis runs three depth modes; this is the deterministic half of the selection.
+Resolution order, first match wins:
 
   1. Explicit flag — `--quick` or `--deep` in the argument always wins, including
      over the holding auto-escalation.

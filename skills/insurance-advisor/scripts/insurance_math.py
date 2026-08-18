@@ -14,8 +14,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-# --- term life: how much cover -------------------------------------------------
-
 @dataclass
 class TermNeed:
     income_replacement: float          # multiple x annual income
@@ -84,8 +82,6 @@ def term_cover_need(
     )
 
 
-# --- health: how much sum insured ---------------------------------------------
-
 # Base individual sum-insured floor by city tier (2026 metro context, INR).
 _HEALTH_TIER_BASE = {1: 10_00_000, 2: 7_50_000, 3: 5_00_000}
 
@@ -149,8 +145,6 @@ def health_sum_insured(
         },
     )
 
-
-# --- vehicle: IDV / NCB sanity -------------------------------------------------
 
 # IRDAI depreciation grid for IDV by vehicle age (fraction retained of ex-showroom).
 _IDV_RETENTION = [
@@ -237,8 +231,6 @@ def idv_ncb_sanity(
         flags=flags,
     )
 
-
-# --- endowment / ULIP: marginal IRR of continuing ------------------------------
 
 def _npv(rate: float, cashflows: list) -> float:
     return sum(cf / (1 + rate) ** t for t, cf in enumerate(cashflows))

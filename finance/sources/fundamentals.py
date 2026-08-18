@@ -1,26 +1,16 @@
 #!/usr/bin/env python3
-"""Fundamentals fetch — the screener.in rung of the data spine (everything-finance plugin).
+"""Fundamentals fetch — the screener.in rung of the data spine.
 
-The canonical fundamentals fetcher — lives in `finance/sources/` next to `prices.py` and
-`news.py` so screener.in is parsed in exactly one place instead of being re-parsed afresh
-inside every `fundamentals-data` run (the drift this data spine removes). Two entry points:
+`fetch(symbol)` reads the public consolidated company page ONCE and parses every section;
+the public page needs no auth, and cookies are injected only for the login-walled screen
+that `screen(query)` runs.
 
-  * `fetch(symbol)` reads the public consolidated company page ONCE and parses it into typed
-    `data`: `ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`,
-    `documents` (annual-report / concall links). The public page needs no auth; cookies are
-    injected only for a login-walled screen (D1).
-  * `screen(query)` runs a screener.in fundamental screen and returns the candidate symbol
-    list — the fundamental counterpart to `prices.screen()` (D2).
+Output extracts tables and fields ONLY — never the raw page HTML: every value in `data` is
+a parsed number, string, or list.
 
-Output extracts tables and fields ONLY — never the raw page HTML (D3): every value in `data`
-is a parsed number, string, or list. Fetched text is untrusted DATA, not instructions — a
-caller assesses the numbers, never acts on the page's content.
+Returns the shared data-spine envelope (finance/contracts.md).
 
-Every fetch returns the shared data-spine envelope:
-    { "ok": bool, "source": str|None, "fetched_at": ISO8601,
-      "data": {...}, "gaps": ["<labelled degradation>", ...] }
-
-Reached through: get_company_fundamentals, run_fundamental_screen (finance-company)
+Reached through: get_company_fundamentals, run_fundamental_screen.
 """
 from __future__ import annotations
 
@@ -30,16 +20,16 @@ import re
 from datetime import date
 from html.parser import HTMLParser
 
-from finance import paths  # the single path authority — cache tier reused, never hardcode
-from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance import paths
+from finance import transport
 from finance.spine import envelope as _envelope, norm_symbol as _norm
 
 
 _BASE = "https://www.screener.in"
 
 def _screener_cookies():
-    """The optional screener.in auth cookies — used ONLY for login-walled screens (D1).
-    Absent in the public-page path; missing creds degrade a screen, never the whole module."""
+    """The optional screener.in auth cookies — used ONLY for login-walled screens.
+    Missing creds degrade a screen, never the whole module."""
     sid = os.environ.get("SCREENER_SESSION_ID")
     csrf = os.environ.get("SCREENER_CSRF_TOKEN")
     parts = []
@@ -54,14 +44,13 @@ _LOGGED_OUT_TITLES = ("register", "login", "sign in", "sign up")
 
 
 def is_logged_out(html):
-    """Pure: did screener.in serve its anonymous page instead of the requested one?
+    """Did screener.in serve its anonymous page instead of the requested one?
 
-    Worth a dedicated check because the two failure modes are indistinguishable to a
-    caller otherwise. When a `sessionid` expires — Django rotates them, so this happens
-    routinely — screener does NOT return 401 or redirect visibly: it answers 200 with its
-    **Register** page. The screen parser finds no company rows in that page and reports
-    "no companies matched", which reads exactly like a filter that was too tight. A
-    `find-trade` run then proceeds as though no stock passed the fundamental cut.
+    When a `sessionid` expires — Django rotates them, so this happens routinely — screener
+    does NOT return 401 or redirect visibly: it answers 200 with its Register page. The
+    screen parser finds no company rows in that page and reports "no companies matched",
+    which reads exactly like a filter that was too tight, and a `find-trade` run then
+    proceeds as though no stock passed the fundamental cut.
 
     Detected on the page title (screener titles its anonymous pages "Register - Screener"
     / "Login - Screener"), with a login-form fallback. A real screen result is titled
@@ -83,11 +72,8 @@ def _http_get(url, timeout=20, cookie=None):
     return transport.request(url, timeout=timeout, referer=_BASE + "/", headers=headers)
 
 
-# --------------------------------------------------------------------------- #
-# number coercion — a parsed figure or an explicit None, never a poisoned cell #
-# --------------------------------------------------------------------------- #
 def _to_number(text):
-    """Pure: coerce a screener cell to float (₹, commas, %, Cr, (negatives)) or None.
+    """Coerce a screener cell to float (₹, commas, %, Cr, (negatives)) or None.
     A blank/dash cell is None — a labelled missing beats a fabricated zero in the math."""
     if text is None:
         return None
@@ -106,9 +92,7 @@ def _to_number(text):
     return -v if neg else v
 
 
-# --------------------------------------------------------------------------- #
-# HTML helpers — stdlib only (matches prices.py / filings.py: no bs4 dep)       #
-# --------------------------------------------------------------------------- #
+# HTML parsing is stdlib-only here, as in prices.py and filings.py: no bs4 dependency.
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 _COMPANY_HREF_RE = re.compile(r'/company/([A-Za-z0-9&._-]+)/', re.IGNORECASE)
@@ -122,7 +106,7 @@ def _text(html_fragment):
 
 
 def _section_html(html, section_id):
-    """Pure: slice one screener `<section id="...">` out of the page. Sections are siblings
+    """Slice one screener `<section id="...">` out of the page. Sections are siblings
     (not nested), so the slice runs to the next `<section` or the page end."""
     m = re.search(rf'<section\b[^>]*\bid=["\']{re.escape(section_id)}["\']', html or "", re.I)
     if not m:
@@ -177,7 +161,7 @@ class _FirstTable(HTMLParser):
 
 
 def _parse_table(section_html):
-    """Pure: a screener section's data-table → {columns, rows:{label:[numbers]}} (offline D4).
+    """A screener section's data-table → {columns, rows:{label:[numbers]}}.
     The leading label column is dropped from `columns`; row values are coerced to number."""
     p = _FirstTable()
     p.feed(section_html or "")
@@ -194,7 +178,7 @@ def _parse_table(section_html):
 
 
 def _parse_ratios(html):
-    """Pure: the top-ratios list → {name: number|text} (offline-testable, D1/D4)."""
+    """The top-ratios list → {name: number|text}."""
     block = re.search(r'<ul[^>]*id=["\']top-ratios["\'][^>]*>(.*?)</ul>', html or "", re.S | re.I)
     if not block:
         return {}
@@ -217,12 +201,12 @@ def _parse_ratios(html):
 
 
 def _parse_shareholding(html):
-    """Pure: the shareholding section's data-table → {columns, rows} (D1)."""
+    """The shareholding section's data-table → {columns, rows}."""
     return _parse_table(_section_html(html, "shareholding"))
 
 
 def _parse_peers(html):
-    """Pure: the peers section → list of {symbol, name} (offline-testable, D1/D4).
+    """The peers section → list of {symbol, name}.
     Each peer row links to `/company/<SYMBOL>/`; the link text is the company name."""
     sect = _section_html(html, "peers")
     out, seen = [], set()
@@ -240,7 +224,7 @@ def _parse_peers(html):
 
 
 def _parse_documents(html):
-    """Pure: the documents section → {annual_reports:[...], concalls:[...]} (D1/D4).
+    """The documents section → {annual_reports:[...], concalls:[...]}.
     Links are classified by their text: annual-report PDFs vs concall transcripts/notes/PPTs."""
     sect = _section_html(html, "documents")
     annual, concalls = [], []
@@ -258,7 +242,7 @@ def _parse_documents(html):
 
 
 def _parse_screen(html):
-    """Pure: a screener.in screen result page → ordered, de-duped candidate symbol list (D2/D4).
+    """A screener.in screen result page → ordered, de-duped candidate symbol list.
     Result rows link each company to `/company/<SYMBOL>/`."""
     out, seen = [], set()
     for sym in _COMPANY_HREF_RE.findall(html or ""):
@@ -270,12 +254,9 @@ def _parse_screen(html):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# fetch — read the public company page ONCE, parse every section (D1, D3)      #
-# --------------------------------------------------------------------------- #
 def _parse_company(html, sym):
-    """Pure: one screener company page → the typed `data` dict (offline-testable, D1/D3/D4).
-    Tables/fields only — the raw page HTML never lands in `data` (D3)."""
+    """One screener company page → the typed `data` dict.
+    Tables/fields only — the raw page HTML never lands in `data`."""
     return {
         "symbol": sym,
         "ratios": _parse_ratios(html),
@@ -311,10 +292,9 @@ _MIN_RATIOS = 6   # a complete screener page carries ~9 headline ratios
 
 
 def fetch(symbol, sections=None, fresh=False):
-    """Read the public consolidated company page once and parse it into the typed envelope
-    (D1). Falls back to the standalone page (with a labelled gap) if consolidated is missing;
-    the public page needs no auth. Never dumps page HTML into `data` (D3).
+    """Read the public consolidated company page once and parse it into the typed envelope.
 
+    Falls back to the standalone page (with a labelled gap) if consolidated is missing.
     `sections` narrows the returned data to the parts asked for (the whole page is large);
     the cache always holds the complete parse, so a narrowed read costs no extra fetch."""
     sym = _norm(symbol)
@@ -351,12 +331,9 @@ def fetch(symbol, sections=None, fresh=False):
     return _select_sections(env, sections)
 
 
-# --------------------------------------------------------------------------- #
-# screen — a fundamental screen -> candidate symbol list (D2)                  #
-# --------------------------------------------------------------------------- #
 def screen(query, fresh=False):
-    """Run a screener.in fundamental screen → candidate symbol list envelope (D2). Auth
-    cookies (login-walled builder) are injected only when present in the env (D1)."""
+    """Run a screener.in fundamental screen → candidate symbol list envelope. Auth cookies
+    (the builder is login-walled) are injected only when present in the env."""
     import urllib.parse
     url = f"{_BASE}/screen/raw/?" + urllib.parse.urlencode({"query": query, "source": ""})
     cookie = _screener_cookies()
@@ -386,9 +363,7 @@ def screen(query, fresh=False):
     return _envelope(bool(candidates), "screener.in", data, gaps)
 
 
-# --------------------------------------------------------------------------- #
-# day-cache (reuse within the day; --fresh bypasses — per the shared contract) #
-# --------------------------------------------------------------------------- #
+# Day-cache: reuse within the day, --fresh bypasses.
 def _read_cache(cache_file, fresh):
     if fresh or not os.path.exists(cache_file):
         return None
@@ -412,6 +387,3 @@ def _write_cache(cache_file, env):
             json.dump(env, fh, ensure_ascii=False)
     except Exception:  # noqa: BLE001
         pass
-
-
-# --------------------------------------------------------------------------- #

@@ -1,27 +1,22 @@
 #!/usr/bin/env python3
-"""Spec-driven swing backtester for NSE daily data (everything-finance plugin).
+"""Spec-driven swing backtester for NSE daily data.
 
-Validates any STRATEGY SPEC, not a hardcoded archetype: entry, stop, target,
-time-stop and sizing all come from the spec via `finance/compute/strategy.py` — the same
-module the live find-trade screen uses, so a new strategy is backtestable by
-existing, with no per-archetype code here.
+Validates any STRATEGY SPEC, not a hardcoded archetype: entry, stop, target, time-stop and
+sizing all come from the spec via `finance/compute/strategy.py` — the same module the live
+find-trade screen uses, so a new strategy is backtestable with no per-archetype code here.
 
-Engine: **Backtesting.py** (MIT). Its defaults give the discipline a real-money
-test needs: no lookahead (signal on bar t -> fill at t+1 open) and pessimistic
-intrabar exits (both stop and target touched in one bar -> the STOP is taken).
-Indicators come from TA-Lib via finance/compute/ta.py. Commission is charged per side, set so
+Engine: Backtesting.py (MIT). Its defaults give the discipline a real-money test needs: no
+lookahead (signal on bar t -> fill at t+1 open) and pessimistic intrabar exits (both stop
+and target touched in one bar -> the STOP is taken). Commission is charged per side, set so
 the round trip ~= 0.25% all-in (charges + slippage).
 
-Reached through: run_backtest (finance-market). `out` defaults to
-artifacts/backtest/<spec>/<today>/report.
+Reached through: run_backtest. `out` defaults to artifacts/backtest/<spec>/<today>/report.
 """
 
 import json
 import os
 from datetime import date
 
-# Shared engine: finance/compute/ta.py (indicators) + finance/compute/strategy.py
-# (spec -> signals) + finance/paths.py (artifact locations).
 from finance import paths
 from finance import spine
 from finance.compute import strategy

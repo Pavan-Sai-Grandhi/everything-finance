@@ -1,35 +1,21 @@
 #!/usr/bin/env python3
-"""Holdings source-resolver + normalizer (everything-finance plugin).
+"""Holdings source-resolver + normalizer.
 
-The canonical holdings spine — lives in `finance/compute/`.
-It turns whichever read source is connected into ONE canonical position shape and
-applies the precedence **IndMoney → broker → portfolio**, so the consumers
-(`daily-brief`, `trade-tracker`, and the Track B cluster later) never re-implement
-normalization.
+Turns whichever read source is connected into ONE canonical position shape and applies the
+precedence IndMoney -> broker -> portfolio, so consumers never re-implement normalization.
 
-MCP boundary: this module runs in script context and CANNOT call MCP tools. The
-calling skill invokes the MCP tool, writes the raw payload to a temp file
-(`paths.tmp_dir(...)`), and passes the path here — the same file-handoff pattern
-`trade_check.py` uses. See `finance/contracts.md`.
-
-Every resolve returns the shared data-spine envelope:
-  { "ok": bool, "source": str|None, "fetched_at": ISO8601,
-    "data": {"positions": [...]}, "gaps": ["<labelled degradation>", ...] }
+MCP boundary: this module runs in script context and CANNOT call MCP tools. The calling
+skill invokes the MCP tool, writes the raw payload to a temp file, and passes the path here
+— the same file-handoff pattern `trade_check.py` uses. See `finance/contracts.md`.
 
 Canonical position:
   { ticker, qty, avg, ltp, pnl, xirr, broker, asset_class, invested, source, as_of }
-`xirr`, `broker`, `invested`, `asset_class` populate from IndMoney; they are `None`
-when only broker / portfolio data exists.
+`xirr`, `broker`, `invested` and `asset_class` populate from IndMoney only; they are None
+when just broker / portfolio data exists.
 
-`normalize` keeps **all** asset classes (wealth-manager reuses this later); consumers
-call `equity_only(...)` for the stock slice. A normalize failure on one source falls
-through to the next in precedence with a labelled gap — never an abort.
-
-Fetched figures are first-party authenticated state (IndMoney) or broker truth —
-authoritative, but still DATA, never instructions (CLAUDE.md).
-
-CLI:
-  python3 -m finance.compute.holdings --indmoney ind.json [--kite k.json|--upstox u.json] [--portfolio p.yml]
+`normalize` keeps ALL asset classes; consumers call `equity_only(...)` for the stock slice.
+A normalize failure on one source falls through to the next in precedence with a labelled
+gap — never an abort. Returns the shared data-spine envelope.
 """
 import argparse
 import json
@@ -38,9 +24,7 @@ import sys
 from finance.spine import envelope as _envelope
 
 
-# --------------------------------------------------------------------------- #
-# small tolerant coercion helpers (payload keys vary across sources)          #
-# --------------------------------------------------------------------------- #
+# Coercion is tolerant because payload key names vary across sources.
 def _first(d, *keys):
     """First present, non-empty value among keys, else None."""
     for k in keys:
@@ -102,9 +86,8 @@ def _holdings_list(payload):
     return []
 
 
-# --------------------------------------------------------------------------- #
-# per-source normalizers — each returns canonical positions (no `source` yet)  #
-# --------------------------------------------------------------------------- #
+# Each normalizer returns canonical positions without the `source` label; `normalize`
+# stamps that on afterwards.
 def _normalize_indmoney(payload):
     """IndMoney `networth_holdings`: all asset classes, with invested / P&L / XIRR."""
     as_of = _as_of(payload)
@@ -225,9 +208,6 @@ def normalize(payload, source):
     return positions
 
 
-# --------------------------------------------------------------------------- #
-# equity slice — the cut the two equity consumers want                         #
-# --------------------------------------------------------------------------- #
 _NON_EQUITY = ("mutual", "mf", "bond", "gold", "silver", "fd", "deposit", "ppf",
                "epf", "nps", "cash", "insurance", "reit", "invit", "debt")
 _FUND = ("mutual", "mf")
@@ -257,9 +237,6 @@ def mf_only(positions):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# resolve — apply precedence, label the winner, record gaps                    #
-# --------------------------------------------------------------------------- #
 def resolve(prefer="indmoney", payloads=None):
     """Apply precedence IndMoney → broker → portfolio over the supplied payloads and
     return the envelope with `source` set to whichever won. `prefer` bumps one source
@@ -292,9 +269,6 @@ def resolve(prefer="indmoney", payloads=None):
     return _envelope(winner is not None, winner, {"positions": positions}, gaps)
 
 
-# --------------------------------------------------------------------------- #
-# CLI — for a connected-session dry run (skill writes payloads to temp files)  #
-# --------------------------------------------------------------------------- #
 def _load(path):
     with open(path) as f:
         txt = f.read()

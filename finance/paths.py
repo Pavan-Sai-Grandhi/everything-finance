@@ -26,8 +26,8 @@ import os
 import re
 from datetime import date as _date_cls
 
-# skill -> (entity kind, report filename) for the prior-run lookup. Only the
-# entity-centric skills that build on their own history are listed.
+# skill -> report filename for the prior-run lookup. Only the entity-centric skills
+# that build on their own history are listed.
 _STOCK_ARTIFACT = {
     "deep-analysis": "deep-analysis.md",
     "dcf": "dcf.md",
@@ -85,8 +85,6 @@ def _mkparent(path):
     return path
 
 
-# --- dated historical output -------------------------------------------------
-
 def stock_dir(ticker, date=None):
     """stocks/<TICKER>/<date>/ — a stock's whole run-day, created."""
     return _mkdir(os.path.join(root(), "stocks", ticker_key(ticker), _day(date)))
@@ -120,8 +118,6 @@ def insurance_report_path(policy_type, date=None, ext="md"):
     slug = re.sub(r"[^a-z0-9]+", "-", str(policy_type).strip().lower()).strip("-")
     return _mkparent(os.path.join(root(), "insurance", slug, f"{_day(date)}.{ext.lstrip('.')}"))
 
-
-# --- durable, mutable, not dated ---------------------------------------------
 
 def state_dir(name=None):
     """state/ or state/<name>/ (strategies, trades, alerts) — created."""
@@ -181,8 +177,6 @@ def sector_cache_age_days(sector, today=None):
     return (ref - _date_cls.fromisoformat(generated)).days
 
 
-# --- disposable --------------------------------------------------------------
-
 def cache_dir(name=None):
     """cache/ or cache/<name>/ — created."""
     parts = [root(), "cache"] + ([name] if name else [])
@@ -194,8 +188,6 @@ def tmp_dir(name=None):
     parts = [root(), "tmp"] + ([name] if name else [])
     return _mkdir(os.path.join(*parts))
 
-
-# --- prior-run lookup --------------------------------------------------------
 
 def latest_prior(skill, subject, before=None):
     """Newest earlier artifact for (skill, subject), or None.

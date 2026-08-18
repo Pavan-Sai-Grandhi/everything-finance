@@ -23,6 +23,7 @@ _TMP_ROOT = tempfile.mkdtemp(prefix="ef-test-funds-")
 os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = os.path.join(_TMP_ROOT, "artifacts")
 atexit.register(shutil.rmtree, _TMP_ROOT, True)
 
+from finance import spine
 from finance.sources import funds  # noqa: E402
 from finance.tests.harness import check, run  # noqa: E402
 
@@ -686,7 +687,8 @@ def test_cache_round_trip_and_ageing():
           os.path.basename(p) == "probe_key_with_junk.json", p)
     env = funds._envelope(True, "AMFI", {"schemes": [{"code": "118778"}]}, [])
     funds._write_cache(p, env)
-    check("write_cache stamps today's date", env["data"]["date"] == date.today().isoformat())
+    check("write_cache stamps today under the reserved key",
+          env["data"][spine.CACHE_STAMP] == date.today().isoformat())
     got = funds._read_cache(p, fresh=False)
     check("read_cache returns today's blob", got is not None and got["data"]["schemes"][0]["code"] == "118778")
     check("read_cache honours fresh=True", funds._read_cache(p, fresh=True) is None)
@@ -698,7 +700,7 @@ def test_cache_max_age():
     fresh_root("cache-age")
     p = funds._cache_path("meta", "aged")
     stale = funds._envelope(True, "AMFI", {"schemes": []}, [])
-    stale["data"]["date"] = (date.today() - timedelta(days=3)).isoformat()
+    stale["data"][spine.CACHE_STAMP] = (date.today() - timedelta(days=3)).isoformat()
     with open(p, "w") as fh:
         json.dump(stale, fh)
     check("a 3-day-old blob is rejected by a same-day cache",

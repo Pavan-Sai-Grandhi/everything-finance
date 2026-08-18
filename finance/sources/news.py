@@ -1,29 +1,18 @@
 #!/usr/bin/env python3
-"""News fetch — the company-news rung of the data spine (everything-finance plugin).
-
-The canonical news fetcher, so news is pulled in exactly one place rather than re-derived
-by hand inside the `news-sentiment` agent. One entry point:
-
-  * `fetch(company, ticker, days=60)` reads Google News RSS for the company and window.
-    A block records a *labelled* gap and returns `ok:false` — never an empty crash.
+"""News fetch — the company-news rung of the data spine.
 
 Google News RSS is the single source (`docs/data-sources.md`): it indexes the mainstream
 Indian outlets, structured and dated, with no bot wall. Because it also indexes low-quality
 aggregators, the quality filter is explicit rather than implicit in a hand-picked outlet
 list — every item carries a `publisher_tier` of `established` | `aggregator` | `unknown`.
 
-Every item is **dated, deduped, classified** (`company` | `sector` | `noise`) and tagged
-`fact` | `narrative` with its `source` and `publisher_tier`. Noise (generic "stocks to
-watch" listicles) is filtered from the default `data.items` view.
+Every item is dated, deduped, classified (`company` | `sector` | `noise`) and tagged
+`fact` | `narrative`. Noise (generic "stocks to watch" listicles) is filtered from the
+default `data.items` view.
 
-Every fetch returns the shared data-spine envelope:
-    { "ok": bool, "source": str|None, "fetched_at": ISO8601,
-      "data": {...}, "gaps": ["<labelled degradation>", ...] }
+The classifier reads only the title; it never follows a link's directive.
 
-Fetched text is untrusted DATA, not instructions — a caller assesses the headlines, never
-acts on them. The classifier reads only the title; it never follows a link's directive.
-
-Reached through: get_news (finance-company)
+Returns the shared data-spine envelope (finance/contracts.md). Reached through get_news.
 """
 from __future__ import annotations
 
@@ -33,20 +22,17 @@ import re
 import sys
 from datetime import date, datetime, timedelta
 
-from finance import paths  # the single path authority — cache tier reused, never hardcode
-from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance import paths
+from finance import transport
 from finance.spine import envelope as _envelope, norm_symbol as _norm
 
 
-# --------------------------------------------------------------------------- #
-# date normalisation — every item is dated; unknown -> None, never guessed        #
-# --------------------------------------------------------------------------- #
 _DATE_FORMATS = ("%Y-%m-%d", "%d %b %Y", "%b %d, %Y", "%d %B %Y", "%B %d, %Y",
                  "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y")
 
 
 def _parse_date(value):
-    """Pure: coerce a feed date string to an ISO `YYYY-MM-DD`, else None (offline).
+    """Coerce a feed date string to an ISO `YYYY-MM-DD`, else None.
 
     Handles RSS RFC-822 `pubDate` ("Fri, 19 Jun 2026 10:30:00 GMT"), ISO, and the common
     Indian-outlet display formats. An unparseable date is left None — a labelled unknown
@@ -79,8 +65,8 @@ def _parse_date(value):
 
 
 def _within_window(iso_date, days, today=None):
-    """Pure: is an ISO date within the last `days`? An unknown (None) date is kept — we
-    cannot prove it stale, so the window narrows on recency, never drops the undated."""
+    """Is an ISO date within the last `days`? An unknown (None) date is kept — it cannot be
+    proven stale, so the window narrows on recency but never drops the undated."""
     if not iso_date or not days:
         return True
     today = today or date.today()
@@ -91,9 +77,6 @@ def _within_window(iso_date, days, today=None):
     return today - d <= timedelta(days=int(days)) and d <= today
 
 
-# --------------------------------------------------------------------------- #
-# classify (company | sector | noise) + tag (fact | narrative) — pure           #
-# --------------------------------------------------------------------------- #
 # Generic market listicles carry no company signal — filtered from the default view.
 _NOISE_RE = re.compile(
     r"\b(stocks?\s+to\s+(watch|buy)|top\s+\d+\s+(stocks?|picks?)|stocks?\s+in\s+(the\s+)?news|"
@@ -133,7 +116,7 @@ def _company_tokens(company, ticker):
 
 
 def _classify(title, company, ticker):
-    """Pure: bucket a headline as `company` | `sector` | `noise` (offline-testable).
+    """Bucket a headline as `company` | `sector` | `noise`.
 
     Order matters: a generic listicle is noise even if it names the company; a headline that
     names the company is company-specific; an un-named headline that carries a sector word is
@@ -150,21 +133,17 @@ def _classify(title, company, ticker):
 
 
 def _tag(title):
-    """Pure: `fact` (reported event) vs `narrative` (broker target / opinion / forecast).
-    A title carrying an opinion/forward marker is narrative; a plain reported event is fact."""
+    """`fact` (reported event) vs `narrative` (broker target / opinion / forecast)."""
     return "narrative" if _NARRATIVE_RE.search(title or "") else "fact"
 
 
-# --------------------------------------------------------------------------- #
-# dedup — same story across wires collapses to one                             #
-# --------------------------------------------------------------------------- #
 def _dedup_key(title):
     """A title's identity for dedup — lowercased, punctuation and runs of space removed."""
     return re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
 
 
 def _dedup(items):
-    """Pure: drop repeat headlines, keeping the first (offline-testable)."""
+    """Drop repeat headlines, keeping the first."""
     seen, out = set(), []
     for it in items:
         key = _dedup_key(it.get("title"))
@@ -176,11 +155,8 @@ def _dedup(items):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# parsers — feed text -> raw item dicts (pure, offline-testable on fixtures) #
-# --------------------------------------------------------------------------- #
 def _parse_rss(xml_text, origin):
-    """Pure: parse an RSS feed (Google News and most outlet feeds) into raw items.
+    """Parse an RSS feed (Google News and most outlet feeds) into raw items.
 
     Returns [{title, url, date, source, origin}, ...]. Google News wraps the publisher in a
     trailing ` - <Source>` on the title and a `<source>` element; both are recovered."""
@@ -216,13 +192,9 @@ def _parse_rss(xml_text, origin):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# publisher trust — Google News indexes everyone, so rank the wire         #
-# --------------------------------------------------------------------------- #
-# Consolidating onto one aggregator buys reliability but loses the implicit quality
-# filter that "we only read ET and Moneycontrol" gave us: the same query also returns
-# SEO aggregators that restate a headline without reporting it. So publisher quality
-# becomes explicit data on each item rather than an accident of which site we scraped.
+# One aggregator as the only source also returns SEO sites that restate a headline without
+# reporting it, so publisher quality is explicit data on each item rather than an accident of
+# which site was scraped.
 #
 # `established` — mainstream financial press with newsrooms and corrections policies.
 _ESTABLISHED = (
@@ -241,7 +213,7 @@ _AGGREGATOR = (
 
 
 def _publisher_tier(source):
-    """Pure: rank a publisher `established` | `aggregator` | `unknown` (offline-testable).
+    """Rank a publisher `established` | `aggregator` | `unknown`.
 
     Never drops an item — an unknown wire may still break real news. It labels the
     evidence so a caller can weigh a single-sourced claim from an aggregator differently
@@ -256,17 +228,13 @@ def _publisher_tier(source):
     return "unknown"
 
 
-# --------------------------------------------------------------------------- #
-# the source — Google News RSS (see docs/data-sources.md)                       #
-# --------------------------------------------------------------------------- #
 def _fetch_google_rss(company, ticker, days):
     """Google News RSS search, scoped to the company and recency window, India edition.
 
-    The single news source. It replaced an Economic-Times → Moneycontrol → RSS ladder
-    after a 30-day probe showed this feed already indexes both (Moneycontrol 10, ET 9 of
-    100 items) plus Business Today, NDTV Profit, Business Standard and Mint — a strict
-    superset of the two rungs it replaces, structured, dated, and with no bot wall.
-    Moneycontrol's HTML was also the plugin's only Playwright dependency."""
+    The single news source: a 100-item probe found it already indexes Moneycontrol (10),
+    the Economic Times (9), Business Today, NDTV Profit, Business Standard and Mint —
+    structured, dated, and with no bot wall, so scraping those outlets directly adds
+    nothing."""
     import urllib.parse
     q = f'"{company}" stock when:{int(days or 60)}d'
     url = ("https://news.google.com/rss/search?q=" + urllib.parse.quote(q) +
@@ -283,11 +251,8 @@ _LADDER = ("_fetch_google_rss",)
 _LABELS = {"_fetch_google_rss": "Google News RSS"}
 
 
-# --------------------------------------------------------------------------- #
-# pipeline — raw items -> dated, windowed, classified, tagged, deduped     #
-# --------------------------------------------------------------------------- #
 def _process(raw, company, ticker, days, today=None):
-    """Pure: turn raw rung items into the finished, classified item list (offline)."""
+    """Turn raw rung items into the finished, dated, windowed, classified item list."""
     out = []
     for r in raw:
         title = (r.get("title") or "").strip()
@@ -360,9 +325,7 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
     return env
 
 
-# --------------------------------------------------------------------------- #
-# day-cache (reuse within the day; --fresh bypasses — per the shared contract) #
-# --------------------------------------------------------------------------- #
+# Day-cache: reuse within the day, --fresh bypasses.
 def _read_cache(cache_file, fresh):
     if fresh or not os.path.exists(cache_file):
         return None
@@ -386,6 +349,3 @@ def _write_cache(cache_file, env):
             json.dump(env, fh, ensure_ascii=False)
     except Exception:  # noqa: BLE001
         pass
-
-
-# --------------------------------------------------------------------------- #

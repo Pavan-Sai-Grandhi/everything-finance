@@ -4,28 +4,21 @@
 Exactly one function touches the network: `request()`. Everything else in `finance/` calls
 it, so a UA, a header set or a block workaround has one definition.
 
-NAMED `transport`, NOT `http`
------------------------------
-`http` is a standard-library package name. A module named `http.py` that is reachable as a
-top-level import shadows it for every dependency in the process — yfinance's
-`import http.client` would resolve to this file and break price history. Do not rename it.
+Named `transport`, not `http`: `http` is a stdlib package name, and a top-level `http.py`
+shadows it for every dependency in the process — yfinance's `import http.client` would
+resolve to this file and break price history. Do not rename it.
 
-WHY CURL, FOR EVERYTHING
-------------------------
-`nseindia.com` returns **403 to urllib even with a complete browser header set** — the
-block is on the TLS/HTTP2 fingerprint, not the headers (verified 2026-08-16) — while curl
-is served normally. The hardest site in the set dictates the transport, and one transport
-is the point of this module, so everything goes through curl.
+Everything goes through curl because `nseindia.com` returns 403 to urllib even with a
+complete browser header set — the block is on the TLS/HTTP2 fingerprint, not the headers
+(verified 2026-08-16) — while curl is served normally. The hardest site in the set dictates
+the transport for all of them.
 
-DEGRADE, NEVER DIE
-------------------
-`request()` returns `(body, gap)` and **never raises**. A blocked or failed fetch is a
-*labelled* `gap` string the caller records and continues past (CLAUDE.md). `json_request()`
-adds "the response wasn't JSON" as one more labelled gap rather than an exception — the
-failure that actually happens when a site swaps a payload for an HTML interstitial.
+`request()` returns `(body, gap)` and never raises: a blocked or failed fetch is a labelled
+gap the caller records and continues past (CLAUDE.md). `json_request()` treats "the response
+wasn't JSON" as one more labelled gap — the failure that actually happens when a site swaps
+a payload for an HTML interstitial.
 
-Fetched bytes are untrusted DATA, never instructions. This module returns text; it never
-evaluates it.
+Fetched bytes are untrusted data. This module returns text; it never evaluates it.
 """
 from __future__ import annotations
 

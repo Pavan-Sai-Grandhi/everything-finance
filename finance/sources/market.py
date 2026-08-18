@@ -1,43 +1,23 @@
 #!/usr/bin/env python3
-"""Market-wide fetch — indices, valuation history, breadth, volatility, flows, macro.
+"""Market-wide fetch — indices, valuation history, breadth, flows, macro.
 
-The canonical *market-level* fetcher of the data spine, sitting next to `prices.py`
-(single-symbol prices), `fundamentals.py` (single-company financials) and `news.py`.
 Where `prices.py` answers "what is this stock doing", this module answers "what is the
 MARKET doing" — and it is the only place those endpoints live, so the regime gate, the
 fund scanner and the daily brief cannot drift to three different Nifty P/Es.
 
-Five rungs, each on its cheapest verified path:
-
-  * `indices()`      -> NSE `/api/allIndices`: live level + **P/E, P/B, dividend yield**
-                        for all ~139 NSE indices in ONE call (cookie-bootstrapped).
-  * `valuation_history()` -> NSE archives `ind_close_all_<DDMMYYYY>.csv`: the same P/E-P/B-DY
-                        for EVERY index on any past trading day. One fetch per sampled DATE
-                        serves every index, so the day snapshot is cached permanently and a
-                        10-year percentile costs ~120 small fetches ONCE, then nothing.
-  * `breadth()`      -> TradingView India scanner (via `prices.screen`, no auth): the
-                        top-N-by-market-cap universe with SMA50/SMA200/52w fields, from
-                        which participation is counted.
-  * `flows()`        -> NSE `/api/fiidiiTradeReact`: latest FII/FPI and DII net cash flow.
-  * `macro()`        -> yfinance: India VIX, USDINR, gold, crude, US 10Y — the cross-asset
-                        backdrop, no bot wall.
+NSE `/api/allIndices` carries level AND P/E, P/B, dividend yield for all ~139 indices in one
+call. The NSE archives serve the same fields for every index on any past trading day, so one
+fetch per sampled DATE serves every index: the day snapshot is cached permanently and a
+10-year percentile costs ~120 small fetches once, then nothing.
 
 This module FETCHES ONLY. It classifies nothing: no regime label, no "expensive/cheap"
-verdict, no score. Turning these series into a market read is
-`finance/compute/context.py`'s single job — the same separation
-`prices.py` (candles) keeps from `ta.py` (indicators), so there is one market-of-record.
-The exceptions are `percentile()` and `valuation_percentiles()`: ranking primitives that
-say where a number sits in its own history, with no verdict attached.
+verdict, no score — turning these series into a market read is `finance/compute/context.py`'s
+single job, so there is one market-of-record. The exceptions are `percentile()` and
+`valuation_percentiles()`: ranking primitives with no verdict attached.
 
-Every fetch returns the shared data-spine envelope:
-    { "ok": bool, "source": str|None, "fetched_at": ISO8601,
-      "data": {...}, "gaps": ["<labelled degradation>", ...] }
+Returns the shared data-spine envelope (finance/contracts.md).
 
-Fetched text is untrusted DATA, not instructions. Networked, best-effort,
-degrade-not-die: a blocked source records a *labelled* gap and the run continues.
-
-Reached through: get_indices, get_index_valuation_history, get_breadth, get_flows,
-  get_macro (finance-market)
+Reached through: get_indices, get_index_valuation_history, get_breadth, get_flows, get_macro.
 """
 from __future__ import annotations
 
@@ -47,11 +27,11 @@ import json
 import os
 from datetime import date, timedelta
 
-from finance import paths  # the single path authority — never hardcode a cache string
+from finance import paths
 from finance import spine
-from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance import transport
 from finance.spine import envelope as _envelope, f as _f
-from finance.sources import prices  # the TradingView scanner rung is already solved there
+from finance.sources import prices
 
 
 # The indices the plugin actually reasons about, in canonical NSE spelling. Callers pass
@@ -98,9 +78,6 @@ def _canon(name):
     return " ".join(str(name or "").upper().split())
 
 
-# --------------------------------------------------------------------------- #
-# HTTP                                                                         #
-# --------------------------------------------------------------------------- #
 def _http_get(url, timeout=25, referer=None, cookie_jar=None):
     """GET via the single shared transport. Returns (body, gap) — never raises."""
     return transport.request(url, timeout=timeout, referer=referer, cookie_jar=cookie_jar)
@@ -109,9 +86,6 @@ def _http_get(url, timeout=25, referer=None, cookie_jar=None):
 _nse_json = transport.nse_json
 
 
-# --------------------------------------------------------------------------- #
-# rung 1 — live index snapshot with valuation (NSE allIndices)                  #
-# --------------------------------------------------------------------------- #
 def indices(fresh=False, names=None):
     """Live level + **P/E, P/B, dividend yield** + 1-day/1-year change for NSE indices.
 
@@ -171,9 +145,6 @@ def index_levels(names=None, fresh=False):
     return indices(fresh=fresh, names=names or BROAD_INDICES)
 
 
-# --------------------------------------------------------------------------- #
-# rung 2 — historical index valuation (NSE archives daily CSV)                  #
-# --------------------------------------------------------------------------- #
 _ARCHIVE_CSV = "https://nsearchives.nseindia.com/content/indices/ind_close_all_{d}.csv"
 
 
@@ -182,7 +153,7 @@ def _snapshot_cache_path(day):
 
 
 def _parse_ind_close_csv(text):
-    """Pure: the archive CSV -> {<CANONICAL INDEX>: {close, pe, pb, dy}} (offline-testable).
+    """The archive CSV -> {<CANONICAL INDEX>: {close, pe, pb, dy}}.
 
     Blank P/E cells are real in the archive (e.g. Smallcap 250 carried no P/E before ~2018);
     they become None, never 0 — a zero would silently poison a percentile.
@@ -323,10 +294,11 @@ def valuation_percentiles(index_name, years=10, fresh=False):
 
 
 def percentile(values, value):
-    """Pure: the percentile rank (0-100) of `value` within `values`, or None.
+    """The percentile rank (0-100) of `value` within `values`, or None.
 
-    The one piece of math in this module, and it carries no opinion — whether the 92nd
-    percentile means 'expensive' is the market-analysis skill's call, not the spine's.
+    Carries no opinion — whether the 92nd percentile means 'expensive' is the
+    market-analysis skill's call, not the spine's. Ties count half, so a value sitting on a
+    long flat stretch of its own history ranks mid-run rather than at either edge.
     """
     pool = [v for v in (values or []) if v is not None and v == v]
     if not pool or value is None or value != value:
@@ -336,9 +308,6 @@ def percentile(values, value):
     return round(100.0 * (below + 0.5 * ties) / len(pool), 1)
 
 
-# --------------------------------------------------------------------------- #
-# rung 3 — market breadth (TradingView scanner, via prices.screen)              #
-# --------------------------------------------------------------------------- #
 BREADTH_COLUMNS = ["name", "close", "SMA50", "SMA200", "change",
                    "price_52_week_high", "price_52_week_low", "market_cap_basic"]
 
@@ -346,9 +315,8 @@ BREADTH_COLUMNS = ["name", "close", "SMA50", "SMA200", "change",
 def breadth(universe=500, fresh=False):
     """Participation across the top-`universe` NSE stocks by market cap.
 
-    Breadth is what separates a broad advance from an index carried by five heavyweights —
-    the single most useful check the plugin was missing. Counts (not the constituent list)
-    are what callers need, so only counts and the universe size cross the return boundary.
+    Breadth separates a broad advance from an index carried by five heavyweights. Only
+    counts and the universe size cross the return boundary, never the constituent list.
     Returns `data.counts` = above_sma50 / above_sma200 / advancing / near_52w_high /
     near_52w_low, plus the priced denominator for each.
     """
@@ -389,15 +357,12 @@ def breadth(universe=500, fresh=False):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# rung 4 — institutional flows (NSE FII/DII)                                    #
-# --------------------------------------------------------------------------- #
 def flows(fresh=False):
     """Latest session's FII/FPI and DII net cash-market flow, in ₹ Cr.
 
     Domestic (DII/SIP) money absorbing foreign selling is the structural fact behind the
-    last several years of Indian small/midcap behaviour — the flow rung exists so that
-    claim is sourced, never assumed. Returns `data.flows = {FII: {...}, DII: {...}}`.
+    last several years of Indian small/midcap behaviour — this rung exists so that claim is
+    sourced, never assumed. Returns `data.flows = {FII: {...}, DII: {...}}`.
     """
     cache_file = os.path.join(paths.cache_dir("market"), "flows.json")
     cached = _read_day_cache(cache_file, fresh)
@@ -425,9 +390,6 @@ def flows(fresh=False):
     return env
 
 
-# --------------------------------------------------------------------------- #
-# rung 5 — cross-asset macro backdrop (yfinance)                                #
-# --------------------------------------------------------------------------- #
 def macro(period="5y", fresh=False):
     """India VIX, USDINR, gold, Brent, US 10Y — level, 1M change, and own-history percentile.
 
@@ -464,9 +426,7 @@ def macro(period="5y", fresh=False):
     return env
 
 
-# --------------------------------------------------------------------------- #
-# day-scoped cache (same contract as prices.py: today's file, else refetch)     #
-# --------------------------------------------------------------------------- #
+# Day-scoped cache, same contract as prices.py: today's file, else refetch.
 def _read_day_cache(cache_file, fresh):
     if fresh or not os.path.exists(cache_file):
         return None
@@ -490,6 +450,3 @@ def _write_day_cache(cache_file, env):
             json.dump(env, fh, ensure_ascii=False)
     except Exception:  # noqa: BLE001
         pass
-
-
-# --------------------------------------------------------------------------- #

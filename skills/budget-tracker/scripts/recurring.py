@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Detect committed recurring spend — subscriptions, EMIs, memberships (design Section 2).
+"""Detect committed recurring spend — subscriptions, EMIs, memberships.
 
 Deterministic and reproducible from the artifacts: groups debits by the SAME merchant
 token categorize.py uses, finds a stable cadence (monthly / quarterly / annual) and a
 roughly stable amount, and surfaces:
 
-  * total committed **recurring ₹/month** (dormant charges excluded),
+  * total committed recurring ₹/month (dormant charges excluded),
   * the list of detected subscriptions/EMIs/memberships with the months each was seen in,
-  * flags: **new** (first appearance is the current month), **price_creep** (amount rose
-    vs the prior cadence), **dormant** (an established recurring charge that lapsed —
-    maybe fine, maybe a missed cancellation worth confirming).
+  * flags: `new` (first appearance is the current month), `price_creep` (amount rose vs the
+    prior cadence), `dormant` (an established recurring charge that lapsed — maybe fine,
+    maybe a missed cancellation worth confirming).
 
 With no prior months the run sees only the current statements: a single occurrence of a
 known-subscription merchant is still surfaced, at **low** confidence with the cadence

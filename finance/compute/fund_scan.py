@@ -1,39 +1,34 @@
 #!/usr/bin/env python3
 """Category scanner — turns "which small-cap fund?" into a deterministic shortlist.
 
-Takes the WHOLE SEBI sub-category from `finance.sources.funds.screen()`, applies the Varsity
-checklist as HARD gates, scores the survivors on a fixed published weight table, and
-emits the top N. Same inputs, same answer, every run, and auditable because the weights
-and the per-component scores are in the output. The universe is never printed — only the
+Takes the WHOLE SEBI sub-category from `funds.screen()`, applies the Varsity checklist as
+HARD gates, scores the survivors on a fixed published weight table, and emits the top N.
+Same inputs, same answer, every run, and auditable because the weights and the
+per-component scores are in the output. The universe is never printed — only the
 decision-grade rows reach stdout.
 
-WHERE THE NUMBERS COME FROM
----------------------------
-* AUM, expense ratio, Sharpe, Sortino, alpha, annualised volatility, trailing returns,
-  fund age and cap mix -> `funds.screen()` (Tickertape, free, unauthenticated).
-* Rolling returns and max drawdown -> **computed here from AMFI NAV history**
-  (`funds.nav_history()` + `rolling.py`'s tested math). Tickertape gates `maxDrawdown` and
-  `avg3yRollingRet` behind a paywall, and a NAV-derived version is reproducible from a
-  primary source — which the paywalled field would not be.
-* Nothing is estimated. A fund missing an input is scored on the rest with the weight
-  redistributed, and if too little is left it is gated out rather than guessed at.
+Rolling returns and max drawdown are computed here from AMFI NAV history rather than read
+off Tickertape: it gates `maxDrawdown` and `avg3yRollingRet` behind a paywall, and a
+NAV-derived figure is reproducible from a primary source where a paywalled field is not.
+Nothing is estimated — a fund missing an input is scored on the rest with the weight
+redistributed, and if too little is left it is gated out rather than guessed at.
 
-THE GATES (hard, applied before any scoring — Varsity ch. 24-26)
----------------------------------------------------------------
-1. **Direct-Growth plan only.** `option == Growth`, and the expense ratio must sit under
-   a Direct-plan ceiling — a Regular-plan TER served on a Direct-plan page is the most
-   common identity error in fund research, and it is ~1.1%/yr of guaranteed drag.
-2. **AUM viability floor.** Below it, an equity scheme has liquidity and viability
-   questions (and its expense ratio has nowhere to fall).
-3. **Fund age >= the window being credited.** You cannot credit a 3-year record to a
-   2-year-old fund. This is a gate, not a penalty.
-4. **NAV independently resolvable.** No AMFI Direct-Growth scheme match means rolling
-   returns and drawdown cannot be recomputed from a primary source, so the fund cannot
-   be verified — it is listed as gated, never silently scored on vendor numbers.
-5. **Fund-manager tenure** is a pending MANUAL gate: no free API publishes it, so it is
-   checked by hand for the shortlist only (never for the whole universe).
+The hard gates, applied before any scoring (Varsity ch. 24-26):
 
-Reached through: get_fund_scan (finance-funds)
+1. Direct-Growth plan only, with the expense ratio under a Direct-plan ceiling. A
+   Regular-plan TER served on a Direct-plan page is the most common identity error in fund
+   research, and it is ~1.1%/yr of guaranteed drag.
+2. AUM viability floor: below it an equity scheme has liquidity and viability questions,
+   and its expense ratio has nowhere to fall.
+3. Fund age >= the window being credited. A 3-year record cannot be credited to a
+   2-year-old fund; this is a gate, not a penalty.
+4. NAV independently resolvable. No AMFI Direct-Growth scheme match means rolling returns
+   and drawdown cannot be recomputed from a primary source, so the fund is listed as gated
+   rather than silently scored on vendor numbers.
+5. Fund-manager tenure is a pending MANUAL gate: no free API publishes it, so it is checked
+   by hand for the shortlist only, never for the whole universe.
+
+Reached through: get_fund_scan.
 """
 from __future__ import annotations
 
@@ -42,12 +37,8 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
-from finance.compute import rolling as R  # the tested rolling-return math, shared with pillar 1
-from finance.spine import envelope as _envelope, f as _f  # the shared envelope + coercion
-
-# --------------------------------------------------------------------------- #
-# the published scoring contract                                              #
-# --------------------------------------------------------------------------- #
+from finance.compute import rolling as R
+from finance.spine import envelope as _envelope, f as _f
 
 # Weights sum to 1.00. Two thirds sit on risk-adjusted behaviour and downside, one third
 # on the structural drags that persist regardless of what the market does next (cost,
@@ -112,9 +103,6 @@ _BAD_PLAN_TOKENS = {"idcw", "dividend", "payout", "bonus", "reinvestment", "rein
 _NOISE_TOKENS = {"fund", "plan", "direct", "growth", "option", "scheme", "the", "of"}
 
 
-# --------------------------------------------------------------------------- #
-# pure scoring primitives                                                      #
-# --------------------------------------------------------------------------- #
 def percentile_ranks(values, higher_is_better=True):
     """[v|None] -> [0..1|None], the fund's rank among the peers that HAVE the metric.
 
@@ -190,9 +178,6 @@ def composite(components, weights=None):
     return round(score, 4), round(wsum / sum(weights.values()), 4), sorted(used)
 
 
-# --------------------------------------------------------------------------- #
-# pure gating                                                                  #
-# --------------------------------------------------------------------------- #
 def gate(row, min_aum_cr, min_age_months, ter_ceiling=DIRECT_TER_CEILING):
     """-> (passed: bool, reasons: [str]). Every Varsity hard gate, in one pure function.
 
@@ -234,9 +219,6 @@ def span_confidence(years):
     return "full-cycle"
 
 
-# --------------------------------------------------------------------------- #
-# pure AMFI name matching                                                      #
-# --------------------------------------------------------------------------- #
 def _tokens(s):
     out, cur = [], []
     for ch in str(s).lower():
@@ -277,14 +259,11 @@ def match_amfi_scheme(fund_name, schemes):
     return best
 
 
-# --------------------------------------------------------------------------- #
-# NAV-derived metrics (rolling + drawdown), computed not bought                #
-# --------------------------------------------------------------------------- #
 def nav_metrics(navs, window_years):
     """[{date, nav}] (ISO, oldest first) -> the metrics Tickertape puts behind a paywall.
 
-    Returns rolling mean/median/min over the window, max drawdown, span in years and the
-    confidence that span earns. Pure — the caller does the fetching.
+    Rolling mean/median/min over the window, max drawdown, span in years and the confidence
+    that span earns. The caller does the fetching.
     """
     dates, values = [], []
     for r in navs or []:
@@ -311,16 +290,13 @@ def nav_metrics(navs, window_years):
     }
 
 
-# --------------------------------------------------------------------------- #
-# assembly (network)                                                           #
-# --------------------------------------------------------------------------- #
 def category_config(category):
     return dict(CATEGORY_DEFAULTS.get(str(category).strip().lower(), DEFAULT_CATEGORY))
 
 
 def _resolve_and_nav(row, schemes, window_years, fresh):
     """One fund: AMFI identity + NAV history + the NAV-derived metrics."""
-    from finance.sources import funds  # imported inside the worker; module-level import is cached
+    from finance.sources import funds  # inside the worker; the module import is already cached
     hit = match_amfi_scheme(row.get("name") or "", schemes)
     if not hit:
         return None, None, ["no AMFI Direct-Growth scheme matched this name"]
@@ -350,7 +326,6 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
         gaps.append(f"no funds returned for category {category!r} — check the SEBI "
                     f"sub-category spelling against screen_funds")
 
-    # --- hard gates ---------------------------------------------------------
     survivors, rejected = [], {}
     for row in universe:
         ok, reasons = gate(row, min_aum_cr, min_age_months, ter_ceiling)
@@ -359,7 +334,7 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
         else:
             rejected[reasons[0]] = rejected.get(reasons[0], 0) + 1
 
-    # --- NAV-derived metrics for the survivors only -------------------------
+    # NAV-derived metrics, for the gate survivors only.
     schemes = (funds.amfi_index(fresh=fresh).get("data") or {}).get("schemes") or []
     if not schemes:
         gaps.append("AMFI scheme list unavailable — rolling returns and drawdown could "
@@ -381,7 +356,7 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     if not scored:
         return _empty(category, window, cfg, universe, rejected, gaps, market_context)
 
-    # --- relative components: percentile-rank within the survivor set --------
+    # Relative components are percentile-ranked within the survivor set.
     raw = {
         "roll_mean":  [s["nav"]["roll_mean"] for s in scored],
         "roll_min":   [s["nav"]["roll_min"] for s in scored],
@@ -394,7 +369,6 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     }
     ranked = {k: percentile_ranks(v, HIGHER_IS_BETTER[k]) for k, v in raw.items()}
 
-    # --- absolute components ------------------------------------------------
     purity_field = cfg["purity_field"]
     for i, s in enumerate(scored):
         comp = {k: ranked[k][i] for k in ranked}
@@ -529,9 +503,6 @@ def _shortlist_row(rank, s, purity_field, years):
     }
 
 
-# --------------------------------------------------------------------------- #
-# market context (read-only pass-through)                                      #
-# --------------------------------------------------------------------------- #
 def load_market_context(path, category):
     """Pull the cap tier's valuation stance out of a market-analysis digest.
 
@@ -560,9 +531,6 @@ def load_market_context(path, category):
     }
 
 
-# --------------------------------------------------------------------------- #
-# output — only decision-grade rows ever reach stdout                          #
-# --------------------------------------------------------------------------- #
 def render_table(result):
     """The compact ranked table. The universe is summarised, never listed."""
     u, g = result["universe"], result["gates"]
@@ -614,7 +582,7 @@ def _cell(v, suffix="", nd=1):
 
 
 def default_out_path(category):
-    from finance import paths  # the single path authority
+    from finance import paths
     return os.path.join(paths.fund_dir(f"{category} scan"), "fund-scan.json")
 
 

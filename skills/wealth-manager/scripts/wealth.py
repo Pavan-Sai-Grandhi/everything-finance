@@ -5,17 +5,15 @@ The orchestrating SKILL fetches (IndMoney net-worth payloads via MCP, the three 
 digests via forked leg-runners) and hands the whole picture here as ONE json file;
 this module owns every number so none is eyeballed:
 
-  - **spine**: total net worth, per-asset-class allocation across all IndMoney classes,
-    equity share, liquid pool, per-holding XIRR summary — from `networth_snapshot` +
-    `networth_allocation_breakdown` + the `finance/compute/holdings.py` positions envelope.
-  - **cross-domain** (the figures no single leg can produce): emergency-fund months of
-    runway, protection-vs-net-worth read, risk posture.
-  - **scorecard**: a status per domain (net worth & allocation, investments, protection,
-    cashflow, emergency fund) with one line each, scored from the spine + leg digests.
+  - spine: total net worth, per-asset-class allocation across all IndMoney classes, equity
+    share, liquid pool, per-holding XIRR summary.
+  - cross-domain, the figures no single leg can produce: emergency-fund months of runway,
+    protection-vs-net-worth read, risk posture.
+  - scorecard: a status per domain with one line each, from the spine + leg digests.
 
-Deterministic, offline, no MCP/network — same discipline as `finance/compute/strategy.py`. Every
-input is sourced upstream (IndMoney first-party state, spoke digests); this only weighs.
-Absent legs/sources degrade to a labelled "not assessed", never a fabricated number.
+Deterministic and offline: every input is sourced upstream (IndMoney first-party state,
+spoke digests) and this only weighs them. Absent legs or sources degrade to a labelled
+"not assessed", never a fabricated number.
 
 Spine schema, scorecard shape, and the input envelope are in `finance/contracts.md`.
 
@@ -33,9 +31,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
 from finance.spine import first as _first  # noqa: E402
 
 
-# --------------------------------------------------------------------------- #
-# tolerant coercion (mirrors finance/compute/holdings.py — fetched values arrive ₹/%-formatted)
-# --------------------------------------------------------------------------- #
 _SCALE_SUFFIXES = (
     ("crores", 1e7), ("crore", 1e7), ("cr", 1e7),
     ("lakhs", 1e5), ("lakh", 1e5), ("l", 1e5),
@@ -66,10 +61,7 @@ def _num(x):
     return None
 
 
-# --------------------------------------------------------------------------- #
-# asset-class canonicalisation — IndMoney's free-text classes → net-worth buckets
-# --------------------------------------------------------------------------- #
-# One bucket per row of the net-worth-level allocation. `market_linked` marks the
+# IndMoney's free-text asset classes map to one bucket per row of the net-worth-level allocation. `market_linked` marks the
 # growth/equity-risk sleeve (drives risk posture); `liquid` marks the emergency-fund
 # eligible pool (cash + FD only — debt/funds may be long-duration, kept out on purpose).
 _CLASSES = [
@@ -104,9 +96,6 @@ def canonical_class(raw):
     return "other"
 
 
-# --------------------------------------------------------------------------- #
-# net-worth spine
-# --------------------------------------------------------------------------- #
 def _breakdown_rows(breakdown):
     """Dig the per-class [{class, value}] list out of a networth_allocation_breakdown
     payload — tolerant to a list, a wrapped list, or a flat {class: value} dict."""
@@ -144,7 +133,6 @@ def build_spine(snapshot=None, breakdown=None, positions_env=None):
     positions = ((positions_env or {}).get("data") or {}).get("positions") or []
     pos_source = (positions_env or {}).get("source")
 
-    # allocation: prefer the official breakdown; fall back to positions
     alloc = {}
     coverage = "complete"
     rows = _breakdown_rows(breakdown)
@@ -179,7 +167,6 @@ def build_spine(snapshot=None, breakdown=None, positions_env=None):
         elif coverage == "complete":
             gaps.append("net-worth total inferred from allocation breakdown (no snapshot)")
 
-    # percentages off the total we will report against
     denom = total if total else alloc_total
     allocation = {}
     for bucket, val in sorted(alloc.items(), key=lambda kv: -kv[1]):
@@ -191,7 +178,6 @@ def build_spine(snapshot=None, breakdown=None, positions_env=None):
     market_linked = sum(alloc.get(b, 0.0) for b in _MARKET_LINKED)
     equity_share_pct = round(market_linked / denom * 100, 1) if denom else None
 
-    # per-holding XIRR summary from the tradeable positions
     xirrs = [(p.get("ticker"), p.get("xirr")) for p in positions if p.get("xirr") is not None]
     if xirrs:
         vals = [x for _, x in xirrs]
@@ -220,9 +206,6 @@ def build_spine(snapshot=None, breakdown=None, positions_env=None):
     }
 
 
-# --------------------------------------------------------------------------- #
-# cross-domain computation (what no single leg can produce)
-# --------------------------------------------------------------------------- #
 def _monthly_expenses(cashflow, profile):
     """Resolve monthly expenses for the emergency-fund runway, honestly labelled.
     profile.monthly_expenses (explicit) → cashflow monthly_outflow → recurring_monthly
@@ -315,9 +298,6 @@ def risk_posture(equity_share_pct, ef_status, prot_status, age=None):
     return {"stance": stance, "equity_share_pct": equity_share_pct, "line": line}
 
 
-# --------------------------------------------------------------------------- #
-# financial-health scorecard — a status per domain, one line each
-# --------------------------------------------------------------------------- #
 _RANK = {"strong": 0, "adequate": 1, "thin": 2, "weak": 2, "critical": 3,
          "not_assessed": 9, "unknown": 9}
 
@@ -419,7 +399,6 @@ def _prioritise(domains, spine, legs, cross):
                             "status": st, "text": text, "next_step": step, "run": run})
         if len(actions) >= 5:
             break
-    # if the foundation is sound and there is room, surface the risk-posture nudge
     if len(actions) < 5 and cross["risk_posture"]["stance"] == "can-add-risk":
         actions.append({"priority": len(actions) + 1, "domain": "risk_posture",
                         "status": "opportunity", "text": "Room to add growth assets",
@@ -427,9 +406,6 @@ def _prioritise(domains, spine, legs, cross):
     return actions
 
 
-# --------------------------------------------------------------------------- #
-# top-level assembly
-# --------------------------------------------------------------------------- #
 def run(picture, snapshot_mode=False):
     """Full picture → {spine, cross_domain, scorecard}. snapshot_mode skips the legs:
     spine + emergency-fund/protection flags only, no scorecard fan-out."""

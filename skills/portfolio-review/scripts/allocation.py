@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Multi-dimensional allocation + concentration engine (portfolio-review).
 
-Pure computation over the canonical positions the shared `finance/compute/holdings.py`
-resolver returns — no fetch, no MCP. The skill enriches each position with the
-dimension tags it gathered (sector, market-cap, AMC, style, asset-class) and the
-pre-aggregated breakdowns IndMoney / mf-analysis look-through supply, then hands
-the bundle here; this module decides breakdowns, drift-vs-target, and the
-concentration breaches with concrete ₹ rebalancing moves. Keeping the arithmetic
-in one tested place is why the skill's report and the `quick` digest can't disagree.
+Pure computation over the canonical positions `finance/compute/holdings.py` returns — no
+fetch, no MCP. The skill enriches each position with the dimension tags it gathered and
+hands the bundle here; this module decides breakdowns, drift-vs-target, and the
+concentration breaches with concrete ₹ rebalancing moves. Keeping the arithmetic in one
+tested place is why the skill's report and the `quick` digest cannot disagree.
 
 Two provenance-honest input styles per dimension:
   * per-holding tag — `sector`, `amc`, single-stock, `asset_class` aggregate by
@@ -44,9 +42,6 @@ DEFAULTS = {
 _SMALL_CAPS = ("small", "micro")
 
 
-# --------------------------------------------------------------------------- #
-# market value                                                                #
-# --------------------------------------------------------------------------- #
 def market_value(h):
     """Current ₹ value of a holding, by precedence. None when nothing resolves."""
     v = h.get("value")
@@ -77,9 +72,6 @@ def _valued(holdings):
     return rows, gaps
 
 
-# --------------------------------------------------------------------------- #
-# breakdowns                                                                   #
-# --------------------------------------------------------------------------- #
 def _pcts(value_map, total):
     """category→₹ into category→{value, pct} (pct of `total`; 0 when total 0)."""
     return {
@@ -121,9 +113,6 @@ def from_breakdown(breakdown, total=None):
     return _pcts(flat, total)
 
 
-# --------------------------------------------------------------------------- #
-# concentration flags                                                         #
-# --------------------------------------------------------------------------- #
 def _flag(dimension, category, pct, value, threshold, total, severity, note):
     """One breach with the concrete ₹ trim back to the threshold."""
     trim = round(value - threshold / 100.0 * total, 2)
@@ -148,7 +137,7 @@ def concentration_flags(holdings, breakdowns=None, thresholds=None):
     if total <= 0:
         return flags
 
-    # single stock — per holding, stocks only (funds are diversified by design)
+    # Stocks only: a fund is diversified by design.
     for h, v in rows:
         if str(h.get("kind", "stock")).lower() == "fund":
             continue
@@ -157,7 +146,6 @@ def concentration_flags(holdings, breakdowns=None, thresholds=None):
             flags.append(_flag("single_stock", h.get("ticker", "?"), pct, v,
                                t["single_stock"], total, "watch", "single-name risk"))
 
-    # sector — per holding tag
     sec = aggregate(holdings, "sector", total)["breakdown"]
     for cat, d in sec.items():
         if cat == "unknown":
@@ -168,7 +156,6 @@ def concentration_flags(holdings, breakdowns=None, thresholds=None):
                                total, "act" if urgent else "watch",
                                "sector concentration" + (" — urgent" if urgent else "")))
 
-    # AMC — per fund tag
     amc = aggregate(holdings, "amc", total)["breakdown"]
     for cat, d in amc.items():
         if cat == "unknown":
@@ -177,7 +164,6 @@ def concentration_flags(holdings, breakdowns=None, thresholds=None):
             flags.append(_flag("amc", cat, d["pct"], d["value"], t["single_amc"],
                                total, "watch", "one fund house"))
 
-    # market cap — small+micro sleeve, from the supplied breakdown
     cap = breakdowns.get("market_cap")
     if cap:
         capb = from_breakdown(cap, total)
@@ -193,9 +179,6 @@ def concentration_flags(holdings, breakdowns=None, thresholds=None):
     return flags
 
 
-# --------------------------------------------------------------------------- #
-# asset-class drift vs target                                                 #
-# --------------------------------------------------------------------------- #
 def asset_drift(holdings, targets=None, thresholds=None):
     """Current equity:debt:cash vs the stated target. Returns per-class current
     pct, target pct, drift in pp, and the ₹ move to close it (+ add / − trim).
@@ -225,9 +208,6 @@ def asset_drift(holdings, targets=None, thresholds=None):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# top-level review                                                            #
-# --------------------------------------------------------------------------- #
 def review(holdings, targets=None, breakdowns=None, thresholds=None):
     """The whole allocation read: per-dimension breakdowns, asset drift, and the
     ranked concentration flags — with coverage + gaps so partial data reads as
@@ -254,9 +234,6 @@ def review(holdings, targets=None, breakdowns=None, thresholds=None):
     }
 
 
-# --------------------------------------------------------------------------- #
-# CLI                                                                         #
-# --------------------------------------------------------------------------- #
 def main():
     ap = argparse.ArgumentParser(description="Multi-dimensional allocation + concentration.")
     ap.add_argument("--book", required=True,

@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
-"""find-trade screening + signal engine (everything-finance plugin).
+"""find-trade screening + signal engine.
 
-find-trade is strategy-AGNOSTIC: it runs whatever ACTIVE, regime-fitting strategy
-spec it is handed (chosen by `strategy-manager pick`). This script is the
-deterministic core of that run — it does NOT decide *what* to trade, it executes a
-spec's screening + signal rules on price data:
+find-trade is strategy-AGNOSTIC: it runs whatever active, regime-fitting spec it is handed
+(chosen by `strategy-manager pick`). This module is the deterministic core of that run — it
+does NOT decide what to trade, it executes a spec's screening and signal rules on price
+data.
 
-  1. screen_compute()  — the local technical cut (spec.screening.technical.compute_filters)
-                         over a universe, using the shared indicators in finance/compute/ta.py.
-                         This is the fallback when the TradingView provider is
-                         unreachable, and the offline-testable heart of the engine.
-  2. build_signal()    — turns a surviving stock into entry / stop / target / RRR /
-                         qty from the spec's entry/exit/sizing blocks.
+The evaluator and signal math live in `finance/compute/strategy.py`, shared verbatim with
+the backtest; this file is just the live-screen orchestration around it.
 
-The evaluator + signal math live in `finance/compute/strategy.py`, shared verbatim with the
-backtest; this file is just the live-screen orchestration around it.
-
-Reached through: run_strategy_screen (finance-market)
+Reached through: run_strategy_screen.
 """
 from __future__ import annotations
 
@@ -28,20 +21,17 @@ from finance import paths
 from finance import spine
 from finance.compute import strategy
 from finance.compute import ta
-from finance.sources import prices  # data spine — EOD history; indicators via ta.py
+from finance.sources import prices
 
 pd = ta.pd
 
-# The screen engine IS finance/compute/strategy.py — re-export the pieces the SKILL workflow
-# the tests reference, so there is exactly one implementation of each.
+# The screen engine IS finance/compute/strategy.py; these re-exports keep the skill workflow
+# and the tests on exactly one implementation of each.
 eval_filter = strategy.eval_filter
 passes_technical = strategy.passes_technical
 build_signal = strategy.build_signal
 
 
-# --------------------------------------------------------------------------- #
-# orchestration                                                               #
-# --------------------------------------------------------------------------- #
 def _spine_loader(years):
     """Default price loader: EOD history through the data spine (`prices.history_df`,
     yfinance under the hood), adjusted so the live screen shares the backtest's series.
@@ -140,9 +130,6 @@ def run(spec, symbols, years=2, capital=500000, out=None):
         gaps)
 
 
-# --------------------------------------------------------------------------- #
-# selftest (synthetic, offline)                                               #
-# --------------------------------------------------------------------------- #
 def _synth(kind):
     """Build a deterministic OHLCV frame: 'uptrend' passes an ema-pullback screen,
     'downtrend' fails it."""

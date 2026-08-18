@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Re-validate an open trade against its original rationale (everything-finance plugin).
+"""Re-validate an open trade against its original rationale.
 
-Given a trade-idea artifact (the YAML find-trade / strategy-manager persist) and
-current price data, this decides — deterministically — whether the trade should be HELD
-or EXITED early, and why. It is the mechanical core of the trade-tracker skill: the skill
-pulls live positions from the broker MCP (Kite/Upstox), then calls this per position so the
-hold/exit call is reproducible rather than vibes.
+Given a trade-idea artifact (the YAML find-trade / strategy-manager persist) and current
+price data, this decides — deterministically — whether the trade should be HELD or EXITED
+early, and why. It is the mechanical core of the trade-tracker skill: the skill pulls live
+positions from the broker MCP, then calls this per position so the hold/exit call is
+reproducible rather than vibes.
 
 Checks, in priority order (first hit wins the verdict):
   1. STOP        — price has breached the stoploss            -> EXIT_STOP
@@ -21,14 +21,14 @@ Price source: yfinance (`<SYMBOL>.NS`) by default, or an OHLCV CSV via `ohlcv` (
 testing). The actual broker fill can be injected with `entry` / `qty` / `ltp` so the report
 reflects the real position, not the planned one.
 
-Reached through: check_trade (finance-market)
+Reached through: check_trade.
 """
 import re
 from datetime import date, datetime
 
 from finance import spine
 from finance.deps import load_yaml
-from finance.sources import prices  # data spine — EOD history fetch in one place
+from finance.sources import prices
 
 _SOURCE = "finance.compute.trade_check"
 
@@ -218,7 +218,6 @@ def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None)
         else sessions_since(rows, doc.get("created"))
     time_hit = (time_stop is not None and held is not None and held >= time_stop)
 
-    # verdict priority
     if stop_hit:
         verdict = "EXIT_STOP"
     elif thesis_fired:
@@ -242,7 +241,6 @@ def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None)
     # typically a hand-written or mis-keyed file whose levels are not under `plan:`.
     unchecked = stop is None and target is None and not invalidations
 
-    # metrics
     unreal_R = None
     if entry is not None and stop is not None and (entry - stop) != 0:
         risk = (entry - stop) if long else (stop - entry)

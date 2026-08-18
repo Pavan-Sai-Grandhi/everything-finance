@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
-"""Shared technical-analysis primitives for the everything-finance plugin.
+"""Shared technical-analysis primitives.
 
-One definition of every indicator and candlestick pattern, imported by every
-skill that computes them (`backtest`, `find-trade`, the `technical-analyst`
-agent) so they agree by construction. Numeric indicators delegate to TA-Lib,
-whose native library must be present (macOS: `brew install ta-lib`) — bootstrapped
-by `_need_talib()`. Candlestick/range patterns stay pure-pandas and geometric.
+One definition of every indicator and candlestick pattern, imported by every skill that
+computes them (`backtest`, `find-trade`, the `technical-analyst` agent) so they agree by
+construction. Numeric indicators delegate to TA-Lib, whose native library must be present
+(macOS: `brew install ta-lib`) — bootstrapped by `_need_talib()`. Candlestick/range
+patterns stay pure-pandas and geometric.
 
-Import from a skill script (skills/<name>/scripts/<x>.py):
-
-    import os, sys
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "..", "..", ".."))
-    from finance.compute import ta
-
-Input is a DataFrame with Open/High/Low/Close/Volume on a DatetimeIndex.
-Indicators return a Series aligned to it (NaN until the lookback fills); pattern
-functions return a boolean Series. Nothing mutates its input. Offline-testable
-except the cache-first yfinance loader (test_ta.py).
+Input is a DataFrame with Open/High/Low/Close/Volume on a DatetimeIndex. Indicators return
+a Series aligned to it (NaN until the lookback fills); pattern functions return a boolean
+Series. Nothing mutates its input.
 """
 from __future__ import annotations
 
@@ -86,11 +78,7 @@ def _ser(arr, index):
     return pd.Series(arr, index=index)
 
 
-# --------------------------------------------------------------------------- #
-# Moving averages & trend                                                      #
-# --------------------------------------------------------------------------- #
 def sma(series, span):
-    """Simple moving average (TA-Lib SMA)."""
     return _ser(talib.SMA(_np(series), timeperiod=span), series.index)
 
 
@@ -106,9 +94,6 @@ def slope_up(series, lookback=5):
     return series > series.shift(lookback)
 
 
-# --------------------------------------------------------------------------- #
-# Momentum & volatility                                                        #
-# --------------------------------------------------------------------------- #
 def rsi(close, period=14):
     """Wilder's RSI (TA-Lib). TA-Lib returns 0 for a perfectly flat window; we map
     only that degenerate no-change case to a neutral 50 (a real downtrend also
@@ -119,7 +104,7 @@ def rsi(close, period=14):
 
 
 def macd(close, fast=12, slow=26, signal=9):
-    """MACD line, signal line, histogram (TA-Lib MACD, classic 12/26/9)."""
+    """MACD line, signal line, histogram — the classic 12/26/9."""
     m, s, h = talib.MACD(_np(close), fastperiod=fast, slowperiod=slow,
                          signalperiod=signal)
     return pd.DataFrame({"macd": _ser(m, close.index),
@@ -141,7 +126,7 @@ def atr(df, period=14):
 
 
 def bollinger(close, period=20, mult=2.0):
-    """Bollinger bands -> DataFrame(mid, upper, lower) (TA-Lib BBANDS)."""
+    """Bollinger bands -> DataFrame(mid, upper, lower)."""
     up, mid, low = talib.BBANDS(_np(close), timeperiod=period,
                                 nbdevup=mult, nbdevdn=mult)
     return pd.DataFrame({"mid": _ser(mid, close.index),
@@ -156,7 +141,7 @@ def adx(df, period=14):
 
 
 def stochastic(df, k=14, d=3):
-    """Slow stochastic -> DataFrame(stoch_k, stoch_d) (TA-Lib STOCH)."""
+    """Slow stochastic -> DataFrame(stoch_k, stoch_d)."""
     sk, sd = talib.STOCH(_np(df["High"]), _np(df["Low"]), _np(df["Close"]),
                          fastk_period=k, slowk_period=d, slowk_matype=0,
                          slowd_period=d, slowd_matype=0)
@@ -165,13 +150,10 @@ def stochastic(df, k=14, d=3):
 
 
 def obv(df):
-    """On-balance volume (TA-Lib OBV) — cumulative volume flow."""
+    """On-balance volume — cumulative volume flow."""
     return _ser(talib.OBV(_np(df["Close"]), _np(df["Volume"])), df.index)
 
 
-# --------------------------------------------------------------------------- #
-# Levels, volume, relative strength                                           #
-# --------------------------------------------------------------------------- #
 def rolling_high(series, span, exclude_current=True):
     """Highest value over `span` bars. exclude_current shifts by 1 so a
     'break above the prior N-day high' test doesn't compare today to itself."""
@@ -214,9 +196,6 @@ def fib_levels(swing_low, swing_high):
     }
 
 
-# --------------------------------------------------------------------------- #
-# Candlestick / range patterns (boolean Series — geometric, not TA-Lib CDL)   #
-# --------------------------------------------------------------------------- #
 def _body(df):
     return (df["Close"] - df["Open"]).abs()
 
@@ -249,7 +228,7 @@ def piercing(df):
 
 
 def bullish_reversal(df):
-    """Any of the bullish reversal candles we screen on — convenience union."""
+    """Any of the bullish reversal candles — convenience union."""
     return bullish_engulfing(df) | hammer(df) | piercing(df)
 
 
@@ -321,9 +300,6 @@ def coil_breakout(df, valid_for=3):
     return df["Close"] > coil_high
 
 
-# --------------------------------------------------------------------------- #
-# Derived signals (boolean) — common cross/threshold/breakout events           #
-# --------------------------------------------------------------------------- #
 def _cross_up(a, b):
     return (a > b) & (a.shift(1) <= b.shift(1))
 
@@ -410,9 +386,6 @@ def new_high_52w(df):
     return df["Close"] >= rolling_high(df["High"], 252, exclude_current=False)
 
 
-# --------------------------------------------------------------------------- #
-# Feature registry + resolver — the vocabulary the strategy engine draws on    #
-# --------------------------------------------------------------------------- #
 # Derived/pattern features that only SOME strategies want — computed on demand
 # via materialize(), kept out of add_indicators. Two ways a spec names one:
 #   * a registered name below (a pattern or a derived signal), or
@@ -508,9 +481,6 @@ def materialize(df, names):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Indicator bundle + OHLCV loader (the two things every consumer wants)        #
-# --------------------------------------------------------------------------- #
 def add_indicators(df):
     """Attach the standard swing indicator set — the single source of truth for
     the column names every skill keys off. Patterns are on-demand via materialize."""

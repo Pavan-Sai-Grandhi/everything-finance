@@ -22,8 +22,6 @@ SERVER = create(
 )
 
 
-# --- fundamentals: screener.in ------------------------------------------------
-
 @SERVER.tool(
     description="Company fundamentals from screener.in: headline ratios, 10-year P&L and "
                 "balance sheet, quarterly results, shareholding pattern, peers and "
@@ -54,8 +52,6 @@ def run_fundamental_screen(query: str, fresh: bool = False) -> dict:
 def get_stock_ratios(sid: str, fresh: bool = False) -> dict:
     return _funds.stock_ratios(sid, fresh=fresh)
 
-
-# --- news & filings: Google News RSS + NSE ------------------------------------
 
 @SERVER.tool(
     description="Company news over the last `days`, dated, deduped and classified "

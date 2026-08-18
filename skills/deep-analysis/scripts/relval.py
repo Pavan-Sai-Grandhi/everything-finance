@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Relative-valuation math for the valuation leg (spec §5).
+"""Relative-valuation math for the valuation leg.
 
 Per Damodaran, relative multiples are shortcuts to the same DCF drivers (cash
 flow/payout, growth, risk), so the valuation leg triangulates intrinsic (DCF) and

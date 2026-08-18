@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
-"""Spec -> signal engine for the everything-finance plugin.
+"""Spec -> signal engine.
 
-The ONE place a strategy spec becomes trade logic (`ta.py` turns OHLCV into
-columns; this turns spec + columns into entries/stops/targets/size). The live
-screen (`screen.py`, latest bar) and the backtest (`backtest.py`,
-every bar) both sit on it, so they can't disagree about what a strategy means —
-which is what makes the backtest strategy-agnostic.
+The ONE place a strategy spec becomes trade logic (`ta.py` turns OHLCV into columns; this
+turns spec + columns into entries/stops/targets/size). The live screen (`screen.py`, latest
+bar) and the backtest (`backtest.py`, every bar) both sit on it, so they cannot disagree
+about what a strategy means — which is what makes the backtest strategy-agnostic.
 
-Two halves:
-  1. A tiny SAFE vectorized filter language (NOT python eval) over indicator
-     columns — the single evaluator both paths call.
-  2. build_signal() -> a live entry/stop/target/size dict; build_bt_strategy() ->
-     a Backtesting.py Strategy class driven entirely by the spec.
-
-Pure/deterministic except build_bt_strategy (imports Backtesting.py); the filter
-language and signal math are unit-tested offline (`finance/tests/test_screen.py`).
+The filter language is a tiny SAFE vectorized evaluator, NOT python eval.
 """
 from __future__ import annotations
 
@@ -25,9 +17,6 @@ from finance.compute import ta
 pd = ta.pd
 
 
-# --------------------------------------------------------------------------- #
-# The SAFE filter language — ONE vectorized evaluator for both paths           #
-# --------------------------------------------------------------------------- #
 # Evaluated over a whole indicator DataFrame, returning a boolean Series aligned
 # to it. Supported forms (case-insensitive AND/OR/BETWEEN):
 #   "<col>"                       bare column -> truthy        (e.g. "ema50_rising")
@@ -97,9 +86,6 @@ def passes_technical(df, filters):
     return (len(reasons) == 0), reasons
 
 
-# --------------------------------------------------------------------------- #
-# Spec introspection                                                           #
-# --------------------------------------------------------------------------- #
 def referenced_features(spec):
     """The features a spec mentions in its technical/entry expressions — registered
     patterns/signals or parameterized indicator tokens (ema100, rsi9, hh50, ...) —
@@ -156,9 +142,6 @@ def exit_signal_series(df, spec):
     return out.fillna(False)
 
 
-# --------------------------------------------------------------------------- #
-# Stop / target / size — the risk layer, shared by live and historical         #
-# --------------------------------------------------------------------------- #
 def floor_stop(entry, stop, atr):
     """Floor a stop's distance from entry at the wider of 0.5*ATR and 1% of price.
     A narrow-range entry (NR/inside bar, a squeeze low) can sit a hair under the
@@ -228,9 +211,6 @@ def build_signal(df, spec, capital, entry_override=None):
     }
 
 
-# --------------------------------------------------------------------------- #
-# Backtest strategy factory — the spec, as a Backtesting.py Strategy            #
-# --------------------------------------------------------------------------- #
 def prepare_backtest_frame(df, spec):
     """Indicator + feature columns + a numeric `entry_signal` (1.0/0.0) column,
     ready for Backtesting.py — so the backtest never re-derives the entry."""

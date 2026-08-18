@@ -94,6 +94,20 @@ Now, with no stop, no target and no `thesis_invalidation`, the verdict carries a
 "this HOLD is the absence of a check, not a passed one" — plus a `manual_review` entry.
 A well-formed plan, and a thesis-only trade, still return clean.
 
+### D8 — the shared cache stamp could be shadowed by a source's own date  ✅ FIXED
+**Severity: medium.** D5 fixed `setdefault` on the freshness stamp in three source
+modules, but missed `spine.write_cache`, the shared implementation the rest use —
+which still carried the exact bug the other three now have comments warning against.
+
+Live proof it mattered: `prices.quote()` publishes TradingView's own `date` in `data`,
+so `setdefault` never wrote a stamp at all. Freshness was decided by the source's
+opinion of the date rather than by when we fetched. Correct today only because the two
+coincide.
+
+The stamp now lives under a reserved `_cached_on` key and is assigned, so a source's
+`date` and our fetch stamp coexist and neither can shadow the other. Existing cache
+files carrying the old key simply miss and refetch once.
+
 ## Verified authentic
 
 | Tool | Evidence |

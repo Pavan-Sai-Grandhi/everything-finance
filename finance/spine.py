@@ -90,11 +90,14 @@ def norm_symbol(value):
     return s
 
 
+# Reserved: a source's own "date" must never be mistaken for our fetch stamp.
+CACHE_STAMP = "_cached_on"
+
 def today():
     return date.today().isoformat()
 
 
-def read_cache(path, fresh, stamp_key="date", max_age_days=0):
+def read_cache(path, fresh, stamp_key=CACHE_STAMP, max_age_days=0):
     """The cached envelope, or None. `max_age_days=0` means it must carry today's stamp.
 
     A corrupt or unreadable cache file returns None — it never blocks a fetch.
@@ -118,9 +121,15 @@ def read_cache(path, fresh, stamp_key="date", max_age_days=0):
     return blob if age <= max_age_days else None
 
 
-def write_cache(path, env, stamp_key="date"):
-    """Stamp the envelope with today's date and persist it. Failure to write is ignored."""
-    env.setdefault("data", {}).setdefault(stamp_key, today())
+def write_cache(path, env, stamp_key=CACHE_STAMP):
+    """Stamp the envelope with our fetch date and persist it. A failed write is ignored.
+
+    Assigned under a reserved key, never setdefault under a shared one: several sources
+    publish their own `date` in `data`, and an inherited value makes the stamp a no-op —
+    freshness would then be judged by the source's opinion of the date rather than by
+    when we fetched. The source's own date field is left untouched.
+    """
+    env.setdefault("data", {})[stamp_key] = today()
     try:
         with open(path, "w") as fh:
             json.dump(env, fh, ensure_ascii=False)

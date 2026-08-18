@@ -50,8 +50,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
                    os.path.dirname(os.path.abspath(__file__))))))
 from finance.deps import need as _need  # noqa: E402
 
-# ----------------------------------------------------------------------------- helpers
-
 def _as_path(value, n, default):
     """Expand a scalar OR a list into an N-length list. Last value carries forward."""
     if value is None:
@@ -172,8 +170,6 @@ def _cum_discount(wacc_path):
     return factors
 
 
-# ----------------------------------------------------------------------------- core
-
 def value(spec):
     """Run the DCF. Returns a result dict. Raises ValueError on invalid input/model."""
     n = int(spec.get("years", 10))
@@ -187,7 +183,6 @@ def value(spec):
     s2c = _as_path(spec.get("sales_to_capital"), n, 2.0)
     wacc, wacc_detail = resolve_wacc(spec, n)
 
-    # terminal assumptions
     g_T = float(spec.get("terminal_growth", 0.04))
     wacc_T = float(spec.get("terminal_wacc", wacc[-1]))
     margin_T = float(spec.get("terminal_margin", margin[-1]))
@@ -230,7 +225,6 @@ def value(spec):
         })
         prev_rev = rev
 
-    # terminal value
     rev_T1 = prev_rev * (1.0 + g_T)
     nopat_T1 = rev_T1 * margin_T * (1.0 - tax_T)
     reinvest_rate_T = g_T / roic_T
@@ -449,7 +443,6 @@ def story_sensitivity(spec, growth_shifts=(-0.04, -0.02, 0.0, 0.02, 0.04),
                 "these are the levers a growth stock's value actually turns on.",
     }
 
-    # Duration read: keep the rate, lengthen how long the high-growth phase lasts.
     g = spec.get("growth_glide")
     if g:
         dur = []
@@ -465,8 +458,6 @@ def story_sensitivity(spec, growth_shifts=(-0.04, -0.02, 0.0, 0.02, 0.04),
         grid["duration"] = dur
     return grid
 
-
-# ----------------------------------------------------------------------------- reverse DCF
 
 def reverse_dcf(spec, target_per_share=None, solve="growth", tol=1e-4, max_iter=200):
     """Solve the DCF backwards: hold every assumption fixed except ONE lever and find the
@@ -559,8 +550,6 @@ def reverse_dcf(spec, target_per_share=None, solve="growth", tol=1e-4, max_iter=
         out["base_revenue_cagr"] = round(base_cagr, 6)
     return out
 
-
-# ----------------------------------------------------------------------------- io
 
 def load_inputs(path):
     with open(path) as f:

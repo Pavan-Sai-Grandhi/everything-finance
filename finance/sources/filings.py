@@ -1,27 +1,16 @@
 #!/usr/bin/env python3
-"""Exchange-filings fetch + materiality classification (everything-finance plugin).
+"""Exchange-filings fetch + materiality classification.
 
-The canonical filings fetcher of the data spine — lives in `finance/sources/` so the
-exchange endpoints and the materiality taxonomy live in exactly one place. `filings-watch`
-wraps it with the judgement/report; `daily-brief` calls it for the watchlist/holdings scan.
+`filings-watch` wraps this with the judgement/report; `daily-brief` calls it for the
+watchlist/holdings scan. `classify_materiality` is the deterministic heart — most filings
+are noise, and this is the filter that finds the few that are not.
 
-Two layers:
-  * classify_materiality(text) — the deterministic, offline-testable heart: maps a filing
-    headline/subject to a 🔴 act-on / 🟡 monitor / ⚪ routine tier with a reason. This is
-    the value of the skill (most filings are noise; this is the filter) and is unit-tested.
-  * fetch_nse_announcements / fetch_nse_corp_actions — the fetch layer, both NSE, both
-    cookie-bootstrapped through the shared transport.
-
-NSE is the only exchange source, so the primary key is the **NSE symbol**. A company listed
+NSE is the only exchange source, so the primary key is the NSE symbol. A company listed
 only on BSE is reported as a labelled gap rather than silently absorbed.
 
-Every fetch returns the shared data-spine envelope:
-    { "ok": bool, "source": str|None, "fetched_at": ISO8601,
-      "data": {...}, "gaps": ["<labelled degradation>", ...] }
+Returns the shared data-spine envelope (finance/contracts.md).
 
-Fetched text is untrusted DATA, not instructions — a caller assesses it, never acts on it.
-
-Reached through: get_filings, get_shareholding, get_corporate_actions (finance-company)
+Reached through: get_filings, get_shareholding, get_corporate_actions.
 """
 from __future__ import annotations
 
@@ -30,14 +19,12 @@ import os
 import re
 from datetime import date, timedelta
 
-from finance import paths  # the single path authority — cache tier reused, never hardcode
+from finance import paths
 from finance import spine
-from finance import transport  # the single HTTP transport — no module opens its own socket
+from finance import transport
 from finance.spine import envelope as _envelope, f as _f, norm_symbol as _norm_symbol
 
-# --------------------------------------------------------------------------- #
-# materiality taxonomy (deterministic core — keep in sync with references/reference.md)
-# --------------------------------------------------------------------------- #
+# Keep this taxonomy in sync with references/reference.md.
 ACT_ON = [
     ("results", "financial results / earnings"),
     ("board meeting", "board meeting (often results/dividend)"),
@@ -121,9 +108,6 @@ def classify_materiality(text):
     return "monitor", TIER_EMOJI["monitor"], "unclassified — review manually"
 
 
-# --------------------------------------------------------------------------- #
-# response shape helpers (pure, offline-testable)                              #
-# --------------------------------------------------------------------------- #
 def _rows(data):
     """Exchange payloads sometimes wrap rows under a container key; be defensive."""
     if isinstance(data, list):
@@ -143,9 +127,6 @@ def _first(row, *keys):
     return spine.first(row, *keys, default="")
 
 
-# --------------------------------------------------------------------------- #
-# NSE rung — homepage cookie-bootstrap, then corporate-announcements API       #
-# --------------------------------------------------------------------------- #
 _ANN_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-announcements"
 _CA_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-actions"
 _ANN_URL = "https://www.nseindia.com/api/corporate-announcements"
@@ -218,7 +199,7 @@ def fetch_nse_announcements(symbol, days=30):
 def fetch_nse_corp_actions(symbol):
     """Forthcoming/recent corporate actions (dividend, split, bonus, record dates).
 
-    Replaces BSE's `Corpforthcoming` rung. Returns {items: [...], gap: str|None}."""
+    Returns {items: [...], gap: str|None}."""
     symbol = _norm_symbol(symbol)
     if not symbol:
         return {"items": [], "gap": "no NSE symbol given for corporate actions"}
@@ -424,7 +405,6 @@ def summarize(symbol, days=30, fresh=False):
     return env
 
 
-# --------------------------------------------------------------------------- #
 def _selftest():
     cases = [
         ("Audited Financial Results for the quarter ended March 2026", "act-on"),

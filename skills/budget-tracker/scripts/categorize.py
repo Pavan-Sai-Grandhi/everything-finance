@@ -2,7 +2,7 @@
 """Categorize a normalized transaction table — durable map first, taxonomy second.
 
 The one place a merchant becomes a category, so the live review and any re-run agree.
-Resolution order per transaction (design Section 1):
+Resolution order per transaction:
 
     durable merchant→category map  →  reference.md taxonomy tokens  →  UNCATEGORIZED
 
@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
                    os.path.dirname(os.path.abspath(__file__))))))
 from finance import paths  # noqa: E402
 
-# --- taxonomy (mirrors references/reference.md) ------------------------------
+# Mirrors references/reference.md.
 # Ordered: more-specific categories first so an overlapping narration resolves to the
 # narrower one (SWIGGY INSTAMART -> Groceries, not Dine, because INSTAMART is scanned
 # before SWIGGY). Each category rolls up into one of the five workbook buckets.
@@ -60,7 +60,6 @@ TAXONOMY = [
     ("Income", ["SALARY", "SAL CREDIT", "DIVIDEND", "INTEREST CREDIT", "REFUND"]),
 ]
 
-# category -> workbook bucket
 CATEGORY_BUCKET = {
     "Groceries": "Essential",
     "Utilities": "Essential",
@@ -182,8 +181,6 @@ def categorize(transactions, merchant_map):
     }
 
 
-# --- durable map I/O ---------------------------------------------------------
-
 def load_map(path=None):
     path = path or paths.merchant_map_path()
     if not os.path.isfile(path):
@@ -210,8 +207,6 @@ def apply_correction(merchant_map, description, category):
     merchant_map[token] = category
     return token
 
-
-# --- CLI ---------------------------------------------------------------------
 
 def _main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)

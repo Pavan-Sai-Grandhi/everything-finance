@@ -1,43 +1,28 @@
 #!/usr/bin/env python3
 """The plugin's single market-of-record — computes market state, emits a compact digest.
 
-WHAT THIS IS
-------------
 The one place the plugin decides what the market is doing: trend, posture, stock-level
 breadth, cap-tier valuation percentiles, institutional flows and the cross-asset backdrop.
 Every other skill reads this answer instead of computing its own, so they cannot disagree
 about the tape or re-download the same indices on the same morning.
 
-THE DESIGN RULE — compute wide, report narrow
----------------------------------------------
-All fetching and all arithmetic happen HERE, deterministically, in Python. The full result
-is persisted as JSON. What crosses into a model's context is the **digest**: ~30 lines of
-decision-grade numbers. A model reasoning about the market needs "Smallcap P/B at the 77th
-percentile of 10 years, dividend yield at the 9th" — never 122 monthly samples, never 500
-screener rows. Everything here exists to make that one compact statement trustworthy.
+Compute wide, report narrow: all fetching and arithmetic happen here and the full result is
+persisted as JSON, but what crosses into a model's context is the digest — ~30 lines of
+decision-grade numbers. Indicator values come from `ta.py` and raw data from
+`sources/market.py` / `sources/prices.py`, so this module owns interpretation only.
 
-Indicator values come from `finance/compute/ta.py` (TA-Lib) and raw data from
-`finance/sources/market.py` / `finance/sources/prices.py`, so this script owns
-*interpretation* only — never a second definition of
-an EMA or a second path to an endpoint.
+FROZEN KEY NAMES (do not rename): `strategy-manager/scripts/select_strategy.py` gates on
+exactly four key paths, so renaming one silently breaks every strategy spec's
+`regime_required` — `market_trend`, `trend_detail.above_ema200`, `volatility.vix`,
+`breadth.pct_sectors_above_ema50`. The posture key is `market_posture`, never
+`risk_posture`: wealth-manager uses that name for a personal balance-sheet posture and the
+two would collide.
 
-FROZEN KEY NAMES (do not rename)
---------------------------------
-`strategy-manager/scripts/select_strategy.py` gates on exactly four key paths, so renaming
-one silently breaks every strategy spec's `regime_required`: `market_trend`,
-`trend_detail.above_ema200`, `volatility.vix`, `breadth.pct_sectors_above_ema50`. The
-posture key is `market_posture`, never `risk_posture` — wealth-manager uses that name for a
-personal balance-sheet posture and the two would collide.
+Modes: `quick` reuses today's artifact if it exists (zero fetches) — this is what other
+skills call, so N skills in a day cost one computation; `standard` computes every rung;
+`deep` adds regime-transition history and the per-sector valuation table.
 
-MODES
------
-  quick     reuse today's artifact if it exists (zero fetches); else compute standard.
-            This is what OTHER skills call — N skills in a day cost one computation.
-  standard  compute every rung, write the artifact, emit the digest.
-  deep      standard + regime-transition history (free: diffs prior dated artifacts)
-            + the per-sector valuation table.
-
-Reached through: get_market_context (finance-market)
+Reached through: get_market_context.
 """
 from __future__ import annotations
 
@@ -46,10 +31,10 @@ import os
 import statistics
 from datetime import date
 
-from finance import paths                 # the single path authority
-from finance.compute import ta            # the indicator-of-record (TA-Lib)
-from finance.sources import market        # the market-wide data spine
-from finance.sources import prices        # EOD history
+from finance import paths
+from finance.compute import ta
+from finance.sources import market
+from finance.sources import prices
 
 NIFTY = "^NSEI"
 
@@ -59,9 +44,6 @@ NIFTY = "^NSEI"
 STANCE_BANDS = [(25, "cheap"), (45, "below average"), (65, "fair"), (85, "rich")]
 
 
-# --------------------------------------------------------------------------- #
-# pure classifiers (offline-testable; no fetching, no I/O)                     #
-# --------------------------------------------------------------------------- #
 def classify_trend(above50, above200, slope_up):
     """up / range / down — the taxonomy every strategy spec's `regime_required.
     market_trend` is written against, so the labels are part of the contract."""
@@ -138,9 +120,6 @@ def _pct(count_of):
     return round(100.0 * count_of["count"] / count_of["of"], 1)
 
 
-# --------------------------------------------------------------------------- #
-# rungs                                                                        #
-# --------------------------------------------------------------------------- #
 def _trend(gaps):
     """Nifty 50 trend via the canonical TA-Lib EMA — not a hand-rolled pandas ewm."""
     df, g = prices.history_df(NIFTY, period="2y", adjusted=True)
@@ -322,9 +301,6 @@ def _transitions(limit=6):
     return out
 
 
-# --------------------------------------------------------------------------- #
-# compute + digest                                                             #
-# --------------------------------------------------------------------------- #
 def compute(mode="standard", years=10):
     gaps = []
     trend, trend_detail, as_of = _trend(gaps)

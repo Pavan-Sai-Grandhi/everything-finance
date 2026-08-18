@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decide whether `standard` mode runs a second debate round (spec §3).
+"""Decide whether `standard` mode runs a second debate round.
 
 `standard` runs one round (bull-r1, bear-r1) by default and escalates to round 2
 only on *genuine divergence*, defined deterministically from the two round-1
