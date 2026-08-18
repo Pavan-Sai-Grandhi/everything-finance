@@ -32,3 +32,6 @@ venv/
 # a docs/ subtree that never ships. Anything else under docs/ is shippable.
 docs/.local/
 docs/.superpowers/
+
+# Lavish Editor artifacts (local review surfaces)
+.lavish/
