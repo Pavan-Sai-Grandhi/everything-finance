@@ -612,7 +612,7 @@ def _cell(v, suffix="", nd=1):
 
 def default_out_path(category):
     from finance import paths  # the single path authority
-    return os.path.join(paths.fund_dir(f"{category} scan"), "scanner.json")
+    return os.path.join(paths.fund_dir(f"{category} scan"), "fund-scan.json")
 
 
 def report(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,

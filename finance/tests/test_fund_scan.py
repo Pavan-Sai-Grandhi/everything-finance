@@ -169,7 +169,7 @@ SCAN_RESULT = {
 
 _orig_scan = S.scan
 with tempfile.TemporaryDirectory() as tmp:
-    out = os.path.join(tmp, "scanner.json")
+    out = os.path.join(tmp, "fund-scan.json")
     try:
         S.scan = lambda **kw: dict(SCAN_RESULT)
         env = S.report(category="Small Cap Fund", top=2, out=out)

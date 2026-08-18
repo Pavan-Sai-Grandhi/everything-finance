@@ -1,6 +1,6 @@
 ---
 name: mf-analysis
-description: The plugin's mutual-fund authority — research or compare any Indian fund, scan a whole SEBI category down to a shortlist, AND review the funds the user holds, across two pillars: past performance (rolling returns, drawdown, Sortino from NAV history) and forward-looking quality (full look-through portfolio valuation, style + drift, AMC & manager trust), read against live market context. Runs `quick` (a fast descriptive digest other skills consume) or `deep` (the full two-pillar verdict). Use whenever the user asks about a mutual fund, SIP choice, comparing funds, "is X fund good", which index/flexicap/smallcap fund to pick, whether to switch or replace a fund, or wants to review their MF portfolio — even casual phrasings like "where should my SIP go".
+description: The plugin's mutual-fund authority — research or compare any Indian fund, scan a whole SEBI category down to a shortlist, AND review the funds the user holds, across two pillars: past performance (rolling returns and drawdown computed from NAV history, risk measures from the category screen) and forward-looking quality (full look-through portfolio valuation, style + drift, AMC & manager trust), read against live market context. Runs `quick` (a fast descriptive digest other skills consume) or `deep` (the full two-pillar verdict). Use whenever the user asks about a mutual fund, SIP choice, comparing funds, "is X fund good", which index/flexicap/smallcap fund to pick, whether to switch or replace a fund, or wants to review their MF portfolio — even casual phrasings like "where should my SIP go".
 argument-hint: "FUND NAME(s) / category / 'review my funds' [--quick] (e.g. 'best smallcap fund', 'Parag Parikh vs UTI Nifty 50')"
 allowed-tools: WebFetch, WebSearch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*, mcp__finance-funds__*
 ---
@@ -79,7 +79,7 @@ Each row carries invested / current / XIRR. Cap-split comes from the look-throug
 Write to `artifacts/funds/<SCHEME>/YYYY-MM-DD/` (`paths.fund_dir`; for a comparison use the slug `<a>-vs-<b>`, for a category scan `<category>-scan`):
 - `mf-analysis.md` — the verdict + both-pillar metrics (the durable record `paths.latest_prior` finds on a re-run).
 - `mf-analysis.html` — the rich render of `assets/fund-comparison.html`.
-- the scan and look-through work papers — `get_fund_scan` writes `scanner.json` and returns its `report_path`.
+- the scan and look-through work papers — `get_fund_scan` writes `fund-scan.json` and returns its `report_path`.
 
 `quick` writes only the compact digest to `mf-analysis.md` — no HTML, no work papers.
 
