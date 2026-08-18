@@ -403,26 +403,3 @@ def summarize(symbol, days=30, fresh=False):
         except Exception:  # noqa: BLE001
             pass
     return env
-
-
-def _selftest():
-    cases = [
-        ("Audited Financial Results for the quarter ended March 2026", "act-on"),
-        ("Resignation of Chief Financial Officer", "act-on"),
-        ("Creation of pledge over promoter shares", "act-on"),
-        ("Intimation of Investor Meet under Regulation 30", "monitor"),
-        ("Capex update for the Gujarat plant", "monitor"),
-        ("Closure of Trading Window", "routine"),
-        ("Newspaper publication of audited results", "routine"),
-        ("Compliance Certificate under Regulation 74(5)", "routine"),
-        ("Some entirely novel corporate development", "monitor"),  # default
-    ]
-    ok = True
-    for text, want in cases:
-        tier, emoji, reason = classify_materiality(text)
-        status = "ok " if tier == want else "FAIL"
-        if tier != want:
-            ok = False
-        print(f"  {status} [{emoji} {tier:7}] {text[:50]}  -> {reason}")
-    print(f"\nselftest: {'PASS' if ok else 'FAIL'}")
-    return ok

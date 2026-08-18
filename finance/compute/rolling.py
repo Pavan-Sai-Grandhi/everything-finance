@@ -12,7 +12,6 @@ Library only: the math behind get_fund_scan.
 from __future__ import annotations
 
 import statistics
-from datetime import datetime, timedelta
 
 YEAR_DAYS = 365.25
 
