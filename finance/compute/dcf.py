@@ -33,12 +33,13 @@ Value bridge:
 
 All money inputs/outputs are in the SAME unit (use ₹ Crore consistently); shares in
 the same count unit (Crore) so per_share comes out in ₹. Run with --selftest for a
-worked check, or feed a YAML/JSON input file (see assets/dcf-inputs.example.yml).
+worked check, or feed a YAML/JSON input file (see
+skills/dcf-valuation/assets/dcf-inputs.example.yml).
 
-Usage (from the plugin root, or anywhere with PYTHONPATH=<plugin-root>):
-  python3 -m finance.compute.dcf --inputs dcf-inputs.yml \
+Usage:
+  PYTHONPATH=<plugin> python3 -m finance.compute.dcf --inputs dcf-inputs.yml \
       --out artifacts/stocks/RELIANCE/2026-06-12/dcf.json
-  python3 -m finance.compute.dcf --selftest
+  PYTHONPATH=<plugin> python3 -m finance.compute.dcf --selftest
 Exit: 0 = valued, 2 = input/usage error, 3 = model-invalid (e.g. wacc<=g).
 """
 import argparse
@@ -47,9 +48,7 @@ import os
 import sys
 from functools import reduce
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-                   os.path.abspath(__file__)))))
-from finance.deps import need as _need  # noqa: E402
+from finance.deps import need as _need
 
 def _as_path(value, n, default):
     """Expand a scalar OR a list into an N-length list. Last value carries forward."""
@@ -582,7 +581,9 @@ SELFTEST_SPEC = {
 
 def main():
     ap = argparse.ArgumentParser(description="Story-driven FCFF DCF (Damodaran).")
-    ap.add_argument("--inputs", help="YAML/JSON input file (see assets/dcf-inputs.example.yml)")
+    ap.add_argument("--inputs",
+                    help="YAML/JSON input file "
+                         "(see skills/dcf-valuation/assets/dcf-inputs.example.yml)")
     ap.add_argument("--out", help="write result JSON here")
     ap.add_argument("--sensitivity", action="store_true", help="also emit a WACC x g grid")
     ap.add_argument("--story", action="store_true",

@@ -15,9 +15,9 @@ Every input comes from the screener.in data-pack (ratios + peers — already
 whitelisted). The expected-growth input for PEG is a labelled estimate (basis
 stated), never fabricated.
 
-CLI (from the plugin root, or anywhere with PYTHONPATH=<plugin-root>):
-  python3 -m finance.compute.relval --figures figures.json
-  python3 -m finance.compute.relval --selftest
+CLI:
+  PYTHONPATH=<plugin> python3 -m finance.compute.relval --figures figures.json
+  PYTHONPATH=<plugin> python3 -m finance.compute.relval --selftest
 """
 from __future__ import annotations
 
