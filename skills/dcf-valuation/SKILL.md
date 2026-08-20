@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Bash, WebFetch, mcp__finance-market__*, mcp__finance
 
 # DCF Valuation — story-driven intrinsic value (Damodaran FCFF)
 
-Read `references/reference.md` first — it owns the method: the life-cycle diagnosis, the levers and where to source each, country risk and beta, the terminal excess-return call, the post-operating adjustments, the capitalisation adjustments, every engine flag, and the devil's-advocate discipline. This SKILL is the workflow on top of the bundled engine `scripts/dcf.py`.
+Read `references/reference.md` first — it owns the method: the life-cycle diagnosis, the levers and where to source each, country risk and beta, the terminal excess-return call, the post-operating adjustments, the capitalisation adjustments, every engine flag, and the devil's-advocate discipline. This SKILL is the workflow on top of the shared engine `finance/compute/dcf.py`.
 
 **Sources for this skill only:** `finance-company` `get_company_fundamentals` (consolidated financials, and the `documents` links to the annual report / filings, which you read with `WebFetch`) and `finance-market` `get_quote` (current price).
 
@@ -19,7 +19,7 @@ Read `references/reference.md` first — it owns the method: the life-cycle diag
 3. **Write the inputs file** from `assets/dcf-inputs.example.yml` → `artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml` (`paths.stock_dir(symbol, date)`), every value carrying a source comment.
 4. **Run the engine** (forward valuation + both sensitivity grids + reverse DCF):
    ```bash
-   python3 <plugin>/skills/dcf-valuation/scripts/dcf.py --inputs artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml \
+   PYTHONPATH=<plugin> python3 -m finance.compute.dcf --inputs artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml \
        --sensitivity --story --reverse --out artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf.json
    ```
    Exit 3 = model-invalid (e.g. WACC ≤ terminal growth) — fix the input, never override the guard. The script auto-installs `pyyaml` if missing. `--reverse` defaults to solving for **growth** against `current_price`; add `--reverse-solve margin` for the implied-margin version, or `--reverse-target <price>` to test a different price.

@@ -61,7 +61,7 @@ owns and what it is worth, never a decision input. See CLAUDE.md rule 3.
 miss; `load_yaml(path)` parses YAML via `need`. Skill scripts are run directly rather than
 installed, so a missing dependency self-heals instead of tracebacking. Consumers:
 `compute/trade_check.py`, `strategy-manager/scripts/{select_strategy,aggregate_performance}.py`,
-`dcf-valuation/scripts/dcf.py`. Kept out of `compute/ta.py` so a caller needing only PyYAML
+`compute/dcf.py`. Kept out of `compute/ta.py` so a caller needing only PyYAML
 does not drag in pandas and the TA-Lib bootstrap.
 
 ### `finance/paths.py` — the artifact-path authority

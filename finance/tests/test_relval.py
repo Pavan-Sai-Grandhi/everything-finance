@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Offline tests for the relative-valuation math (spec §5). No network. Run:
-  python3 skills/deep-analysis/scripts/test_relval.py
+  python3 finance/tests/test_relval.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))))
-import relval  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import relval  # noqa: E402
 from finance.tests.harness import approx, check, summary  # noqa: E402
 
 

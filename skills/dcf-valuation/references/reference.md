@@ -1,6 +1,6 @@
 # DCF valuation method — Damodaran's story-driven FCFF (self-contained)
 
-Distilled from Aswath Damodaran's *The Little Book of Valuation* / *Narrative and Numbers*. This file is the method; `scripts/dcf.py` is the arithmetic. Your whole job is to build a coherent *story* and turn it into a small set of sourced, consistent inputs — a clean-looking per-share number on top of an incoherent story is worthless.
+Distilled from Aswath Damodaran's *The Little Book of Valuation* / *Narrative and Numbers*. This file is the method; `finance/compute/dcf.py` is the arithmetic. Your whole job is to build a coherent *story* and turn it into a small set of sourced, consistent inputs — a clean-looking per-share number on top of an incoherent story is worthless.
 
 ## The one idea
 
@@ -44,7 +44,7 @@ Margin of safety = intrinsic/share ÷ current_price − 1
 
 ## Worked example — a story turned into numbers (runnable)
 
-The bundled `--selftest` *is* a worked example; run `python3 <plugin>/skills/dcf-valuation/scripts/dcf.py --selftest` to see every number. The story it encodes:
+The bundled `--selftest` *is* a worked example; run `PYTHONPATH=<plugin> python3 -m finance.compute.dcf --selftest` to see every number. The story it encodes:
 
 > "A ₹1,000 Cr-revenue firm with a real but fading edge: it grows 15%/yr for 3 years while the edge holds, then fades to 4% (≈ the economy) by year 10. Today's 12% operating margin widens to 18% by year 5 as scale kicks in — no higher, because that's where the best peers sit. Each ₹1 of new capital buys ₹2 of sales (sales-to-capital 2.0). Discount at 11%. In perpetuity it grows 4% and earns 13% on new capital (a modest, durable moat). Net debt ₹500 Cr, ₹100 Cr surplus cash, 100 Cr shares."
 

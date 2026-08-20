@@ -35,9 +35,10 @@ All money inputs/outputs are in the SAME unit (use ₹ Crore consistently); shar
 the same count unit (Crore) so per_share comes out in ₹. Run with --selftest for a
 worked check, or feed a YAML/JSON input file (see assets/dcf-inputs.example.yml).
 
-Usage:
-  python3 dcf.py --inputs dcf-inputs.yml --out artifacts/stocks/RELIANCE/2026-06-12/dcf.json
-  python3 dcf.py --selftest
+Usage (from the plugin root, or anywhere with PYTHONPATH=<plugin-root>):
+  python3 -m finance.compute.dcf --inputs dcf-inputs.yml \
+      --out artifacts/stocks/RELIANCE/2026-06-12/dcf.json
+  python3 -m finance.compute.dcf --selftest
 Exit: 0 = valued, 2 = input/usage error, 3 = model-invalid (e.g. wacc<=g).
 """
 import argparse
@@ -47,7 +48,7 @@ import sys
 from functools import reduce
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-                   os.path.dirname(os.path.abspath(__file__))))))
+                   os.path.abspath(__file__)))))
 from finance.deps import need as _need  # noqa: E402
 
 def _as_path(value, n, default):

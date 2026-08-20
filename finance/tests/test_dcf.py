@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Offline tests for the DCF engine. No network, no yfinance — pure arithmetic checks.
 
-Run: python3 skills/dcf-valuation/scripts/test_dcf.py
+Run: python3 finance/tests/test_dcf.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))))
-import dcf  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import dcf  # noqa: E402
 from finance.tests.harness import check, rel_approx, summary  # noqa: E402
 
 
