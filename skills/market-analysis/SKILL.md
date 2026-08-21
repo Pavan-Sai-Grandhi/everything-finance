@@ -44,10 +44,7 @@ Write the digest to `artifacts/market-analysis/<date>.json` (`paths.report_path(
 
 Summarize in chat: posture and trend, the breadth check, the cap-tier valuation table, the one tension that matters, and the data gaps. `quick` returns only the digest — no report, no chat narrative.
 
-**The market-context digest is a consumed contract** (see `finance/contracts.md`). Consumers read these fields; do not rename them:
-`as_of`, `market_trend` (up|range|down), `market_posture` (risk_on|neutral|risk_off), `rationale`, `trend_detail{close,above_ema50,above_ema200,ema50_rising,pct_from_52w_high}`, `volatility{vix,percentile_1y,percentile_5y,band}`, `breadth{universe,pct_above_sma50,pct_above_sma200,pct_near_52w_high,pct_near_52w_low,pct_sectors_above_ema50}`, `valuation{<index>:{pe,pe_pctile,pb,pb_pctile,dy,dy_pctile,stance,blended_pctile}}`, `relative{smallcap_vs_largecap_pb_ratio,percentile_spread,read}`, `flows{FII,DII}`, `macro`, `sectors{leaders,laggards}`, `gaps`.
-
-`market_trend`, `trend_detail.above_ema200`, `volatility.vix` and `breadth.pct_sectors_above_ema50` are frozen spellings because `strategy-manager/scripts/select_strategy.py` gates on them. The posture key is **`market_posture`**, never `risk_posture` — that name is the personal balance-sheet posture in the wealth contract.
+**The market-context digest is a consumed contract** — `finance/contracts.md` (*Artifact: market-context*) lists every field, its meaning, which skill reads it, and the four spellings frozen because `strategy-manager/scripts/select_strategy.py` gates on them. Persist the digest exactly as the tool returned it; never rename a field on either side.
 
 ## Reporting rules specific to this read
 

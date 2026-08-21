@@ -317,11 +317,18 @@ def resolve(name, fresh=False):
         if sc > best_score:
             best, best_score = s, sc
     if best:
+        # The plan is read off the registered name, and several AMCs (SBI, HSBC, Motilal)
+        # leave AMFI's plan column blank — that is an unknown plan, not a Regular one.
+        lower = best["name"].lower()
+        plan = "Direct" if "direct" in lower else ("Regular" if "regular" in lower else None)
         out.update(scheme_code=best["code"], isin=best["isin"], amfi_name=best["name"],
-                   plan="Direct" if "direct" in best["name"].lower() else "Regular")
-        if out["plan"] == "Regular":
+                   plan=plan)
+        if plan == "Regular":
             gaps.append(f"only a Regular plan matched {name!r} — expense ratio will "
                         f"overstate a Direct-plan investor's cost")
+        elif plan is None:
+            gaps.append(f"AMFI names no plan for {name!r} — plan unverified; if it is a "
+                        f"Regular plan its expense ratio overstates a Direct-plan cost")
     else:
         gaps.append(f"no AMFI scheme matched {name!r}")
     gaps += idx.get("gaps", [])

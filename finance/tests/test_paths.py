@@ -143,10 +143,10 @@ check("deep-analysis and fundamentals map to different filenames",
 check("fundamentals filename is fundamental-analysis.md",
       paths._STOCK_ARTIFACT["fundamentals"] == "fundamental-analysis.md",
       paths._STOCK_ARTIFACT["fundamentals"])
-check("the stock artifact keys resolve to 5 files (dcf/management/filings are aliased pairs)",
-      sorted(set(paths._STOCK_ARTIFACT.values())) ==
+check("the five stock artifact keys map one-to-one onto five files",
+      sorted(paths._STOCK_ARTIFACT.values()) ==
       ["dcf.md", "deep-analysis.md", "filings.md", "fundamental-analysis.md", "management.md"],
-      sorted(set(paths._STOCK_ARTIFACT.values())))
+      sorted(paths._STOCK_ARTIFACT.values()))
 
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()

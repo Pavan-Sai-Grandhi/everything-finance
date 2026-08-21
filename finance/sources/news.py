@@ -278,12 +278,13 @@ def _process(raw, company, ticker, days, today=None):
     return out
 
 
-def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
+def fetch(company, ticker=None, days=60, fresh=False, include_noise=False, today=None):
     """Fetch one company's news and return the data-spine envelope with `data.items`.
 
     A blocked source records a labelled gap and returns `ok:false` rather than raising or
     returning a silent empty. Noise is filtered from the default view unless
-    `include_noise`, and every item carries a `publisher_tier`."""
+    `include_noise`, and every item carries a `publisher_tier`. `today` fixes the date the
+    recency window is measured against, so a caller can window against a known day."""
     company = (company or "").strip()
     ticker = _norm(ticker or company)
     cache_file = os.path.join(paths.cache_dir("news"),
@@ -301,7 +302,7 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
             raw, source_used = items, _LABELS[name]
             break
 
-    processed = _process(raw, company, ticker, days)
+    processed = _process(raw, company, ticker, days, today)
     noise = [it for it in processed if it["kind"] == "noise"]
     visible = processed if include_noise else [it for it in processed if it["kind"] != "noise"]
     data = {
@@ -319,6 +320,11 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False):
         if not gaps:
             gaps.append("all news rungs returned no items")
         return _envelope(False, None, data, gaps)
+    if not visible:
+        # The fetch worked but nothing survived the window and the noise filter, so
+        # ok:false here means "nothing to report", not "source down" — name which.
+        gaps.append(f"{source_used}: {len(raw)} item(s) returned, none left after the "
+                    f"{days}-day window and the noise filter ({len(noise)} noise)")
     env = _envelope(bool(visible), source_used, data, gaps)
     if visible:
         _write_cache(cache_file, env)

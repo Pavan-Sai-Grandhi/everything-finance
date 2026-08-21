@@ -59,7 +59,8 @@ def test_B1_fetch_returns_envelope_with_items(monkeypatched=None):
     orig = news._fetch_google_rss
     news._fetch_google_rss = lambda c, t, d: (news._parse_rss(RSS_FIXTURE, "Google News RSS"), None)
     try:
-        env = news.fetch("Reliance Industries", ticker="RELIANCE", days=60, fresh=True)
+        env = news.fetch("Reliance Industries", ticker="RELIANCE", days=60, fresh=True,
+                         today=TODAY)
     finally:
         news._fetch_google_rss = orig
     check("B1 envelope has the data-spine keys",
@@ -121,9 +122,10 @@ def test_B2_noise_filtered_from_default_view():
     orig = news._fetch_google_rss
     news._fetch_google_rss = lambda c, t, d: (news._parse_rss(RSS_FIXTURE, "Google News RSS"), None)
     try:
-        env = news.fetch("Reliance Industries", ticker="RELIANCE", days=3650, fresh=True)
-        env_noise = news.fetch("Reliance Industries", ticker="RELIANCE", days=3650,
-                               fresh=True, include_noise=True)
+        env = news.fetch("Reliance Industries", ticker="RELIANCE", days=60, fresh=True,
+                         today=TODAY)
+        env_noise = news.fetch("Reliance Industries", ticker="RELIANCE", days=60,
+                               fresh=True, include_noise=True, today=TODAY)
     finally:
         news._fetch_google_rss = orig
     check("B2 no noise item in the default view",

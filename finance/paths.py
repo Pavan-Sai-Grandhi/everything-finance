@@ -35,11 +35,8 @@ _STOCK_ARTIFACT = {
     # run on the same day cannot overwrite each other and each builds on its own history.
     "fundamentals": "fundamental-analysis.md",
     "dcf": "dcf.md",
-    "valuation-analysis": "dcf.md",
     "management": "management.md",
-    "management-analysis": "management.md",
     "filings": "filings.md",
-    "filings-watch": "filings.md",
 }
 _FUND_ARTIFACT = {
     "mf-analysis": "mf-analysis.md",

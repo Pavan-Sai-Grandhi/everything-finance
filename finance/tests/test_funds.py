@@ -268,8 +268,10 @@ NAV_BLOB = {
 # pure: name scoring                                                           #
 # --------------------------------------------------------------------------- #
 DIRECT_GROWTH = "Nippon India Small Cap Fund - Direct Plan - Growth Option"
-REGULAR_GROWTH = "Nippon India Small Cap Fund - Growth Option"
+REGULAR_GROWTH = "Nippon India Small Cap Fund - Regular Plan - Growth Option"
 DIRECT_IDCW = "Nippon India Small Cap Fund - Direct Plan - IDCW Option"
+# Several AMCs leave AMFI's plan column blank, so the registered name names no plan.
+PLANLESS_GROWTH = "Nippon India Small Cap Fund - Growth Option"
 
 
 def test_score_name_requires_every_query_token():
@@ -576,6 +578,19 @@ def test_resolve_regular_only_is_a_labelled_gap():
           env["ok"] is True and any("Tickertape" in g for g in env["gaps"]), env["gaps"])
     check("resolve leaves mf_id None when Tickertape has no match",
           env["data"]["mf_id"] is None)
+
+
+def test_resolve_unstated_plan_is_unknown():
+    fresh_root("resolve-planless")
+    with swap(funds, "amfi_index", lambda fresh=False: _amfi_env([PLANLESS_GROWTH])), \
+         swap(funds, "_tickertape_fund", lambda name: (None, "no confident Tickertape match")):
+        env = funds.resolve("Nippon India Small Cap")
+    check("a scheme whose AMFI name states no plan is not called Regular",
+          env["data"]["plan"] is None, env["data"]["plan"])
+    check("the unstated plan is a labelled gap",
+          any("no plan" in g for g in env["gaps"]), env["gaps"])
+    check("resolve still identifies the scheme when the plan is unknown",
+          env["ok"] is True and env["data"]["scheme_code"] is not None, env["data"])
 
 
 def test_resolve_no_match_at_all():
@@ -1094,7 +1109,8 @@ if __name__ == "__main__":
          test_amfi_cap_list_end_to_end, test_cap_index_is_memoised_for_the_process,
          test_amfi_cap_list_degrades_at_every_step,
          test_resolve_prefers_direct_growth,
-         test_resolve_regular_only_is_a_labelled_gap, test_resolve_no_match_at_all,
+         test_resolve_regular_only_is_a_labelled_gap, test_resolve_unstated_plan_is_unknown,
+         test_resolve_no_match_at_all,
          test_screen_filters_subsector_and_option_client_side,
          test_screen_sorts_by_aum_desc, test_screen_whole_universe_when_unfiltered,
          test_screen_strips_premium_fields, test_screen_403_is_a_labelled_gap,

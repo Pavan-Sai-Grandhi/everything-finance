@@ -53,19 +53,4 @@ Render `assets/budget-dashboard.html` (bundled with this skill: bucket gauges vs
 
 ## Output — `quick` (cashflow-leg digest)
 
-Return only the compact digest the caller consumes — no HTML, no transaction detail:
-
-```
-<!-- cashflow-block
-savings_rate: <pct>            # (investments + leftout) / total inflow
-buckets: { Essential: {actual_pct, target, status}, Lifestyle:{...}, EMIs:{...}, Investments:{...} }
-biggest_leak: <category> ₹<amount>
-recurring_monthly: ₹<total committed recurring/month>
-monthly_outflow: ₹<total spend/month>   # wealth-manager's emergency-fund runway denominator
-target_source: workbook | framework
-gaps: [ ... ]                  # e.g. "UNCATEGORIZED ₹X across N txns", "no prior months"
-month: <YYYY-MM>
--->
-```
-
-State whether targets came from the workbook or the framework percentages. This digest shape is the leg contract in `finance/contracts.md`; keep it in sync.
+Return only the compact **`cashflow-block`** digest, whose shape and field semantics `finance/contracts.md` owns (*Convention: cashflow-leg digest*) — no HTML, no transaction detail, no chat essay.

@@ -76,12 +76,12 @@ Seven files, in two kinds.
 ## Layout
 
 ```
-finance/          the one library — transport, spine, paths, deps
+finance/          the one library — transport, spine, paths, deps, caps
   sources/        one module per data domain (prices market funds fundamentals documents news filings) + the shared tickertape client
   compute/        ta strategy holdings alerts context rolling lookthrough fund_scan
                   screen backtest dcf relval trade_check insurance_math wealth allocation
   mcp/            the four servers: declaration + delegation only
-  tests/          harness.py + 26 standalone test files
+  tests/          harness.py + 27 standalone test files
   contracts.md    the artifact handoffs between skills — producer and consumer per field
 skills/<name>/    SKILL.md, plus references/ assets/ scripts/ where the skill needs them
 agents/  bin/  docs/  hooks/
@@ -95,7 +95,7 @@ A skill's `scripts/` holds only pure compute over user-supplied files. Everythin
 ./bin/test.sh          # every test file, summed; VERBOSE=1 to dump a failing file's output
 ```
 
-31 standalone test scripts (26 in `finance/tests/`, 5 beside the skill scripts they cover) over the shared `finance/tests/harness.py`. There is no pytest here: each file runs as `python3 <file>`, prints `N passed, M failed`, and exits non-zero on failure, which the runner parses and sums. The suite is offline — fixtures, no network.
+32 standalone test scripts (27 in `finance/tests/`, 5 beside the skill scripts they cover) over the shared `finance/tests/harness.py`. There is no pytest here: each file runs as `python3 <file>`, prints `N passed, M failed`, and exits non-zero on failure, which the runner parses and sums. The suite is offline — fixtures, no network.
 
 ## Artifacts
 
