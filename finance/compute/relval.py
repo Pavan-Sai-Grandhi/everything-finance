@@ -7,13 +7,13 @@ relative (multiples) into one stance. This module is the *relative* half, kept
 deterministic and unit-tested so the figures are reproducible:
 
   - PEG = P/E ÷ expected EPS growth (%) — a cross-check, never a standalone verdict;
-    its equal-risk + linear-growth assumptions are flagged by the agent.
+    its equal-risk + linear-growth assumptions travel with it as `PEG_CAVEAT`.
   - peer-group **median** multiple (median, not mean — multiples are skewed).
   - the company's position within its **own historical multiple band** (percentile).
 
-Every input comes from the fundamentals data-pack (ratios + peers — already
-whitelisted). The expected-growth input for PEG is a labelled estimate (basis
-stated), never fabricated.
+Every input comes from `get_company_fundamentals` — the company's own ratios and its
+peer rows. The expected-growth input for PEG is a labelled estimate (basis stated),
+never fabricated.
 
 CLI:
   PYTHONPATH=<plugin> python3 -m finance.compute.relval --figures figures.json
@@ -80,9 +80,9 @@ def _band_signal(pct):
 
 
 def relative_read(figures):
-    """Compute the relative-only read from data-pack figures. Returns peer-median
+    """Compute the relative-only read from sourced figures. Returns peer-median
     P/E, the company's P/E vs that median, its own-band percentile, PEG (+ basis),
-    and a relative-only stance — undervalued / fair / overvalued. The agent
+    and a relative-only stance — undervalued / fair / overvalued. `valuation-analysis`
     reconciles this against the DCF; this is the reproducible relative component."""
     pe = figures.get("pe")
     peer_pe = figures.get("peer_pe") or []
@@ -128,7 +128,7 @@ def _selftest():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--figures", help="path to a JSON of data-pack figures")
+    ap.add_argument("--figures", help="path to a JSON of sourced figures")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
