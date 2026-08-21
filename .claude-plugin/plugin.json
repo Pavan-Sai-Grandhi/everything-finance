@@ -44,6 +44,9 @@
     "./skills/alert-manager"
   ],
   "agents": [
+    "./agents/desk-analyst.md",
+    "./agents/field-analyst.md",
+    "./agents/terminal-analyst.md",
     "./agents/technical-analyst.md",
     "./agents/fundamentals-data.md",
     "./agents/financials-analyst.md",
