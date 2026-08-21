@@ -133,6 +133,28 @@ def test_review_dimension_provenance():
     check("review: total is ₹10L", rev["total"] == float(TOTAL))
 
 
+def test_review_book_routes_every_bundle_key():
+    """`review`'s four arguments are positional, so a bundle key landing on the wrong one
+    would still return a plausible-looking review. Each key is pinned by its own effect."""
+    bundle = {"holdings": BOOK, "targets": {"equity": 30, "debt": 35, "cash": 35},
+              "breakdowns": {"market_cap": {"large": 900000, "small": 100000}},
+              "thresholds": {"single_stock": 99.0, "single_sector": 99.0}}
+    rev = allocation.review_book(bundle)
+    check("review_book equals the explicit review call",
+          rev == allocation.review(BOOK, bundle["targets"], bundle["breakdowns"],
+                                   bundle["thresholds"]))
+    check("review_book routes holdings", rev["total"] == float(TOTAL), rev["total"])
+    check("review_book routes targets — the 30% equity target drifts against an 80% book",
+          rev["asset_drift"]["classes"]["equity"]["target_pct"] == 30.0
+          and rev["asset_drift"]["classes"]["equity"]["drift_pp"] > 0,
+          rev["asset_drift"]["classes"]["equity"])
+    check("review_book routes breakdowns", rev["dimensions"]["market_cap"]["source"] == "supplied")
+    check("review_book routes thresholds — 99% ceilings silence the stock/sector flags",
+          not [f for f in rev["concentration_flags"]
+               if f.get("dimension") in ("single_stock", "single_sector")],
+          rev["concentration_flags"])
+
+
 def test_review_empty_book():
     empty = allocation.review([])
     check("review: empty book ok", empty["total"] == 0.0 and empty["concentration_flags"] == [])

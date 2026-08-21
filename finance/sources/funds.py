@@ -82,7 +82,11 @@ def amfi_index(fresh=False):
     would fall back to ("Small Cap Fund") silently omits most of the category — the same
     truncation trap as the IndMoney holdings cap. This file is the complete registry.
     ~17.8k rows, cached for a week, so the cost is one fetch per week.
-    Returns the envelope with `data.schemes = [{code, isin, name, nav, nav_date}]`.
+    Returns the envelope with `data.schemes = [{code, isin, name, nav, nav_date}]`, where
+    `name` is the full registered scheme name — the file carries the fund name, the plan
+    and the option in three separate columns, and it is the three together that identify
+    a scheme. The fund name alone is shared by every plan/option variant of the fund, so
+    matching on it would pick an IDCW or Regular series at random.
     """
     cache = _cache_path("meta", "amfi-navall")
     cached = _read_cache(cache, fresh, max_age_days=7)
@@ -97,14 +101,15 @@ def amfi_index(fresh=False):
     schemes = []
     for line in (body or "").splitlines():
         parts = line.split(";")
-        if len(parts) < 6 or not parts[0].strip().isdigit():
+        if len(parts) < 8 or not parts[0].strip().isdigit():
             continue
         schemes.append({
             "code": parts[0].strip(),
             "isin": parts[1].strip() if parts[1].strip() != "-" else None,
-            "name": parts[3].strip(),
-            "nav": _f(parts[4]),
-            "nav_date": parts[5].strip(),
+            "name": " - ".join(p for p in (parts[3].strip(), parts[4].strip(),
+                                           parts[5].strip()) if p),
+            "nav": _f(parts[6]),
+            "nav_date": parts[7].strip(),
         })
     gaps = [] if schemes else ["AMFI NAVAll returned no parseable scheme rows"]
     env = _envelope(bool(schemes), "AMFI", {"schemes": schemes, "count": len(schemes)}, gaps)

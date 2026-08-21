@@ -11,12 +11,14 @@ https://agent-plugins.org/specification
 
 Run: python3 finance/tests/test_agent_plugin.py
 """
+import ast
 import json
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.mcp import smoke_test
 from finance.tests.harness import check, summary
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -106,6 +108,28 @@ check("portable mcp.json exposes the same servers as .mcp.json",
 
 check("portable mcp.json carries no dead EVERYTHING_FINANCE_PLUGIN_ROOT",
       all("EVERYTHING_FINANCE_PLUGIN_ROOT" not in e.get("env", {}) for e in servers.values()))
+
+# The live smoke run is the only thing that exercises a tool against its real upstream, so
+# a tool it does not call is a tool nobody ever proves works. Read the declarations with
+# `ast` rather than importing the servers: the MCP SDK is supplied by the client at runtime
+# and is not installed where the offline suites run.
+def _declared_tools(server):
+    with open(os.path.join(ROOT, "finance", "mcp", f"{server}.py"), encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+    return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+            and any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                    and d.func.attr == "tool" for d in node.decorator_list)}
+
+check("smoke_test covers every server module", set(smoke_test.CASES) ==
+      {f[:-3] for f in os.listdir(os.path.join(ROOT, "finance", "mcp"))
+       if f.endswith(".py") and not f.startswith("_") and f != "smoke_test.py"},
+      str(set(smoke_test.CASES)))
+for server, cases in smoke_test.CASES.items():
+    declared, covered = _declared_tools(server), {name for name, _, _ in cases}
+    check(f"[{server}] every declared tool has a smoke case",
+          declared <= covered, str(sorted(declared - covered)))
+    check(f"[{server}] every smoke case names a declared tool",
+          covered <= declared, str(sorted(covered - declared)))
 
 check(".env.example template ships", os.path.isfile(os.path.join(ROOT, ".env.example")))
 loader = os.path.join(ROOT, "bin", "load-env.sh")

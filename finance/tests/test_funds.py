@@ -56,22 +56,23 @@ def envelope_keys(env):
 # --------------------------------------------------------------------------- #
 
 # AMFI NAVAll.txt — headers, blank lines, scheme-type banners and AMC names all share the
-# file with the data rows, so the parser has to be picky about what a row is.
-AMFI_NAVALL = """Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date
+# file with the data rows, so the parser has to be picky about what a row is. Plan and
+# option are their own columns; the fund name column alone does not identify a scheme.
+AMFI_NAVALL = """Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date
 
 Open Ended Schemes(Equity Scheme - Small Cap Fund)
 
 Nippon India Mutual Fund
 
-118778;INF204K01XB8;INF204K01XC6;Nippon India Small Cap Fund - Direct Plan - Growth Option;198.4562;16-Aug-2026
-118779;-;-;Nippon India Small Cap Fund - IDCW Option;45.1234;16-Aug-2026
-notacode;INF204K01XD4;INF204K01XE2;Bogus Non-Numeric Code Row;1.0000;16-Aug-2026
+118778;INF204K01XB8;INF204K01XC6;Nippon India Small Cap Fund;Direct Plan;Growth Option;198.4562;16-Aug-2026
+118779;-;-;Nippon India Small Cap Fund;Regular Plan;IDCW Option;45.1234;16-Aug-2026
+notacode;INF204K01XD4;INF204K01XE2;Bogus Non-Numeric Code Row;Direct Plan;Growth Option;1.0000;16-Aug-2026
 120503;INF209KA12Z1;Truncated Row With Too Few Fields
-;;;Empty Code Row;1.0;16-Aug-2026
+;;;Empty Code Row;Direct Plan;Growth Option;1.0;16-Aug-2026
 
 PPFAS Mutual Fund
 
-122639;INF879O01027;INF879O01019;Parag Parikh Flexi Cap Fund - Direct Plan - Growth;89.1200;16-Aug-2026
+122639;INF879O01027;INF879O01019;Parag Parikh Flexi Cap Fund;Direct Plan;Growth;89.1200;16-Aug-2026
 """
 
 # Tickertape mf-screener/query — three funds across two sub-categories and two options.
