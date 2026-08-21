@@ -12,7 +12,7 @@ and **shared code** (`finance/` modules imported by several callers).
 ## The data layer: one door, one transport
 
 **`finance/mcp/{market,company,funds,personal}.py` — the four servers.** The only door to
-decision data. 28 tools over the seven finalized sources (CLAUDE.md's source table) and the
+decision data. 29 tools over the seven finalized sources (CLAUDE.md's source table) and the
 compute engines that run on them, each delegating to the matching `finance/sources/` or
 `finance/compute/` module and returning the shared **envelope**
 `{ok, source, fetched_at, data, gaps}`. No name appears on two servers.
@@ -20,7 +20,7 @@ compute engines that run on them, each delegating to the matching `finance/sourc
 | server | tools |
 |---|---|
 | `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `run_strategy_screen` `run_backtest` `check_trade` `manage_alerts` |
-| `finance-company` | `get_company_fundamentals` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `run_dcf` |
+| `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `run_dcf` |
 | `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
 | `finance-personal` | `run_insurance_math` |
 
@@ -96,8 +96,8 @@ Covered by `finance/tests/test_paths.py`.
 
 ### `finance/compute/ta.py` — technical-analysis primitives
 One definition of every indicator + candlestick pattern. Consumers: `compute/strategy.py`,
-`compute/screen.py`, `compute/backtest.py`, `compute/context.py` (and the `technical-analyst`
-agent through the tools that sit on them). Import as `from finance.compute import ta`.
+`compute/screen.py`, `compute/backtest.py`, `compute/context.py` (and `technical-analysis`
+through the tools that sit on them). Import as `from finance.compute import ta`.
 
 **Contract — `ta.add_indicators(df)`** attaches these columns (the names every consumer
 keys off): `ema20, ema50, sma200, ema50_rising, rsi14, vol10, atr14, hh20, ll20`.
@@ -156,7 +156,7 @@ Covered by `finance/tests/test_{context,screen,trade_check,fund_scan,lookthrough
 
 ### `finance/sources/filings.py` — exchange-filing fetch + materiality
 Consumers: `get_filings` / `get_shareholding` / `get_corporate_actions`, read by
-`filings-watch`, `daily-brief` and the `news-sentiment` agent. Key contract:
+`filings-watch`, `daily-brief` and `news-scan`. Key contract:
 `classify_materiality(text) -> (tier, emoji, reason)` where `tier ∈ {act-on, monitor,
 routine}` (emoji 🔴/🟡/⚪). `summarize(symbol, days, fresh=False)` returns the shared
 **envelope**, where `data` is
@@ -188,7 +188,7 @@ no TV-indicator library dependency. Covered by `finance/tests/test_prices.py` (o
 reconcile-decision fixtures).
 
 ### `finance/sources/news.py` — company news (Google News RSS)
-Consumer: `get_news`, read by the `news-sentiment` agent, `deep-analysis` (its news leg) and
+Consumer: `get_news`, read by `news-scan`, `deep-analysis` (its news leg) and
 `daily-brief` (headline context). Key contract: `fetch(company, ticker, days=60)` reads Google
 News RSS — the single news source — and returns the shared **envelope**, where `data` is
 `{company, ticker, days, count, items:[{date, title, url, source, origin, kind, tag, publisher_tier}], noise_filtered, established_count}`.
@@ -209,8 +209,8 @@ the ticker (REC is ticker `RECLTD`, sid `RECM`). Only an exact ticker equality i
 because a near-miss attributes one company's financials to another. Cached 90 days.
 
 ### `finance/sources/fundamentals.py` — Tickertape financials + the screener.in document index
-Consumers: `get_company_fundamentals` / `run_fundamental_screen`, read by the
-`fundamentals-data` agent (which packs it for `deep-analysis` / `fundamental-analysis`) and by
+Consumers: `get_company_fundamentals` / `run_fundamental_screen`, read by `financial-analysis`
+and `valuation-analysis` and by
 `find-trade` / `strategy-manager` for a fundamental candidate cut. Key contract — each returns
 the shared **envelope**:
 - `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, cash_flow_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
@@ -404,34 +404,39 @@ exit_price, realized_R, realized_pnl, holding_sessions}`. **That block is what
 loop. `check_trade` reads `plan`, `direction`, `thesis_invalidation`, `strategy` and `created`;
 it defers the regime check to the skill.
 
-## Artifact: fundamentals data-pack
-**Producer:** the `fundamentals-data` agent → `artifacts/tmp/staging/<TICKER>/fundamentals/data-pack.md`
-— the single sourced fetch of one company's fundamentals for a run. **Consumers:** `financials-analyst`,
-`management-analyst`, `valuation-analyst` (each Reads it; none re-fetches), so all three reason off the
-same sourced numbers. **Fields:** a `depth:` frontmatter marker (`full` or `lite`); CMP (+ as-of); the
-`get_company_fundamentals` envelope (`ratios`, `pnl_10y`, `balance_sheet_10y`, `cash_flow_10y`, `quarters`, `shareholding`, `peers`);
-annual-report excerpts keyed by section (MD&A, segment note, auditor, RPT, contingent liabilities, cash
-flow, revenue recognition) each with a page/section cite; governance signals (remuneration, RPT
-detail, auditor fees & trend, board/KMP profiles, pledging, multi-year MD&A); concall takeaways (quarter
-cited); and `Data gaps`. **`depth: lite`** (deep-analysis `quick` mode) carries **only** the fundamentals
-envelope + CMP — the annual-report sections, management signals, and concall are omitted and listed as
-gaps; consumers label them rather than infer. **`depth: full`** (standard/deep, `/fundamental-analysis`)
-carries everything. Facts only — no scoring/verdict. Archived under `deep-analysis/fundamentals/` by the Stop hook.
+## Artifact: document cache
+**Producer:** `get_documents` (on `sources/documents.py`) → one `.txt` per document under
+`paths.cache_dir("documents")`, addressed by a hash of the source URL. **Consumers:**
+`financial-analysis`, `management-analysis`, `valuation-analysis` — every leg that must cite a
+primary document. The envelope carries **paths, never body text**: `data:{symbol, documents:[{kind ∈
+annual_report|concall, label, url, publisher, text_path, text_chars, text_lines, extracted_by,
+cached}], documents_total, annual_reports_available, concalls_available}`. A published report never
+changes at its URL, so the cache has **no expiry** and `fresh=True` is the only re-download; a
+document that will not download or convert is a labelled gap and the others still come back.
 
-## Convention: agent digest (deep-analysis IO hygiene)
-Every forked deep-analysis agent **writes its full report to its staged file** and **returns to
-the orchestrator only a compact digest** — its machine-readable top block plus the file `path`,
-never the body. The orchestrator and any downstream agent receive **paths** and Read what they
-need in their own context, so the orchestrator never re-carries six full reports.
+The handoff: an orchestrator calls `get_documents` once and hands each leg the `text_path`s, so
+several legs reading the same annual report land on the same bytes. A leg given no paths calls the
+tool itself and gets the same cached file. **Extraction only** — nothing in this layer summarises,
+scores or judges; every verdict belongs to the leg reading the text.
 
-| Agent | Block | Fields |
+## Convention: leg digest (deep-analysis IO hygiene)
+Every forked leg **writes its full report to its file** and **returns to the orchestrator only a
+compact digest** — its machine-readable top block plus the file `path`, never the body. The
+orchestrator and any downstream agent receive **paths** and Read what they need in their own
+context, so the orchestrator never re-carries six full reports.
+
+A lens leg is a **skill run inside a profile agent** (`terminal-analyst`, `field-analyst`,
+`desk-analyst`). The profile carries no method: the skill owns the block below and the profile
+returns it unchanged plus `path`. The debate roles are named agents and own their own blocks.
+
+| Producer | Block | Fields |
 |---|---|---|
-| `technical-analyst` | `technical-block` | `verdict`, `confidence`, `trend_stage`, `support`, `resistance`, `bull_invalidated_below`, `bear_invalidated_above`, `axis: technical_structure` |
-| `financials-analyst` | `financials-block` | `verdict`, `confidence`, `varsity_score`, `roce`, `de`, `cfo_ebitda`, `rev_cagr_5y`, `flags`, `axis: growth_durability` |
-| `management-analyst` | `management-block` | `integrity` (the hard gate), `skill`, `overall_grade`, `confidence`, `axis: governance` |
-| `valuation-analyst` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, `peg`, `peer_median_pe`, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
-| `news-sentiment` | `news-block` | `sentiment_score` (−2…+2), `confidence`, `recurring_theme`, `next_event`, `axis: growth_durability` |
-| `sector-analyst` | `sector-block` | `sector`, `rs_class`, `stance`, `confidence`, `focus_position` |
+| `technical-analysis` | `technical-block` | `verdict`, `confidence`, `trend_stage`, `support`, `resistance`, `bull_invalidated_below`, `bear_invalidated_above`, `axis: technical_structure` |
+| `financial-analysis` | `financials-block` | `verdict`, `confidence`, `varsity_score`, `roce`, `de`, `cfo_ebitda`, `rev_cagr_5y`, `flags`, `axis: growth_durability` |
+| `management-analysis` | `management-block` | `integrity` (the hard gate), `skill`, `overall_grade`, `confidence`, `axis: governance` |
+| `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, `peg`, `peer_median_pe`, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
+| `news-scan` | `news-block` | `sentiment_score` (−2…+2), `confidence`, `recurring_theme`, `next_event`, `axis: growth_durability` |
+| `sector-analysis` | `sector-block` | `sector`, `rs_class`, `stance`, `confidence`, `focus_position` |
 | `contest-researcher` | `contest-block` | `lean ∈ {bull, bear, genuinely split}`, `axis`, one-line `bull`, one-line `bear` |
 | `bull-researcher` / `bear-researcher` | `debate-block` | `axis`, `claim`, `conceded`, `new_evidence` |
 | `portfolio-manager` | `verdict-block` | `call`, `conviction`, `invalidation`, `review`, `integrity_gate` |

@@ -9,7 +9,7 @@ allowed-tools: Read, Write, mcp__finance-company__*
 
 The tools do the mechanical fetch and first-pass classification; this skill is the judgement layer on top — the "so what" narrative. Read `references/reference.md` for the materiality taxonomy.
 
-**Sources for this skill only:** `finance-company` — `get_filings`, `get_corporate_actions`, `get_shareholding` (all NSE) and `get_company_fundamentals(sections=['shareholding'])` for the FII/DII split. No news sites — this skill reports *filings*; the news-sentiment agent handles press.
+**Sources for this skill only:** `finance-company` — `get_filings`, `get_corporate_actions`, `get_shareholding` (all NSE) and `get_company_fundamentals(sections=['shareholding'])` for the FII/DII split. No news sites — this skill reports *filings*; `news-scan` handles press.
 
 ## Workflow
 

@@ -30,7 +30,7 @@ TELEGRAM_CHAT_ID=...
 
 Seven servers ([`.mcp.json`](.mcp.json)) in two classes with deliberately opposite rules.
 
-**`finance-market` (13 tools), `finance-company` (8), `finance-funds` (6), `finance-personal` (1)** — local, all four launched by `bin/finance-mcp.sh <market|company|funds|personal>`, together the only door to every number the plugin reasons about. 28 tools over seven verified sources (TradingView, Yahoo, Tickertape, NSE, screener.in, AMFI, Google News RSS) plus the compute engines that run on them; no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
+**`finance-market` (13 tools), `finance-company` (9), `finance-funds` (6), `finance-personal` (1)** — local, all four launched by `bin/finance-mcp.sh <market|company|funds|personal>`, together the only door to every number the plugin reasons about. 29 tools over seven verified sources (TradingView, Yahoo, Tickertape, NSE, screener.in, AMFI, Google News RSS) plus the compute engines that run on them; no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
 
 **`kite`** (Zerodha), **`upstox`**, **`indmoney`** — optional, read-only, personal. They answer only *what you own and what it is worth* and never feed a view (CLAUDE.md rule 3). Connect whichever you use: IndMoney is the broadest — every asset class, per-position P&L and XIRR — but carries no order history, so exact entry fills come from a broker MCP. All three run through `bin/mcp-bridge.sh`, an `mcp-remote` wrapper that gives each Claude session its own OAuth config dir (`~/.mcp-auth-sessions/<pid>`) so concurrent sessions register on independent callback ports instead of colliding on one; it reaps the dirs of exited sessions and any orphaned bridge. The cost of that isolation is authenticating once per session.
 
@@ -42,8 +42,7 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 |---|---|
 | `/market-analysis` | The plugin's market-of-record: trend and posture, real stock-level breadth, VIX percentile, cap-tier valuation percentiles against each index's own 10-year history, FII/DII flows, macro, sector leadership. Persists one dated artifact a day — every other skill reads that instead of forming its own view |
 | `/find-trade` | Run a chosen, validated strategy against the Nifty 500 — screen the universe (Tickertape fundamentals + TradingView/local technical cut), build entry / SL / target / size signals; on your "yes" persists a trade-idea artifact for `/trade-tracker`. Strategy-agnostic: you name a strategy or it asks `/strategy-manager pick`; no hardcoded default |
-| `/deep-analysis TICKER [--quick\|--deep]` | Multi-agent debate at three depths — `quick` (3 lenses + one contest pass), `standard` (six lenses, a 2nd debate round only on genuine divergence), `deep` (six lenses, up to 3 rounds). Lenses: technical, financials, management (integrity gate + skill), valuation (DCF + relative multiples, weighted by DCF confidence), news, sector — fed by a fetch-once data-pack; portfolio-manager verdict. Report archived with its agent work papers + Telegram brief via the Stop hook |
-| `/fundamental-analysis TICKER` | The same fetch-once pack without the debate: financials (Varsity checklist + overview), management, and valuation legs merged into one report |
+| `/deep-analysis TICKER [--quick\|--deep\|--fundamentals]` | Multi-agent debate at four modes — `quick` (3 lenses + one contest pass), `standard` (six lenses, a 2nd debate round only on genuine divergence), `deep` (six lenses, up to 3 rounds), `fundamentals` (financials + management + valuation, no debate). Each lens is a leg skill run in a profile agent, over primary documents warmed once by `get_documents`; the `portfolio-manager` issues the verdict. Report archived with its work papers + Telegram brief via the Stop hook |
 | `/sector-analysis [sector]` | Deep-dive the sectors you name, or rank the NSE sectoral indices and deep-dive the top three — RS, sector KPIs, tailwinds/headwinds, top picks. Seeds the shared monthly sector cache `/deep-analysis` reuses |
 | `/mf-analysis` | Mutual funds, two pillars: past performance recomputed from NAV history (rolling returns, drawdown, Sortino) and forward quality (look-through portfolio valuation, style + drift, AMC/manager trust). Scans a whole SEBI sub-category down to a gated shortlist, or reviews the funds you hold |
 | `/insurance-advisor` | Term/health/vehicle — advise & compare (shortlist 2), audit existing cover, or answer questions on a policy you hold |
@@ -58,10 +57,17 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 | `/trade-tracker` | Match each open broker position to its rationale (a find-trade idea, deep-analysis, strategy spec, or one you type) and re-validate the thesis — stop / target / time stop / broken setup / regime change → hold, trim or exit |
 | `/valuation-analysis TICKER` | Story-driven FCFF DCF (Damodaran) — project growth and margin, fund it via sales-to-capital, discount at WACC, disciplined terminal value → intrinsic value per share with margin of safety, sensitivity grids and reality-check flags — reconciled with the multiples read (P/E vs peer median and own band, PEG, EV/EBITDA) into one stance weighted by a DCF-confidence grade |
 | `/management-analysis TICKER` | Integrity as a hard gate (remuneration vs profit, related-party transactions, criminal/regulatory record, CFO/auditor churn and fees, pledging, owning mistakes, plans promised vs executed, questions dodged on the call) then a skill grade (experience, mindset, capital allocation, succession) |
+| `/financial-analysis TICKER` | The Varsity due-diligence scorecard plus a standalone Company Overview — ROE DuPont'd, ROCE vs cost of capital, the five-year margin trend, debt and interest cover, whether cash follows profit, promoter holding and pledge — with the annual report and latest concall read directly and cited by page |
+| `/technical-analysis TICKER` | The chart read on one ticker: Dow trend stage, the S/R map with touch-count evidence, the active pattern in its location context, the volume signature, RSI/MACD as confirmation only, and the two levels that invalidate a bull or a bear thesis |
+| `/news-scan TICKER` | ~60 days of press, exchange announcements and analyst commentary scored to a −2…+2 sentiment with dated, sourced evidence — hard fact separated from narrative, the recurring storyline named, and the filing the coverage missed |
 
 ## Agents (`agents/`, all `context: fork`)
 
-`technical-analyst`, `fundamentals-data` (the fetch-once source pack) → `financials-analyst` · `management-analyst` · `valuation-analyst`, `news-sentiment`, `sector-analyst`, `bull-researcher`, `bear-researcher`, `contest-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis` and reusable individually. The four fundamental agents also power `/fundamental-analysis`. `wealth-leg` runs one wealth spoke in cheap mode and returns only its digest.
+Seven files, in two kinds.
+
+**Tool profiles** — a generic runner that carries no method: it invokes the skill named in its input, ensures the report lands at the given path, and returns only that skill's digest. They differ solely in reach. `terminal-analyst` has the three decision-data servers (`financial-analysis`, `valuation-analysis`, `technical-analysis`, `sector-analysis`, `portfolio-review`); `field-analyst` has the open web (`management-analysis`, `news-scan`); `desk-analyst` has no network at all, only what is already on disk plus deterministic math (`insurance-advisor`, `budget-tracker`).
+
+**Named roles** — the debate, where the role itself is the method: `bull-researcher` and `bear-researcher` argue one side per round, `contest-researcher` does both sides in a single pass for `quick`, and `portfolio-manager` reads every full report and issues the verdict with sizing and invalidation.
 
 ## Hooks
 
@@ -90,7 +96,7 @@ A skill's `scripts/` holds only pure compute over user-supplied files. Everythin
 ./bin/test.sh          # every test file, summed; VERBOSE=1 to dump a failing file's output
 ```
 
-28 standalone test scripts (18 in `finance/tests/`, 10 beside the skill scripts they cover) over the shared `finance/tests/harness.py`. There is no pytest here: each file runs as `python3 <file>`, prints `N passed, M failed`, and exits non-zero on failure, which the runner parses and sums. The suite is offline — fixtures, no network.
+31 standalone test scripts (26 in `finance/tests/`, 5 beside the skill scripts they cover) over the shared `finance/tests/harness.py`. There is no pytest here: each file runs as `python3 <file>`, prints `N passed, M failed`, and exits non-zero on failure, which the runner parses and sums. The suite is offline — fixtures, no network.
 
 ## Artifacts
 

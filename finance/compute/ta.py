@@ -2,7 +2,7 @@
 """Shared technical-analysis primitives.
 
 One definition of every indicator and candlestick pattern, imported by every skill that
-computes them (`backtest`, `find-trade`, the `technical-analyst` agent) so they agree by
+computes them (`backtest`, `find-trade`, `technical-analysis`) so they agree by
 construction. Numeric indicators delegate to TA-Lib, whose native library must be present
 (macOS: `brew install ta-lib`) — bootstrapped by `_need_talib()`. Candlestick/range
 patterns stay pure-pandas and geometric.

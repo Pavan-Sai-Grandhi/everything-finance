@@ -27,7 +27,6 @@
     "./skills/market-analysis",
     "./skills/find-trade",
     "./skills/deep-analysis",
-    "./skills/fundamental-analysis",
     "./skills/sector-analysis",
     "./skills/mf-analysis",
     "./skills/insurance-advisor",
@@ -50,17 +49,9 @@
     "./agents/desk-analyst.md",
     "./agents/field-analyst.md",
     "./agents/terminal-analyst.md",
-    "./agents/technical-analyst.md",
-    "./agents/fundamentals-data.md",
-    "./agents/financials-analyst.md",
-    "./agents/management-analyst.md",
-    "./agents/valuation-analyst.md",
-    "./agents/news-sentiment.md",
-    "./agents/sector-analyst.md",
     "./agents/bull-researcher.md",
     "./agents/bear-researcher.md",
     "./agents/contest-researcher.md",
-    "./agents/portfolio-manager.md",
-    "./agents/wealth-leg.md"
+    "./agents/portfolio-manager.md"
   ]
 }
