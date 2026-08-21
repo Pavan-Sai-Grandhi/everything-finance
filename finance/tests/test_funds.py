@@ -142,12 +142,109 @@ HYBRID_HOLDINGS_BLOB = {
 # Tickertape stocks/info/<sid> — note sid RECM vs ticker RECLTD, the join-key trap.
 STOCK_INFO_BLOB = {
     "data": {
-        "info": {"ticker": "RECLTD", "name": "REC Ltd", "sector": "Financials"},
+        "info": {"ticker": "RECLTD", "name": "REC Ltd", "sector": "Financials",
+                 "isin": "INE020B01018"},
         "ratios": {"pe": 8.4, "ttmPe": 8.1, "pb": 1.6, "roe": 21.5, "eps": 62.3,
-                   "marketCap": 132000.0, "mrktCapRank": 118, "marketCapLabel": "Midcap",
+                   "marketCap": 132000.0, "marketCapLabel": "Midcap",
                    "divYield": 3.9, "beta": 1.4, "indpe": 14.2, "indpb": 2.1},
     }
 }
+
+# amfiindia.com/otherdata/categorisation-of-stocks — the live page lists every past
+# edition next to the current one, in both an <a href> and an escaped JSON blob, and the
+# newest is not last.
+CAP_INDEX_HTML = """<html><body>
+<a href="https://www.amfiindia.com/Themes/Theme1/downloads/AverageMarketCapitalization31Dec2025.xlsx">Dec 2025</a>
+<a href="https://portal.amfiindia.com/spages/AverageMarketCapitalization30Jun2026.xlsx">Jun 2026</a>
+<a href="https://portal.amfiindia.com/spages/AverageMarketCapitalization30Jun2026.pdf">PDF</a>
+<a href="https://www.amfiindia.com/Themes/Theme1/downloads/AverageMarketCapitalizationoflistedcompaniesduringthesixmonthsended30June2022.xlsx">Jun 2022</a>
+<script>{\\"excelUrl\\":\\"https://portal.amfiindia.com/spages/AverageMarketCapitalization30Jun2026.xlsx\\"}</script>
+</body></html>"""
+
+CAP_XLSX_URL = "https://portal.amfiindia.com/spages/AverageMarketCapitalization30Jun2026.xlsx"
+
+# The workbook's own layout: a title row above the header, `Sr. No.` as the SEBI rank, a
+# "-" NSE symbol for the BSE-only listings that make the ISIN key load-bearing.
+CAP_XLSX_ROWS = [
+    ("Average Market Capitalization of listed companies during the six months ended "
+     "30 June 2026", None, None, None, None, None, None, None, None, None, None),
+    ("Sr. No.", "Company name", "ISIN", "BSE Symbol",
+     "BSE 6 month Avg Total Market Cap in (Rs. Crs.)", "NSE Symbol",
+     "NSE 6 month Avg Total Market Cap (Rs. Crs.)", "MSEI Symbol",
+     "MSEI 6 month Avg Total Market Cap in (Rs Crs.)", "Average of All Exchanges (Rs. Cr.)",
+     "Categorization as per SEBI Circular dated Oct 6, 2017"),
+    (1, "Reliance Industries Ltd", "INE002A01018", "RELIANCE", 1873294.7, "RELIANCE",
+     1873278.8, "-", None, 1873286.8, "Large Cap"),
+    (100, "Gail (India) Ltd.", "INE129A01019", "GAIL", 106346.2, "GAIL", 106346.1,
+     "-", None, 106346.15, "Large Cap"),
+    (101, "Bosch Ltd", "INE323A01026", "BOSCHLTD", 106278.2, "BOSCHLTD", 106278.2,
+     "-", None, 106278.2, "Mid Cap"),
+    (117, "REC Ltd", "INE020B01018", "RECLTD", 92824.2, "RECLTD", 92824.2,
+     "-", None, 92824.2, "Mid Cap"),
+    (250, "Godrej Industries Ltd.", "INE233A01035", "GODREJIND", 33664.2, "GODREJIND",
+     33664.2, "-", None, 33664.2, "Mid Cap"),
+    (251, "Navin Fluorine International Limited", "INE048G01026", "NAVINFLUOR", 33441.9,
+     "NAVINFLUOR", 33441.9, "-", None, 33441.9, "Small Cap"),
+    (5427, "Bengal Steel Industries Ltd.", "INE523W01017", "BENGALS", 0.0245, "-",
+     None, "-", None, 0.0245, "Small Cap"),
+]
+
+
+def cap_xlsx_fixture():
+    """Write CAP_XLSX_ROWS to a real workbook — the parser reads openpyxl, not a list."""
+    openpyxl = __import__("openpyxl")
+    book = openpyxl.Workbook()
+    for row in CAP_XLSX_ROWS:
+        book.active.append(row)
+    path = os.path.join(_TMP_ROOT, "cap-fixture.xlsx")
+    book.save(path)
+    return path
+
+
+CAP_XLSX_PATH = cap_xlsx_fixture()
+
+
+@contextlib.contextmanager
+def cap_index(stocks=None, period="2026-06-30", gaps=()):
+    """Pin the process-wide cap-list memo, so no test reaches AMFI for a rank."""
+    stocks = {} if stocks is None else stocks
+    by_isin = {r["isin"]: r for r in stocks.values() if r.get("isin")}
+    orig = funds._cap_index_memo
+    funds._cap_index_memo = (stocks, by_isin, period, list(gaps))
+    try:
+        yield
+    finally:
+        funds._cap_index_memo = orig
+
+
+@contextlib.contextmanager
+def cap_index_cold():
+    """Clear the memo so a test exercises the real fetch-and-parse path."""
+    orig = funds._cap_index_memo
+    funds._cap_index_memo = None
+    try:
+        yield
+    finally:
+        funds._cap_index_memo = orig
+
+
+def cap_stocks():
+    """The parsed fixture map, keyed as funds.amfi_cap_list keys it."""
+    stocks, gap = funds._parse_cap_xlsx(CAP_XLSX_PATH)
+    assert not gap, gap
+    return stocks
+
+
+def serve_cap(index_html=CAP_INDEX_HTML, xlsx=CAP_XLSX_PATH, calls=None):
+    """A `_curl` stand-in serving the index page, then copying the fixture to `dest`."""
+    def fake(url, payload=None, timeout=30, referer=None, dest=None):
+        if calls is not None:
+            calls.append(url)
+        if dest is None:
+            return index_html, None
+        shutil.copyfile(xlsx, dest)
+        return dest, None
+    return fake
 
 # mfapi.in /mf/<code> — newest first, DD-MM-YYYY, with two rows that must be skipped.
 NAV_BLOB = {
@@ -280,6 +377,160 @@ def test_amfi_index_unparseable_body_degrades():
     check("amfi_index with no parseable rows is ok:false", env["ok"] is False)
     check("amfi_index with no parseable rows names the gap",
           env["gaps"] == ["AMFI NAVAll returned no parseable scheme rows"], env["gaps"])
+
+
+# --------------------------------------------------------------------------- #
+# rung 1a — amfi_cap_list(): the SEBI cap rank                                 #
+# --------------------------------------------------------------------------- #
+def test_cap_label_boundaries():
+    check("rank 1 is large", funds.cap_label(1) == "Large Cap")
+    check("rank 100 is the LAST large cap", funds.cap_label(100) == "Large Cap")
+    check("rank 101 is the FIRST mid cap", funds.cap_label(101) == "Mid Cap")
+    check("rank 250 is the LAST mid cap", funds.cap_label(250) == "Mid Cap")
+    check("rank 251 is the FIRST small cap", funds.cap_label(251) == "Small Cap")
+    check("a deep-tail rank is small", funds.cap_label(5427) == "Small Cap")
+    check("no rank is no label", funds.cap_label(None) is None)
+    check("a non-positive rank is not a classification", funds.cap_label(0) is None)
+
+
+def test_cap_link_discovery_takes_the_newest_period():
+    url, period, gap = funds._cap_xlsx_link(CAP_INDEX_HTML)
+    check("link discovery raises no gap on a normal page", gap is None, gap)
+    check("discovery picks the newest edition, not the first listed",
+          url == CAP_XLSX_URL, url)
+    check("discovery ignores the PDF beside it", url.endswith(".xlsx"), url)
+    check("the period is parsed off the filename", period == "2026-06-30", period)
+
+
+def test_cap_link_discovery_handles_a_root_relative_href():
+    url, period, gap = funds._cap_xlsx_link(
+        '<a href="/downloads/AverageMarketCapitalization31Dec2026.xlsx">latest</a>')
+    check("a root-relative href is resolved against the AMFI host",
+          url == "https://www.amfiindia.com/downloads/"
+                 "AverageMarketCapitalization31Dec2026.xlsx", url)
+    check("the later period wins even from a relative link", period == "2026-12-31", period)
+    check("a relative href is not a gap", gap is None, gap)
+
+
+def test_cap_link_discovery_no_match_is_a_gap():
+    url, period, gap = funds._cap_xlsx_link("<html><body>no downloads here</body></html>")
+    check("a page with no matching link returns no url", url is None and period is None)
+    check("a page with no matching link is a labelled gap, not an exception",
+          gap is not None and "no dated" in gap, gap)
+    undated = funds._cap_xlsx_link(
+        '<a href="/d/AverageMarketCapitalizationLatest.xlsx">x</a>')
+    check("an undated filename is refused rather than guessed at",
+          undated[0] is None and undated[2] is not None, undated)
+    check("no html at all degrades the same way", funds._cap_xlsx_link(None)[2] is not None)
+
+
+def test_cap_xlsx_parse_keys_on_nse_symbol_then_isin():
+    stocks = cap_stocks()
+    check("the title row above the header does not become a stock", "Sr. No." not in stocks)
+    check("every ranked row is present", len(stocks) == 7, sorted(stocks))
+    check("Sr. No. IS the rank", stocks["RELIANCE"]["rank"] == 1, stocks["RELIANCE"])
+    check("the NSE symbol is the key", stocks["RECLTD"]["rank"] == 117, stocks["RECLTD"])
+    check("the row carries its ISIN for the fallback join",
+          stocks["RECLTD"]["isin"] == "INE020B01018", stocks["RECLTD"])
+    check("the company name travels with the rank",
+          stocks["RECLTD"]["name"] == "REC Ltd", stocks["RECLTD"])
+    check("the all-exchange average is the ₹Cr column read",
+          stocks["RECLTD"]["avg_mcap_cr"] == 92824.2, stocks["RECLTD"])
+    check("a BSE-only row falls back to its ISIN as the key",
+          stocks["INE523W01017"]["rank"] == 5427, sorted(stocks))
+    check("a '-' NSE symbol is absent, never stored as a symbol",
+          stocks["INE523W01017"]["symbol"] is None, stocks["INE523W01017"])
+    check("the boundary ranks survive the parse",
+          (stocks["GAIL"]["rank"], stocks["BOSCHLTD"]["rank"],
+           stocks["GODREJIND"]["rank"], stocks["NAVINFLUOR"]["rank"]) == (100, 101, 250, 251),
+          stocks)
+
+
+def test_cap_xlsx_parse_without_a_header_is_a_gap():
+    openpyxl = __import__("openpyxl")
+    book = openpyxl.Workbook()
+    book.active.append(("Company", "Rank"))
+    path = os.path.join(_TMP_ROOT, "cap-headerless.xlsx")
+    book.save(path)
+    stocks, gap = funds._parse_cap_xlsx(path)
+    check("a workbook with no Sr. No. header yields nothing", stocks == {}, stocks)
+    check("an unrecognised layout is a labelled gap",
+          gap is not None and "header row" in gap, gap)
+    missing, gap = funds._parse_cap_xlsx(os.path.join(_TMP_ROOT, "not-there.xlsx"))
+    check("an unreadable workbook degrades rather than raising",
+          missing == {} and gap is not None and "unreadable" in gap, gap)
+
+
+def test_amfi_cap_list_end_to_end():
+    fresh_root("cap-list")
+    calls = []
+    with cap_index_cold(), swap(funds, "_curl", serve_cap(calls=calls)):
+        env = funds.amfi_cap_list(fresh=True)
+    check("amfi_cap_list returns the envelope", envelope_keys(env), sorted(env))
+    check("amfi_cap_list ok:true with rows", env["ok"] is True)
+    check("the source is AMFI, the publisher of record", env["source"] == "AMFI")
+    d = env["data"]
+    check("the resolved workbook url travels with the data", d["url"] == CAP_XLSX_URL, d["url"])
+    check("the period the classification covers is reported", d["period"] == "2026-06-30", d)
+    check("the row count matches the parsed map", d["count"] == len(d["stocks"]) == 7, d["count"])
+    check("discovery then download is exactly two fetches", len(calls) == 2, calls)
+    check("the index page is fetched before the workbook",
+          calls[0] == funds._AMFI_CAP_INDEX and calls[1] == CAP_XLSX_URL, calls)
+
+    def explode(*a, **k):
+        raise AssertionError("cap list re-fetched despite a warm cache")
+
+    with cap_index_cold(), swap(funds, "_curl", explode):
+        again = funds.amfi_cap_list()
+    check("the parsed map is served from the long-TTL cache",
+          again["data"]["count"] == 7, again["data"]["count"])
+    check("the cap list is cached far longer than the weekly scheme list",
+          funds._CAP_LIST_MAX_AGE_DAYS > 7, funds._CAP_LIST_MAX_AGE_DAYS)
+
+
+def test_cap_index_is_memoised_for_the_process():
+    fresh_root("cap-memo")
+    calls = []
+    with cap_index_cold(), swap(funds, "_curl", serve_cap(calls=calls)):
+        first, second = funds._cap_index(), funds._cap_index()
+        check("the second read reuses the built map rather than reloading the cache",
+              first[0] is second[0])
+        check("a second read costs no extra fetch", len(calls) == 2, calls)
+        check("the ISIN index is derived once alongside the symbol map",
+              second[1]["INE020B01018"]["rank"] == 117, second[1].get("INE020B01018"))
+        check("the memo carries the period the gaps quote", second[2] == "2026-06-30",
+              second[2])
+
+
+def test_amfi_cap_list_degrades_at_every_step():
+    fresh_root("cap-list-blocked")
+    with cap_index_cold(), swap(funds, "_curl", lambda *a, **k: (None, "HTTP 503")):
+        env = funds.amfi_cap_list(fresh=True)
+    check("a blocked index page is ok:false", env["ok"] is False)
+    check("a blocked index page keeps the envelope shape", envelope_keys(env))
+    check("a blocked index page names the gap",
+          any("cap-list index" in g for g in env["gaps"]), env["gaps"])
+    check("a blocked index page returns an empty map", env["data"]["stocks"] == {})
+
+    fresh_root("cap-list-nolink")
+    with cap_index_cold(), swap(funds, "_curl", serve_cap(index_html="<html></html>")):
+        env = funds.amfi_cap_list(fresh=True)
+    check("an index page with no link is a gap, not an abort", env["ok"] is False)
+    check("the no-link gap names what was looked for",
+          any("AverageMarketCapitalization" in g for g in env["gaps"]), env["gaps"])
+
+    fresh_root("cap-list-nofile")
+
+    def index_ok_download_blocked(url, payload=None, timeout=30, referer=None, dest=None):
+        return (CAP_INDEX_HTML, None) if dest is None else (None, "HTTP 404")
+
+    with cap_index_cold(), swap(funds, "_curl", index_ok_download_blocked):
+        env = funds.amfi_cap_list(fresh=True)
+    check("a blocked workbook download is a gap", env["ok"] is False)
+    check("a blocked download still reports the period it was after",
+          env["data"]["period"] == "2026-06-30", env["data"])
+    check("the download gap names the workbook",
+          any("cap workbook" in g for g in env["gaps"]), env["gaps"])
 
 
 # --------------------------------------------------------------------------- #
@@ -546,21 +797,55 @@ def test_holdings_empty_allocation_degrades():
 # --------------------------------------------------------------------------- #
 def test_stock_ratios_parses():
     fresh_root("ratios")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (STOCK_INFO_BLOB, None)):
+    with swap(funds, "_json", lambda url, payload=None, timeout=30: (STOCK_INFO_BLOB, None)), \
+            cap_index(cap_stocks()):
         env = funds.stock_ratios("RECM", fresh=True)
     check("stock_ratios returns the envelope", envelope_keys(env), sorted(env))
     check("stock_ratios ok:true with ratios", env["ok"] is True)
+    check("stock_ratios names both sources", env["source"] == "AMFI+Tickertape", env["source"])
     d = env["data"]
     check("stock_ratios keeps the sid as the join key", d["sid"] == "RECM", d)
     check("stock_ratios reports the DIFFERENT ticker", d["ticker"] == "RECLTD", d)
     check("stock_ratios parses pe/pb/roe", (d["pe"], d["pb"], d["roe"]) == (8.4, 1.6, 21.5), d)
     check("stock_ratios carries the SEBI cap RANK, not just the ₹Cr size",
-          d["cap_rank"] == 118.0, d)
+          d["cap_rank"] == 117.0, d)
     check("cap_rank sits between the SEBI large and mid cut-offs",
           funds.SEBI_CAP_RANKS["large"] < d["cap_rank"] <= funds.SEBI_CAP_RANKS["mid"],
           (d["cap_rank"], funds.SEBI_CAP_RANKS))
+    check("cap_label is derived from the rank, so the two cannot disagree",
+          d["cap_label"] == "Mid Cap", d)
+    check("a ranked holding raises no cap gap", env["gaps"] == [], env["gaps"])
     check("stock_ratios carries the industry comparables",
           d["industry_pe"] == 14.2 and d["industry_pb"] == 2.1, d)
+
+
+def test_stock_ratios_unranked_falls_back_to_the_provider_label():
+    fresh_root("ratios-unranked")
+    with swap(funds, "_json", lambda url, payload=None, timeout=30: (STOCK_INFO_BLOB, None)), \
+            cap_index({}, period="2026-06-30"):
+        env = funds.stock_ratios("RECM", fresh=True)
+    d = env["data"]
+    check("a symbol absent from the AMFI list has no rank", d["cap_rank"] is None, d)
+    check("the provider label is the documented fallback", d["cap_label"] == "Midcap", d)
+    check("the fallback is a labelled gap naming the symbol",
+          any("RECLTD is unranked" in g for g in env["gaps"]), env["gaps"])
+    check("the gap names the period the classification covers",
+          any("2026-06-30" in g for g in env["gaps"]), env["gaps"])
+    check("an unranked holding is still ok — only the cap basis degraded",
+          env["ok"] is True and d["pe"] == 8.4, d)
+
+
+def test_stock_ratios_joins_on_isin_when_the_ticker_misses():
+    fresh_root("ratios-isin")
+    blob = {"data": {"info": {"ticker": "RECLIMITED", "name": "REC Ltd",
+                              "isin": "INE020B01018"},
+                     "ratios": {"pe": 8.4}}}
+    with swap(funds, "_json", lambda url, payload=None, timeout=30: (blob, None)), \
+            cap_index(cap_stocks()):
+        env = funds.stock_ratios("RECM", fresh=True)
+    check("a ticker the AMFI list does not use still ranks via ISIN",
+          env["data"]["cap_rank"] == 117.0, env["data"])
+    check("the ISIN join raises no unranked gap", env["gaps"] == [], env["gaps"])
 
 
 def test_stock_ratios_unlisted_degrades():
@@ -590,7 +875,7 @@ def test_enrich_priced_unpriced_split():
         return funds._envelope(False, "Tickertape", {"sid": sid},
                                [f"no ratios published for {sid} (unlisted or newly listed)"])
 
-    with swap(funds, "stock_ratios", fake_ratios):
+    with swap(funds, "stock_ratios", fake_ratios), cap_index(cap_stocks()):
         out, gaps = funds.enrich(positions)
     check("enrich covers every equity position and only those",
           {p["sid"] for p in out} == {"RELI", "TCS", "RECM", "UNLI"}, sorted(p["sid"] for p in out))
@@ -619,10 +904,47 @@ def test_enrich_fully_priced_book_raises_no_gap():
     positions = [{"sid": "RELI", "weight": 8.5, "type": "equity"},
                  {"sid": "TCS", "weight": 6.25, "type": "equity"}]
     with swap(funds, "stock_ratios", lambda sid, fresh=False:
-              funds._envelope(True, "Tickertape", {"sid": sid, "pe": 20.0}, [])):
+              funds._envelope(True, "AMFI+Tickertape",
+                              {"sid": sid, "pe": 20.0, "cap_rank": 5.0}, [])), \
+            cap_index(cap_stocks()):
         out, gaps = funds.enrich(positions)
     check("a fully priced book raises no unpriced gap", gaps == [], gaps)
     check("a fully priced book marks everything priced", all(p["priced"] for p in out))
+
+
+def test_enrich_reports_the_unranked_weight():
+    fresh_root("enrich-unranked")
+    positions = [{"sid": "RELI", "weight": 8.5, "type": "equity"},
+                 {"sid": "NEWCO", "weight": 1.75, "type": "equity"}]
+
+    def fake_ratios(sid, fresh=False):
+        rank = 1.0 if sid == "RELI" else None
+        return funds._envelope(True, "AMFI+Tickertape",
+                               {"sid": sid, "pe": 20.0, "cap_rank": rank}, [])
+
+    with swap(funds, "stock_ratios", fake_ratios), cap_index(cap_stocks()):
+        out, gaps = funds.enrich(positions)
+    check("enrich reports the unranked WEIGHT so cap-tilt's basis is visible",
+          any("1.75% of the book is unranked" in g for g in gaps), gaps)
+    check("the unranked gap names the AMFI period",
+          any("2026-06-30" in g for g in gaps), gaps)
+    check("an unranked holding is still priced and keeps its ratios",
+          [p for p in out if p["sid"] == "NEWCO"][0]["pe"] == 20.0, out)
+
+
+def test_enrich_fetches_the_cap_list_once_for_the_whole_book():
+    fresh_root("enrich-once")
+    positions = [{"sid": f"S{i}", "weight": 1.0, "type": "equity"} for i in range(40)]
+    calls = []
+    with cap_index_cold(), \
+            swap(funds, "_curl", serve_cap(calls=calls)), \
+            swap(funds, "_json", lambda url, payload=None, timeout=30:
+                 (STOCK_INFO_BLOB, None)):
+        out, _ = funds.enrich(positions, workers=10)
+    check("a 40-position book downloads the AMFI workbook once, not once per position",
+          len([u for u in calls if u.endswith(".xlsx")]) == 1, calls)
+    check("every position still got its rank from that single read",
+          all(p["cap_rank"] == 117.0 for p in out), out[:2])
 
 
 def test_enrich_empty_input():
@@ -759,7 +1081,15 @@ if __name__ == "__main__":
          test_score_name_penalises_payout_plans,
          test_score_name_prefers_the_tighter_name, test_amfi_index_parses,
          test_amfi_index_dash_isin_is_none, test_amfi_index_blocked_degrades,
-         test_amfi_index_unparseable_body_degrades, test_resolve_prefers_direct_growth,
+         test_amfi_index_unparseable_body_degrades,
+         test_cap_label_boundaries, test_cap_link_discovery_takes_the_newest_period,
+         test_cap_link_discovery_handles_a_root_relative_href,
+         test_cap_link_discovery_no_match_is_a_gap,
+         test_cap_xlsx_parse_keys_on_nse_symbol_then_isin,
+         test_cap_xlsx_parse_without_a_header_is_a_gap,
+         test_amfi_cap_list_end_to_end, test_cap_index_is_memoised_for_the_process,
+         test_amfi_cap_list_degrades_at_every_step,
+         test_resolve_prefers_direct_growth,
          test_resolve_regular_only_is_a_labelled_gap, test_resolve_no_match_at_all,
          test_screen_filters_subsector_and_option_client_side,
          test_screen_sorts_by_aum_desc, test_screen_whole_universe_when_unfiltered,
@@ -768,8 +1098,13 @@ if __name__ == "__main__":
          test_holdings_parses_the_full_book, test_holdings_equity_weight_and_sectors,
          test_holdings_normal_book_is_silent, test_holdings_low_equity_gap,
          test_holdings_blocked_degrades, test_holdings_empty_allocation_degrades,
-         test_stock_ratios_parses, test_stock_ratios_unlisted_degrades,
+         test_stock_ratios_parses,
+         test_stock_ratios_unranked_falls_back_to_the_provider_label,
+         test_stock_ratios_joins_on_isin_when_the_ticker_misses,
+         test_stock_ratios_unlisted_degrades,
          test_enrich_priced_unpriced_split, test_enrich_fully_priced_book_raises_no_gap,
+         test_enrich_reports_the_unranked_weight,
+         test_enrich_fetches_the_cap_list_once_for_the_whole_book,
          test_enrich_empty_input, test_nav_history_dates_and_order,
          test_nav_history_blocked_degrades, test_nav_history_empty_series_degrades,
          test_cache_round_trip_and_ageing, test_cache_max_age,

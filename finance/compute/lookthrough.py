@@ -5,14 +5,14 @@ A fund does not publish its own P/E, P/B or ROE, but it does publish what it own
 This script aggregates the underlying stocks' ratios into the portfolio's ratios, so a
 verdict can rest on *what the fund holds today* rather than on what it returned last year.
 
-Holdings and per-stock ratios both come from `finance/sources/funds.py` (Tickertape), the
+Holdings and per-stock ratios both come from `finance/sources/funds.py`, the
 one sanctioned path — it fetches the COMPLETE position list (64-278 names at 90-99% weight
 coverage), threaded and disk-cached. A holdings file is an offline/testing hatch only.
 
 Three rules are baked into the math, each of which can flip a verdict:
 
 1. **Cap-tilt is RANK-based, not ₹Cr-band-based.** SEBI classifies by market-cap rank
-   (top 100 large, 101-250 mid, 251+ small) and Tickertape publishes that rank.
+   (top 100 large, 101-250 mid, 251+ small) and AMFI publishes that rank.
    Absolute-₹Cr bands fabricate style drift, because a small-cap fund's biggest holdings
    are, by construction, its largest names.
 

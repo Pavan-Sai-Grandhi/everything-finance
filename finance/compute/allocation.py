@@ -13,7 +13,7 @@ Two provenance-honest input styles per dimension:
   * pre-aggregated breakdown — `market_cap` and `style` arrive as category→₹ (or
     →pct) dicts from the mf-analysis look-through, because they are portfolio-level
     weights, not one tag per row. A cap tier is a classification, so it comes from
-    `get_stock_ratios.mrktCapRank` via that look-through, never from a personal
+    `get_stock_ratios`' `cap_rank` via that look-through, never from a personal
     source's own breakdown field.
 
 Reached through: skills/portfolio-review/scripts/allocation.py.

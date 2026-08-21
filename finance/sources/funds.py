@@ -5,7 +5,9 @@ Holdings come from Tickertape's public JSON API (free, no auth), which returns t
 complete current allocation at 90-99% weight coverage. Never source them from a personal
 MCP: that feed caps at 20 rows while funds hold 64-278 positions, so a look-through built
 on it describes a different fund (CLAUDE.md rule 3). AMFI's NAVAll.txt is the authority for
-scheme code + ISIN; mfapi.in serves the daily NAV series the return math runs on.
+scheme code + ISIN, and its half-yearly average-market-capitalisation workbook is the
+authority for the SEBI cap rank; mfapi.in serves the daily NAV series the return math
+runs on.
 
 This module FETCHES ONLY — no grade, no verdict, no weighted aggregation. Turning holdings
 into portfolio ratios is `finance/compute/lookthrough.py`'s job.
@@ -19,22 +21,44 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+from finance import deps
 from finance import paths
 from finance import transport
-from finance.spine import (envelope as _envelope, f as _f,
+from finance.spine import (envelope as _envelope, f as _f, iso_date as _iso_date,
+                           norm_symbol as _norm_symbol,
                            read_cache as _read_cache, write_cache as _write_cache)
 
 _TT = "https://api.tickertape.in"
 _AMFI_NAV_ALL = "https://portal.amfiindia.com/spages/NAVAll.txt"
+_AMFI_CAP_INDEX = "https://www.amfiindia.com/otherdata/categorisation-of-stocks"
+_AMFI_HOST = "https://www.amfiindia.com"
 _MFAPI = "https://api.mfapi.in/mf"
 
 # SEBI defines caps by market-cap RANK, not absolute size: top 100 large, 101-250 mid,
-# 251+ small. Tickertape's `mrktCapRank` is exactly this rank, so cap-tilt comes from it
-# rather than from ₹Cr bands that misclassify a small-cap fund's largest positions.
+# 251+ small. AMFI publishes that rank, so cap-tilt comes from it rather than from ₹Cr
+# bands that misclassify a small-cap fund's largest positions.
 SEBI_CAP_RANKS = {"large": 100, "mid": 250}
+
+# AMFI republishes the classification half-yearly, so unlike the weekly NAVAll.txt this
+# 582 KB workbook is stable for months. 30 days re-checks often enough to pick a new
+# period up within a month of its publication without refetching it every week.
+_CAP_LIST_MAX_AGE_DAYS = 30
+
+# Both an <a href> and an escaped JSON blob on the index page carry the link; the class
+# excludes the quote and backslash that delimit either form.
+_CAP_XLSX_RE = re.compile(r"""[^\s"'<>\\()]*AverageMarketCapitalization[^\s"'<>\\()]*\.xlsx""",
+                          re.I)
+_CAP_PERIOD_RE = re.compile(r"(\d{1,2})([A-Za-z]{3,9})(\d{4})\.xlsx$", re.I)
+
+# Header prefixes of the five columns worth keeping, matched case-folded so a reworded
+# unit suffix ("in (Rs. Crs.)" vs "(Rs Crs.)") cannot shift a column.
+_CAP_COLUMNS = {"rank": "sr. no", "name": "company name", "isin": "isin",
+                "symbol": "nse symbol", "avg_mcap_cr": "average of all exchanges"}
 
 # The screener fields that are free on the public endpoint. Tickertape 403s the whole
 # request (not just the field) when a premium one is asked for, and names the offenders —
@@ -49,9 +73,14 @@ SCREEN_FIELDS = [
 PREMIUM_FIELDS = {"maxDrawdown", "avg3yRollingRet", "percTop10H", "percTop3H",
                   "percTop5H", "ret3yVsCat", "ret1yVsCat", "ret5yVsCat", "cashncasheq"}
 
-def _curl(url, payload=None, timeout=30, referer="https://www.tickertape.in/"):
-    """GET, or POST when `payload` is given, via the single shared transport."""
-    return transport.request(url, payload=payload, timeout=timeout, referer=referer)
+def _curl(url, payload=None, timeout=30, referer="https://www.tickertape.in/", dest=None):
+    """GET, or POST when `payload` is given, via the single shared transport.
+
+    `dest` returns the saved path instead of the body — a workbook decoded to str is
+    destroyed.
+    """
+    return transport.request(url, payload=payload, timeout=timeout, referer=referer,
+                             dest=dest)
 
 
 def _json(url, payload=None, timeout=30):
@@ -106,6 +135,168 @@ def amfi_index(fresh=False):
     if schemes:
         _write_cache(cache, env)
     return env
+
+
+def cap_label(rank):
+    """The SEBI cap band for a market-cap rank, or None. Derived from the rank so the two
+    can never disagree."""
+    r = _f(rank)
+    if r is None or r <= 0:
+        return None
+    if r <= SEBI_CAP_RANKS["large"]:
+        return "Large Cap"
+    return "Mid Cap" if r <= SEBI_CAP_RANKS["mid"] else "Small Cap"
+
+
+def _cap_xlsx_link(html):
+    """Newest `AverageMarketCapitalization*.xlsx` link on the index page.
+
+    Returns `(url, period, gap)`. The filename encodes the six months it covers, so the
+    period is what orders the candidates — the page lists every past edition alongside
+    the current one, in no dependable order.
+    """
+    best = None
+    for hit in _CAP_XLSX_RE.findall(html or ""):
+        m = _CAP_PERIOD_RE.search(hit)
+        if not m:
+            continue
+        day, month, year = m.groups()
+        period = _iso_date(f"{day}-{month}-{year}")
+        if period and (best is None or period > best[1]):
+            best = (hit, period)
+    if not best:
+        return None, None, ("AMFI categorisation page listed no dated "
+                            "AverageMarketCapitalization .xlsx link")
+    url = best[0]
+    if url.startswith("//"):
+        url = "https:" + url
+    elif url.startswith("/"):
+        url = _AMFI_HOST + url
+    return url, best[1], None
+
+
+def _parse_cap_xlsx(path):
+    """The workbook -> `({key: {rank, name, isin, symbol, avg_mcap_cr}}, gap)`.
+
+    Keyed on NSE Symbol, falling back to ISIN for the ~3.1k rows listed on BSE only, so a
+    BSE-only holding is still rankable.
+    """
+    try:
+        openpyxl = deps.need("openpyxl")
+    except Exception as exc:  # noqa: BLE001 — a missing parser is a gap, not a crash
+        return {}, f"openpyxl unavailable, AMFI cap list unparsed ({exc})"
+    try:
+        book = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        rows = list(book[book.sheetnames[0]].iter_rows(values_only=True))
+    except Exception as exc:  # noqa: BLE001
+        return {}, f"AMFI cap workbook unreadable ({exc})"
+
+    def cell(row, cols, key):
+        """One column of one row, tolerating a short row and an absent column."""
+        idx = cols[key]
+        return row[idx] if idx is not None and idx < len(row) else None
+
+    cols, stocks = None, {}
+    for row in rows:
+        cells = [str(c).strip().lower() if c is not None else "" for c in row]
+        if cols is None:
+            if any(c.startswith(_CAP_COLUMNS["rank"]) for c in cells):
+                cols = {k: next((i for i, c in enumerate(cells) if c.startswith(v)), None)
+                        for k, v in _CAP_COLUMNS.items()}
+            continue
+        rank = _f(cell(row, cols, "rank"))
+        if rank is None:
+            continue
+        rec = {"rank": int(rank)}
+        for field in ("name", "isin", "symbol"):
+            raw = cell(row, cols, field)
+            val = str(raw).strip() if raw is not None else ""
+            rec[field] = val if val and val != "-" else None
+        rec["symbol"] = _norm_symbol(rec["symbol"]) or None
+        rec["avg_mcap_cr"] = _f(cell(row, cols, "avg_mcap_cr"))
+        key = rec["symbol"] or rec["isin"]
+        if key:
+            stocks[key] = rec
+    if cols is None:
+        return {}, "AMFI cap workbook carried no recognisable header row"
+    return stocks, None if stocks else "AMFI cap workbook carried no ranked rows"
+
+
+def amfi_cap_list(fresh=False):
+    """The SEBI market-cap classification straight from AMFI, the publisher of record.
+
+    `data = {period, url, count, stocks:{<NSE symbol or ISIN>: {rank, name, isin, symbol,
+    avg_mcap_cr}}}`, where `rank` is the `Sr. No.` column — SEBI's classification IS that
+    rank. Link discovery is dynamic because the filename encodes the period; a failed
+    resolution is a labelled gap.
+    """
+    cache = _cache_path("meta", "amfi-cap-list")
+    cached = _read_cache(cache, fresh, max_age_days=_CAP_LIST_MAX_AGE_DAYS)
+    if cached is not None:
+        return cached
+
+    empty = {"period": None, "url": None, "count": 0, "stocks": {}}
+    html, gap = _curl(_AMFI_CAP_INDEX, timeout=40, referer=_AMFI_HOST)
+    if gap:
+        return _envelope(False, "AMFI", empty, [f"AMFI cap-list index: {gap}"])
+    url, period, gap = _cap_xlsx_link(html)
+    if gap:
+        return _envelope(False, "AMFI", empty, [gap])
+
+    # pid-scoped: two sessions downloading the same period must not overwrite each
+    # other's file mid-parse.
+    dest = os.path.join(paths.tmp_dir("mf"), f"amfi-cap-list-{os.getpid()}.xlsx")
+    saved, gap = _curl(url, timeout=120, referer=_AMFI_CAP_INDEX, dest=dest)
+    if gap:
+        return _envelope(False, "AMFI", dict(empty, period=period, url=url),
+                         [f"AMFI cap workbook: {gap}"])
+    stocks, gap = _parse_cap_xlsx(saved)
+    try:
+        os.unlink(saved)
+    except OSError:
+        pass
+
+    data = {"period": period, "url": url, "count": len(stocks), "stocks": stocks}
+    env = _envelope(bool(stocks), "AMFI", data, [gap] if gap else [])
+    if stocks:
+        _write_cache(cache, env)
+    return env
+
+
+_cap_lock = threading.Lock()
+_cap_index_memo = None
+
+
+def _cap_index(fresh=False):
+    """Process-wide `(by_key, by_isin, period, gaps)` view of the cap list.
+
+    Memoised because `enrich` prices up to 278 holdings in a thread pool: without this
+    every position would reload — and on a cold cache refetch — the same workbook.
+    """
+    global _cap_index_memo  # noqa: PLW0603 — one memo for the process, guarded by the lock
+    with _cap_lock:
+        if _cap_index_memo is None or fresh:
+            env = amfi_cap_list(fresh=fresh)
+            stocks = (env.get("data") or {}).get("stocks") or {}
+            by_isin = {r["isin"]: r for r in stocks.values() if r.get("isin")}
+            _cap_index_memo = (stocks, by_isin, (env.get("data") or {}).get("period"),
+                               list(env.get("gaps") or []))
+        return _cap_index_memo
+
+
+def _cap_rank(ticker, isin=None):
+    """`(rank, label, gaps)` for one listed company from the AMFI cap list.
+
+    Deliberately blind to a caller's `fresh`: that means "today's quote", and the cap list
+    is republished twice a year.
+    """
+    by_key, by_isin, period, gaps = _cap_index()
+    rec = by_key.get(_norm_symbol(ticker)) or (by_isin.get(isin) if isin else None)
+    if rec:
+        return float(rec["rank"]), cap_label(rec["rank"]), list(gaps)
+    unranked = (f"{ticker or isin or 'holding'} is unranked in the AMFI cap list for "
+                f"{period or 'the current period'} — cap falls back to the provider label")
+    return None, None, list(gaps) + [unranked]
 
 
 def _token_hit(token, name_lower, name_words):
@@ -324,8 +515,9 @@ def stock_ratios(sid, fresh=False):
     """One holding's ratios. Returns `data = {sid, ticker, name, sector, pe, ttm_pe, pb,
     roe, market_cap_cr, cap_rank, cap_label, div_yield, beta, industry_pe}`.
 
-    `cap_rank` is the market-cap RANK — the thing SEBI actually classifies caps by, so a
-    downstream cap-tilt is a fact rather than an inference from ₹Cr bands.
+    `cap_rank` is AMFI's published market-cap RANK — the thing SEBI actually classifies
+    caps by, so a downstream cap-tilt is a fact rather than an inference from ₹Cr bands.
+    Everything else is Tickertape's sid-joined ratio feed.
     """
     cache = _cache_path("stocks", sid)
     cached = _read_cache(cache, fresh, max_age_days=5)
@@ -340,6 +532,7 @@ def stock_ratios(sid, fresh=False):
     if not rat:
         return _envelope(False, "Tickertape", {"sid": sid},
                          [f"no ratios published for {sid} (unlisted or newly listed)"])
+    rank, label, gaps = _cap_rank(info.get("ticker"), info.get("isin"))
     data = {
         "sid": sid,
         "ticker": info.get("ticker"),
@@ -351,14 +544,14 @@ def stock_ratios(sid, fresh=False):
         "roe": _f(rat.get("roe")),
         "eps": _f(rat.get("eps")),
         "market_cap_cr": _f(rat.get("marketCap")),
-        "cap_rank": _f(rat.get("mrktCapRank")),
-        "cap_label": rat.get("marketCapLabel"),
+        "cap_rank": rank,
+        "cap_label": label or rat.get("marketCapLabel"),
         "div_yield": _f(rat.get("divYield")),
         "beta": _f(rat.get("beta")),
         "industry_pe": _f(rat.get("indpe")),
         "industry_pb": _f(rat.get("indpb")),
     }
-    env = _envelope(True, "Tickertape", data, [])
+    env = _envelope(True, "AMFI+Tickertape", data, gaps)
     _write_cache(cache, env)
     return env
 
@@ -373,8 +566,11 @@ def enrich(positions, workers=10, fresh=False):
     """
     equity = [p for p in positions if str(p.get("type", "")).lower() == "equity"]
     sids = [p["sid"] for p in equity if p.get("sid")]
-    ratios, gaps = {}, []
+    ratios, gaps, cap_period = {}, [], None
     if sids:
+        # Prime the cap list before the pool: one workbook fetch for the whole book.
+        _, _, cap_period, cap_gaps = _cap_index()
+        gaps += cap_gaps
         with ThreadPoolExecutor(max_workers=workers) as pool:
             for sid, env in zip(sids, pool.map(lambda s: stock_ratios(s, fresh=fresh), sids)):
                 if env.get("ok"):
@@ -392,6 +588,12 @@ def enrich(positions, workers=10, fresh=False):
     if unpriced_w:
         gaps.append(f"{unpriced_w}% of the book is unpriced (unlisted/newly-listed "
                     f"holdings) — excluded from ratios, never extrapolated")
+    unranked_w = round(sum(p["weight"] for p in out
+                           if p["priced"] and p.get("cap_rank") is None), 2)
+    if unranked_w:
+        gaps.append(f"{unranked_w}% of the book is unranked in the AMFI cap list for "
+                    f"{cap_period or 'the current period'} — cap-tilt falls back to the "
+                    f"provider label for that weight")
     return out, gaps
 
 
