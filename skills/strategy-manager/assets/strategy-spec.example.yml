@@ -3,7 +3,7 @@
 # It is written from the REFERENCE ARTICLE(S) the user supplied (trade logic) + the system
 # framework (risk layer), then validated by backtest and tuned by live trade outcomes.
 #   find-trade     reads universe/screening/entry/exit/sizing of an ACTIVE, regime-fitting spec.
-#   backtest       reads entry/exit/sizing and writes results into expectancy_assumptions.
+#   run_backtest   reads entry/exit/sizing; VALIDATE writes results into expectancy_assumptions.
 #   trade-tracker  reads regime_required of a trade's linked strategy; feeds closed trades back.
 # Every field must be present.  (Full schema doc: <plugin>/finance/contracts.md)
 

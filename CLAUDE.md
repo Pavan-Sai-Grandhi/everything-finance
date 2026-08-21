@@ -95,4 +95,4 @@ A skill's `scripts/` holds only pure compute over user-supplied files. **Never a
 
 ## Excluded by design
 
-No scheduled cron inside the plugin (run it externally) and **no order execution, ever**. Backtesting lives in the `backtest` skill — historical validation only, never live signals.
+No scheduled cron inside the plugin (run it externally) and **no order execution, ever**. Backtesting lives in `strategy-manager`'s VALIDATE mode — historical validation only, never live signals.

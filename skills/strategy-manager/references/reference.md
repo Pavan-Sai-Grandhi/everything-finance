@@ -34,7 +34,7 @@ Core discipline: a system is a *fixed, written rule set* executed without improv
 ```
 Expectancy (in R) = (Win% × Avg Win in R) − (Loss% × Avg Loss in R)
 ```
-where 1R = the initial risk (entry − stop). Expectancy > 0 is the minimum bar; > 0.2R with a real sample (≥ ~30 trades) is a tradeable edge. A 35% win rate with 2.5R winners beats a 65% win rate with 0.5R winners — **win rate alone is marketing**; expectancy and reward:risk together decide. The generator leaves `expectancy_assumptions` null until `/backtest` fills them — an article's claimed numbers are not your results, and an unvalidated system is a hypothesis.
+where 1R = the initial risk (entry − stop). Expectancy > 0 is the minimum bar; > 0.2R with a real sample (≥ ~30 trades) is a tradeable edge. A 35% win rate with 2.5R winners beats a 65% win rate with 0.5R winners — **win rate alone is marketing**; expectancy and reward:risk together decide. The generator leaves `expectancy_assumptions` null until VALIDATE's backtest fills them — an article's claimed numbers are not your results, and an unvalidated system is a hypothesis.
 
 ## Position sizing — fixed fractional / percent-risk
 
@@ -68,7 +68,7 @@ A spec moves through three states. `status` is the lifecycle; regime-fit is deci
 | **inactive** | retired — failed backtest, deactivated by live performance, or manual | `validate` (fail) / `optimize` (deactivate) | No |
 
 ### Activation gate (validate)
-Promote `draft → active` **only if** the backtest gives `expectancy_R > 0.2` over **≥ ~30 trades** with the numeric indicator study done. Mapping (same as the backtest skill): `< 0R` = no edge → `inactive`; `0–0.2R` = fragile → stays `draft`; `> 0.2R, ≥30 trades` = edge → `active`; `< 30 trades` = inconclusive → stays `draft` regardless of the number. Record `expectancy_assumptions` + `lifecycle.validated_at`/`activated_at`. Win rate alone never activates anything — expectancy and sample size decide.
+Promote `draft → active` **only if** the backtest gives `expectancy_R > 0.2` over **≥ ~30 trades** with the numeric indicator study done — SKILL.md's VALIDATE carries the full expectancy→verdict→status mapping and the sample-size override. Record `expectancy_assumptions` + `lifecycle.validated_at`/`activated_at`. Win rate alone never activates anything — expectancy and sample size decide.
 
 ### Selection (pick)
 Among `status: active` specs, keep those whose `regime_required` the live market context satisfies (trend match, Nifty vs 200-EMA, VIX ≤ cap, breadth ≥ floor — `select_strategy.py`), then rank by edge: **live `expectancy_R` if the strategy has closed trades, else backtest `expectancy_R`**, tie-broken by profit factor. The best fit is the verdict. Zero fits → stand aside (don't force a misfit). Zero active specs → nothing validated to run.

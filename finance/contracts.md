@@ -308,7 +308,7 @@ Key blocks and who reads them:
 
 | Block | Written by | Read by | Meaning |
 |---|---|---|---|
-| `status` | strategy-manager validate/optimize | find-trade, backtest, select | `draft`→not tradeable; `active`→eligible; `inactive`→retired |
+| `status` | strategy-manager validate/optimize | find-trade, select | `draft`→not tradeable; `active`→eligible; `inactive`→retired |
 | `regime_required` | generate | select_strategy.py, trade-tracker | conditions checked against the live **market-context** artifact at PICK time |
 | `screening.fundamental` | generate | find-trade Stage 1 | `provider: tickertape` + `query` (Tickertape catalogue field names, `>`/`<` only) + `max_survivors` |
 | `screening.technical` | generate | find-trade Stage 2 | `provider: tradingview` (+`tradingview_filters`) or `compute` (+`compute_filters` naming `ta` features) |
