@@ -50,6 +50,8 @@ CASES = {
     "company": [
         ("get_company_fundamentals",
          {"symbol": "RELIANCE", "sections": ["ratios"]}, ["ratios"]),
+        ("get_documents", {"symbol": "RELIANCE", "annual_reports": 1, "concalls": 1},
+         ["documents", "documents_total"]),
         ("run_fundamental_screen",
          {"query": "Market Capitalization > 100000 AND Price to Earning < 25"},
          ["candidates", "count"]),
@@ -85,9 +87,10 @@ RUNTIME_ARG = {"get_fund_holdings": "mf_id", "get_fund_lookthrough": "mf_id"}
 FILE_ARG = {"run_strategy_screen": ("spec", "SPEC"), "run_backtest": ("spec", "SPEC"),
             "check_trade": ("trade", "TRADE")}
 
-# The slow rungs: valuation sampling, the daily context, and the spec engines.
+# The slow rungs: valuation sampling, the daily context, the spec engines, and the
+# multi-megabyte annual-report download.
 SLOW = {"get_index_valuation_history", "get_market_context", "run_strategy_screen",
-        "run_backtest", "get_fund_scan", "get_fund_lookthrough"}
+        "run_backtest", "get_fund_scan", "get_fund_lookthrough", "get_documents"}
 
 
 class Client:

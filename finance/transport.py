@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -53,12 +54,17 @@ def _host(url):
 
 
 def request(url, *, payload=None, headers=None, referer=None, origin=None,
-            cookie_jar=None, timeout=25, retries=2, accept=None, ua=None):
+            cookie_jar=None, timeout=25, retries=2, accept=None, ua=None, dest=None):
     """Fetch `url` and return `(body, gap)` — one of the two is always None.
 
     GET by default; POSTs JSON when `payload` is given. `cookie_jar` is a file path used
     for BOTH read and write (`-b` and `-c`), which is what makes a homepage bootstrap
     able to prime a later API call — see `bootstrap()`.
+
+    `dest` saves the response to that path and returns it in place of the body: a PDF
+    decoded to text is destroyed, so binary payloads must never round-trip through a str.
+    The file appears only on a 2xx, so a failed fetch cannot leave an error page sitting
+    where a caller expects a document.
 
     On failure `body` is None and `gap` is a short human-readable label naming the host
     and the reason, ready to drop into an envelope's `gaps` list.
@@ -108,19 +114,24 @@ def request(url, *, payload=None, headers=None, referer=None, origin=None,
                 return None, last
 
             status = (proc.stdout or "").strip()[-3:]
-            try:
-                with open(body_file, encoding="utf-8", errors="replace") as fh:
-                    text = fh.read()
-            except OSError as exc:
-                return None, f"{_host(url)}: could not read response ({exc})"
-
             if status.isdigit() and not status.startswith("2"):
                 code = int(status)
                 last = f"{_host(url)}: HTTP {code}"
                 if code in _TRANSIENT_STATUS:
                     continue
                 return None, last
-            return text, None
+
+            if dest is not None:
+                try:
+                    shutil.move(body_file, dest)
+                except OSError as exc:
+                    return None, f"{_host(url)}: could not save response ({exc})"
+                return dest, None
+            try:
+                with open(body_file, encoding="utf-8", errors="replace") as fh:
+                    return fh.read(), None
+            except OSError as exc:
+                return None, f"{_host(url)}: could not read response ({exc})"
 
         return None, last or f"{_host(url)}: fetch failed"
     finally:

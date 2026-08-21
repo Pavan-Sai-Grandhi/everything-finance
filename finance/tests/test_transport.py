@@ -97,6 +97,19 @@ def test_json_request_parses_good_json():
     check("a successful parse carries no gap", gap is None)
 
 
+# --- dest: a binary download must never leave a half-file behind ------------ #
+def test_dest_writes_nothing_when_the_fetch_fails():
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        target = os.path.join(tmp, "annual-report.src")
+        body, gap = transport.request("https://nonexistent-host-for-tests.invalid/x",
+                                      timeout=5, retries=0, dest=target)
+        check("a failed download returns a gap, not the path", body is None and bool(gap),
+              gap)
+        check("a failed download leaves no file where a caller expects a document",
+              not os.path.exists(target), target)
+
+
 # --- cookie jars live in the disposable tier, never hardcoded --------------- #
 def test_jar_path_uses_the_path_authority():
     p = transport.jar_path("nse")
@@ -111,7 +124,8 @@ def test_single_user_agent():
     check("a browser UA is defined once here", "Mozilla/5.0" in transport.DEFAULT_UA)
     sources = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "sources")
-    for mod in ("market", "prices", "funds", "fundamentals", "news", "filings"):
+    for mod in ("market", "prices", "funds", "fundamentals", "news", "filings",
+                "documents"):
         src = open(os.path.join(sources, f"{mod}.py")).read()
         check(f"{mod}.py declares no UA of its own", "_UA = (" not in src)
 
@@ -121,5 +135,6 @@ if __name__ == "__main__":
             test_unresolvable_host_returns_gap, test_request_never_raises_on_bad_input,
             test_json_request_labels_non_json,
             test_json_request_passes_through_upstream_gap,
-            test_json_request_parses_good_json, test_jar_path_uses_the_path_authority,
-            test_single_user_agent))
+            test_json_request_parses_good_json,
+            test_dest_writes_nothing_when_the_fetch_fails,
+            test_jar_path_uses_the_path_authority, test_single_user_agent))
