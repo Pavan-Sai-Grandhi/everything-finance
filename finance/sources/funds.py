@@ -26,6 +26,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+from finance import caps
 from finance import deps
 from finance import paths
 from finance import transport
@@ -38,11 +39,6 @@ _AMFI_NAV_ALL = "https://portal.amfiindia.com/spages/NAVAll.txt"
 _AMFI_CAP_INDEX = "https://www.amfiindia.com/otherdata/categorisation-of-stocks"
 _AMFI_HOST = "https://www.amfiindia.com"
 _MFAPI = "https://api.mfapi.in/mf"
-
-# SEBI defines caps by market-cap RANK, not absolute size: top 100 large, 101-250 mid,
-# 251+ small. AMFI publishes that rank, so cap-tilt comes from it rather than from ₹Cr
-# bands that misclassify a small-cap fund's largest positions.
-SEBI_CAP_RANKS = {"large": 100, "mid": 250}
 
 # AMFI republishes the classification half-yearly, so unlike the weekly NAVAll.txt this
 # 582 KB workbook is stable for months. 30 days re-checks often enough to pick a new
@@ -135,17 +131,6 @@ def amfi_index(fresh=False):
     if schemes:
         _write_cache(cache, env)
     return env
-
-
-def cap_label(rank):
-    """The SEBI cap band for a market-cap rank, or None. Derived from the rank so the two
-    can never disagree."""
-    r = _f(rank)
-    if r is None or r <= 0:
-        return None
-    if r <= SEBI_CAP_RANKS["large"]:
-        return "Large Cap"
-    return "Mid Cap" if r <= SEBI_CAP_RANKS["mid"] else "Small Cap"
 
 
 def _cap_xlsx_link(html):
@@ -293,7 +278,7 @@ def _cap_rank(ticker, isin=None):
     by_key, by_isin, period, gaps = _cap_index()
     rec = by_key.get(_norm_symbol(ticker)) or (by_isin.get(isin) if isin else None)
     if rec:
-        return float(rec["rank"]), cap_label(rec["rank"]), list(gaps)
+        return float(rec["rank"]), caps.cap_label(rec["rank"]), list(gaps)
     unranked = (f"{ticker or isin or 'holding'} is unranked in the AMFI cap list for "
                 f"{period or 'the current period'} — cap falls back to the provider label")
     return None, None, list(gaps) + [unranked]

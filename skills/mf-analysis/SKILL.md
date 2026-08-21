@@ -18,14 +18,14 @@ Read `references/reference.md` for the grounding: the Varsity performance hierar
 - **`get_fund_scan`** — that universe gated and scored into a ranked shortlist, rolling returns and drawdown recomputed from NAV history.
 - **`get_fund_lookthrough`** — the priced read of what a fund owns.
 - **`get_fund_holdings`** — the **complete** position list plus sector weights, 90-99% weight coverage.
-- **`get_stock_ratios`** — per-holding P/E, P/B, ROE and **`mrktCapRank`** (the SEBI cap rank).
+- **`get_stock_ratios`** — per-holding P/E, P/B, ROE and **`cap_rank`** (AMFI's SEBI cap rank).
 - **`get_nav_history`** — the daily NAV series the rolling-return and drawdown math is computed from.
 - **`get_market_context`** — the market this analysis is read against.
 - **`get_company_fundamentals`** — the cross-check for a specific holding when a ratio looks wrong.
 - **IndMoney / broker** (`mcp__indmoney__*`, `mcp__kite__*`, read-only) — **only for what the user owns**: which funds are held, units, invested value, current value, XIRR, SIPs. Nothing else.
 - AMC/manager trust is qualitative web research (AMC factsheets, SEBI/AMFI, ValueResearch, fund news) — **every claim carries its source URL**. No other sites.
 
-> **The personal/decision boundary (CLAUDE.md rule 3) is a hard rule here:** a personal source never supplies a number that shapes the verdict — holdings come from `get_fund_holdings`, cap classification from `get_stock_ratios.mrktCapRank`, returns and ranks computed from `get_nav_history`, news from `get_news`.
+> **The personal/decision boundary (CLAUDE.md rule 3) is a hard rule here:** a personal source never supplies a number that shapes the verdict — holdings come from `get_fund_holdings`, cap classification from `get_stock_ratios.cap_rank`, returns and ranks computed from `get_nav_history`, news from `get_news`.
 
 ## Depth modes
 
@@ -72,7 +72,7 @@ MF rows come through the shared `finance/compute/holdings.py` resolver, **not** 
 PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> --mf-only
 ```
 
-Each row carries invested / current / XIRR. Cap-split comes from the look-through (`get_stock_ratios.mrktCapRank`), never from a personal source's own breakdown field. Run each held fund through the pillars above (or `quick` when the caller only needs the digest). If neither IndMoney nor a broker is connected, **say the personalised layer is unavailable and give the generic verdict** — never infer a holding.
+Each row carries invested / current / XIRR. Cap-split comes from the look-through (`get_stock_ratios.cap_rank`), never from a personal source's own breakdown field. Run each held fund through the pillars above (or `quick` when the caller only needs the digest). If neither IndMoney nor a broker is connected, **say the personalised layer is unavailable and give the generic verdict** — never infer a holding.
 
 ## Output
 

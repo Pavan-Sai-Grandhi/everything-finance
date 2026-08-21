@@ -11,10 +11,9 @@ coverage), threaded and disk-cached. A holdings file is an offline/testing hatch
 
 Three rules are baked into the math, each of which can flip a verdict:
 
-1. **Cap-tilt is RANK-based, not ₹Cr-band-based.** SEBI classifies by market-cap rank
-   (top 100 large, 101-250 mid, 251+ small) and AMFI publishes that rank.
-   Absolute-₹Cr bands fabricate style drift, because a small-cap fund's biggest holdings
-   are, by construction, its largest names.
+1. **Cap-tilt is RANK-based, not ₹Cr-band-based** — `finance/caps.py` owns the tiers and
+   the refusal of ₹Cr bands. `cap_tilt` adds only the weighting, and reports `by_rank` vs
+   `by_label` so a reader sees whether the split is a fact or a fallback.
 
 2. **Coverage is a GATE, not a footnote.** Below `MIN_PUBLISHABLE_COVERAGE` the ratio is
    withheld (`value: null`, `confidence: "unusable"`), not annotated — the same book
@@ -33,12 +32,8 @@ Reached through: get_fund_lookthrough.
 from __future__ import annotations
 
 
+from finance.caps import cap_bucket
 from finance.spine import envelope as _envelope, f as _num, first as _first
-
-# SEBI's own definition: caps are RANKS, not sizes. Top 100 large, 101-250 mid, 251+ small.
-# Mirrors `finance.sources.funds.SEBI_CAP_RANKS`; restated here so the pure math core stays
-# importable with no dependency on the network module.
-SEBI_CAP_RANKS = {"large": 100, "mid": 250}
 
 # Coverage bands over the fund's EQUITY weight. A ratio graded `unusable` is withheld.
 DECISION_GRADE_COVERAGE = 0.85
@@ -115,31 +110,6 @@ def cagr(series):
     if len(xs) < 2 or xs[0] <= 0 or xs[-1] <= 0:
         return None
     return ((xs[-1] / xs[0]) ** (1.0 / (len(xs) - 1)) - 1.0) * 100.0
-
-
-def cap_bucket(cap_rank=None, cap_label=None):
-    """-> ("large"|"mid"|"small"|None, source).
-
-    Rank is the fact (SEBI classifies by market-cap rank); the provider's own text label
-    is the labelled fallback when a rank is missing; absolute ₹Cr is not used at all,
-    because a band that calls a small-cap fund's top holdings "large-cap" fabricates
-    style drift out of nothing.
-    """
-    r = _num(cap_rank)
-    if r is not None and r > 0:
-        if r <= SEBI_CAP_RANKS["large"]:
-            return "large", "rank"
-        if r <= SEBI_CAP_RANKS["mid"]:
-            return "mid", "rank"
-        return "small", "rank"
-    lab = str(cap_label or "").strip().lower().replace(" ", "").replace("-", "")
-    if lab.startswith("large"):
-        return "large", "label"
-    if lab.startswith("mid"):
-        return "mid", "label"
-    if lab.startswith("small") or lab.startswith("micro"):
-        return "small", "label"
-    return None, None
 
 
 def cap_tilt(holdings):

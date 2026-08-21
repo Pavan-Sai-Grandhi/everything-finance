@@ -12,7 +12,7 @@ India-focused personal financial intelligence. These rules bind every skill and 
    - **Personal sources** — IndMoney, Kite, Upstox (optional; connect whatever you have). They answer exactly one question: **what do you own and what is it worth** (holdings, units, quantity, average cost, invested/current value, P&L, XIRR, SIPs, order fills, net worth). Within that scope they are authoritative first-party state. Broker MCPs are the only source of exact order fills.
    - **Decision sources** — the seven below, reached only through the three `finance-*` servers. Every number that shapes a view: prices, valuations, ratios, a *fund's own* holdings, returns-vs-benchmark, category returns and ranks, cap classification, news, sentiment, filings.
 
-   **A personal source must never supply a decision input**, however convenient the field looks — an authenticated feed *looks* authoritative, and these fields have been measurably wrong. So: fund holdings from `get_fund_holdings`, cap tiers from `get_stock_ratios.mrktCapRank`, fund performance computed from NAV history, news from `get_news`. Personal sources are normalized through `finance/compute/holdings.py`.
+   **A personal source must never supply a decision input**, however convenient the field looks — an authenticated feed *looks* authoritative, and these fields have been measurably wrong. So: fund holdings from `get_fund_holdings`, cap tiers from `get_stock_ratios.cap_rank`, fund performance computed from NAV history, news from `get_news`. Personal sources are normalized through `finance/compute/holdings.py`.
 
 ## Data sources — the MCP tools are the only door
 
@@ -24,8 +24,8 @@ India-focused personal financial intelligence. These rules bind every skill and 
 | **Yahoo** (yfinance) | EOD OHLCV, sector history, macro | `get_history`, `get_macro` |
 | **screener.in** | company financials, fundamental screen | `get_company_fundamentals`, `run_fundamental_screen` |
 | **NSE** | index valuation (live + historical), FII/DII flows, announcements, corporate actions | `get_indices`, `get_index_valuation_history`, `get_flows`, `get_filings`, `get_shareholding`, `get_corporate_actions` |
-| **Tickertape** | fund category screen, **complete** fund holdings, per-stock ratios + SEBI cap rank | `screen_funds`, `get_fund_holdings`, `get_stock_ratios` |
-| **AMFI** (registry + mfapi.in NAV mirror) | fund identity, NAV history | `resolve_fund`, `get_nav_history` |
+| **Tickertape** | fund category screen, **complete** fund holdings, per-stock ratios | `screen_funds`, `get_fund_holdings`, `get_stock_ratios` |
+| **AMFI** (registry + mfapi.in NAV mirror) | fund identity, NAV history, SEBI market-cap rank | `resolve_fund`, `get_nav_history`, `get_stock_ratios` |
 | **Google News RSS** | company and market news | `get_news` |
 
 Four servers, split by domain — `finance-market` (prices, index and market state, plus `run_strategy_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `run_dcf`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
@@ -55,7 +55,7 @@ Credentials live in a `.env` located by `bin/load-env.sh` — first found of `$P
 One library, so cross-skill logic cannot be re-implemented and drift.
 
 ```
-finance/  transport spine paths deps
+finance/  transport spine paths deps caps
   sources/  prices market funds fundamentals news filings
   compute/  ta strategy holdings alerts context rolling
             lookthrough fund_scan screen backtest
@@ -68,6 +68,7 @@ finance/  transport spine paths deps
 - **`sources/`** — one module per data domain, on that domain's finalized source.
 - **`compute/ta.py`** — the one definition of every indicator and pattern. Numeric indicators delegate to **TA-Lib** so the values traded on are the reference implementation; candlestick/range patterns stay geometric. The `FEATURES` registry + `materialize()` is the vocabulary a spec draws on: parameterized tokens (`ema21`, `rsi9`, `atr20`, `hh50`, `nr5`, …) resolve by regex and standard signals are pre-registered, so a new period or standard signal needs **no** code change. **Register a genuinely new primitive here, never inside a skill.**
 - **`compute/strategy.py`** — how a spec plus those columns becomes entries/stops/targets/size: the safe filter-language evaluator (`eval_series`, *not* python `eval`), `build_signal` (live), `build_bt_strategy`/`prepare_backtest_frame` (Backtesting.py). `compute/screen.py` and `compute/backtest.py` both sit on it, so they cannot disagree about what a strategy means.
+- **`caps.py`** — the one definition of the SEBI cap tiers. Cap is a market-cap **rank**, never a ₹Cr band. Every consumer resolves a tier here.
 - **`paths.py`** — the single artifact-path authority. **`compute/alerts.py`** — the alert contract skills feed and `daily-brief` reads.
 - **`mcp/`** — servers are declaration and delegation only; a tool body is one call into the library. They live inside the package because a top-level `mcp/` would shadow the installed MCP SDK for every consumer that puts the repo root on `sys.path`.
 - **`contracts.md`** — the data-handoff contracts between skills. **Read it before changing any artifact schema**: it names the producer and every consumer of each field, so you change both sides together.

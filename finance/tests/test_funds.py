@@ -23,6 +23,7 @@ _TMP_ROOT = tempfile.mkdtemp(prefix="ef-test-funds-")
 os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = os.path.join(_TMP_ROOT, "artifacts")
 atexit.register(shutil.rmtree, _TMP_ROOT, True)
 
+from finance import caps
 from finance import spine
 from finance.sources import funds  # noqa: E402
 from finance.tests.harness import check, run  # noqa: E402
@@ -383,14 +384,14 @@ def test_amfi_index_unparseable_body_degrades():
 # rung 1a — amfi_cap_list(): the SEBI cap rank                                 #
 # --------------------------------------------------------------------------- #
 def test_cap_label_boundaries():
-    check("rank 1 is large", funds.cap_label(1) == "Large Cap")
-    check("rank 100 is the LAST large cap", funds.cap_label(100) == "Large Cap")
-    check("rank 101 is the FIRST mid cap", funds.cap_label(101) == "Mid Cap")
-    check("rank 250 is the LAST mid cap", funds.cap_label(250) == "Mid Cap")
-    check("rank 251 is the FIRST small cap", funds.cap_label(251) == "Small Cap")
-    check("a deep-tail rank is small", funds.cap_label(5427) == "Small Cap")
-    check("no rank is no label", funds.cap_label(None) is None)
-    check("a non-positive rank is not a classification", funds.cap_label(0) is None)
+    check("rank 1 is large", caps.cap_label(1) == "Large Cap")
+    check("rank 100 is the LAST large cap", caps.cap_label(100) == "Large Cap")
+    check("rank 101 is the FIRST mid cap", caps.cap_label(101) == "Mid Cap")
+    check("rank 250 is the LAST mid cap", caps.cap_label(250) == "Mid Cap")
+    check("rank 251 is the FIRST small cap", caps.cap_label(251) == "Small Cap")
+    check("a deep-tail rank is small", caps.cap_label(5427) == "Small Cap")
+    check("no rank is no label", caps.cap_label(None) is None)
+    check("a non-positive rank is not a classification", caps.cap_label(0) is None)
 
 
 def test_cap_link_discovery_takes_the_newest_period():
@@ -810,8 +811,8 @@ def test_stock_ratios_parses():
     check("stock_ratios carries the SEBI cap RANK, not just the ₹Cr size",
           d["cap_rank"] == 117.0, d)
     check("cap_rank sits between the SEBI large and mid cut-offs",
-          funds.SEBI_CAP_RANKS["large"] < d["cap_rank"] <= funds.SEBI_CAP_RANKS["mid"],
-          (d["cap_rank"], funds.SEBI_CAP_RANKS))
+          caps.SEBI_CAP_RANKS["large"] < d["cap_rank"] <= caps.SEBI_CAP_RANKS["mid"],
+          (d["cap_rank"], caps.SEBI_CAP_RANKS))
     check("cap_label is derived from the rank, so the two cannot disagree",
           d["cap_label"] == "Mid Cap", d)
     check("a ranked holding raises no cap gap", env["gaps"] == [], env["gaps"])

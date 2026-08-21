@@ -12,6 +12,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance import caps
 from finance.compute import lookthrough as L
 from finance.tests.harness import approx, check, summary
 
@@ -50,21 +51,21 @@ check("cagr <2 points → None", L.cagr([100]) is None)
 check("cagr non-positive endpoint → None", L.cagr([-5, 121]) is None)
 
 # --- cap classification: SEBI RANK, not ₹Cr ----------------------------------
-check("rank 1 → large", L.cap_bucket(cap_rank=1) == ("large", "rank"))
-check("rank 100 → large (boundary inclusive)", L.cap_bucket(cap_rank=100) == ("large", "rank"))
-check("rank 101 → mid", L.cap_bucket(cap_rank=101) == ("mid", "rank"))
-check("rank 250 → mid (boundary inclusive)", L.cap_bucket(cap_rank=250) == ("mid", "rank"))
-check("rank 251 → small", L.cap_bucket(cap_rank=251) == ("small", "rank"))
+check("rank 1 → large", caps.cap_bucket(cap_rank=1) == ("large", "rank"))
+check("rank 100 → large (boundary inclusive)", caps.cap_bucket(cap_rank=100) == ("large", "rank"))
+check("rank 101 → mid", caps.cap_bucket(cap_rank=101) == ("mid", "rank"))
+check("rank 250 → mid (boundary inclusive)", caps.cap_bucket(cap_rank=250) == ("mid", "rank"))
+check("rank 251 → small", caps.cap_bucket(cap_rank=251) == ("small", "rank"))
 check("rank wins over a contradicting label",
-      L.cap_bucket(cap_rank=400, cap_label="Largecap") == ("small", "rank"))
+      caps.cap_bucket(cap_rank=400, cap_label="Largecap") == ("small", "rank"))
 check("label fallback when rank missing — and it is LABELLED as a fallback",
-      L.cap_bucket(cap_rank=None, cap_label="Smallcap") == ("small", "label"))
-check("label fallback tolerates spacing/case", L.cap_bucket(cap_label="Mid Cap") == ("mid", "label"))
-check("micro-cap label folds into small", L.cap_bucket(cap_label="Microcap") == ("small", "label"))
+      caps.cap_bucket(cap_rank=None, cap_label="Smallcap") == ("small", "label"))
+check("label fallback tolerates spacing/case", caps.cap_bucket(cap_label="Mid Cap") == ("mid", "label"))
+check("micro-cap label folds into small", caps.cap_bucket(cap_label="Microcap") == ("small", "label"))
 check("no rank and no label → unclassified, never guessed",
-      L.cap_bucket(None, None) == (None, None))
+      caps.cap_bucket(None, None) == (None, None))
 check("a ₹Cr market cap alone classifies nothing",
-      L.cap_bucket(cap_rank=None, cap_label=None) == (None, None))
+      caps.cap_bucket(cap_rank=None, cap_label=None) == (None, None))
 
 # A small-cap fund's biggest holdings are its largest names: under absolute ₹Cr bands
 # these read as large/mid-cap "drift"; under SEBI rank they are small.

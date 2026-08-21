@@ -66,6 +66,14 @@ installed, so a missing dependency self-heals instead of tracebacking. Consumers
 `compute/dcf.py`. Kept out of `compute/ta.py` so a caller needing only PyYAML
 does not drag in pandas and the TA-Lib bootstrap.
 
+### `finance/caps.py` — the SEBI cap-tier authority
+`SEBI_CAP_RANKS` (top 100 large, 101-250 mid, 251+ small), `cap_bucket(cap_rank, cap_label)`
+→ `(bucket, source)` where `source` is `"rank"` (the fact) or `"label"` (the provider-label
+fallback), and `cap_label(rank)` → `"Large Cap"|"Mid Cap"|"Small Cap"|None`. Network-free, so
+`sources/funds.py` (which fills `cap_rank` from AMFI) and `compute/lookthrough.py` (which
+weights it into `cap_tilt`) both sit on it. Covered from both sides — `test_funds.py` (label
+boundaries) and `test_lookthrough.py` (bucket boundaries + label fallback).
+
 ### `finance/paths.py` — the artifact-path authority
 Every caller asks this module where to read and write instead of hardcoding strings, so the
 layout cannot drift between skills. Root is `$EVERYTHING_FINANCE_ARTIFACTS` or `./artifacts`
@@ -224,7 +232,7 @@ Consumers: `resolve_fund` / `screen_funds` / `get_fund_holdings` / `get_nav_hist
 - `resolve(name)` → `{scheme_code, isin, amfi_name, plan, mf_id, tickertape_name}`; AMFI `NAVAll.txt` is the scheme-code/ISIN authority (mfapi's search misses funds outright).
 - `screen(subsector, option, min_aum)` → `data.funds:[{mf_id, name, aum, expRatio, ret1y/3y/5y, sharpe, sortino, alpha, stdDevAnn, percSmallcap/Midcap/Largecap, ageInMon, …}]` — the category scanner. String filters in the vendor's `match` are silently ignored, so category filtering happens client-side; `PREMIUM_FIELDS` are stripped before the request because one gated field 403s the whole call.
 - `holdings(mf_id)` → `data.positions:[{sid, ticker, name, weight, change3m, type}]` — the **complete** book (64-278 positions at 90-99% coverage), plus `equity_weight`, `sector_weights`, `allocation_history`. `sid` is the join key and genuinely differs from `ticker` (REC: ticker `RECLTD`, sid `RECM`).
-- `stock_ratios(sid)` / `enrich(positions)` → per-holding `{pe, ttm_pe, pb, roe, market_cap_cr, cap_rank, cap_label, sector, …}`, threaded and cached. **`cap_rank`/`cap_label` come from `amfi_cap_list()`** — AMFI's half-yearly `AverageMarketCapitalization*.xlsx` (link resolved dynamically from the categorisation index page), whose `Sr. No.` **is** the SEBI market-cap rank (`SEBI_CAP_RANKS`: top 100 large, 101-250 mid, 251+ small), joined on NSE symbol with ISIN as the fallback key. A symbol absent from the published period gets `cap_rank: None` plus a labelled gap, and `cap_label` falls back to the provider label. Everything else on the row is Tickertape's sid-joined ratio feed.
+- `stock_ratios(sid)` / `enrich(positions)` → per-holding `{pe, ttm_pe, pb, roe, market_cap_cr, cap_rank, cap_label, sector, …}`, threaded and cached. **`cap_rank`/`cap_label` come from `amfi_cap_list()`** — AMFI's half-yearly `AverageMarketCapitalization*.xlsx` (link resolved dynamically from the categorisation index page), whose `Sr. No.` **is** the SEBI market-cap rank (`finance/caps.py`), joined on NSE symbol with ISIN as the fallback key. A symbol absent from the published period gets `cap_rank: None` plus a labelled gap, and `cap_label` falls back to the provider label. Everything else on the row is Tickertape's sid-joined ratio feed.
 - `nav_history(code)` → `data.navs:[{date ISO, nav}]` oldest-first, strictly parsed.
 **Fund holdings never come from the IndMoney MCP feed** — it caps at 20 rows, misreports its
 own coverage, and can be months stale. Covered by `finance/tests/test_funds.py` (offline fixtures).
@@ -539,7 +547,7 @@ as_of: <YYYY-MM-DD>
 
 `book_xirr` is `unavailable` when no IndMoney/broker source connected (manual-paste path) and
 `inferred` when only staleness could be estimated — never a fabricated number. `market_cap`
-splits come from the fund look-through's SEBI `mrktCapRank`, never from a personal source's own
+splits come from the fund look-through's AMFI `cap_rank`, never from a personal source's own
 breakdown field. `laggard_funds` rows come from `mf-analysis quick`, whose own digest is
 `{scheme, grade_lite, key_numbers, path}` — descriptive only, never a category-rank percentile.
 Holdings-value detail (the full KEEP/TRIM/EXIT table) stays in the artifact, never in the

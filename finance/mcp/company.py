@@ -65,9 +65,9 @@ def run_fundamental_screen(query: str, fresh: bool = False) -> dict:
 
 @SERVER.tool(
     description="Per-stock ratios for one Tickertape security id: P/E, P/B, ROE, market "
-                "cap and `mrktCapRank` — the rank SEBI actually classifies large/mid/"
-                "small by. Note the sid is not the ticker (REC's ticker is RECLTD, its "
-                "sid is RECM)."
+                "cap, plus `cap_rank`/`cap_label` from AMFI's published SEBI cap list — "
+                "the rank SEBI actually classifies large/mid/small by. Note the sid is "
+                "not the ticker (REC's ticker is RECLTD, its sid is RECM)."
 )
 def get_stock_ratios(sid: str, fresh: bool = False) -> dict:
     return _funds.stock_ratios(sid, fresh=fresh)

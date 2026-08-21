@@ -62,7 +62,7 @@ The verdict is a forward-leaning **fund-quality grade** (Hold-worthy / Watch / A
 
 ### Cap classification — by rank, never by rupees
 
-SEBI defines the tiers by **market-cap rank**: top 100 large, 101-250 mid, 251+ small. Classify holdings that way (the rank `get_stock_ratios` publishes as `mrktCapRank`), never by absolute ₹Cr bands. The bands are not merely imprecise — they are systematically wrong in the direction that matters, because a small-cap fund's *largest* holdings are by construction its biggest names. Applied to a real small-cap fund the bands reported **0% small-cap** (true figure: 67%) and invented a 19% large-cap "drift" that did not exist (true figure: 0%).
+SEBI defines the tiers by **market-cap rank**: top 100 large, 101-250 mid, 251+ small. Classify holdings that way (the rank AMFI publishes and `get_stock_ratios` serves as `cap_rank`), never by absolute ₹Cr bands. The bands are not merely imprecise — they are systematically wrong in the direction that matters, because a small-cap fund's *largest* holdings are by construction its biggest names. Applied to a real small-cap fund the bands reported **0% small-cap** (true figure: 67%) and invented a 19% large-cap "drift" that did not exist (true figure: 0%).
 
 ### Coverage is a gate, not a footnote
 

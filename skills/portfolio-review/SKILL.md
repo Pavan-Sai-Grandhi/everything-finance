@@ -13,7 +13,7 @@ This skill looks for what to **exit, trim, or fix**. It sits on the real book an
 
 - **IndMoney / broker** (`mcp__indmoney__*`, `mcp__kite__*`, `mcp__upstox__*`, read-only) — the book itself: holdings, units, invested/current value, XIRR. Normalized through `finance/compute/holdings.py`.
 - **`get_company_fundamentals`** — the cheap per-stock drift snapshot (§2).
-- **`get_stock_ratios`** — `mrktCapRank`, the cap classification for the allocation read.
+- **`get_stock_ratios`** — `cap_rank`, the cap classification for the allocation read.
 - **`get_corporate_actions`** + **`get_history`** — the split/bonus check that stops a phantom P&L (§1).
 - **`get_market_context`** — the tape the small-cap concentration threshold is read against.
 
@@ -67,7 +67,7 @@ python3 <plugin>/skills/portfolio-review/scripts/allocation.py --book <book.json
 It returns per-dimension breakdowns (with coverage), asset-class drift vs target, and the ranked concentration flags — each carrying its **₹ amount at risk** and a concrete **₹ rebalancing move**; the thresholds it defaults to are in reference.md. Dimension inputs:
 
 - **Asset class** — equity : debt : cash vs the stated target (ask once if not given; report **relative** otherwise).
-- **Market cap** — from **`get_stock_ratios.mrktCapRank`** for direct stocks and the `mf-analysis` look-through for the fund sleeve. **A personal source reports what you hold, never what tier it is** — an IndMoney/broker cap breakdown is not a classification input. Rank bands, never absolute ₹Cr bands: bands reported a real small-cap fund as 0% small-cap.
+- **Market cap** — from **`get_stock_ratios.cap_rank`** for direct stocks and the `mf-analysis` look-through for the fund sleeve. **A personal source reports what you hold, never what tier it is** — an IndMoney/broker cap breakdown is not a classification input. Rank bands, never absolute ₹Cr bands: bands reported a real small-cap fund as 0% small-cap.
   **Read the small+micro threshold against the tape, not in a vacuum**: `get_market_context(mode="quick")` → `valuation["NIFTY SMALLCAP 250"].stance` and `relative.percentile_spread`. An expensive tier (`rich`/`expensive`, spread ≥ +25) tightens the flag from 30% to 25%; a `cheap` tier relaxes it to 35%. Say which threshold was applied and why.
 - **Investing style** — the growth / value / factor mix from the `mf-analysis` look-through.
 - **AMC · Sector · Single stock** — aggregated from the per-holding tags.
