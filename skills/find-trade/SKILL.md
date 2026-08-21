@@ -1,6 +1,6 @@
 ---
 name: find-trade
-description: Find swing/positional trade candidates in the Nifty 500 by running a chosen, validated trading strategy against today's market — screen the universe down (fundamentals via screener.in, technicals via TradingView or a local TA-Lib compute), then construct entry/stoploss/target/size signals and, on confirmation, persist a trade-idea artifact the trade-tracker skill monitors. This is the strategy-AGNOSTIC execution engine — it carries no setups of its own; the rules always come from an active strategy spec owned by strategy-manager. Use whenever the user asks to screen stocks, find swing trades, scan the market, look for setups, run the pipeline, or "anything worth trading this week?" — even if they don't say "screen". If the user names a strategy use it; if they don't, the skill asks strategy-manager to pick the active strategy that fits the current regime (it never falls back to a hardcoded default — a screen with no validated strategy behind it is not a tradeable signal).
+description: Find swing/positional trade candidates in the Nifty 500 by running a chosen, validated trading strategy against today's market — screen the universe down (fundamentals via Tickertape, technicals via TradingView or a local TA-Lib compute), then construct entry/stoploss/target/size signals and, on confirmation, persist a trade-idea artifact the trade-tracker skill monitors. This is the strategy-AGNOSTIC execution engine — it carries no setups of its own; the rules always come from an active strategy spec owned by strategy-manager. Use whenever the user asks to screen stocks, find swing trades, scan the market, look for setups, run the pipeline, or "anything worth trading this week?" — even if they don't say "screen". If the user names a strategy use it; if they don't, the skill asks strategy-manager to pick the active strategy that fits the current regime (it never falls back to a hardcoded default — a screen with no validated strategy behind it is not a tradeable signal).
 argument-hint: "[strategy:<name>] [optional: capital ₹ | sector filter]"
 allowed-tools: Read, Write, Bash, Skill, mcp__finance-market__*, mcp__finance-company__*
 ---
@@ -21,9 +21,9 @@ Once a spec is resolved, its `screening`, `entry`, `exit`, and `sizing` blocks A
 
 ## Stage 1 — Fundamental screen → cut the universe (`screening.fundamental`)
 
-Run `run_fundamental_screen(query=<the spec's query, verbatim>)` only if `screening.fundamental.provider` is `screener.in` (else skip this stage). Cap at `max_survivors`; if exceeded, tighten per the spec's note (e.g. ROCE > 15). Save survivors to `artifacts/cache/gate_survivors.json`.
+Run `run_fundamental_screen(query=<the spec's query, verbatim>)` only if `screening.fundamental.provider` is `tickertape` (else skip this stage). Cap at `max_survivors`; if exceeded, tighten per the spec's note (e.g. ROCE > 15). Save survivors to `artifacts/cache/gate_survivors.json`.
 
-If the screen comes back empty or with a session gap: reuse the most recent `gate_survivors.json` if < 7 days old (fundamentals move slowly), else skip the fundamental cut, pre-rank the Nifty 500 by 6-month momentum instead, and flag "fundamental screen skipped — screener auth unavailable" in data gaps.
+If the screen comes back empty, or `ok:false` with a gap naming an unresolvable field or an unsupported operator: reuse the most recent `gate_survivors.json` if < 7 days old (fundamentals move slowly), else skip the fundamental cut, pre-rank the Nifty 500 by 6-month momentum instead, and flag "fundamental screen skipped — <the gap, verbatim>" in data gaps. A refused query is a spec defect, not a transient outage — report it so `strategy-manager` can fix the spec.
 
 ## Stage 2 — Technical screen → shortlist (`screening.technical`)
 

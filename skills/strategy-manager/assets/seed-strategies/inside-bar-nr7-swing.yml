@@ -28,10 +28,10 @@ universe:
 
 screening:
   fundamental:
-    provider: screener.in
+    provider: tickertape
     query: >
-      Market Capitalization > 1000 AND Return on capital employed > 10
-      AND Debt to equity < 1.5
+      Market Cap > 1000 AND ROCE > 10
+      AND Debt to Equity < 1.5
     max_survivors: 60
   technical:
     # NR4/NR7 + inside-bar are computed locally (finance/compute/ta.py nr()/inside_bar()) — TradingView's

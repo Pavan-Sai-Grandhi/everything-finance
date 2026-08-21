@@ -29,10 +29,12 @@ universe:
 
 screening:
   fundamental:
-    provider: screener.in
+    provider: tickertape
+    # `5Y Historical Revenue Growth` approximates the 3-year sales-growth cut this spec's
+    # backtested edge rests on; it is a different filter, so re-validate before trusting.
     query: >
-      Market Capitalization > 1000 AND Return on capital employed > 12
-      AND Debt to equity < 1 AND Sales growth 3Years > 8
+      Market Cap > 1000 AND ROCE > 12
+      AND Debt to Equity < 1 AND 5Y Historical Revenue Growth > 8
     max_survivors: 60
   technical:
     provider: tradingview

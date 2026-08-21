@@ -46,16 +46,19 @@ universe:
 # (the FINE, per-stock trigger find-trade then constructs from OHLCV on the shortlist).
 # Each stage names the PROVIDER that runs it and is OPTIONAL. find-trade runs the stages
 # top-to-bottom, each narrowing the survivors of the last:
-#   fundamental -> screener.in   (business-quality cut: market cap, ROCE, D/E, growth)
+#   fundamental -> tickertape    (business-quality cut: market cap, ROCE, D/E, growth)
 #   technical   -> tradingview   (chart-state cut: trend/RSI/volume, screened server-side)
 # Provider unreachable + fallback_compute:true -> find-trade reproduces the cut locally
 # from yfinance OHLCV via finance/compute/ta.py (the `compute_*` predicates), and flags the degrade.
 screening:
   fundamental:
-    provider: screener.in             # screener.in | none  (none = skip the quality gate)
-    query: >                          # screener.in query-language; run on the screen builder (auth cookies)
-      Market Capitalization > 1000 AND Return on capital employed > 12
-      AND Debt to equity < 1 AND Profit growth > 0 AND Sales growth 3Years > 8
+    provider: tickertape              # tickertape | none  (none = skip the quality gate)
+    # `FIELD OP VALUE` clauses joined by AND; fields are Tickertape catalogue names,
+    # and the only operators are > and <
+    query: >
+      Market Cap > 1000 AND ROCE > 12
+      AND Debt to Equity < 1 AND 1Y Historical EPS Growth > 0
+      AND 5Y Historical Revenue Growth > 8
     max_survivors: 60                 # cap; tighten the query (e.g. ROCE > 15) if exceeded
   technical:
     provider: tradingview             # tradingview | compute  (compute = local yfinance + finance/compute/ta.py)

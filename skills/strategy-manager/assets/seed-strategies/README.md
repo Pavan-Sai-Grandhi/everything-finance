@@ -42,7 +42,7 @@ intraday, per CLAUDE.md, so the 4-hour leg becomes "confirm on the daily close".
 
 ## The screening block
 
-Each seed populates the `screening` block: a **screener.in**
+Each seed populates the `screening` block: a **tickertape**
 fundamental cut and a **technical** cut that is either `provider: tradingview` (server-side
 filters) or `provider: compute` (local `finance/compute/ta.py`) where TradingView can't express the
 filter (NR-bars, fib zones). `fallback_compute: true` everywhere means find-trade reproduces

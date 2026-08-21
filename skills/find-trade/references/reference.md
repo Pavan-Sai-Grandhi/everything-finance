@@ -8,11 +8,11 @@ A strategy's `screening` block defines the **coarse universe cut** (whole Nifty 
 
 | Stage | Provider | What it does |
 |---|---|---|
-| `screening.fundamental` | **screener.in** | Business-quality cut: market cap, ROCE, D/E, growth — keeps swing longs out of structurally broken companies (Varsity: *technicals time the trade, fundamentals pick the universe*). Not a value screen. |
+| `screening.fundamental` | **tickertape** | Business-quality cut: market cap, ROCE, D/E, growth — keeps swing longs out of structurally broken companies (Varsity: *technicals time the trade, fundamentals pick the universe*). Not a value screen. |
 | `screening.technical` | **tradingview** (server-side) or **compute** (local `finance/compute/ta.py`) | Chart-state cut: trend (SMA50>SMA200), momentum (RSI band), participation (volume vs average) — applied across the whole universe at once. |
 | `entry` (Stage 3) | local `finance/compute/ta.py` | The exact, testable trigger on each shortlisted stock: breakout level / reversal candle at support, with the stop and target it implies. |
 
-The provider split exists because each tool is best at one thing: **screener.in** has the fundamentals, **TradingView** can screen thousands of charts server-side in one query, and the **local compute** path (EOD OHLCV + `finance/compute/ta.py`) is the always-available fallback that also keeps the live screen consistent with the backtest.
+The provider split exists because each tool is best at one thing: **Tickertape** has the fundamentals, **TradingView** can screen thousands of charts server-side in one query, and the **local compute** path (EOD OHLCV + `finance/compute/ta.py`) is the always-available fallback that also keeps the live screen consistent with the backtest.
 
 ## The Varsity candidate-grading checklist (TA ch. 19) — indicators last
 
@@ -41,5 +41,5 @@ A hardcoded house setup would be the one "strategy" that never passed the genera
 
 - Breakout on low volume → mark "weak", rank last.
 - Setup against the sector trend (check the stock's sectoral index direction) → note it.
-- Earnings/results date within the holding window (check screener.in company page) → warn: event risk.
+- Earnings/results date within the holding window (check `get_company_fundamentals`) → warn: event risk.
 - Technical screen fell back to local compute (TradingView unreachable) → say the cut approximates, doesn't equal, the provider's.
