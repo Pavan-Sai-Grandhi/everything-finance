@@ -32,7 +32,7 @@ Review: {{REVIEW_TRIGGER}}
 
 ---
 
-<!-- WHAT_CHANGED: include this whole block ONLY when paths.latest_prior found an earlier run;
+<!-- WHAT_CHANGED: include this whole block ONLY when get_prior_run found an earlier run;
      delete it entirely on a first-ever analysis. -->
 ## What changed since {{PRIOR_DATE}}
 Prior run: `{{PRIOR_PATH}}`

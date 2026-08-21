@@ -2,7 +2,7 @@
 name: management-analysis
 description: Judge whether an Indian company's management can be trusted and whether they're any good — the part of fundamental analysis that ratios can't capture (Philip Fisher put ~90% of analysis effort on management). Screen integrity first as a hard gate (remuneration vs profit, related-party transactions, criminal/regulatory record, media-savvy/share-price obsession, CFO/auditor churn and fees, refusal to own mistakes, promoter pledging), then grade skill (qualification & experience, growth vs comfort-zone mindset, capital allocation, succession plan). Reach for this skill whenever the user asks about the people running a specific company — "is the promoter honest/trustworthy", "any governance red flags", "should I worry about the related-party dealings or the pledging", "their auditor/CFO just resigned", "is there a succession plan", "are they good capital allocators", "is the management any good" — even when they don't say the word "management". This is the governance/integrity read on one company, distinct from exchange-filing alerts (→ filings-watch) and from the fundamental ratio scorecard. It is also the governance leg inside deep-analysis.
 argument-hint: "TICKER or company name"
-allowed-tools: WebFetch, WebSearch, Read, Write, mcp__finance-company__*
+allowed-tools: WebFetch, WebSearch, Read, Write, mcp__finance-company__*, mcp__finance-market__get_prior_run
 ---
 
 # Management Analysis — integrity gate, then skill grade
@@ -13,7 +13,7 @@ Two pillars, in order: **integrity** (will they treat minority shareholders hone
 
 ## Data gathering (primary documents only)
 
-First, **check for a prior run** with `paths.latest_prior("management", SYMBOL)` — if an earlier `management.md` exists, read it for context and open this scorecard with a one-line `prior run: <path> (<date>)` link noting any change in the integrity gate or skill grade.
+First, **check for a prior run** with `get_prior_run(skill="management", subject=SYMBOL)` — if `data.path` names an earlier `management.md`, read it for context and open this scorecard with a one-line `prior run: <path> (<date>)` link noting any change in the integrity gate or skill grade.
 
 The evidence lives in disclosures, not opinions. Gather, in order:
 

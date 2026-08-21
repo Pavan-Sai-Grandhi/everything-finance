@@ -14,6 +14,7 @@ from finance.compute import backtest as _backtest
 from finance.compute import context as _context
 from finance.compute import screen as _screen
 from finance.compute import trade_check as _trade_check
+from finance import paths as _paths
 from finance.sources import market as _market
 from finance.sources import prices as _prices
 
@@ -186,6 +187,19 @@ def manage_alerts(action: str, alert_id: str | None = None, subject: str | None 
                           level=level, due=due, check=check, text=text,
                           suggest=suggest, severity=severity, expires_at=expires_at,
                           dedup_key=dedup_key)
+
+
+@SERVER.tool(
+    description="Path to the previous dated run of a per-entity skill for one subject, "
+                "so a re-run builds on its own history instead of starting cold. "
+                "`skill` is one of deep-analysis | fundamentals | dcf | management | "
+                "filings (stocks, `subject` = NSE symbol) or mf-analysis (funds, "
+                "`subject` = scheme name). `before` (YYYY-MM-DD) defaults to today and is "
+                "exclusive. No earlier run returns ok:true with a null `path` — a first "
+                "run is the normal case, not a gap."
+)
+def get_prior_run(skill: str, subject: str, before: str | None = None) -> dict:
+    return _paths.prior_run(skill, subject, before=before)
 
 
 def main():

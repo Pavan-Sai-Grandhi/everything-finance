@@ -29,9 +29,9 @@ Resolution — the two reads the helper can't make, then the helper itself, whic
 
 Record `{mode, reason}` — the synthesis reports both.
 
-**Refer the earlier run first.** Call `paths.latest_prior("deep-analysis", TICKER)` — `paths.latest_prior("fundamentals", TICKER)` in `fundamentals`, so each mode builds on its own history — if a prior report exists, read it before launching the debate so this run builds on it rather than starting cold, and pass the prior verdict/levels to the legs as context. The synthesized report then opens with a **"What changed since `<date>`"** block (see Synthesize). No prior run is the normal first-time case.
+**Refer the earlier run first.** Call `get_prior_run(skill="deep-analysis", subject=TICKER)` — `skill="fundamentals"` in `fundamentals`, so each mode builds on its own history — if a prior report exists, read it before launching the debate so this run builds on it rather than starting cold, and pass the prior verdict/levels to the legs as context. The synthesized report then opens with a **"What changed since `<date>`"** block (see Synthesize). No prior run is the normal first-time case.
 
-**Sources for this orchestrator only:** `finance-company` — `get_company_fundamentals` (symbol and company name) and `get_documents` (the phase-0 warm-up); `finance-market` — `get_market_context` and `get_quote` (CMP for the report header). Every other number in the report arrives inside a leg's digest or its file; the legs own their own fetching.
+**Sources for this orchestrator only:** `finance-company` — `get_company_fundamentals` (symbol and company name) and `get_documents` (the phase-0 warm-up); `finance-market` — `get_market_context`, `get_quote` (CMP for the report header) and `get_prior_run`. Every other number in the report arrives inside a leg's digest or its file; the legs own their own fetching.
 
 ## Orchestration
 
@@ -59,7 +59,7 @@ Each leg is a **skill run inside a generic profile agent** — issue every `Agen
 | `management-analysis` | `field-analyst` | company name + the document `text_path`s | standard, deep, fundamentals |
 | `news-scan` | `field-analyst` | company name | standard, deep |
 
-**Output paths.** Staged work papers go under `artifacts/tmp/staging/<TICKER>/agents/` (`paths.tmp_dir("staging")`) — `technical.md`, `financials.md`, `news.md`, `sector.md`, `contest.md`, `bull-r<N>.md`, `bear-r<N>.md`, `verdict.md`. The valuation and management legs are given their own run-day paths instead — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (the engine also writes `dcf.json` beside it) and `management.md` (`paths.stock_dir`) — so `paths.latest_prior("dcf"/"management", TICKER)` finds them regardless of which skill produced them.
+**Output paths.** Staged work papers go under `artifacts/tmp/staging/<TICKER>/agents/` (`paths.tmp_dir("staging")`) — `technical.md`, `financials.md`, `news.md`, `sector.md`, `contest.md`, `bull-r<N>.md`, `bear-r<N>.md`, `verdict.md`. The valuation and management legs are given their own run-day paths instead — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (the engine also writes `dcf.json` beside it) and `management.md` (`paths.stock_dir`) — so `get_prior_run(skill="dcf"|"management")` finds them regardless of which skill produced them.
 
 **IO hygiene (all modes).** Each leg `Write`s its **full report to its file** and returns **only a compact digest** — its machine-readable top block plus the path, never the body. Downstream agents (`contest` / `bull` / `bear` / `portfolio-manager`) and your synthesis receive **paths** and Read what they need in their own context; you never hold six full reports at once. Pass each agent only what it needs — they are forked and share no context.
 
@@ -116,7 +116,7 @@ Write the synthesized report to `artifacts/tmp/staging/<TICKER>.md` — in `fund
 - **Synthesized sections:** BULL_SYNTHESIS / BEAR_SYNTHESIS (distil each side's *strongest surviving* case across all rounds — or the contest's two sides — evidence-tied), DECISIVE_POINTS (what the PM kept/discarded + dissent worth keeping), SECTOR_CONTEXT (the sector read + where the stock sits in its sector), and the Evidence-by-Lens blocks (condense each leg report to its load-bearing facts and levels — keep the numbers and cites, drop the boilerplate).
 - **"What changed since `<date>`" block (only when a prior run was found):** verdict then→now, the DCF fair-value shift, whether the thesis is intact, and any notable new risk. Omit the block entirely on a first-ever run.
 
-The report **must contain a `## Telegram Brief` section** (≤ 10 lines). The plugin's Stop hook archives the staged report to `artifacts/stocks/<TICKER>/YYYY-MM-DD/` — `deep-analysis.md`, or `fundamental-analysis.md` from the `.fundamentals` staging name — moves the work papers to the folder of the same name beside it, and sends the brief to Telegram. Do not send Telegram messages yourself and do not move the files. **The two modes archive to separate files on purpose**: a fundamentals run must never overwrite the day's full run, and `paths.latest_prior("deep-analysis"/"fundamentals", TICKER)` then builds each mode on its own history.
+The report **must contain a `## Telegram Brief` section** (≤ 10 lines). The plugin's Stop hook archives the staged report to `artifacts/stocks/<TICKER>/YYYY-MM-DD/` — `deep-analysis.md`, or `fundamental-analysis.md` from the `.fundamentals` staging name — moves the work papers to the folder of the same name beside it, and sends the brief to Telegram. Do not send Telegram messages yourself and do not move the files. **The two modes archive to separate files on purpose**: a fundamentals run must never overwrite the day's full run, and `get_prior_run(skill="deep-analysis"|"fundamentals")` then builds each mode on its own history.
 
 In chat (the debate modes), give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — not the whole report.
 

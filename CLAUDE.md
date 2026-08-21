@@ -82,7 +82,7 @@ A skill's `scripts/` holds only pure compute over user-supplied files. **Never a
 
 - Currency in INR: `₹1,23,456` (Indian grouping). Large values as `₹4.2 Cr`, `₹12 L`.
 - Dates as `YYYY-MM-DD`. Market-relative phrasing ("3 sessions ago") only alongside an absolute date.
-- **Artifacts go under `./artifacts/` of the session's cwd** (or `$EVERYTHING_FINANCE_ARTIFACTS`), never inside the plugin and never to an absolute path elsewhere. **`finance/paths.py` is the single path authority — ask it, don't hardcode strings.** Three tiers: dated output (`stocks/<TICKER>/<date>/`, `funds/<SCHEME>/<date>/`, singletons like `daily-brief/<date>.md`), durable state (`state/strategies|trades|alerts/`, `state/watchlist.json`), and disposable (`cache/`, `tmp/`). On a re-run of a stock/fund skill call `paths.latest_prior(...)` to build on the prior run.
+- **Artifacts go under `./artifacts/` of the session's cwd** (or `$EVERYTHING_FINANCE_ARTIFACTS`), never inside the plugin and never to an absolute path elsewhere. **`finance/paths.py` is the single path authority — ask it, don't hardcode strings.** Three tiers: dated output (`stocks/<TICKER>/<date>/`, `funds/<SCHEME>/<date>/`, singletons like `daily-brief/<date>.md`), durable state (`state/strategies|trades|alerts/`, `state/watchlist.json`), and disposable (`cache/`, `tmp/`). On a re-run of a stock/fund skill call `get_prior_run` to build on the prior run.
 - Every stock/fund recommendation ends with a risk note + "Not investment advice — personal research tool."
 - Report templates are bundled per skill in `skills/<name>/assets/` — fill the data, keep the structure.
 

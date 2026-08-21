@@ -12,14 +12,14 @@ and **shared code** (`finance/` modules imported by several callers).
 ## The data layer: one door, one transport
 
 **`finance/mcp/{market,company,funds,personal}.py` — the four servers.** The only door to
-decision data. 29 tools over the seven finalized sources (CLAUDE.md's source table) and the
+decision data. 30 tools over the seven finalized sources (CLAUDE.md's source table) and the
 compute engines that run on them, each delegating to the matching `finance/sources/` or
 `finance/compute/` module and returning the shared **envelope**
 `{ok, source, fetched_at, data, gaps}`. No name appears on two servers.
 
 | server | tools |
 |---|---|
-| `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `run_strategy_screen` `run_backtest` `check_trade` `manage_alerts` |
+| `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `run_strategy_screen` `run_backtest` `check_trade` `manage_alerts` `get_prior_run` |
 | `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `run_dcf` |
 | `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
 | `finance-personal` | `run_insurance_math` |
@@ -87,8 +87,15 @@ merchant_map_path` (all create dirs as needed), the key-normalizers
 `ticker_key / scheme_key / sector_key`,
 **`sector_cache_age_days(sector)`** (freshness of the monthly sector cache — `None` if
 missing/undated), and **`latest_prior(skill, subject, before=None)`** — the prior-run lookup
-that powers "refer the earlier run" (deep-analysis, fundamentals, dcf, management, filings,
-mf-analysis).
+that powers "refer the earlier run". The `skill` keys are exactly `deep-analysis`,
+`fundamentals`, `dcf`, `management`, `filings` (stocks) and `mf-analysis` (funds); anything
+else is unresolvable.
+**Tool: `get_prior_run` (`finance-market`), on `prior_run(...)`** — the envelope form of that
+lookup, and the only way the skills that open on their prior run
+(`valuation-analysis`, `management-analysis`, `filings-watch`) can reach it, since they carry
+no `Bash`. `data:{skill, subject, before, path, date}`; **no earlier run is `ok:true` with a
+null `path`** — a first run is the normal case, not a degradation — and an unresolvable
+`skill` key is the one gap, naming the keys that do resolve.
 Covered by `finance/tests/test_paths.py`.
 
 ### `finance/compute/alerts.py` — the alert contract (see "Artifact: alert" below)
@@ -480,8 +487,8 @@ auto-escalates.
 synthesized report is **`deep-analysis.md`** in the debate modes and **`fundamental-analysis.md`** in
 `fundamentals`; each leg's raw report is archived beside it under the folder of the same name,
 `<report>/agents/<role>.md`. **The two filenames are distinct on purpose** — a `fundamentals` run and a
-full run on the same day must not overwrite one another, and `paths.latest_prior("deep-analysis" |
-"fundamentals", TICKER)` then builds each mode on its own history. `paths.py` `_STOCK_ARTIFACT` is the
+full run on the same day must not overwrite one another, and `get_prior_run(skill="deep-analysis" |
+"fundamentals")` then builds each mode on its own history. `paths.py` `_STOCK_ARTIFACT` is the
 authority on both names.
 
 The work papers present depend on the run's **mode** (recorded in the report): `quick` → `technical`,
@@ -497,7 +504,7 @@ management). The valuation report is the **multi-method** read — intrinsic DCF
 DCF-confidence grade** plus the relative multiples (P/E, PEG, peer-median, EV/EBITDA) reconciled into a
 combined stance; the synthesis cites both without re-deriving them. The sector leg's read is sourced from
 the shared sector cache (see *Artifact: sector cache*). Because every artifact for a stock+run-day lives
-in one folder, `paths.latest_prior(skill, TICKER)` finds the prior run of any leg (deep-analysis,
+in one folder, `get_prior_run(skill, TICKER)` finds the prior run of any leg (deep-analysis,
 fundamentals, dcf, management, filings) on a re-run.
 
 ## Artifact: sector cache

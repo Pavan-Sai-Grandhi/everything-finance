@@ -27,6 +27,10 @@ import os
 import re
 from datetime import date as _date_cls
 
+from finance.spine import envelope as _envelope
+
+_SOURCE = "finance.paths"
+
 # skill -> report filename for the prior-run lookup. Only the entity-centric skills
 # that build on their own history are listed.
 _STOCK_ARTIFACT = {
@@ -220,3 +224,28 @@ def latest_prior(skill, subject, before=None):
     if not candidates:
         return None
     return max(candidates)[1]
+
+
+def prior_run(skill, subject, before=None):
+    """`latest_prior` in the shared envelope — the surface `get_prior_run` exposes.
+
+    Exists because the skills that open on their prior run (`valuation-analysis`,
+    `management-analysis`, `filings-watch`) carry no Bash and so cannot call a Python
+    function; a tool is the only way they can ask this module anything.
+
+    `data.path` is None and `ok` is true when there is no earlier run: a first run is the
+    normal case, not a degradation. An unresolvable `skill` is the one gap, and it names
+    the keys that do resolve.
+    """
+    data = {"skill": skill, "subject": subject, "before": _day(before),
+            "path": None, "date": None}
+    if skill not in _STOCK_ARTIFACT and skill not in _FUND_ARTIFACT:
+        valid = ", ".join(sorted(set(_STOCK_ARTIFACT) | set(_FUND_ARTIFACT)))
+        return _envelope(False, _SOURCE, data,
+                         [f"no prior-run lookup defined for skill {skill!r} — "
+                          f"valid keys: {valid}"])
+    path = latest_prior(skill, subject, before)
+    if path:
+        data["path"] = path
+        data["date"] = os.path.basename(os.path.dirname(path))
+    return _envelope(True, _SOURCE, data, [])

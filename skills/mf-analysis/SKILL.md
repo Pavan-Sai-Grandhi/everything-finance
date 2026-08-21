@@ -77,7 +77,7 @@ Each row carries invested / current / XIRR. Cap-split comes from the look-throug
 ## Output
 
 Write to `artifacts/funds/<SCHEME>/YYYY-MM-DD/` (`paths.fund_dir`; for a comparison use the slug `<a>-vs-<b>`, for a category scan `<category>-scan`):
-- `mf-analysis.md` — the verdict + both-pillar metrics (the durable record `paths.latest_prior` finds on a re-run).
+- `mf-analysis.md` — the verdict + both-pillar metrics (the durable record `get_prior_run` finds on a re-run).
 - `mf-analysis.html` — the rich render of `assets/fund-comparison.html`.
 - the scan and look-through work papers — `get_fund_scan` writes `fund-scan.json` and returns its `report_path`.
 

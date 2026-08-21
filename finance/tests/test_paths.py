@@ -191,4 +191,51 @@ with tempfile.TemporaryDirectory() as tmp:
           paths.latest_prior("fundamentals", "TCS", before="2026-06-01") ==
           os.path.join(fund_only, "fundamental-analysis.md"))
 
+# --- prior_run: the envelope the get_prior_run tool returns ------------------
+with tempfile.TemporaryDirectory() as tmp:
+    _clean_env()
+    os.chdir(tmp)
+
+    day = paths.stock_dir("INFY", "2026-05-20")
+    with open(os.path.join(day, "dcf.md"), "w") as f:
+        f.write("x")
+
+    env = paths.prior_run("dcf", "INFY", before="2026-06-01")
+    check("prior_run returns the shared envelope shape",
+          set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
+    check("prior_run names the computation as its source",
+          env["source"] == "finance.paths", env["source"])
+    check("prior_run resolves the prior run's path",
+          env["data"]["path"] == os.path.join(day, "dcf.md"), env["data"])
+    check("prior_run carries the run day beside the path",
+          env["data"]["date"] == "2026-05-20", env["data"])
+    check("a resolved prior run raises no gap", env["ok"] is True and env["gaps"] == [],
+          env["gaps"])
+
+    none_env = paths.prior_run("management", "INFY", before="2026-06-01")
+    check("no prior run is ok:true with a null path — a first run is not a degradation",
+          none_env["ok"] is True and none_env["data"]["path"] is None, none_env)
+    check("no prior run raises no gap either", none_env["gaps"] == [], none_env["gaps"])
+
+    check("prior_run honours `before` exclusively",
+          paths.prior_run("dcf", "INFY", before="2026-05-20")["data"]["path"] is None)
+    check("prior_run defaults `before` to today",
+          paths.prior_run("dcf", "INFY")["data"]["before"] == paths._today())
+
+    bad = paths.prior_run("valuation-analysis", "INFY")
+    check("an unresolvable skill key is a labelled gap, not a raise",
+          bad["ok"] is False and len(bad["gaps"]) == 1, bad)
+    check("the gap names every key that does resolve",
+          all(k in bad["gaps"][0] for k in
+              ("deep-analysis", "fundamentals", "dcf", "management", "filings",
+               "mf-analysis")), bad["gaps"])
+
+    fund_day = paths.fund_dir("Bandhan Small Cap Fund", "2026-05-20")
+    with open(os.path.join(fund_day, "mf-analysis.md"), "w") as f:
+        f.write("x")
+    check("prior_run reaches the fund artifacts too",
+          paths.prior_run("mf-analysis", "Bandhan Small Cap Fund",
+                          before="2026-06-01")["data"]["path"] ==
+          os.path.join(fund_day, "mf-analysis.md"))
+
 summary()

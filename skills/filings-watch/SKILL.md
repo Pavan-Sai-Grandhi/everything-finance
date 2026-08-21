@@ -2,14 +2,14 @@
 name: filings-watch
 description: Pull NSE exchange filings for a ticker — corporate announcements, corporate actions (dividend/split/bonus/buyback), board meetings, and shareholding pattern changes — and classify what's material. Use whenever the user asks what a company announced, about recent filings, results dates, dividends, promoter stake changes, bulk/block deals, or "any news from the exchanges on X".
 argument-hint: "TICKER [lookback window, default 30 days]"
-allowed-tools: Read, Write, mcp__finance-company__*
+allowed-tools: Read, Write, mcp__finance-company__*, mcp__finance-market__get_prior_run
 ---
 
 # Exchange Filings Watch
 
 The tools do the mechanical fetch and first-pass classification; this skill is the judgement layer on top — the "so what" narrative. Read `references/reference.md` for the materiality taxonomy.
 
-**Sources for this skill only:** `finance-company` — `get_filings`, `get_corporate_actions`, `get_shareholding` (all NSE) and `get_company_fundamentals(sections=['shareholding'])` for the FII/DII split. No news sites — this skill reports *filings*; `news-scan` handles press.
+**Sources for this skill only:** `finance-company` — `get_filings`, `get_corporate_actions`, `get_shareholding` (all NSE) and `get_company_fundamentals(sections=['shareholding'])` for the FII/DII split, and `finance-market` `get_prior_run` for the previous scan. No news sites — this skill reports *filings*; `news-scan` handles press.
 
 ## Workflow
 
@@ -25,7 +25,7 @@ The tools do the mechanical fetch and first-pass classification; this skill is t
 
 ## Output
 
-Markdown report (text-first, no HTML template): materiality-grouped filing list with dates and one-line summaries, corporate-actions calendar (ex-dates), shareholding delta table, and a 2–3 sentence "so what". Save to `artifacts/stocks/<TICKER>/YYYY-MM-DD/filings.md` (`paths.stock_dir(ticker, date)`). On a re-run, `paths.latest_prior("filings", TICKER)` finds the previous scan — add a one-line `prior run: <path> (<date>)` link and report only what's new since then.
+Markdown report (text-first, no HTML template): materiality-grouped filing list with dates and one-line summaries, corporate-actions calendar (ex-dates), shareholding delta table, and a 2–3 sentence "so what". Save to `artifacts/stocks/<TICKER>/YYYY-MM-DD/filings.md` (`paths.stock_dir(ticker, date)`). On a re-run, `get_prior_run(skill="filings", subject=TICKER)` finds the previous scan in `data.path` — add a one-line `prior run: <path> (<date>)` link and report only what's new since then.
 
 ## Alerts this skill raises (via `finance/compute/alerts.py`)
 

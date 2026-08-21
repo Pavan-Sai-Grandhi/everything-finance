@@ -46,6 +46,7 @@ CASES = {
          {"spec": "SPEC", "symbols": ["RELIANCE"], "years": 2}, ["summary"]),
         ("check_trade", {"trade": "TRADE"}, ["verdict"]),
         ("manage_alerts", {"action": "sweep"}, ["expired", "unsnoozed"]),
+        ("get_prior_run", {"skill": "dcf", "subject": "RELIANCE"}, ["path"]),
     ],
     "company": [
         ("get_company_fundamentals",
