@@ -61,7 +61,7 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 
 ## Agents (`agents/`, all `context: fork`)
 
-`technical-analyst`, `fundamentals-data` (the fetch-once source pack) → `financials-analyst` · `management-analyst` · `valuation-analyst`, `news-sentiment`, `sector-analyst`, `bull-researcher`, `bear-researcher`, `contest-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis` and reusable individually. The four fundamental agents also power `/fundamental-analysis`; `sector-analyst` also powers `/sector-analysis`. `wealth-leg` runs one wealth spoke in cheap mode and returns only its digest.
+`technical-analyst`, `fundamentals-data` (the fetch-once source pack) → `financials-analyst` · `management-analyst` · `valuation-analyst`, `news-sentiment`, `sector-analyst`, `bull-researcher`, `bear-researcher`, `contest-researcher`, `portfolio-manager` — orchestrated by `/deep-analysis` and reusable individually. The four fundamental agents also power `/fundamental-analysis`. `wealth-leg` runs one wealth spoke in cheap mode and returns only its digest.
 
 ## Hooks
 
