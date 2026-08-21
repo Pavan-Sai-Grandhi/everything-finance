@@ -17,6 +17,8 @@ net_debt: 12000.0               # total debt − cash                [src: balan
 non_operating_cash: 0.0         # cash/investments not in FCFF      [src: balance_sheet_10y Long Term Investments]
 minority_interest: 0.0          # minority interest to subtract     [src: balance_sheet_10y Minority Interest]
 current_price: 1500.0           # market price/share, ₹             [src: get_quote]
+# Base-year reality check, not a model input: cash_flow_10y Free Cash Flow over the same ten
+# years. An order-of-magnitude gap to the model's year-0 FCFF means an input above is wrong.
 
 # --- revenue growth: EITHER an explicit path OR a high->fade glide ----------------------
 # revenue_growth: [0.15, 0.15, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.08, 0.07]
@@ -34,7 +36,14 @@ margin_glide:                   # ramp 18% -> 22% by year 5, hold
 
 tax_rate: 0.25                  # effective -> statutory            [src: annual report tax note — NEVER
                                 #   derived from the "Taxes & Other Items" row; see reference § levers]
-sales_to_capital: 2.5           # ₹ sales per ₹ invested (scalar or list) [hist: ΔRev/ΔInvCapital]
+sales_to_capital: 2.5           # ₹ sales per ₹ invested (scalar or list)
+                                #   [hist: ΔRev ÷ (capex − depreciation + ΔWC), averaged over several years.
+                                #    capex   src: cash_flow_10y Capital Expenditures
+                                #    deprec. src: pnl_10y Depreciation & Amortization
+                                #    ΔWC     DERIVED from balance_sheet_10y (Total Receivables + Total
+                                #            Inventory − Accounts Payable); the cash_flow_10y row named
+                                #            "Changes in Working Capital" is NOT a WC movement — see
+                                #            reference § Sourcing the reinvestment]
 
 # --- discount rate: EITHER a single `wacc` OR a `wacc_buildup` (preferred for India: makes
 #     the country-risk premium explicit instead of buried in one guessed number) ----------

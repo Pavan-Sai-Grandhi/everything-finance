@@ -52,7 +52,7 @@ Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags.
 
 ## The valuation levers (and where to source each)
 
-`get_company_fundamentals` publishes **ten fiscal years** of consolidated P&L and balance sheet under Tickertape's own row labels; the rows named below are those labels.
+`get_company_fundamentals` publishes **ten fiscal years** of consolidated P&L, balance sheet and cash flow under Tickertape's own row labels; the rows named below are those labels.
 
 | Lever | Source it from | Sanity rule |
 |---|---|---|
@@ -60,14 +60,35 @@ Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags.
 | Revenue growth path | TAM studies + company guidance (concall) + the `Total Revenue` history; fade to ≈ GDP+inflation by year N | peak growth > 30% must be defended against TAM and reinvestment |
 | Operating margin path | the company's own trend + peer steady-state margins | `EBITDA` is struck **after** other income and before depreciation, so it is not EBIT — derive the operating margin as `PBIT ÷ Total Revenue`, or from the annual report's segment note. Above-peer margins need a stated moat; peak > 40% is rare |
 | Tax rate | **the annual report's tax note**, via `get_documents` | the published `Taxes & Other Items` row is tax **plus** the non-controlling interest — deriving a rate from it overstates the effective rate by ~9 points for any group with minorities. Never derive it. India ≈ 25% statutory for most |
-| Sales-to-capital | historical ΔRevenue ÷ Δ(`Net Property, Plant & Equipment` + working capital); peer benchmark | asset-light (software) high (3–5+); capital-heavy (utilities, autos) low (0.5–1.5) |
-| WACC | cost of equity (risk-free + β×mature-ERP + λ×country-risk premium) and after-tax cost of debt, weighted | β is a **bottom-up/sector** beta (business risk), never the stock's raw regression β; country risk scales with operating exposure λ, not incorporation — see § Diagnose first |
+| Sales-to-capital | historical **ΔRevenue ÷ reinvestment**, reinvestment sourced per § below; peer benchmark | asset-light (software) high (3–5+); capital-heavy (utilities, autos) low (0.5–1.5) |
+| WACC | cost of equity (risk-free + β×mature-ERP + λ×country-risk premium) and after-tax cost of debt, weighted | β is a **bottom-up/sector** beta (business risk), never the stock's raw regression β; country risk scales with operating exposure λ, not incorporation — see § Diagnose first. For the cost of debt prefer a **rating spread** over `Interest & Other Items ÷ average Total Debt`: that numerator bundles items other than interest, so the implied rate runs high |
 | Terminal growth | ≤ risk-free rate, **in the currency of the cash flows** | ~6.5–7% rupee G-sec for a ₹ domestic firm — see § Country risk |
 | Terminal ROIC | the return the mature firm earns on new capital | the excess return (ROIC−WACC), not g_T, is what moves terminal value; default to convergence (= WACC), set > WACC only if a durable moat persists — see § Terminal value |
 | Net debt | `balance_sheet_10y` **`Total Debt`** − **`Cash and Equivalent`** | consolidated; add capitalised lease debt (see § Capitalisation adjustments) |
 | Shares, minority | **`Common Shares Outstanding`**, **`Minority Interest`** | share count in ₹ Cr units so per-share lands in ₹; confirm dilution against the annual report |
 
 `Total Liabilities` in that table is liabilities **excluding** equity; the balance-sheet total is `Total Liabilities & Shareholders Equity`. Reading the wrong one halves the number.
+
+### Sourcing the reinvestment (the sales-to-capital lever)
+
+Growth has to be paid for, so this lever decides how much of the revenue path the firm keeps. Reinvestment takes Damodaran's form, and each term is sourced separately:
+
+```
+reinvestment_t = capex_t − depreciation_t + ΔWC_t
+sales_to_capital = (revenue_t − revenue_{t-1}) ÷ reinvestment_t
+```
+
+| Term | Source | Status |
+|---|---|---|
+| capex | `cash_flow_10y` **`Capital Expenditures`** | published |
+| depreciation | `pnl_10y` **`Depreciation & Amortization`** | published |
+| ΔWC | Δ(**`Total Receivables`** + **`Total Inventory`** − **`Accounts Payable`**) from `balance_sheet_10y` | **derived — label it so** |
+
+**ΔWC is the one derived term, and it is derived deliberately.** `cash_flow_10y` carries a row named `Changes in Working Capital`, and it is not one: across RELIANCE, TCS, HINDUNILVR, INFY, MARUTI and ASIANPAINT it reconciles neither to the balance-sheet working-capital movement (TCS reads −16,594 against a balance-sheet +7,962, and the two agree in sign in only 16 of 24 company-years) nor to the CFO-minus-earnings residual. Its composition is not determinable from what the source publishes, so it does not enter the reinvestment. Use the balance-sheet delta, say in the inputs file that it is derived, and take the working-capital movement from the annual report's cash-flow statement when the story turns on it.
+
+Take the ratio over **several years, not one** — a single year's capex is lumpy, and one large project year makes an asset-light firm look capital-heavy. Where reinvestment is negative or near zero (a firm harvesting, or one year of asset sales), the ratio is meaningless: fall back to the peer benchmark and say which year forced it.
+
+**Cross-check the base year against the published `Free Cash Flow`.** `cash_flow_10y` carries FCF over the same ten years, so the model's year-0 FCFF has a sourced figure to sit beside. They are not the same quantity — FCFF is pre-financing and after cash taxes on EBIT, the published line is `Cash from Operating Activities − Capital Expenditures` — so they need not match, but an order-of-magnitude gap means an input is wrong, and that is worth catching before the model runs ten years on it.
 
 **Use one consistent money unit (₹ Crore) for every money input and ₹ Crore for the share count too, so per-share lands in ₹.** Mixing units is the most common silent error.
 
