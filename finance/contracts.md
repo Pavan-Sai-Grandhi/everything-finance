@@ -24,16 +24,14 @@ compute engines that run on them, each delegating to the matching `finance/sourc
 | `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
 | `finance-personal` | `run_insurance_math` |
 
-The layering rule: **anything that fetches, or that computes over fetched data, is a tool.**
-A skill's `scripts/` holds only pure compute over user-supplied files (statements, policy
-figures, a hand-typed book), so it never needs the network. The `mcp/` layer is declaration
-and delegation only — a tool body is one call into the library — so there is one
-implementation of every rule, not one per entry point.
+The layering rule that decides where a piece of work lives: **anything that fetches, or that
+computes over fetched data, is a tool** — which leaves a skill's `scripts/` pure compute over
+user-supplied files (statements, policy figures, a hand-typed book).
 
 Bulk lists (`candles`, `positions`, `navs`, `items`, `funds`) are **spilled to disk**: the
 tool writes the full list to the cache tier and returns `data[<key>]` truncated plus
-`data[<key>_total]` and `data[<key>_path]`. Read the file for the rest; never re-call a
-tool to page through data it already wrote.
+`data[<key>_total]` and `data[<key>_path]`. Documents are the one payload that is *only* ever
+a path (see *Artifact: document cache*).
 
 **`finance/spine.py` — the primitives every fetcher shares.** `envelope(ok, source, data,
 gaps)` builds the one envelope shape; `f(value)` coerces to float-or-`None`; `first(row,
@@ -63,7 +61,8 @@ owns and what it is worth, never a decision input. See CLAUDE.md rule 3.
 miss; `load_yaml(path)` parses YAML via `need`. Skill scripts are run directly rather than
 installed, so a missing dependency self-heals instead of tracebacking. Consumers:
 `compute/trade_check.py`, `strategy-manager/scripts/{select_strategy,aggregate_performance}.py`,
-`compute/dcf.py`. Kept out of `compute/ta.py` so a caller needing only PyYAML
+`compute/dcf.py`, `sources/funds.py` (openpyxl, for the AMFI cap-list workbook).
+Kept out of `compute/ta.py` so a caller needing only PyYAML
 does not drag in pandas and the TA-Lib bootstrap.
 
 ### `finance/caps.py` — the SEBI cap-tier authority
@@ -150,9 +149,10 @@ never re-implemented in a skill:
 | `alerts.py` | `manage_alerts` | the alert inbox: list / add / dismiss / snooze / sweep (see *Artifact: alert*) |
 | `insurance_math.py` | `run_insurance_math` | user-supplied figures → term cover need, health sum insured, IDV/NCB sanity, marginal IRR of continuing a policy |
 
-Covered by `finance/tests/test_{context,screen,trade_check,fund_scan,lookthrough,rolling,dcf,relval,insurance_math,alerts}.py`.
-`backtest.py` has no test file of its own — its spec interpretation is covered through
-`compute/strategy.py` in `test_screen.py`; the Backtesting.py wiring is not.
+Covered by `finance/tests/test_{context,screen,backtest,trade_check,fund_scan,lookthrough,rolling,dcf,relval,insurance_math,alerts}.py`.
+`backtest.py` is covered from both sides: its spec interpretation through `compute/strategy.py`
+in `test_screen.py`, and the Backtesting.py wiring (fill timing, cost inclusion, stop/target
+precedence, time-stop) in `test_backtest.py`.
 
 ### `finance/sources/filings.py` — exchange-filing fetch + materiality
 Consumers: `get_filings` / `get_shareholding` / `get_corporate_actions`, read by
@@ -216,12 +216,24 @@ the shared **envelope**:
 - `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, cash_flow_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
 - `screen(query, limit=1000)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`), biggest market cap first. `query` is `FIELD > VALUE` / `FIELD < VALUE` clauses joined by `AND` over Tickertape's published screener field names; `>=`/`<=` and an unresolvable name **refuse the whole query** with a labelled gap, because a half-resolved query returns companies that never passed the cut.
 
-Line-item labels are **Tickertape's own published vocabulary**, and two of them mean less
-than their name suggests: `Taxes & Other Items` (`incToi`) lumps tax with the
-non-controlling interest, so an effective tax rate cannot be derived from it — read the
-annual report's tax note via `get_documents`; and `EBITDA` (`incEbi`) is struck **after**
-other income, so an operating-only margin is not separable. `EBITDA Margin %` and
-`Payout Ratio %` are the only derived rows.
+Line-item labels are **Tickertape's own published vocabulary**, and three of them mean less
+than their name suggests:
+- `Taxes & Other Items` (`incToi`) lumps tax with the non-controlling interest, so an
+  effective tax rate cannot be derived from it — read the annual report's tax note via
+  `get_documents`.
+- `EBITDA` (`incEbi`) is struck **after** other income, so an operating-only margin is not
+  separable.
+- `Changes in Working Capital` (`cafCiwc`) is **not a working-capital movement**. Tested
+  across six companies × four years it reconciles to neither of its two plausible meanings —
+  not the balance-sheet working-capital movement (TCS publishes −16,594 against +7,962 from
+  the balance sheet, the same ~15k gap four years running, and the signs agree in only 16 of
+  24 company-years) and not the CFO-minus-earnings residual. Its composition is not
+  determinable from what the source publishes, so **it must never be fed into the
+  reinvestment / sales-to-capital calculation**: take capex and depreciation from their own
+  published rows and ΔWC from a **labelled derived** balance-sheet delta, or from the annual
+  report's own cash-flow statement when the story turns on it.
+
+`EBITDA Margin %` and `Payout Ratio %` are the only derived rows.
 `cash_flow_10y` is the source of **CFO, capex and free cash flow** — none of which the P&L
 carries. `Free Cash Flow` is a **published** line, not a derived one (it reconciles to
 `Cash from Operating Activities − Capital Expenditures`). The payload's `cafFee` is dropped:
@@ -236,6 +248,20 @@ the current count is in `ratios` as `No. of Shareholders`.
 `is_logged_out(html)` catches screener's HTTP-200 Register page, so a gated document index
 reports itself rather than reading as a company that has filed nothing. Covered by
 `finance/tests/test_fundamentals.py` (offline parser fixtures).
+
+### `finance/sources/documents.py` — primary documents as cached local text
+Consumer: `get_documents` — whose envelope, cache layout and reading legs are in
+*Artifact: document cache*.
+Key contract: `fetch(symbol, annual_reports=1, concalls=1, fresh=False)` returns the shared
+**envelope**. It takes the index from `fundamentals.fetch(symbol, sections=["documents"])` —
+one screener fetch — and downloads each link through `transport.request(url, dest=…)`, so the
+BSE/NSE/investor-relations hosts that publish the documents are still reached through the one
+socket. Each section is listed newest-first, so the head of the list is the latest.
+Conversion is `pdftotext -layout` for PDFs (the layout mode keeps the column alignment
+annual-report tables depend on) and an in-process strip for text/HTML; `extracted_by` records
+which ran. A PDF that converts to zero characters is a scanned image and becomes a labelled
+gap rather than an empty citation. `pdftotext` missing (`brew install poppler`) is a gap too,
+never a crash. Covered by `finance/tests/test_documents.py`.
 
 ### `finance/sources/market.py` — market-wide fetch (indices, valuation history, breadth, flows, macro)
 Consumers: `get_indices` / `get_index_valuation_history` / `get_breadth` / `get_flows` /
@@ -654,7 +680,8 @@ strategy-manager  ──generate→ spec(draft) ──validate(backtest)→ spec
               ▼                                                      ▼
         (live_performance)                                   find-trade ──signals──▶ trade-idea(idea)
                                                                                           │
-deep-analysis / dcf / management        ── rationale ──▶ trade-tracker ◀── broker MCP ───┘
+deep-analysis / valuation-analysis /
+management-analysis                     ── rationale ──▶ trade-tracker ◀── broker MCP ───┘
 sources/filings.py ──▶ filings-watch / daily-brief   (promotes idea→open, closes→result)
 sources/funds.py ──▶ mf-analysis (fund scan → shortlist → look-through) ──▶ portfolio-review
 ```

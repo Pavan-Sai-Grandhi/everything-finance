@@ -10,7 +10,7 @@ India-focused personal financial intelligence. These rules bind every skill and 
 
 3. **Personal data and decision data never mix.**
    - **Personal sources** — IndMoney, Kite, Upstox (optional; connect whatever you have). They answer exactly one question: **what do you own and what is it worth** (holdings, units, quantity, average cost, invested/current value, P&L, XIRR, SIPs, order fills, net worth). Within that scope they are authoritative first-party state. Broker MCPs are the only source of exact order fills.
-   - **Decision sources** — the seven below, reached only through the three `finance-*` servers. Every number that shapes a view: prices, valuations, ratios, a *fund's own* holdings, returns-vs-benchmark, category returns and ranks, cap classification, news, sentiment, filings.
+   - **Decision sources** — the seven below, reached only through the four `finance-*` servers. Every number that shapes a view: prices, valuations, ratios, a *fund's own* holdings, returns-vs-benchmark, category returns and ranks, cap classification, news, sentiment, filings.
 
    **A personal source must never supply a decision input**, however convenient the field looks — an authenticated feed *looks* authoritative, and these fields have been measurably wrong. So: fund holdings from `get_fund_holdings`, cap tiers from `get_stock_ratios.cap_rank`, fund performance computed from NAV history, news from `get_news`. Personal sources are normalized through `finance/compute/holdings.py`.
 
