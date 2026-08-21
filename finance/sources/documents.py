@@ -132,7 +132,7 @@ def _document(link, kind, fresh, gaps):
             pass  # a damaged cache entry re-downloads rather than blocking the read
 
     got, gap = transport.request(url, dest=src, timeout=_DOWNLOAD_TIMEOUT,
-                                 referer=fundamentals._BASE + "/")
+                                 referer=fundamentals.SCREENER + "/")
     if gap or not got:
         gaps.append(f"{label}: download failed ({gap or 'empty response'})")
         return None

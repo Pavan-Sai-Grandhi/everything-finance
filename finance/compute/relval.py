@@ -11,7 +11,7 @@ deterministic and unit-tested so the figures are reproducible:
   - peer-group **median** multiple (median, not mean — multiples are skewed).
   - the company's position within its **own historical multiple band** (percentile).
 
-Every input comes from the screener.in data-pack (ratios + peers — already
+Every input comes from the fundamentals data-pack (ratios + peers — already
 whitelisted). The expected-growth input for PEG is a labelled estimate (basis
 stated), never fabricated.
 

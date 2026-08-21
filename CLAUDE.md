@@ -22,9 +22,9 @@ India-focused personal financial intelligence. These rules bind every skill and 
 |---|---|---|
 | **TradingView** scanner | live quote, technical screen, breadth | `get_quote`, `run_technical_screen`, `get_breadth` |
 | **Yahoo** (yfinance) | EOD OHLCV, sector history, macro | `get_history`, `get_macro` |
-| **screener.in** | company financials, fundamental screen | `get_company_fundamentals`, `run_fundamental_screen` |
+| **screener.in** | annual-report and concall document index | `get_documents`, `get_company_fundamentals` (`documents` section only) |
 | **NSE** | index valuation (live + historical), FII/DII flows, announcements, corporate actions | `get_indices`, `get_index_valuation_history`, `get_flows`, `get_filings`, `get_shareholding`, `get_corporate_actions` |
-| **Tickertape** | fund category screen, **complete** fund holdings, per-stock ratios | `screen_funds`, `get_fund_holdings`, `get_stock_ratios` |
+| **Tickertape** | company financials, fundamental screen, fund category screen, **complete** fund holdings, per-stock ratios | `get_company_fundamentals`, `run_fundamental_screen`, `screen_funds`, `get_fund_holdings`, `get_stock_ratios` |
 | **AMFI** (registry + mfapi.in NAV mirror) | fund identity, NAV history, SEBI market-cap rank | `resolve_fund`, `get_nav_history`, `get_stock_ratios` |
 | **Google News RSS** | company and market news | `get_news` |
 
@@ -47,7 +47,6 @@ A failed fetch never aborts a skill. Continue with the remaining sources and inc
 Credentials live in a `.env` located by `bin/load-env.sh` — first found of `$PLUGIN_ROOT/.env` (a `.env` next to the plugin) or `$PLUGIN_DATA/.env` (the client's persistent dir, for read-only installs). Never hardcode, never echo values into the transcript. In hook/automation scripts source the loader (`. "$PLUGIN_DIR/bin/load-env.sh"; ef_load_secrets "$PLUGIN_DIR" "$DATA_DIR"`) rather than hardcoding a path, so secrets resolve the same under every client. Template of the keys: `.env.example`. **If a secret is missing, skip the step that needs it and note the gap — never fail the whole skill.**
 
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram briefs.
-- `SCREENER_SESSION_ID`, `SCREENER_CSRF_TOKEN` — screener.in authenticated screens (optional; public pages work without them). `sessionid` cookie + `csrftoken` cookie/`X-CSRFToken` header for POSTs. **They expire, and screener answers an expired session with HTTP 200 and its Register page, not a 401** — `fundamentals.is_logged_out()` detects that, so an expired cookie reports "session expired" rather than "no companies matched".
 - `TRADINGVIEW_SESSIONID`, `TRADINGVIEW_SESSIONID_SIGN` — only for saved/personal screens; the public screener covers the built-in filters the seeds use. Copy from a logged-in browser (DevTools → Application → Cookies). They expire periodically.
 
 ## The `finance/` package
@@ -56,7 +55,7 @@ One library, so cross-skill logic cannot be re-implemented and drift.
 
 ```
 finance/  transport spine paths deps caps
-  sources/  prices market funds fundamentals news filings
+  sources/  tickertape prices market funds fundamentals documents news filings
   compute/  ta strategy holdings alerts context rolling
             lookthrough fund_scan screen backtest
             dcf relval trade_check insurance_math wealth allocation

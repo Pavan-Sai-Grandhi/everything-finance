@@ -30,7 +30,7 @@ TELEGRAM_CHAT_ID=...
 
 Seven servers ([`.mcp.json`](.mcp.json)) in two classes with deliberately opposite rules.
 
-**`finance-market` (13 tools), `finance-company` (8), `finance-funds` (6), `finance-personal` (1)** — local, all four launched by `bin/finance-mcp.sh <market|company|funds|personal>`, together the only door to every number the plugin reasons about. 28 tools over seven verified sources (TradingView, Yahoo, screener.in, NSE, Tickertape, AMFI, Google News RSS) plus the compute engines that run on them; no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
+**`finance-market` (13 tools), `finance-company` (8), `finance-funds` (6), `finance-personal` (1)** — local, all four launched by `bin/finance-mcp.sh <market|company|funds|personal>`, together the only door to every number the plugin reasons about. 28 tools over seven verified sources (TradingView, Yahoo, Tickertape, NSE, screener.in, AMFI, Google News RSS) plus the compute engines that run on them; no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
 
 **`kite`** (Zerodha), **`upstox`**, **`indmoney`** — optional, read-only, personal. They answer only *what you own and what it is worth* and never feed a view (CLAUDE.md rule 3). Connect whichever you use: IndMoney is the broadest — every asset class, per-position P&L and XIRR — but carries no order history, so exact entry fills come from a broker MCP. All three run through `bin/mcp-bridge.sh`, an `mcp-remote` wrapper that gives each Claude session its own OAuth config dir (`~/.mcp-auth-sessions/<pid>`) so concurrent sessions register on independent callback ports instead of colliding on one; it reaps the dirs of exited sessions and any orphaned bridge. The cost of that isolation is authenticating once per session.
 
@@ -41,7 +41,7 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 | Skill | What it does |
 |---|---|
 | `/market-analysis` | The plugin's market-of-record: trend and posture, real stock-level breadth, VIX percentile, cap-tier valuation percentiles against each index's own 10-year history, FII/DII flows, macro, sector leadership. Persists one dated artifact a day — every other skill reads that instead of forming its own view |
-| `/find-trade` | Run a chosen, validated strategy against the Nifty 500 — screen the universe (screener.in fundamentals + TradingView/local technical cut), build entry / SL / target / size signals; on your "yes" persists a trade-idea artifact for `/trade-tracker`. Strategy-agnostic: you name a strategy or it asks `/strategy-manager pick`; no hardcoded default |
+| `/find-trade` | Run a chosen, validated strategy against the Nifty 500 — screen the universe (Tickertape fundamentals + TradingView/local technical cut), build entry / SL / target / size signals; on your "yes" persists a trade-idea artifact for `/trade-tracker`. Strategy-agnostic: you name a strategy or it asks `/strategy-manager pick`; no hardcoded default |
 | `/deep-analysis TICKER [--quick\|--deep]` | Multi-agent debate at three depths — `quick` (3 lenses + one contest pass), `standard` (six lenses, a 2nd debate round only on genuine divergence), `deep` (six lenses, up to 3 rounds). Lenses: technical, financials, management (integrity gate + skill), valuation (DCF + relative multiples, weighted by DCF confidence), news, sector — fed by a fetch-once data-pack; portfolio-manager verdict. Report archived with its agent work papers + Telegram brief via the Stop hook |
 | `/fundamental-analysis TICKER` | The same fetch-once pack without the debate: financials (Varsity checklist + overview), management, and valuation legs merged into one report |
 | `/sector-analysis [sector]` | Deep-dive the sectors you name, or rank the NSE sectoral indices and deep-dive the top three — RS, sector KPIs, tailwinds/headwinds, top picks. Seeds the shared monthly sector cache `/deep-analysis` reuses |
@@ -72,7 +72,7 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 
 ```
 finance/          the one library — transport, spine, paths, deps
-  sources/        one module per data domain (prices market funds fundamentals news filings)
+  sources/        one module per data domain (prices market funds fundamentals documents news filings) + the shared tickertape client
   compute/        ta strategy holdings alerts context rolling lookthrough fund_scan
                   screen backtest dcf relval trade_check insurance_math wealth allocation
   mcp/            the four servers: declaration + delegation only

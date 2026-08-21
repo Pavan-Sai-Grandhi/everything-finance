@@ -53,7 +53,7 @@ CASES = {
         ("get_documents", {"symbol": "RELIANCE", "annual_reports": 1, "concalls": 1},
          ["documents", "documents_total"]),
         ("run_fundamental_screen",
-         {"query": "Market Capitalization > 100000 AND Price to Earning < 25"},
+         {"query": "Market Cap > 100000 AND PE Ratio < 25", "limit": 25},
          ["candidates", "count"]),
         ("get_stock_ratios", {"sid": "RELI"}, ["ticker"]),
         ("get_news", {"company": "Reliance Industries", "ticker": "RELIANCE", "days": 30,

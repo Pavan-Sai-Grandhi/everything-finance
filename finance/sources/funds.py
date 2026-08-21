@@ -19,7 +19,6 @@ get_stock_ratios.
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import threading
@@ -30,11 +29,11 @@ from finance import caps
 from finance import deps
 from finance import paths
 from finance import transport
+from finance.sources import tickertape
 from finance.spine import (envelope as _envelope, f as _f, iso_date as _iso_date,
                            norm_symbol as _norm_symbol,
                            read_cache as _read_cache, write_cache as _write_cache)
 
-_TT = "https://api.tickertape.in"
 _AMFI_NAV_ALL = "https://portal.amfiindia.com/spages/NAVAll.txt"
 _AMFI_CAP_INDEX = "https://www.amfiindia.com/otherdata/categorisation-of-stocks"
 _AMFI_HOST = "https://www.amfiindia.com"
@@ -69,26 +68,6 @@ SCREEN_FIELDS = [
 PREMIUM_FIELDS = {"maxDrawdown", "avg3yRollingRet", "percTop10H", "percTop3H",
                   "percTop5H", "ret3yVsCat", "ret1yVsCat", "ret5yVsCat", "cashncasheq"}
 
-def _curl(url, payload=None, timeout=30, referer="https://www.tickertape.in/", dest=None):
-    """GET, or POST when `payload` is given, via the single shared transport.
-
-    `dest` returns the saved path instead of the body — a workbook decoded to str is
-    destroyed.
-    """
-    return transport.request(url, payload=payload, timeout=timeout, referer=referer,
-                             dest=dest)
-
-
-def _json(url, payload=None, timeout=30):
-    body, gap = _curl(url, payload=payload, timeout=timeout)
-    if gap:
-        return None, gap
-    try:
-        return json.loads(body), None
-    except Exception:  # noqa: BLE001
-        return None, f"non-JSON from {url.split('/')[2]}: {(body or '')[:80]!r}"
-
-
 def _cache_path(kind, key):
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(key))
     return os.path.join(paths.cache_dir(os.path.join("mf", kind)), f"{safe}.json")
@@ -110,7 +89,8 @@ def amfi_index(fresh=False):
     if cached is not None:
         return cached
 
-    body, gap = _curl(_AMFI_NAV_ALL, timeout=60, referer="https://www.amfiindia.com/")
+    body, gap = transport.request(_AMFI_NAV_ALL, timeout=60,
+                                  referer="https://www.amfiindia.com/")
     if gap:
         return _envelope(False, "AMFI", {"schemes": []}, [f"AMFI NAVAll: {gap}"])
 
@@ -221,7 +201,7 @@ def amfi_cap_list(fresh=False):
         return cached
 
     empty = {"period": None, "url": None, "count": 0, "stocks": {}}
-    html, gap = _curl(_AMFI_CAP_INDEX, timeout=40, referer=_AMFI_HOST)
+    html, gap = transport.request(_AMFI_CAP_INDEX, timeout=40, referer=_AMFI_HOST)
     if gap:
         return _envelope(False, "AMFI", empty, [f"AMFI cap-list index: {gap}"])
     url, period, gap = _cap_xlsx_link(html)
@@ -231,7 +211,8 @@ def amfi_cap_list(fresh=False):
     # pid-scoped: two sessions downloading the same period must not overwrite each
     # other's file mid-parse.
     dest = os.path.join(paths.tmp_dir("mf"), f"amfi-cap-list-{os.getpid()}.xlsx")
-    saved, gap = _curl(url, timeout=120, referer=_AMFI_CAP_INDEX, dest=dest)
+    saved, gap = transport.request(url, timeout=120, referer=_AMFI_CAP_INDEX,
+                                   dest=dest)
     if gap:
         return _envelope(False, "AMFI", dict(empty, period=period, url=url),
                          [f"AMFI cap workbook: {gap}"])
@@ -398,7 +379,7 @@ def screen(subsector="Small Cap Fund", option="Growth", min_aum=100,
         payload = {"match": {"aum": {"g": float(min_aum)}},
                    "sortBy": "aum", "sortOrder": -1,
                    "project": fields, "offset": page * 500, "count": 500}
-        blob, gap = _json(f"{_TT}/mf-screener/query", payload=payload, timeout=45)
+        blob, gap = tickertape.get_json("/mf-screener/query", payload=payload, timeout=45)
         if gap:
             gaps.append(f"Tickertape screener page {page}: {gap}")
             break
@@ -450,7 +431,7 @@ def holdings(mf_id, fresh=False):
     if cached is not None:
         return cached
 
-    blob, gap = _json(f"{_TT}/mutualfunds/{mf_id}/holdings", timeout=40)
+    blob, gap = tickertape.get_json(f"/mutualfunds/{mf_id}/holdings", timeout=40)
     if gap:
         return _envelope(False, "Tickertape", {"mf_id": mf_id, "positions": []},
                          [f"Tickertape holdings for {mf_id}: {gap}"])
@@ -509,7 +490,7 @@ def stock_ratios(sid, fresh=False):
     if cached is not None:
         return cached
 
-    blob, gap = _json(f"{_TT}/stocks/info/{sid}", timeout=25)
+    blob, gap = tickertape.get_json(f"/stocks/info/{sid}", timeout=25)
     if gap:
         return _envelope(False, "Tickertape", {"sid": sid}, [f"ratios for {sid}: {gap}"])
     d = (blob or {}).get("data") or {}
@@ -590,7 +571,7 @@ def nav_history(scheme_code, fresh=False):
     if cached is not None:
         return cached
 
-    blob, gap = _json(f"{_MFAPI}/{scheme_code}", timeout=45)
+    blob, gap = transport.json_request(f"{_MFAPI}/{scheme_code}", timeout=45)
     if gap:
         return _envelope(False, "mfapi.in", {"code": scheme_code, "navs": []},
                          [f"mfapi {scheme_code}: {gap}"])

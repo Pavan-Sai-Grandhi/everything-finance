@@ -199,17 +199,36 @@ single-sourced `aggregator` claim accordingly. **Noise is filtered from the defa
 `gap`, never an empty crash. Covered by `finance/tests/test_news.py` (offline
 parser/classifier/ladder fixtures).
 
-### `finance/sources/fundamentals.py` — screener.in financials + fundamental screen
+### `finance/sources/tickertape.py` — the one Tickertape client
+Consumers: `sources/fundamentals.py` (company financials, screen) and `sources/funds.py`
+(fund screen, holdings, per-stock ratios). Holds the `tickertape.in` Referer every path
+403s without, and `resolve_sid(symbol)` → `({sid, ticker, name, sector, slug}, gap)` — the
+only way from an NSE symbol to Tickertape's own security id, which genuinely differs from
+the ticker (REC is ticker `RECLTD`, sid `RECM`). Only an exact ticker equality is accepted,
+because a near-miss attributes one company's financials to another. Cached 90 days.
+
+### `finance/sources/fundamentals.py` — Tickertape financials + the screener.in document index
 Consumers: `get_company_fundamentals` / `run_fundamental_screen`, read by the
 `fundamentals-data` agent (which packs it for `deep-analysis` / `fundamental-analysis`) and by
 `find-trade` / `strategy-manager` for a fundamental candidate cut. Key contract — each returns
 the shared **envelope**:
-- `fetch(symbol, sections=None)` reads the public consolidated company page **once** → `data:{symbol, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. Falls back to the standalone page with a labelled `gap`. `sections` narrows what the envelope carries; the fetch and cache are unaffected.
-- `screen(query)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`).
-**Tables/fields only — never raw page HTML lands in `data`.** The public page needs no auth;
-`SCREENER_SESSION_ID`/`SCREENER_CSRF_TOKEN` are injected only for a login-walled screen, and
-`is_logged_out(html)` catches screener's HTTP-200 Register page so an expired cookie reports
-"session expired" rather than "no companies matched". Covered by
+- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
+- `screen(query, limit=1000)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`), biggest market cap first. `query` is `FIELD > VALUE` / `FIELD < VALUE` clauses joined by `AND` over Tickertape's published screener field names; `>=`/`<=` and an unresolvable name **refuse the whole query** with a labelled gap, because a half-resolved query returns companies that never passed the cut.
+
+Line-item labels are **Tickertape's own published vocabulary**, and two of them mean less
+than their name suggests: `Taxes & Other Items` (`incToi`) lumps tax with the
+non-controlling interest, so an effective tax rate cannot be derived from it — read the
+annual report's tax note via `get_documents`; and `EBITDA` (`incEbi`) is struck **after**
+other income, so an operating-only margin is not separable. `EBITDA Margin %` and
+`Payout Ratio %` are the only derived rows.
+`shareholding` runs six quarters (Tickertape publishes no more) and carries
+`Promoter Pledge (% of promoter holding)` — whose denominator is the promoter stake, not
+the share capital. Government holding and a per-quarter shareholder count are not published;
+the current count is in `ratios` as `No. of Shareholders`.
+
+**Tables/fields only — never raw page HTML lands in `data`.** No source here needs auth.
+`is_logged_out(html)` catches screener's HTTP-200 Register page, so a gated document index
+reports itself rather than reading as a company that has filed nothing. Covered by
 `finance/tests/test_fundamentals.py` (offline parser fixtures).
 
 ### `finance/sources/market.py` — market-wide fetch (indices, valuation history, breadth, flows, macro)
@@ -384,11 +403,11 @@ it defers the regime check to the skill.
 — the single sourced fetch of one company's fundamentals for a run. **Consumers:** `financials-analyst`,
 `management-analyst`, `valuation-analyst` (each Reads it; none re-fetches), so all three reason off the
 same sourced numbers. **Fields:** a `depth:` frontmatter marker (`full` or `lite`); CMP (+ as-of); the
-screener envelope (`ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`);
+`get_company_fundamentals` envelope (`ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`);
 annual-report excerpts keyed by section (MD&A, segment note, auditor, RPT, contingent liabilities, cash
 flow, revenue recognition) each with a page/section cite; management-quality signals (remuneration, RPT
 detail, auditor fees & trend, board/KMP profiles, pledging, multi-year MD&A); concall takeaways (quarter
-cited); and `Data gaps`. **`depth: lite`** (deep-analysis `quick` mode) carries **only** the screener
+cited); and `Data gaps`. **`depth: lite`** (deep-analysis `quick` mode) carries **only** the fundamentals
 envelope + CMP — the annual-report sections, management signals, and concall are omitted and listed as
 gaps; consumers label them rather than infer. **`depth: full`** (standard/deep, `/fundamental-analysis`)
 carries everything. Facts only — no scoring/verdict. Archived under `deep-analysis/fundamentals/` by the Stop hook.

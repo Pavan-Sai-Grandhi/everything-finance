@@ -4,7 +4,7 @@
 Faithful to Aswath Damodaran's free-cash-flow-to-firm model (The Little Book of
 Valuation / Narrative and Numbers). The engine does ONLY arithmetic on inputs you
 supply — it never invents a number. Every input must trace to a sourced figure
-(screener.in financials, the annual report, an exchange filing) so the output is
+(`get_company_fundamentals`, the annual report, an exchange filing) so the output is
 authentic and auditable. Garbage in, garbage out: the skill's job is to make the
 story behind each input explicit and consistent before trusting the per-share value.
 

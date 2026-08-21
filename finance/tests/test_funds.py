@@ -2,8 +2,8 @@
 """Offline unit tests for finance/sources/funds.py (the mutual-fund data-spine fetcher).
 
 Deterministic, no network — every rung runs against saved response fixtures with the
-module's own curl/JSON seams swapped out, mirroring test_prices.py / test_fundamentals.py
-/ test_market.py. Artifact roots are temp dirs, so a run never touches the user's real
+shared transport and Tickertape seams swapped out, mirroring test_prices.py /
+test_fundamentals.py / test_market.py. Artifact roots are temp dirs, so a run never touches the user's real
 ./artifacts. Run:
     python3 finance/tests/test_funds.py
 """
@@ -25,7 +25,9 @@ atexit.register(shutil.rmtree, _TMP_ROOT, True)
 
 from finance import caps
 from finance import spine
+from finance import transport  # noqa: E402
 from finance.sources import funds  # noqa: E402
+from finance.sources import tickertape  # noqa: E402
 from finance.tests.harness import check, run  # noqa: E402
 
 
@@ -237,7 +239,7 @@ def cap_stocks():
 
 
 def serve_cap(index_html=CAP_INDEX_HTML, xlsx=CAP_XLSX_PATH, calls=None):
-    """A `_curl` stand-in serving the index page, then copying the fixture to `dest`."""
+    """A `transport.request` stand-in serving the index page, then the fixture to `dest`."""
     def fake(url, payload=None, timeout=30, referer=None, dest=None):
         if calls is not None:
             calls.append(url)
@@ -323,7 +325,7 @@ def test_score_name_prefers_the_tighter_name():
 # --------------------------------------------------------------------------- #
 def test_amfi_index_parses():
     fresh_root("amfi")
-    with swap(funds, "_curl", lambda url, payload=None, timeout=30, referer=None:
+    with swap(transport, "request", lambda url, payload=None, timeout=30, referer=None:
               (AMFI_NAVALL, None)):
         env = funds.amfi_index(fresh=True)
     check("amfi_index returns the envelope", envelope_keys(env), sorted(env))
@@ -349,7 +351,7 @@ def test_amfi_index_parses():
 
 def test_amfi_index_dash_isin_is_none():
     fresh_root("amfi-dash")
-    with swap(funds, "_curl", lambda url, payload=None, timeout=30, referer=None:
+    with swap(transport, "request", lambda url, payload=None, timeout=30, referer=None:
               (AMFI_NAVALL, None)):
         env = funds.amfi_index(fresh=True)
     idcw = [s for s in env["data"]["schemes"] if s["code"] == "118779"][0]
@@ -360,7 +362,7 @@ def test_amfi_index_dash_isin_is_none():
 
 def test_amfi_index_blocked_degrades():
     fresh_root("amfi-blocked")
-    with swap(funds, "_curl", lambda url, payload=None, timeout=30, referer=None:
+    with swap(transport, "request", lambda url, payload=None, timeout=30, referer=None:
               (None, "curl exit 6 for portal.amfiindia.com")):
         env = funds.amfi_index(fresh=True)
     check("amfi_index blocked returns ok:false", env["ok"] is False)
@@ -372,7 +374,7 @@ def test_amfi_index_blocked_degrades():
 
 def test_amfi_index_unparseable_body_degrades():
     fresh_root("amfi-junk")
-    with swap(funds, "_curl", lambda url, payload=None, timeout=30, referer=None:
+    with swap(transport, "request", lambda url, payload=None, timeout=30, referer=None:
               ("<html>login wall</html>", None)):
         env = funds.amfi_index(fresh=True)
     check("amfi_index with no parseable rows is ok:false", env["ok"] is False)
@@ -465,7 +467,7 @@ def test_cap_xlsx_parse_without_a_header_is_a_gap():
 def test_amfi_cap_list_end_to_end():
     fresh_root("cap-list")
     calls = []
-    with cap_index_cold(), swap(funds, "_curl", serve_cap(calls=calls)):
+    with cap_index_cold(), swap(transport, "request", serve_cap(calls=calls)):
         env = funds.amfi_cap_list(fresh=True)
     check("amfi_cap_list returns the envelope", envelope_keys(env), sorted(env))
     check("amfi_cap_list ok:true with rows", env["ok"] is True)
@@ -481,7 +483,7 @@ def test_amfi_cap_list_end_to_end():
     def explode(*a, **k):
         raise AssertionError("cap list re-fetched despite a warm cache")
 
-    with cap_index_cold(), swap(funds, "_curl", explode):
+    with cap_index_cold(), swap(transport, "request", explode):
         again = funds.amfi_cap_list()
     check("the parsed map is served from the long-TTL cache",
           again["data"]["count"] == 7, again["data"]["count"])
@@ -492,7 +494,7 @@ def test_amfi_cap_list_end_to_end():
 def test_cap_index_is_memoised_for_the_process():
     fresh_root("cap-memo")
     calls = []
-    with cap_index_cold(), swap(funds, "_curl", serve_cap(calls=calls)):
+    with cap_index_cold(), swap(transport, "request", serve_cap(calls=calls)):
         first, second = funds._cap_index(), funds._cap_index()
         check("the second read reuses the built map rather than reloading the cache",
               first[0] is second[0])
@@ -505,7 +507,7 @@ def test_cap_index_is_memoised_for_the_process():
 
 def test_amfi_cap_list_degrades_at_every_step():
     fresh_root("cap-list-blocked")
-    with cap_index_cold(), swap(funds, "_curl", lambda *a, **k: (None, "HTTP 503")):
+    with cap_index_cold(), swap(transport, "request", lambda *a, **k: (None, "HTTP 503")):
         env = funds.amfi_cap_list(fresh=True)
     check("a blocked index page is ok:false", env["ok"] is False)
     check("a blocked index page keeps the envelope shape", envelope_keys(env))
@@ -514,7 +516,7 @@ def test_amfi_cap_list_degrades_at_every_step():
     check("a blocked index page returns an empty map", env["data"]["stocks"] == {})
 
     fresh_root("cap-list-nolink")
-    with cap_index_cold(), swap(funds, "_curl", serve_cap(index_html="<html></html>")):
+    with cap_index_cold(), swap(transport, "request", serve_cap(index_html="<html></html>")):
         env = funds.amfi_cap_list(fresh=True)
     check("an index page with no link is a gap, not an abort", env["ok"] is False)
     check("the no-link gap names what was looked for",
@@ -525,7 +527,7 @@ def test_amfi_cap_list_degrades_at_every_step():
     def index_ok_download_blocked(url, payload=None, timeout=30, referer=None, dest=None):
         return (CAP_INDEX_HTML, None) if dest is None else (None, "HTTP 404")
 
-    with cap_index_cold(), swap(funds, "_curl", index_ok_download_blocked):
+    with cap_index_cold(), swap(transport, "request", index_ok_download_blocked):
         env = funds.amfi_cap_list(fresh=True)
     check("a blocked workbook download is a gap", env["ok"] is False)
     check("a blocked download still reports the period it was after",
@@ -599,7 +601,7 @@ def _screen_seam(blob, captured):
 def test_screen_filters_subsector_and_option_client_side():
     fresh_root("screen")
     seen = []
-    with swap(funds, "_json", _screen_seam(SCREEN_BLOB, seen)):
+    with swap(tickertape, "get_json", _screen_seam(SCREEN_BLOB, seen)):
         env = funds.screen(subsector="Small Cap Fund", option="Growth", fresh=True)
     check("screen returns the envelope", envelope_keys(env), sorted(env))
     check("screen ok:true with funds", env["ok"] is True)
@@ -623,7 +625,7 @@ def test_screen_filters_subsector_and_option_client_side():
 
 def test_screen_sorts_by_aum_desc():
     fresh_root("screen-sort")
-    with swap(funds, "_json", _screen_seam(SCREEN_BLOB, [])):
+    with swap(tickertape, "get_json", _screen_seam(SCREEN_BLOB, [])):
         env = funds.screen(subsector="Small Cap Fund", option="Growth", fresh=True)
     aums = [f["aum"] for f in env["data"]["funds"]]
     check("screen sorts largest AUM first", aums == [7500.0, 1000.0], aums)
@@ -636,7 +638,7 @@ def test_screen_sorts_by_aum_desc():
 
 def test_screen_whole_universe_when_unfiltered():
     fresh_root("screen-all")
-    with swap(funds, "_json", _screen_seam(SCREEN_BLOB, [])):
+    with swap(tickertape, "get_json", _screen_seam(SCREEN_BLOB, [])):
         env = funds.screen(subsector=None, option=None, fresh=True)
     ids = [f["mf_id"] for f in env["data"]["funds"]]
     check("screen(subsector=None, option=None) returns the whole universe",
@@ -649,7 +651,7 @@ def test_screen_strips_premium_fields():
     fresh_root("screen-premium")
     seen = []
     asked = ["aum", "subsector", "option", "maxDrawdown", "percTop10H", "ret3yVsCat"]
-    with swap(funds, "_json", _screen_seam(SCREEN_BLOB, seen)):
+    with swap(tickertape, "get_json", _screen_seam(SCREEN_BLOB, seen)):
         env = funds.screen(subsector="Small Cap Fund", option="Growth",
                            fields=asked, fresh=True)
     project = seen[0]["payload"]["project"]
@@ -664,7 +666,7 @@ def test_screen_strips_premium_fields():
     check("PREMIUM_FIELDS and SCREEN_FIELDS never overlap",
           not (set(funds.SCREEN_FIELDS) & funds.PREMIUM_FIELDS),
           set(funds.SCREEN_FIELDS) & funds.PREMIUM_FIELDS)
-    with swap(funds, "_json", _screen_seam(SCREEN_BLOB, [])):
+    with swap(tickertape, "get_json", _screen_seam(SCREEN_BLOB, [])):
         clean = funds.screen(subsector="Small Cap Fund", option="Growth", fresh=True)
     check("the default field set raises no premium gap",
           not any("premium-gated" in g for g in clean["gaps"]), clean["gaps"])
@@ -673,7 +675,7 @@ def test_screen_strips_premium_fields():
 def test_screen_403_is_a_labelled_gap():
     fresh_root("screen-403")
     refused = {"statusCode": 403, "message": "Premium fields: maxDrawdown"}
-    with swap(funds, "_json", _screen_seam(refused, [])):
+    with swap(tickertape, "get_json", _screen_seam(refused, [])):
         env = funds.screen(subsector="Small Cap Fund", fresh=True)
     check("a 403 from the screener returns ok:false", env["ok"] is False)
     check("a 403 still has the envelope shape", envelope_keys(env))
@@ -683,7 +685,7 @@ def test_screen_403_is_a_labelled_gap():
 
 def test_screen_blocked_degrades():
     fresh_root("screen-blocked")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30:
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30:
               (None, "non-JSON from api.tickertape.in")):
         env = funds.screen(subsector="Small Cap Fund", fresh=True)
     check("screen blocked returns ok:false", env["ok"] is False)
@@ -695,7 +697,7 @@ def test_screen_blocked_degrades():
 
 def test_screen_no_match_is_a_labelled_gap():
     fresh_root("screen-nomatch")
-    with swap(funds, "_json", _screen_seam(SCREEN_BLOB, [])):
+    with swap(tickertape, "get_json", _screen_seam(SCREEN_BLOB, [])):
         env = funds.screen(subsector="Banking & PSU Fund", option="Growth", fresh=True)
     check("a sub-category with no members is ok:false", env["ok"] is False)
     check("a sub-category with no members names the gap",
@@ -707,7 +709,7 @@ def test_screen_no_match_is_a_labelled_gap():
 # --------------------------------------------------------------------------- #
 def test_holdings_parses_the_full_book():
     fresh_root("holdings")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (HOLDINGS_BLOB, None)):
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (HOLDINGS_BLOB, None)):
         env = funds.holdings("M_NIMS", fresh=True)
     check("holdings returns the envelope", envelope_keys(env), sorted(env))
     check("holdings ok:true with an allocation", env["ok"] is True)
@@ -727,7 +729,7 @@ def test_holdings_parses_the_full_book():
 
 def test_holdings_equity_weight_and_sectors():
     fresh_root("holdings-weights")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (HOLDINGS_BLOB, None)):
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (HOLDINGS_BLOB, None)):
         env = funds.holdings("M_NIMS", fresh=True)
     d = env["data"]
     check("equity_weight sums ONLY the equity legs",
@@ -753,7 +755,7 @@ def test_holdings_normal_book_is_silent():
         {"type": "Equity", "title": "B Ltd", "sid": "BBBB", "ticker": "B", "latest": 35.4},
         {"type": "cash", "title": "Cash", "sid": None, "ticker": None, "latest": 4.6},
     ]}}
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (blob, None)):
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (blob, None)):
         env = funds.holdings("M_TEST", fresh=True)
     check("equity-heavy book sums to its equity weight",
           env["data"]["equity_weight"] == 95.4, env["data"]["equity_weight"])
@@ -762,7 +764,7 @@ def test_holdings_normal_book_is_silent():
 
 def test_holdings_low_equity_gap():
     fresh_root("holdings-hybrid")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (HYBRID_HOLDINGS_BLOB, None)):
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (HYBRID_HOLDINGS_BLOB, None)):
         env = funds.holdings("M_HYBRID", fresh=True)
     check("a cash/debt-heavy book still parses", env["ok"] is True)
     check("its equity weight is the real sum", env["data"]["equity_weight"] == 45.0,
@@ -773,7 +775,7 @@ def test_holdings_low_equity_gap():
 
 def test_holdings_blocked_degrades():
     fresh_root("holdings-blocked")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30:
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30:
               (None, "curl exit 28 for api.tickertape.in")):
         env = funds.holdings("M_NIMS", fresh=True)
     check("holdings blocked returns ok:false", env["ok"] is False)
@@ -786,7 +788,7 @@ def test_holdings_blocked_degrades():
 
 def test_holdings_empty_allocation_degrades():
     fresh_root("holdings-empty")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: ({"data": {}}, None)):
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: ({"data": {}}, None)):
         env = funds.holdings("M_EMPTY", fresh=True)
     check("holdings with no currentAllocation is ok:false", env["ok"] is False)
     check("holdings with no currentAllocation names the gap",
@@ -798,7 +800,7 @@ def test_holdings_empty_allocation_degrades():
 # --------------------------------------------------------------------------- #
 def test_stock_ratios_parses():
     fresh_root("ratios")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (STOCK_INFO_BLOB, None)), \
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (STOCK_INFO_BLOB, None)), \
             cap_index(cap_stocks()):
         env = funds.stock_ratios("RECM", fresh=True)
     check("stock_ratios returns the envelope", envelope_keys(env), sorted(env))
@@ -822,7 +824,7 @@ def test_stock_ratios_parses():
 
 def test_stock_ratios_unranked_falls_back_to_the_provider_label():
     fresh_root("ratios-unranked")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (STOCK_INFO_BLOB, None)), \
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (STOCK_INFO_BLOB, None)), \
             cap_index({}, period="2026-06-30"):
         env = funds.stock_ratios("RECM", fresh=True)
     d = env["data"]
@@ -841,7 +843,7 @@ def test_stock_ratios_joins_on_isin_when_the_ticker_misses():
     blob = {"data": {"info": {"ticker": "RECLIMITED", "name": "REC Ltd",
                               "isin": "INE020B01018"},
                      "ratios": {"pe": 8.4}}}
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (blob, None)), \
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (blob, None)), \
             cap_index(cap_stocks()):
         env = funds.stock_ratios("RECM", fresh=True)
     check("a ticker the AMFI list does not use still ranks via ISIN",
@@ -851,7 +853,7 @@ def test_stock_ratios_joins_on_isin_when_the_ticker_misses():
 
 def test_stock_ratios_unlisted_degrades():
     fresh_root("ratios-unlisted")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30:
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30:
               ({"data": {"info": {"ticker": None}}}, None)):
         env = funds.stock_ratios("UNLI", fresh=True)
     check("an unlisted holding returns ok:false", env["ok"] is False)
@@ -938,8 +940,8 @@ def test_enrich_fetches_the_cap_list_once_for_the_whole_book():
     positions = [{"sid": f"S{i}", "weight": 1.0, "type": "equity"} for i in range(40)]
     calls = []
     with cap_index_cold(), \
-            swap(funds, "_curl", serve_cap(calls=calls)), \
-            swap(funds, "_json", lambda url, payload=None, timeout=30:
+            swap(transport, "request", serve_cap(calls=calls)), \
+            swap(tickertape, "get_json", lambda url, payload=None, timeout=30:
                  (STOCK_INFO_BLOB, None)):
         out, _ = funds.enrich(positions, workers=10)
     check("a 40-position book downloads the AMFI workbook once, not once per position",
@@ -960,7 +962,7 @@ def test_enrich_empty_input():
 # --------------------------------------------------------------------------- #
 def test_nav_history_dates_and_order():
     fresh_root("nav")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (NAV_BLOB, None)):
+    with swap(transport, "json_request", lambda url, payload=None, timeout=30: (NAV_BLOB, None)):
         env = funds.nav_history("118778", fresh=True)
     check("nav_history returns the envelope", envelope_keys(env), sorted(env))
     check("nav_history ok:true with rows", env["ok"] is True)
@@ -981,7 +983,7 @@ def test_nav_history_dates_and_order():
 
 def test_nav_history_blocked_degrades():
     fresh_root("nav-blocked")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30:
+    with swap(transport, "json_request", lambda url, payload=None, timeout=30:
               (None, "curl exit 6 for api.mfapi.in")):
         env = funds.nav_history("118778", fresh=True)
     check("nav_history blocked returns ok:false", env["ok"] is False)
@@ -993,7 +995,7 @@ def test_nav_history_blocked_degrades():
 
 def test_nav_history_empty_series_degrades():
     fresh_root("nav-empty")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: ({"data": []}, None)):
+    with swap(transport, "json_request", lambda url, payload=None, timeout=30: ({"data": []}, None)):
         env = funds.nav_history("999999", fresh=True)
     check("nav_history with no rows is ok:false", env["ok"] is False)
     check("nav_history with no rows names the gap",
@@ -1040,13 +1042,13 @@ def test_cache_max_age():
 
 def test_holdings_cache_round_trip():
     fresh_root("holdings-cache")
-    with swap(funds, "_json", lambda url, payload=None, timeout=30: (HOLDINGS_BLOB, None)):
+    with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (HOLDINGS_BLOB, None)):
         funds.holdings("M_NIMS", fresh=True)
 
     def explode(*a, **k):
         raise AssertionError("holdings re-fetched despite a warm cache")
 
-    with swap(funds, "_json", explode):
+    with swap(tickertape, "get_json", explode):
         env = funds.holdings("M_NIMS")
     check("holdings serves the cached book without refetching", env["ok"] is True)
     check("the cached book round-trips the parsed positions",
