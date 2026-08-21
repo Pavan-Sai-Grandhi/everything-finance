@@ -212,7 +212,7 @@ Consumers: `get_company_fundamentals` / `run_fundamental_screen`, read by the
 `fundamentals-data` agent (which packs it for `deep-analysis` / `fundamental-analysis`) and by
 `find-trade` / `strategy-manager` for a fundamental candidate cut. Key contract — each returns
 the shared **envelope**:
-- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
+- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, cash_flow_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
 - `screen(query, limit=1000)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`), biggest market cap first. `query` is `FIELD > VALUE` / `FIELD < VALUE` clauses joined by `AND` over Tickertape's published screener field names; `>=`/`<=` and an unresolvable name **refuse the whole query** with a labelled gap, because a half-resolved query returns companies that never passed the cut.
 
 Line-item labels are **Tickertape's own published vocabulary**, and two of them mean less
@@ -221,6 +221,11 @@ non-controlling interest, so an effective tax rate cannot be derived from it —
 annual report's tax note via `get_documents`; and `EBITDA` (`incEbi`) is struck **after**
 other income, so an operating-only margin is not separable. `EBITDA Margin %` and
 `Payout Ratio %` are the only derived rows.
+`cash_flow_10y` is the source of **CFO, capex and free cash flow** — none of which the P&L
+carries. `Free Cash Flow` is a **published** line, not a derived one (it reconciles to
+`Cash from Operating Activities − Capital Expenditures`). The payload's `cafFee` is dropped:
+the source publishes no name for it and renders no row for it, so carrying it would mean
+inventing a label.
 `shareholding` runs six quarters (Tickertape publishes no more) and carries
 `Promoter Pledge (% of promoter holding)` — whose denominator is the promoter stake, not
 the share capital. Government holding and a per-quarter shareholder count are not published;
@@ -403,7 +408,7 @@ it defers the regime check to the skill.
 — the single sourced fetch of one company's fundamentals for a run. **Consumers:** `financials-analyst`,
 `management-analyst`, `valuation-analyst` (each Reads it; none re-fetches), so all three reason off the
 same sourced numbers. **Fields:** a `depth:` frontmatter marker (`full` or `lite`); CMP (+ as-of); the
-`get_company_fundamentals` envelope (`ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`);
+`get_company_fundamentals` envelope (`ratios`, `pnl_10y`, `balance_sheet_10y`, `cash_flow_10y`, `quarters`, `shareholding`, `peers`);
 annual-report excerpts keyed by section (MD&A, segment note, auditor, RPT, contingent liabilities, cash
 flow, revenue recognition) each with a page/section cite; governance signals (remuneration, RPT
 detail, auditor fees & trend, board/KMP profiles, pledging, multi-year MD&A); concall takeaways (quarter

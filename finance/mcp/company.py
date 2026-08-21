@@ -29,15 +29,17 @@ SERVER = create(
 
 
 @SERVER.tool(
-    description="Company fundamentals: headline ratios, 10-year P&L and balance sheet, "
-                "13 quarters of results, six quarters of the shareholding split with "
-                "promoter pledge, sub-sector peers (Tickertape), and annual-report/"
-                "concall links (screener.in). Line-item labels are Tickertape's own: "
-                "`Taxes & Other Items` lumps tax with the non-controlling interest so it "
-                "is NOT an effective tax rate, and `EBITDA` is struck after other income "
-                "so an operating-only margin cannot be split out of it. Pass `sections` "
-                "to fetch and return only what you need (ratios|pnl_10y|"
-                "balance_sheet_10y|quarters|shareholding|peers|documents)."
+    description="Company fundamentals: headline ratios, 10-year P&L, balance sheet and "
+                "cash flow, 13 quarters of results, six quarters of the shareholding "
+                "split with promoter pledge, sub-sector peers (Tickertape), and "
+                "annual-report/concall links (screener.in). Line-item labels are "
+                "Tickertape's own: `Taxes & Other Items` lumps tax with the "
+                "non-controlling interest so it is NOT an effective tax rate, and "
+                "`EBITDA` is struck after other income so an operating-only margin "
+                "cannot be split out of it. `cash_flow_10y` carries CFO, capex and a "
+                "published `Free Cash Flow` line — the P&L carries none of the three. "
+                "Pass `sections` to fetch and return only what you need (ratios|pnl_10y|"
+                "balance_sheet_10y|cash_flow_10y|quarters|shareholding|peers|documents)."
 )
 def get_company_fundamentals(symbol: str, sections: list | None = None,
                              fresh: bool = False) -> dict:

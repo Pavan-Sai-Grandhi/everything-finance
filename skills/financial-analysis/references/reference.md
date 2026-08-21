@@ -20,7 +20,7 @@ ROCE above the cost of capital is the moat signal: it is the one ratio that says
 
 ### 4. Cash reality — CFO tracking EBITDA over a cycle
 
-Profit without cash is accounting, not business. CFO/EBITDA ≈ 1 across a cycle; persistent divergence means the earnings are on paper. **CFO and capex are not published on the fundamentals feed** — take both from the annual report's cash-flow statement, cite the page, and mark the check a data gap if the document could not be read. FCF (CFO − capex) positive across a cycle is the standard for a mature firm; a young firm burning cash is a different question, not automatically a fail.
+Profit without cash is accounting, not business. CFO/EBITDA ≈ 1 across a cycle; persistent divergence means the earnings are on paper. `cash_flow_10y` carries all three inputs over the same ten years as the P&L: **`Cash from Operating Activities`** is CFO, **`Capital Expenditures`** is capex, and **`Free Cash Flow`** is a published line, not something you compute. FCF positive across a cycle is the standard for a mature firm; a young firm burning cash is a different question, not automatically a fail. Read `Changes in Working Capital` beside them — CFO propped up by a working-capital release is the same finding the receivable-days check reaches from the other side.
 
 ### 5. Promoter holding & pledge — stable or rising, pledging not increasing
 
@@ -47,13 +47,13 @@ Compute it off `Total Revenue`, and read it beside EPS: `Earnings Per Share` now
 | `Taxes & Other Items` | Tax **plus** non-controlling interest, not tax. **Never derive an effective tax rate from it** — for a group with minorities it overstates the rate by several points. The effective rate comes from the annual report's tax note. |
 | `Total Liabilities` | Liabilities **excluding** equity. The balance-sheet total is `Total Liabilities & Shareholders Equity`. Reading the first as the second halves the number. |
 
-Absent entirely, and therefore a labelled gap wherever a check needs one: the **cash-flow statement**, capital work-in-progress, and any separable other-income line.
+Absent entirely, and therefore a labelled gap wherever a check needs one: capital work-in-progress, any separable other-income line, and the effective tax rate.
 
 ## What the primary documents must supply
 
 `get_documents` returns each document's `text_path`; `Read` it and cite the filing itself — a page or note reference — never a précis of it.
 
-- **Annual report** — the cash-flow statement (check 4) and the tax note (any effective-rate work) are *required* from here, not optional colour. Then read for: auditor qualifications and emphases of matter, contingent liabilities, segment revenue and EBIT mix, related-party transactions, and the MD&A's account of what moved.
+- **Annual report** — the **tax note** is *required* from here for any effective-rate work; nothing on the feed can supply it. Then read for: auditor qualifications and emphases of matter, contingent liabilities, segment revenue and EBIT mix, related-party transactions, and the MD&A's account of what moved. The full cash-flow statement is the fallback for what `cash_flow_10y` does not break out — the non-cash adjustments, the working-capital movement line by line, and acquisition spend sitting inside investing.
 - **Latest concall** — guidance actually given, and two or three management statements with the quarter cited. Read the Q&A as asked and answered.
 
 Three to five specific, cited annual-report findings is the bar. A finding with no page behind it is not a finding.

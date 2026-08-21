@@ -69,6 +69,18 @@ BALANCE_SHEET = {"success": True, "data": [
      "balComs": 13532, "balApic": 93118, "balRtne": 797380, "balTeq": 1085866,
      "balTlse": 2177546, "balTcso": 1353.24, "balTdep": None}]}
 
+# `cafFee` is carried in the payload with no published name and a null value; the parser
+# must not invent a label for it.
+CASH_FLOW = {"success": True, "data": [
+    {"displayPeriod": "FY 2025", "endDate": "2025-03-31T00:00:00.000Z",
+     "cafCfoa": 178703, "cafCfia": -137535, "cafCffa": -31891, "cafNcic": 9277,
+     "cafCiwc": 11799, "cafCexp": 139967, "cafTcdp": 7180, "cafFcf": 38736,
+     "cafFee": None},
+    {"displayPeriod": "FY 2026", "endDate": "2026-03-31T00:00:00.000Z",
+     "cafCfoa": 192113, "cafCfia": -101089, "cafCffa": -51549, "cafNcic": 39475,
+     "cafCiwc": 2889, "cafCexp": 122916, "cafTcdp": 7879, "cafFcf": 69197,
+     "cafFee": None}]}
+
 HOLDINGS = {"success": True, "data": [
     {"date": "2026-03-31T00:00:00.000Z",
      "data": {"pmPctT": 49.999, "pmPctP": 0.0, "fiPctT": 18.665, "diPctT": 20.547,
@@ -129,6 +141,7 @@ ROUTES = [
     ("/stocks/financials/income/RELI/annual", INCOME_ANNUAL),
     ("/stocks/financials/income/RELI/interim", INCOME_INTERIM),
     ("/stocks/financials/balancesheet/", BALANCE_SHEET),
+    ("/stocks/financials/cashflow/", CASH_FLOW),
 ]
 
 
@@ -248,6 +261,34 @@ def test_T2_balance_sheet_10y():
           and bs["rows"]["Additional Paid-in Capital"][0] == 93118.0)
     check("T2 an all-null row is dropped rather than carried as zeros",
           "Total Deposits - Banks" not in bs["rows"], sorted(bs["rows"]))
+
+
+def test_T2_cash_flow_10y():
+    cf = _data()["cash_flow_10y"]
+    check("T2 cash flow columns are the reporting periods",
+          cf["columns"] == ["FY 2025", "FY 2026"], cf["columns"])
+    check("T2 cash from operations parsed",
+          cf["rows"]["Cash from Operating Activities"] == [178703.0, 192113.0],
+          cf["rows"].get("Cash from Operating Activities"))
+    check("T2 capital expenditure parsed — the P&L carries no capex line",
+          cf["rows"]["Capital Expenditures"] == [139967.0, 122916.0])
+    check("T2 free cash flow is the published line, not a derived one",
+          cf["rows"]["Free Cash Flow"] == [38736.0, 69197.0])
+    check("T2 the published FCF reconciles to CFO minus capex",
+          all(round(o - c, 2) == f for o, c, f in zip(
+              cf["rows"]["Cash from Operating Activities"],
+              cf["rows"]["Capital Expenditures"],
+              cf["rows"]["Free Cash Flow"])))
+    check("T2 the three activity lines reconcile to net change in cash",
+          all(round(o + i + fin, 2) == n for o, i, fin, n in zip(
+              cf["rows"]["Cash from Operating Activities"],
+              cf["rows"]["Cash from Investing Activities"],
+              cf["rows"]["Cash from Financing Activities"],
+              cf["rows"]["Net Change in Cash"])))
+    check("T2 the unnamed cafFee is dropped, never given a guessed label",
+          len(cf["rows"]) == len(fz._CF_ROWS)
+          and not any("Exchange" in k or "Forex" in k for k in cf["rows"]),
+          sorted(cf["rows"]))
 
 
 def test_T2_quarters():
@@ -509,7 +550,8 @@ def test_T5_advertised_common_fields_are_all_real():
 if __name__ == "__main__":
     run((test_T1_resolve_sid, test_T1_resolve_sid_miss_is_a_labelled_gap,
          test_T1_resolve_sid_rejects_a_near_miss, test_T1_empty_symbol,
-         test_T2_ratios, test_T2_pnl_10y, test_T2_balance_sheet_10y, test_T2_quarters,
+         test_T2_ratios, test_T2_pnl_10y, test_T2_balance_sheet_10y,
+         test_T2_cash_flow_10y, test_T2_quarters,
          test_T2_q_key, test_T2_shareholding, test_T2_peers,
          test_T2_documents_stay_on_screener,
          test_T3_envelope_and_identity, test_T3_no_html_in_data,

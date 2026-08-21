@@ -2,7 +2,7 @@
 """Fundamentals fetch — Tickertape for the numbers, screener.in for the document index.
 
 `fetch(symbol)` resolves the NSE symbol to a Tickertape `sid` and reads the ratio, annual
-and interim financial, shareholding and peer endpoints. Annual-report and concall links
+P&L, balance-sheet and cash-flow, interim financial, shareholding and peer endpoints. Annual-report and concall links
 come from screener.in's public company page: no other approved source indexes them.
 
 Line-item labels are Tickertape's own published vocabulary (`GET /screener/filters` names
@@ -40,8 +40,8 @@ from finance.spine import (CACHE_STAMP, envelope as _envelope, f as _f,
 
 SCREENER = "https://www.screener.in"
 
-_SECTIONS = ("ratios", "pnl_10y", "balance_sheet_10y", "quarters", "shareholding",
-             "peers", "documents")
+_SECTIONS = ("ratios", "pnl_10y", "balance_sheet_10y", "cash_flow_10y", "quarters",
+             "shareholding", "peers", "documents")
 
 # Identity travels with every narrowed read, so an extracted section stays attributable.
 _IDENTITY = ("symbol", "name", "sid")
@@ -201,6 +201,21 @@ _BS_ROWS = [
     ("Common Shares Outstanding", "balTcso"),
 ]
 
+# Annual cash flow, in the order the source's own statement renders it. `Free Cash Flow`
+# is published, not derived: `cafCfoa - cafCexp` reproduces it exactly.
+# `cafFee` is dropped — the source publishes no name for it, renders no row for it, and
+# returns null for it on every company checked; naming it ourselves would be a guess.
+_CF_ROWS = [
+    ("Cash from Operating Activities", "cafCfoa"),
+    ("Cash from Investing Activities", "cafCfia"),
+    ("Cash from Financing Activities", "cafCffa"),
+    ("Net Change in Cash", "cafNcic"),
+    ("Changes in Working Capital", "cafCiwc"),
+    ("Capital Expenditures", "cafCexp"),
+    ("Total Cash Dividends Paid", "cafTcdp"),
+    ("Free Cash Flow", "cafFcf"),
+]
+
 _HOLDING_ROWS = [
     ("Promoters", "pmPctT"),
     # The denominator is the promoter stake, not the share capital: Vedanta reads 99.99.
@@ -310,6 +325,11 @@ def _balance_sheet_10y(sid):
     return _table(rows, _BS_ROWS), ([gap] if gap else [])
 
 
+def _cash_flow_10y(sid):
+    rows, gap = _periods(sid, "cashflow", "annual", 10)
+    return _table(rows, _CF_ROWS), ([gap] if gap else [])
+
+
 def _quarters(sid):
     rows, gap = _periods(sid, "income", "interim", 13)
     labels = [(label, _q_key(key)) for label, key in _PNL_ROWS]
@@ -345,11 +365,12 @@ def _peers(sid):
 
 
 _TT_SECTIONS = {"ratios": _ratios, "pnl_10y": _pnl_10y,
-                "balance_sheet_10y": _balance_sheet_10y, "quarters": _quarters,
-                "shareholding": _shareholding, "peers": _peers}
+                "balance_sheet_10y": _balance_sheet_10y, "cash_flow_10y": _cash_flow_10y,
+                "quarters": _quarters, "shareholding": _shareholding, "peers": _peers}
 
 _EMPTY = {"ratios": {}, "pnl_10y": _EMPTY_TABLE, "balance_sheet_10y": _EMPTY_TABLE,
-          "quarters": _EMPTY_TABLE, "shareholding": _EMPTY_TABLE, "peers": [],
+          "cash_flow_10y": _EMPTY_TABLE, "quarters": _EMPTY_TABLE,
+          "shareholding": _EMPTY_TABLE, "peers": [],
           "documents": {"annual_reports": [], "concalls": []}}
 
 

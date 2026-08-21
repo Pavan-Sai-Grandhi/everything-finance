@@ -9,13 +9,13 @@ allowed-tools: Read, Write, mcp__finance-company__*
 
 Read `references/reference.md` first — it owns the method: the six checks with their thresholds and what each is really testing, the published-row vocabulary and the four labels that mean something other than they say, what the primary documents must supply, and how the verdict is graded. This SKILL is the workflow.
 
-**Sources for this skill only:** `finance-company` — `get_company_fundamentals(symbol)` (ten fiscal years of P&L and balance sheet, quarters, ratios, six quarters of shareholding) and `get_documents(symbol)` (annual report and latest concall, downloaded and converted to cached local text).
+**Sources for this skill only:** `finance-company` — `get_company_fundamentals(symbol)` (ten fiscal years of P&L, balance sheet and cash flow, quarters, ratios, six quarters of shareholding) and `get_documents(symbol)` (annual report and latest concall, downloaded and converted to cached local text).
 
 ## Workflow
 
 1. **Inputs**: the ticker, the company name where you have it, and — where an orchestrator already called `get_documents` — the document `text_path`s and an output path.
 2. **Pull the figures.** `get_company_fundamentals(SYMBOL)`. It is day-cached at the tool, so call it once and work from what it returned.
-3. **Read the primary documents.** `get_documents(SYMBOL)` unless the paths were handed to you, then `Read` each `text_path`. The cash-flow statement and the tax note are *required* from the annual report — nothing on the fundamentals feed carries either. A document that would not download is a labelled gap for the checks that needed it.
+3. **Read the primary documents.** `get_documents(SYMBOL)` unless the paths were handed to you, then `Read` each `text_path`. The **tax note** is *required* from the annual report — nothing on the feed carries an effective rate. A document that would not download is a labelled gap for the checks that needed it.
 4. **Score the six checks**, each PASS / FLAG / FAIL with the number that decided it, and set `varsity_score` to the count of PASS.
 5. **Write the Company Overview** from the segment note and MD&A, with the mix percentages tying to the published revenue.
 6. **Pull the flags out**, red and green, each tied to a figure or a cited page, and call the verdict.
