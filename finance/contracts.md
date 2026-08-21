@@ -518,7 +518,7 @@ stays in the artifact, never in the digest.
 **Producer:** `portfolio-review` in `quick` mode. **Consumer:** `wealth-manager` — the cheap
 investments read, the sibling of the cashflow-leg digest above; same hygiene (a compact block,
 no per-holding deep fan-out, no report render). `quick`
-runs the multi-dimensional allocation + concentration engine (`scripts/allocation.py`) and the
+runs the multi-dimensional allocation + concentration engine (`compute/allocation.py`) and the
 cheap per-holding drift/exit flags, but **not** the bounded `deep-analysis`/`mf-analysis`
 fan-out (that is `deep`-only). It returns only:
 
@@ -568,7 +568,7 @@ as_of: <YYYY-MM-DD>
 An un-sizable line is a labelled gap, never a fabricated sum-assured or need.
 
 ## Artifact: net-worth spine + financial-health scorecard (wealth-manager)
-**Producer:** `wealth-manager/scripts/wealth.py` (the deterministic engine). **Consumer:** the
+**Producer:** `compute/wealth.py` (the deterministic engine). **Consumer:** the
 `wealth-manager` orchestrator (synthesis) and its artifact `artifacts/wealth/YYYY-MM-DD.md`
 (`paths.report_path("wealth")`). The engine reads a **picture JSON** — the raw IndMoney
 `networth_snapshot` + `networth_allocation_breakdown`, the `compute/holdings.py` positions envelope,
@@ -591,7 +591,7 @@ every number (nothing eyeballed).
   gap, never sets overall). Actions are ordered **across** domains by the health stack
   (emergency-fund/protection before fresh equity), max 5, each naming the spoke to run for depth.
 - `--snapshot` returns spine + cross-domain flags only (no legs, no scorecard). Deterministic and
-  offline; covered by `skills/wealth-manager/scripts/test_wealth.py`.
+  offline; covered by `finance/tests/test_wealth.py`.
 
 ---
 

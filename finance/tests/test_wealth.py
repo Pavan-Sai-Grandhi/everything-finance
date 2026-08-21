@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Offline tests for the wealth-manager engine. No network, no MCP.
-Run: python3 skills/wealth-manager/scripts/test_wealth.py
+Run: python3 finance/tests/test_wealth.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))))
-import wealth  # noqa: E402
-from finance.tests.harness import check, run  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import wealth
+from finance.tests.harness import check, run
 
 
 # --- captured sample payloads (shapes the SKILL hands off via a temp file) --- #

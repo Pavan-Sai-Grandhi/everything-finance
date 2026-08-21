@@ -59,7 +59,7 @@ finance/  transport spine paths deps
   sources/  prices market funds fundamentals news filings
   compute/  ta strategy holdings alerts context rolling
             lookthrough fund_scan screen backtest
-            dcf relval trade_check insurance_math
+            dcf relval trade_check insurance_math wealth allocation
   mcp/      _server + market company funds personal
   tests/    harness + test_*
 ```

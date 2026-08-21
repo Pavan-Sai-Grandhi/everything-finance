@@ -74,9 +74,9 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 finance/          the one library — transport, spine, paths, deps
   sources/        one module per data domain (prices market funds fundamentals news filings)
   compute/        ta strategy holdings alerts context rolling lookthrough fund_scan
-                  screen backtest dcf relval trade_check insurance_math
+                  screen backtest dcf relval trade_check insurance_math wealth allocation
   mcp/            the four servers: declaration + delegation only
-  tests/          harness.py + 23 standalone test files
+  tests/          harness.py + 26 standalone test files
   contracts.md    the artifact handoffs between skills — producer and consumer per field
 skills/<name>/    SKILL.md, plus references/ assets/ scripts/ where the skill needs them
 agents/  bin/  docs/  hooks/

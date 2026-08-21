@@ -27,7 +27,7 @@ Three KEEP-grade reasons that survive drawdowns: intact growth + ROCE, falling d
 
 ## Concentration thresholds (multi-dimensional)
 
-`scripts/allocation.py` computes every dimension and returns each breach with its ₹-at-risk and a concrete ₹ trim. The thresholds it defaults to:
+`finance/compute/allocation.py` computes every dimension and returns each breach with its ₹-at-risk and a concrete ₹ trim. The thresholds it defaults to:
 
 - **Single stock** > 10% of portfolio → flag (winner concentration is allowed but must be a conscious choice)
 - **Single sector** > 25% → flag; > 35% → urgent

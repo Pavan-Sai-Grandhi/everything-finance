@@ -1,6 +1,6 @@
 # wealth-manager — financial-health framework & rubric
 
-The method behind the orchestration. `scripts/wealth.py` encodes every threshold here; this file is why each one is what it is. Read it before changing a cutoff.
+The method behind the orchestration. `finance/compute/wealth.py` encodes every threshold here; this file is why each one is what it is. Read it before changing a cutoff.
 
 ## The order of financial health (why priorities are what they are)
 
@@ -16,7 +16,7 @@ So a **protection gap or a thin emergency fund always outranks a fresh-equity mo
 
 ## The net-worth spine
 
-The spine is the only place the non-tradeable asset classes are seen — real estate, gold, EPF/PF, FDs, cash, US equity, insurance cash value — beyond the equity+MF book the investment spoke covers. Built by `wealth.py:build_spine`:
+The spine is the only place the non-tradeable asset classes are seen — real estate, gold, EPF/PF, FDs, cash, US equity, insurance cash value — beyond the equity+MF book the investment spoke covers. Built by `finance/compute/wealth.py:build_spine`:
 
 - **Allocation** comes from IndMoney's `networth_allocation_breakdown` (authoritative — it sees every class). Only if that is absent do we aggregate the tradeable positions by asset class, and then the spine is labelled **tradeable-only** and the net-worth allocation is flagged incomplete.
 - **Total net worth** from `networth_snapshot`; if absent, inferred from the allocation sum (labelled).
