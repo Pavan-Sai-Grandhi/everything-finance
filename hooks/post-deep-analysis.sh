@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Stop hook: publish any deep-analysis reports staged during this turn.
 #
-# The deep-analysis skill writes a finished report to <root>/tmp/staging/<TICKER>.md and the
-# raw agent work papers to <root>/tmp/staging/<TICKER>/agents/*.md (relative to the SESSION cwd),
+# The deep-analysis skill writes a finished report to <root>/tmp/staging/<TICKER>.md — or, in
+# fundamentals mode, <root>/tmp/staging/<TICKER>.fundamentals.md — and the raw leg work papers to
+# <root>/tmp/staging/<TICKER>/agents/*.md (relative to the SESSION cwd),
 # where <root> = $EVERYTHING_FINANCE_ARTIFACTS or ./artifacts (matching finance/paths.py). This hook:
-#   1. archives each staged report to  <root>/stocks/<TICKER>/YYYY-MM-DD/deep-analysis.md
-#   2. archives its work papers to      <root>/stocks/<TICKER>/YYYY-MM-DD/deep-analysis/agents/
+#   1. archives each staged report to  <root>/stocks/<TICKER>/YYYY-MM-DD/<report>.md
+#   2. archives its work papers to      <root>/stocks/<TICKER>/YYYY-MM-DD/<report>/agents/
 #   3. extracts the "## Telegram Brief" section (or the first 12 lines as fallback)
 #   4. sends it via the Telegram bot API
+# <report> is `deep-analysis` or `fundamental-analysis` — the two modes keep separate files so a
+# fundamentals run and a full run on the same day cannot overwrite each other (finance/paths.py
+# `_STOCK_ARTIFACT` is the authority on both names).
 # No staged files -> exit 0 silently, so the hook is a no-op on ordinary turns.
 #
 # A Stop hook's process cwd is not guaranteed to equal the session cwd, so a bare relative
@@ -50,19 +54,23 @@ log "stop hook fired in $(pwd); ${#staged[@]} staged report(s)"
 ef_load_secrets "$PLUGIN_DIR" "${CLAUDE_PLUGIN_DATA:-}"
 
 for f in "${staged[@]}"; do
-  ticker=$(basename "$f" .md)
+  base=$(basename "$f" .md)
+  case "$base" in
+    *.fundamentals) ticker="${base%.fundamentals}"; report="fundamental-analysis"; label="fundamental analysis" ;;
+    *)              ticker="$base";                 report="deep-analysis";        label="deep analysis" ;;
+  esac
   outdir="$ROOT/stocks/$ticker/$today"
   mkdir -p "$outdir"
-  dest="$outdir/deep-analysis.md"
+  dest="$outdir/$report.md"
   mv "$f" "$dest"
-  say "archived deep-analysis report -> $dest"
+  say "archived $label report -> $dest"
 
-  # Work papers: <root>/tmp/staging/<TICKER>/  ->  <root>/stocks/<TICKER>/<date>/deep-analysis/
+  # Work papers: <root>/tmp/staging/<TICKER>/  ->  <root>/stocks/<TICKER>/<date>/<report>/
   if [ -d "$STAGING/$ticker" ]; then
-    papers="$outdir/deep-analysis"
+    papers="$outdir/$report"
     rm -rf "$papers"
     mv "$STAGING/$ticker" "$papers"
-    say "archived agent work papers -> $papers/"
+    say "archived leg work papers -> $papers/"
   fi
 
   # Pull the brief: the section under "## Telegram Brief", else head of file.
@@ -73,7 +81,7 @@ for f in "${staged[@]}"; do
     if curl -sS -m 15 -X POST \
         "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
         --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-        --data-urlencode "text=📊 ${ticker} — deep analysis (${today})
+        --data-urlencode "text=📊 ${ticker} — ${label} (${today})
 ${brief}" \
         >/dev/null; then
       say "telegram brief sent for $ticker"

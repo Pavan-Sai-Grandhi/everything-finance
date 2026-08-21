@@ -88,7 +88,8 @@ merchant_map_path` (all create dirs as needed), the key-normalizers
 `ticker_key / scheme_key / sector_key`,
 **`sector_cache_age_days(sector)`** (freshness of the monthly sector cache — `None` if
 missing/undated), and **`latest_prior(skill, subject, before=None)`** — the prior-run lookup
-that powers "refer the earlier run" (deep-analysis, dcf, management, filings, mf-analysis).
+that powers "refer the earlier run" (deep-analysis, fundamentals, dcf, management, filings,
+mf-analysis).
 Covered by `finance/tests/test_paths.py`.
 
 ### `finance/compute/alerts.py` — the alert contract (see "Artifact: alert" below)
@@ -444,23 +445,29 @@ decide a round 2 — it escalates only when both sides' top points sit on the *s
 auto-escalates.
 
 ## Artifact: deep-analysis report
-**Producer:** `deep-analysis` → `artifacts/stocks/<TICKER>/<date>/deep-analysis.md` (`paths.stock_dir`),
-the synthesized report, with each forked agent's raw report archived beside it under
-`artifacts/stocks/<TICKER>/<date>/deep-analysis/agents/<role>.md`. The work papers present depend on the
-run's **depth mode** (recorded in the report): `quick` → `technical`, `financials`, `valuation`,
-`contest`, `verdict`; `standard`/`deep` → `technical`, `financials`, `management`, `valuation`, `news`,
-`sector`, `bull-r1…N`, `bear-r1…N`, `verdict` — plus the data-pack under `deep-analysis/fundamentals/`.
-The Stop hook archives the whole `artifacts/tmp/staging/<TICKER>/` tree (and final report
-`artifacts/tmp/staging/<TICKER>.md`), and sends the `## Telegram Brief` section. **Consumer:**
-`trade-tracker` (as a rationale source when no trade-idea artifact exists). The valuation leg embeds a
-**multi-method** read — intrinsic DCF range **with a DCF-confidence grade** plus the relative multiples
-(P/E, PEG, peer-median, EV/EBITDA) reconciled into a combined stance — and the management leg
-(standard/deep) embeds the `management-analysis` grade; the DCF and management outputs are **also persisted
-as discrete files** (`dcf.md`/`dcf.json` always, `management.md` when the leg ran) in the same
-`stocks/<TICKER>/<date>/` folder. The sector leg embeds the `sector-analyst`
-read, sourced from the shared sector cache (see *Artifact: sector cache*). Because every artifact for a
-stock+run-day lives in one folder, `paths.latest_prior(skill, TICKER)` finds the prior run of any leg
-(deep-analysis, dcf, management, filings) on a re-run.
+**Producer:** `deep-analysis` → `artifacts/stocks/<TICKER>/<date>/` (`paths.stock_dir`). The
+synthesized report is **`deep-analysis.md`** in the debate modes and **`fundamental-analysis.md`** in
+`fundamentals`; each leg's raw report is archived beside it under the folder of the same name,
+`<report>/agents/<role>.md`. **The two filenames are distinct on purpose** — a `fundamentals` run and a
+full run on the same day must not overwrite one another, and `paths.latest_prior("deep-analysis" |
+"fundamentals", TICKER)` then builds each mode on its own history. `paths.py` `_STOCK_ARTIFACT` is the
+authority on both names.
+
+The work papers present depend on the run's **mode** (recorded in the report): `quick` → `technical`,
+`financials`, `contest`, `verdict`; `standard`/`deep` → `technical`, `financials`, `news`, `sector`,
+`bull-r1…N`, `bear-r1…N`, `verdict`; `fundamentals` → `financials` only. The Stop hook archives the whole
+`artifacts/tmp/staging/<TICKER>/` tree plus the final report (`artifacts/tmp/staging/<TICKER>.md`, or
+`<TICKER>.fundamentals.md`), and sends the `## Telegram Brief` section. **Consumer:** `trade-tracker`
+(as a rationale source when no trade-idea artifact exists).
+
+The valuation and management legs write **straight into the run-day folder** rather than into staging:
+`dcf.md` + `dcf.json` (every mode that runs valuation) and `management.md` (every mode that runs
+management). The valuation report is the **multi-method** read — intrinsic DCF range **with a
+DCF-confidence grade** plus the relative multiples (P/E, PEG, peer-median, EV/EBITDA) reconciled into a
+combined stance; the synthesis cites both without re-deriving them. The sector leg's read is sourced from
+the shared sector cache (see *Artifact: sector cache*). Because every artifact for a stock+run-day lives
+in one folder, `paths.latest_prior(skill, TICKER)` finds the prior run of any leg (deep-analysis,
+fundamentals, dcf, management, filings) on a re-run.
 
 ## Artifact: sector cache
 **Producers:** `sector-analysis` (canonical monthly refresher) and `deep-analysis` (inline refresh when

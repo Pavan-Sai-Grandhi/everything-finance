@@ -8,6 +8,7 @@ strings, so the layout (below) can never drift between skills — the same reaso
     artifacts/                         root: $EVERYTHING_FINANCE_ARTIFACTS or ./artifacts
       stocks/<TICKER>/<date>/          entity-first: a stock's whole run-day together
         deep-analysis.md  deep-analysis/agents/*.md
+        fundamental-analysis.md  fundamental-analysis/agents/*.md
         dcf.md  dcf.json  dcf-inputs.yml
         management.md  filings.md
       funds/<SCHEME>/<date>/           funds are entities too
@@ -30,6 +31,9 @@ from datetime import date as _date_cls
 # that build on their own history are listed.
 _STOCK_ARTIFACT = {
     "deep-analysis": "deep-analysis.md",
+    # deep-analysis's fundamentals mode: its own file, so a fundamentals run and a full
+    # run on the same day cannot overwrite each other and each builds on its own history.
+    "fundamentals": "fundamental-analysis.md",
     "dcf": "dcf.md",
     "valuation-analysis": "dcf.md",
     "management": "management.md",

@@ -134,4 +134,61 @@ with tempfile.TemporaryDirectory() as tmp:
           paths.latest_prior("dcf", "INFY", before="2026-06-01") ==
           os.path.join(dd, "dcf.md"))
 
+# --- deep-analysis's two report modes never share a file ---------------------
+# A fundamentals run and a full run on the same day must both survive: the full run carries
+# the debate and the verdict, so an overwrite loses the more expensive artifact silently.
+check("deep-analysis and fundamentals map to different filenames",
+      paths._STOCK_ARTIFACT["deep-analysis"] != paths._STOCK_ARTIFACT["fundamentals"],
+      (paths._STOCK_ARTIFACT["deep-analysis"], paths._STOCK_ARTIFACT["fundamentals"]))
+check("fundamentals filename is fundamental-analysis.md",
+      paths._STOCK_ARTIFACT["fundamentals"] == "fundamental-analysis.md",
+      paths._STOCK_ARTIFACT["fundamentals"])
+check("the stock artifact keys resolve to 5 files (dcf/management/filings are aliased pairs)",
+      sorted(set(paths._STOCK_ARTIFACT.values())) ==
+      ["dcf.md", "deep-analysis.md", "filings.md", "fundamental-analysis.md", "management.md"],
+      sorted(set(paths._STOCK_ARTIFACT.values())))
+
+with tempfile.TemporaryDirectory() as tmp:
+    _clean_env()
+    os.chdir(tmp)
+
+    same_day = paths.stock_dir("TCS", "2026-05-20")
+    for fname in ("deep-analysis.md", "fundamental-analysis.md"):
+        with open(os.path.join(same_day, fname), "w") as f:
+            f.write(fname)
+
+    check("both same-day reports survive side by side",
+          sorted(os.listdir(same_day)) == ["deep-analysis.md", "fundamental-analysis.md"],
+          sorted(os.listdir(same_day)))
+    check("full run's file still holds its own content",
+          open(os.path.join(same_day, "deep-analysis.md")).read() == "deep-analysis.md")
+
+    got_deep = paths.latest_prior("deep-analysis", "TCS", before="2026-06-01")
+    got_fund = paths.latest_prior("fundamentals", "TCS", before="2026-06-01")
+    check("latest_prior('deep-analysis') resolves to deep-analysis.md",
+          got_deep == os.path.join(same_day, "deep-analysis.md"), got_deep)
+    check("latest_prior('fundamentals') resolves to fundamental-analysis.md",
+          got_fund == os.path.join(same_day, "fundamental-analysis.md"), got_fund)
+    check("the two prior-run lookups do not shadow each other", got_deep != got_fund,
+          (got_deep, got_fund))
+
+    # each mode builds on its OWN history: a later fundamentals-only day must not become
+    # the prior run for a full analysis, and vice versa.
+    fund_only = paths.stock_dir("TCS", "2026-05-25")
+    with open(os.path.join(fund_only, "fundamental-analysis.md"), "w") as f:
+        f.write("x")
+    check("a fundamentals-only day is not the prior deep-analysis run",
+          paths.latest_prior("deep-analysis", "TCS", before="2026-06-01") ==
+          os.path.join(same_day, "deep-analysis.md"))
+    check("a fundamentals-only day IS the prior fundamentals run",
+          paths.latest_prior("fundamentals", "TCS", before="2026-06-01") ==
+          os.path.join(fund_only, "fundamental-analysis.md"))
+
+    deep_only = paths.stock_dir("TCS", "2026-05-28")
+    with open(os.path.join(deep_only, "deep-analysis.md"), "w") as f:
+        f.write("x")
+    check("a full-run-only day is not the prior fundamentals run",
+          paths.latest_prior("fundamentals", "TCS", before="2026-06-01") ==
+          os.path.join(fund_only, "fundamental-analysis.md"))
+
 summary()
