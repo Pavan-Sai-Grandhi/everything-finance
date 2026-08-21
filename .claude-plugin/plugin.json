@@ -41,6 +41,9 @@
     "./skills/trade-tracker",
     "./skills/valuation-analysis",
     "./skills/management-analysis",
+    "./skills/financial-analysis",
+    "./skills/technical-analysis",
+    "./skills/news-scan",
     "./skills/alert-manager"
   ],
   "agents": [
