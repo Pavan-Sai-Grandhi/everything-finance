@@ -405,7 +405,7 @@ it defers the regime check to the skill.
 same sourced numbers. **Fields:** a `depth:` frontmatter marker (`full` or `lite`); CMP (+ as-of); the
 `get_company_fundamentals` envelope (`ratios`, `pnl_10y`, `balance_sheet_10y`, `quarters`, `shareholding`, `peers`);
 annual-report excerpts keyed by section (MD&A, segment note, auditor, RPT, contingent liabilities, cash
-flow, revenue recognition) each with a page/section cite; management-quality signals (remuneration, RPT
+flow, revenue recognition) each with a page/section cite; governance signals (remuneration, RPT
 detail, auditor fees & trend, board/KMP profiles, pledging, multi-year MD&A); concall takeaways (quarter
 cited); and `Data gaps`. **`depth: lite`** (deep-analysis `quick` mode) carries **only** the fundamentals
 envelope + CMP — the annual-report sections, management signals, and concall are omitted and listed as
@@ -450,7 +450,7 @@ The Stop hook archives the whole `artifacts/tmp/staging/<TICKER>/` tree (and fin
 `trade-tracker` (as a rationale source when no trade-idea artifact exists). The valuation leg embeds a
 **multi-method** read — intrinsic DCF range **with a DCF-confidence grade** plus the relative multiples
 (P/E, PEG, peer-median, EV/EBITDA) reconciled into a combined stance — and the management leg
-(standard/deep) embeds the `management-quality` grade; the DCF and management outputs are **also persisted
+(standard/deep) embeds the `management-analysis` grade; the DCF and management outputs are **also persisted
 as discrete files** (`dcf.md`/`dcf.json` always, `management.md` when the leg ran) in the same
 `stocks/<TICKER>/<date>/` folder. The sector leg embeds the `sector-analyst`
 read, sourced from the shared sector cache (see *Artifact: sector cache*). Because every artifact for a
@@ -637,7 +637,7 @@ strategy-manager  ──generate→ spec(draft) ──validate(backtest)→ spec
               ▼                                                      ▼
         (live_performance)                                   find-trade ──signals──▶ trade-idea(idea)
                                                                                           │
-deep-analysis / dcf / management-quality ── rationale ──▶ trade-tracker ◀── broker MCP ───┘
+deep-analysis / dcf / management        ── rationale ──▶ trade-tracker ◀── broker MCP ───┘
 sources/filings.py ──▶ filings-watch / daily-brief   (promotes idea→open, closes→result)
 sources/funds.py ──▶ mf-analysis (fund scan → shortlist → look-through) ──▶ portfolio-review
 ```

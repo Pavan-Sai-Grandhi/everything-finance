@@ -1,6 +1,6 @@
 # DCF valuation method — Damodaran's story-driven FCFF (self-contained)
 
-Distilled from Aswath Damodaran's *The Little Book of Valuation* / *Narrative and Numbers*. This file is the method; `finance/compute/dcf.py` is the arithmetic. Your whole job is to build a coherent *story* and turn it into a small set of sourced, consistent inputs — a clean-looking per-share number on top of an incoherent story is worthless.
+Distilled from Aswath Damodaran's *The Little Book of Valuation* / *Narrative and Numbers*. This file is the method; `run_dcf` is the arithmetic. Your whole job is to build a coherent *story* and turn it into a small set of sourced, consistent inputs — a clean-looking per-share number on top of an incoherent story is worthless.
 
 ## The one idea
 
@@ -42,9 +42,9 @@ Per share = Equity / shares_outstanding
 Margin of safety = intrinsic/share ÷ current_price − 1
 ```
 
-## Worked example — a story turned into numbers (runnable)
+## Worked example — a story turned into numbers
 
-The bundled `--selftest` *is* a worked example; run `PYTHONPATH=<plugin> python3 -m finance.compute.dcf --selftest` to see every number. The story it encodes:
+The engine's self-test *is* a worked example. The story it encodes:
 
 > "A ₹1,000 Cr-revenue firm with a real but fading edge: it grows 15%/yr for 3 years while the edge holds, then fades to 4% (≈ the economy) by year 10. Today's 12% operating margin widens to 18% by year 5 as scale kicks in — no higher, because that's where the best peers sit. Each ₹1 of new capital buys ₹2 of sales (sales-to-capital 2.0). Discount at 11%. In perpetuity it grows 4% and earns 13% on new capital (a modest, durable moat). Net debt ₹500 Cr, ₹100 Cr surplus cash, 100 Cr shares."
 
@@ -52,17 +52,22 @@ Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags.
 
 ## The valuation levers (and where to source each)
 
+`get_company_fundamentals` publishes **ten fiscal years** of consolidated P&L and balance sheet under Tickertape's own row labels; the rows named below are those labels.
+
 | Lever | Source it from | Sanity rule |
 |---|---|---|
-| Base revenue | screener.in TTM / latest FY (consolidated) | use the actual last-year figure, not a guess |
-| Revenue growth path | TAM studies + company guidance (concall) + history; fade to ≈ GDP+inflation by year N | peak growth > 30% must be defended against TAM and reinvestment |
-| Operating margin path | company's own trend + peer steady-state margins | above-peer margins need a stated moat; peak > 40% is rare |
-| Tax rate | effective tax from P&L; trend toward statutory | India ≈ 25% statutory for most |
-| Sales-to-capital | historical ΔRevenue ÷ Δ(net fixed assets + working capital); peer benchmark | asset-light (software) high (3–5+); capital-heavy (utilities, autos) low (0.5–1.5) |
+| Base revenue | `pnl_10y` **`Total Revenue`** (latest FY or TTM column) | it *includes* other income, which is not separable — say so where the margin story depends on it |
+| Revenue growth path | TAM studies + company guidance (concall) + the `Total Revenue` history; fade to ≈ GDP+inflation by year N | peak growth > 30% must be defended against TAM and reinvestment |
+| Operating margin path | the company's own trend + peer steady-state margins | `EBITDA` is struck **after** other income and before depreciation, so it is not EBIT — derive the operating margin as `PBIT ÷ Total Revenue`, or from the annual report's segment note. Above-peer margins need a stated moat; peak > 40% is rare |
+| Tax rate | **the annual report's tax note**, via `get_documents` | the published `Taxes & Other Items` row is tax **plus** the non-controlling interest — deriving a rate from it overstates the effective rate by ~9 points for any group with minorities. Never derive it. India ≈ 25% statutory for most |
+| Sales-to-capital | historical ΔRevenue ÷ Δ(`Net Property, Plant & Equipment` + working capital); peer benchmark | asset-light (software) high (3–5+); capital-heavy (utilities, autos) low (0.5–1.5) |
 | WACC | cost of equity (risk-free + β×mature-ERP + λ×country-risk premium) and after-tax cost of debt, weighted | β is a **bottom-up/sector** beta (business risk), never the stock's raw regression β; country risk scales with operating exposure λ, not incorporation — see § Diagnose first |
 | Terminal growth | ≤ risk-free rate, **in the currency of the cash flows** | ~6.5–7% rupee G-sec for a ₹ domestic firm — see § Country risk |
 | Terminal ROIC | the return the mature firm earns on new capital | the excess return (ROIC−WACC), not g_T, is what moves terminal value; default to convergence (= WACC), set > WACC only if a durable moat persists — see § Terminal value |
-| Net debt, cash, shares, minority | latest balance sheet + shareholding | consolidated; diluted share count |
+| Net debt | `balance_sheet_10y` **`Total Debt`** − **`Cash and Equivalent`** | consolidated; add capitalised lease debt (see § Capitalisation adjustments) |
+| Shares, minority | **`Common Shares Outstanding`**, **`Minority Interest`** | share count in ₹ Cr units so per-share lands in ₹; confirm dilution against the annual report |
+
+`Total Liabilities` in that table is liabilities **excluding** equity; the balance-sheet total is `Total Liabilities & Shareholders Equity`. Reading the wrong one halves the number.
 
 **Use one consistent money unit (₹ Crore) for every money input and ₹ Crore for the share count too, so per-share lands in ₹.** Mixing units is the most common silent error.
 
@@ -132,9 +137,41 @@ Mechanically, the engine holds every assumption fixed except one lever and shift
 
 When it returns `solved: false`, that is a finding, not a failure: either the price sits **below** what even conservative assumptions support (the stock is cheap on that lever), or **above** any credible range (richly priced / the lever can't justify it — and if terminal ROIC ≤ WACC, growth adds no value, so the price can't be a growth story at all). Use growth as the primary lever for growth stories; use the margin version when the bull case is really a margin-expansion thesis.
 
+## Relative valuation — multiples as the second view
+
+Multiples are **DCF in shorthand**: every one of them traces to the same drivers — cash flow/payout, growth, risk. That is what makes the relative read a genuine second view rather than decoration, and it is why a higher multiple than peers can be entirely *justified*. It also survives the cases where the DCF is fragile, so it runs on every company.
+
+- **Peer group built for comparability** — same industry, similar size, growth and risk. `get_company_fundamentals` returns real sub-sector peers, each row carrying a `sid` you feed straight to `get_stock_ratios` for that peer's own P/E, P/B, RoE and market cap. Still read the list: a peer set that ignores size/growth/risk makes the median meaningless, and a four-name list is thin enough that one outlier matters.
+- **Median, not mean.** Multiple distributions are right-skewed (a few very-high outliers); the **median** is the representative peer value, and the engine enforces it.
+- **Consistent definitions.** Same trailing-vs-forward basis across the peer set; same numerator/denominator (equity multiples like P/E to equity, enterprise multiples like EV/EBITDA to the firm). State the basis.
+- **PEG = P/E ÷ expected EPS growth (%).** A cross-check that normalises P/E for growth — but it hides two assumptions: **equal risk** across the peer set and a **linear** growth↔P/E relationship. Flag both; PEG is never a standalone verdict. The growth input is a labelled estimate (forward/analyst or historical EPS CAGR, basis stated), never fabricated.
+- **Own-band percentile.** Where the company's P/E sits inside its own historical band is the one comparison immune to a bad peer set.
+- **Pick the multiple to the business.** P/E for profitable firms; **P/B with RoE** for banks, NBFCs and insurers (EV/EBITDA and FCFF are both ill-defined there); P/S or EV/Sales for loss-makers; **EV/EBITDA** where capital structure differs across the peer set.
+
+## Reconcile and grade confidence
+
+**Reconcile before you judge.** A difference vs peers is **explained by fundamentals first** — higher growth or lower risk legitimately justify a higher multiple — and only the unexplained residue is mis-pricing. State whether the relative read **confirms or contradicts** the DCF, and why.
+
+**Grade DCF confidence — low / med / high** from two stated, checkable factors, so the grade is auditable:
+
+- **Terminal-value weight** — terminal value as a % of enterprise value (`terminal_value_fraction`). Below ~60% supports *high*; above ~75% pulls toward *low*.
+- **Assumption stretch** — projected growth and margin against the company's *demonstrated* history. Inside history supports *high*; well above it pulls toward *low*. Any engine flag (`BETA_LOOKS_LIKE_REGRESSION`, a rejected model) pulls it down.
+
+Two structural cases **override to low** whatever the grid says: **banks / NBFCs / insurers**, and **violently cyclical / commodity** firms. Both are in SKILL.md § Boundaries.
+
+**Combine into one stance, weighted by that grade:**
+
+| DCF confidence | How the two views combine |
+|---|---|
+| high | Lead with the DCF — the intrinsic-vs-price gap drives the call; the relative read corroborates or qualifies |
+| med | DCF and relative carry equal weight; agreement raises conviction, disagreement lowers it |
+| low | Lean on the relative read; the DCF is a sanity band only, reported with its weakness stated |
+
+Emit a single **Undervalued / Fair / Overvalued** with a margin-of-safety range blending the DCF intrinsic range and the relative read.
+
 ## Final discipline (the devil's-advocate pass)
 
 1. **Show a range, not a point — on the levers that matter.** Lead with the `story_sensitivity` grid (growth × steady-state margin) and its `duration` read; the single per-share number is the midpoint of an honest band, never a precise target. The WACC×g grid is a secondary check — for a growth company it perturbs the two *lowest*-leverage levers, so leading with it understates the true range and hides a premature-fade problem.
 2. **Margin of safety, not fair value = buy.** Damodaran/Graham: require a discount (commonly ≥ 25–30% below intrinsic) before acting, sized to how terminal-heavy and assumption-laden the model is.
 3. **Break your own story.** If a competitor launched a cheaper product tomorrow, which input collapses? If the whole thesis hangs on one heroic assumption, say that out loud.
-4. **Know when DCF is fragile** — the two cases, and the young loss-maker that only looks like a third, are in SKILL.md § Boundaries. Whichever applies, say which view you trust and why.
+4. **Say which view you trust.** The combined stance names whether the DCF or the multiples led it, and the confidence grade that decided.

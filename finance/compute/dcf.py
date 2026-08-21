@@ -34,7 +34,7 @@ Value bridge:
 All money inputs/outputs are in the SAME unit (use ₹ Crore consistently); shares in
 the same count unit (Crore) so per_share comes out in ₹. Run with --selftest for a
 worked check, or feed a YAML/JSON input file (see
-skills/dcf-valuation/assets/dcf-inputs.example.yml).
+skills/valuation-analysis/assets/dcf-inputs.example.yml).
 
 Usage:
   PYTHONPATH=<plugin> python3 -m finance.compute.dcf --inputs dcf-inputs.yml \
@@ -661,7 +661,7 @@ def main():
     ap = argparse.ArgumentParser(description="Story-driven FCFF DCF (Damodaran).")
     ap.add_argument("--inputs",
                     help="YAML/JSON input file "
-                         "(see skills/dcf-valuation/assets/dcf-inputs.example.yml)")
+                         "(see skills/valuation-analysis/assets/dcf-inputs.example.yml)")
     ap.add_argument("--out", help="write result JSON here")
     ap.add_argument("--sensitivity", action="store_true", help="also emit a WACC x g grid")
     ap.add_argument("--story", action="store_true",

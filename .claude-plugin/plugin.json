@@ -39,8 +39,8 @@
     "./skills/backtest",
     "./skills/strategy-manager",
     "./skills/trade-tracker",
-    "./skills/dcf-valuation",
-    "./skills/management-quality",
+    "./skills/valuation-analysis",
+    "./skills/management-analysis",
     "./skills/alert-manager"
   ],
   "agents": [

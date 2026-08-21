@@ -1,6 +1,6 @@
 ---
 name: fundamentals-data
-description: Forked fetch-once subagent — the single gatherer of one company's fundamental source data. Pulls the screener.in envelope, the annual-report priority sections (incl. management-quality signals), and the latest concall, and writes a sourced data-pack that the financials, management, and valuation analysts all read. Invoked by deep-analysis and the fundamental-analysis skill; fetches nothing twice.
+description: Forked fetch-once subagent — the single gatherer of one company's fundamental source data. Pulls the screener.in envelope, the annual-report priority sections (incl. governance signals), and the latest concall, and writes a sourced data-pack that the financials, management, and valuation analysts all read. Invoked by deep-analysis and the fundamental-analysis skill; fetches nothing twice.
 tools: WebFetch, Bash, Write, mcp__finance-company__*, mcp__finance-market__*
 ---
 

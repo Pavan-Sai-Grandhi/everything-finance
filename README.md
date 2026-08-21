@@ -56,8 +56,8 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 | `/backtest` | Validate a strategy spec on historical NSE data — the strategy-agnostic **Backtesting.py** engine driven by the shared spec interpreter on **TA-Lib** indicators: expectancy, profit factor, drawdown vs buy-and-hold |
 | `/strategy-manager` | Strategy lifecycle: **generate** from a reference article you supply → **validate** by backtest and mark active → **pick** the active strategy fitting the current regime → **optimize** or retire from live outcomes fed back by `/trade-tracker` |
 | `/trade-tracker` | Match each open broker position to its rationale (a find-trade idea, deep-analysis, strategy spec, or one you type) and re-validate the thesis — stop / target / time stop / broken setup / regime change → hold, trim or exit |
-| `/dcf-valuation TICKER` | Story-driven FCFF DCF (Damodaran): project growth and margin, fund it via sales-to-capital, discount at WACC, disciplined terminal value → intrinsic value per share with margin of safety, a WACC×g sensitivity grid and reality-check flags |
-| `/management-quality TICKER` | Integrity as a hard gate (remuneration vs profit, related-party transactions, criminal/regulatory record, CFO/auditor churn and fees, pledging, owning mistakes) then a skill grade (experience, mindset, capital allocation, succession) |
+| `/valuation-analysis TICKER` | Story-driven FCFF DCF (Damodaran) — project growth and margin, fund it via sales-to-capital, discount at WACC, disciplined terminal value → intrinsic value per share with margin of safety, sensitivity grids and reality-check flags — reconciled with the multiples read (P/E vs peer median and own band, PEG, EV/EBITDA) into one stance weighted by a DCF-confidence grade |
+| `/management-analysis TICKER` | Integrity as a hard gate (remuneration vs profit, related-party transactions, criminal/regulatory record, CFO/auditor churn and fees, pledging, owning mistakes, plans promised vs executed, questions dodged on the call) then a skill grade (experience, mindset, capital allocation, succession) |
 
 ## Agents (`agents/`, all `context: fork`)
 

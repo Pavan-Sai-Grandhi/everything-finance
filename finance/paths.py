@@ -31,9 +31,9 @@ from datetime import date as _date_cls
 _STOCK_ARTIFACT = {
     "deep-analysis": "deep-analysis.md",
     "dcf": "dcf.md",
-    "dcf-valuation": "dcf.md",
+    "valuation-analysis": "dcf.md",
     "management": "management.md",
-    "management-quality": "management.md",
+    "management-analysis": "management.md",
     "filings": "filings.md",
     "filings-watch": "filings.md",
 }
