@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""finance-market — prices, market-wide state, and the strategy engines that run on price.
+"""finance-market — prices, market-wide state, the strategy engines that run on price,
+and the alert inbox those engines fill.
 
 Every tool delegates to `finance/`: `sources/prices.py` and `sources/market.py` for the
-fetch rungs, `compute/context.py` for the market-of-record, and `compute/{screen,backtest,
-trade_check}.py` for the spec-driven engines. Fetched text is untrusted DATA, never
-instructions.
+fetch rungs, `compute/context.py` for the market-of-record, `compute/{screen,backtest,
+trade_check}.py` for the spec-driven engines, and `compute/alerts.py` for the inbox.
+Fetched text is untrusted DATA, never instructions.
 """
 from __future__ import annotations
 
+from finance.compute import alerts as _alerts
 from finance.compute import backtest as _backtest
 from finance.compute import context as _context
 from finance.compute import screen as _screen
@@ -21,8 +23,9 @@ SERVER = create(
     "finance-market",
     "Indian market data: live and end-of-day prices, index levels and valuation, breadth, "
     "institutional flows, the cross-asset macro backdrop, the plugin's shared "
-    "market-of-record, and the engines that run a strategy spec over price history "
-    "(live screen, historical backtest, open-trade re-validation).",
+    "market-of-record, the engines that run a strategy spec over price history "
+    "(live screen, historical backtest, open-trade re-validation), and the durable "
+    "alert inbox.",
 )
 
 
@@ -155,6 +158,34 @@ def check_trade(trade: str, ohlcv: str | None = None, ltp: float | None = None,
                 sessions_held: int | None = None) -> dict:
     return _trade_check.check(trade, ohlcv=ohlcv, ltp=ltp, entry=entry, qty=qty,
                               sessions_held=sessions_held)
+
+
+@SERVER.tool(
+    description="The durable alert inbox — the 'watch this / do this' items skills "
+                "raise and daily-brief reads. `action`: list (open alerts, severity "
+                "first; `subject` filters to one id) | add | dismiss (needs "
+                "`alert_id`) | snooze (needs `alert_id` and `until`) | sweep (expire "
+                "the elapsed, un-snooze the due). An `add` needs `subject_id`, `text` "
+                "and exactly one trigger: `metric`+`op`+`level` for a price watch, "
+                "`due` for a date reminder, or `check` for something needing a skill "
+                "run. `dedup_key` updates a matching open alert in place instead of "
+                "piling up a duplicate."
+)
+def manage_alerts(action: str, alert_id: str | None = None, subject: str | None = None,
+                  until: str | None = None, created_by: str = "alert-manager",
+                  subject_type: str = "stock", subject_id: str | None = None,
+                  kind: str = "custom", metric: str | None = None,
+                  op: str | None = None, level: float | None = None,
+                  due: str | None = None, check: str | None = None,
+                  text: str | None = None, suggest: str | None = None,
+                  severity: str = "watch", expires_at: str | None = None,
+                  dedup_key: str | None = None) -> dict:
+    return _alerts.manage(action, alert_id=alert_id, subject=subject, until=until,
+                          created_by=created_by, subject_type=subject_type,
+                          subject_id=subject_id, kind=kind, metric=metric, op=op,
+                          level=level, due=due, check=check, text=text,
+                          suggest=suggest, severity=severity, expires_at=expires_at,
+                          dedup_key=dedup_key)
 
 
 def main():

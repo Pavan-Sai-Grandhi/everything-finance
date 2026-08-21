@@ -1,7 +1,7 @@
 ---
 name: wealth-leg
 description: Forked leg-runner subagent for wealth-manager — runs ONE personal-finance spoke in its cheap mode in isolation, writes the spoke's full report to its own file, and returns only the compact leg digest (the contract in finance/contracts.md) so the orchestrator never carries a full report. Invoked once per available leg (investments / protection / cashflow); the leg→spoke mapping is passed in by wealth-manager.
-tools: Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*, mcp__finance-funds__*
+tools: Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*, mcp__finance-funds__*, mcp__finance-personal__*
 ---
 
 # Wealth Leg Runner (subagent)

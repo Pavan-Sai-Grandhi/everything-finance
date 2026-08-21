@@ -3,10 +3,13 @@
 
 Run: python3 finance/tests/test_dcf.py
 """
+import json
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance import paths  # noqa: E402
 from finance.compute import dcf  # noqa: E402
 from finance.tests.harness import check, rel_approx, summary  # noqa: E402
 
@@ -339,5 +342,49 @@ check("selftest EV = pv_fcff + pv_tv",
 check("selftest equity = EV - netdebt + cash - minority",
       rel_approx(rs["equity_value"], rs["enterprise_value"] - 500.0 + 100.0 - 0.0, 1e-4))
 check("selftest per-share positive", rs["intrinsic_value_per_share"] > 0)
+
+# 18) run(): intrinsic + relative as one envelope, the bulk result spilled to disk.
+os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = os.path.join(tempfile.mkdtemp(), "artifacts")
+env = dcf.run("reliance", dcf.SELFTEST_SPEC, story=True,
+              relative={"pe": 18.0, "peer_pe": [28, 24, 30, 22],
+                        "own_pe_history": [20, 25, 28, 30, 32],
+                        "growth": {"value": 22, "basis": "5y EPS CAGR"}})
+d = env["data"]
+check("run: envelope carries the contract keys",
+      {"ok", "source", "fetched_at", "data", "gaps"} <= set(env), sorted(env))
+check("run: source names the computation, not a website",
+      env["source"] == "finance.compute.dcf", env["source"])
+check("run: ok with no gaps", env["ok"] and env["gaps"] == [], env["gaps"])
+check("run: ticker normalised to the NSE key", d["ticker"] == "RELIANCE", d["ticker"])
+check("run: headline per-share is value()'s",
+      d["intrinsic_value_per_share"] == rs["intrinsic_value_per_share"], d)
+check("run: relative half rides along",
+      d["relative"]["relative_stance"] == "undervalued", d["relative"])
+check("run: peer median is the median, not the mean", d["relative"]["peer_median_pe"] == 26.0,
+      d["relative"])
+check("run: story range brackets the base value",
+      d["story_range"][0] <= d["intrinsic_value_per_share"] <= d["story_range"][1],
+      d["story_range"])
+check("run: the year-by-year rows stay out of the response", "yearly" not in d, sorted(d))
+check("run: dcf_path names dcf.json under the ticker",
+      d["dcf_path"].endswith("dcf.json") and "RELIANCE" in d["dcf_path"], d["dcf_path"])
+check("run: the spilled file is the complete result",
+      json.load(open(d["dcf_path"]))["yearly"][0]["fcff"] == rs["yearly"][0]["fcff"])
+check("run: the spill lands where latest_prior looks",
+      os.path.dirname(d["dcf_path"]) == paths.stock_dir("RELIANCE"), d["dcf_path"])
+
+solo = dcf.run("INFY", spec1)
+check("run: no peer figures still values the stock",
+      solo["ok"] and solo["data"]["relative"] is None, solo["data"])
+check("run: a non-mapping `relative` degrades to a gap, keeping the DCF",
+      dcf.run("INFY", spec1, relative=[1, 2])["gaps"] != [])
+
+bad = dcf.run("INFY", {"base_revenue": 100.0})
+check("run: an incomplete input set is ok:false", bad["ok"] is False, bad)
+check("run: the rejection is labelled", any("rejected" in g for g in bad["gaps"]), bad["gaps"])
+check("run: terminal wacc <= g is a gap, not a raise",
+      dcf.run("INFY", dict(spec1, terminal_growth=0.5))["ok"] is False)
+check("run: missing inputs are a gap, not a traceback",
+      dcf.run("INFY", None)["ok"] is False and dcf.run("INFY", {})["ok"] is False)
 
 summary()

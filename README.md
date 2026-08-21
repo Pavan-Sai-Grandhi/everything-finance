@@ -28,9 +28,9 @@ TELEGRAM_CHAT_ID=...
 
 ## MCP servers
 
-Six servers ([`.mcp.json`](.mcp.json)) in two classes with deliberately opposite rules.
+Seven servers ([`.mcp.json`](.mcp.json)) in two classes with deliberately opposite rules.
 
-**`finance-market` (12 tools), `finance-company` (7), `finance-funds` (6)** — local, all three launched by `bin/finance-mcp.sh <market|company|funds>`, together the only door to every number the plugin reasons about. 25 tools over seven verified sources (TradingView, Yahoo, screener.in, NSE, Tickertape, AMFI, Google News RSS); no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
+**`finance-market` (13 tools), `finance-company` (8), `finance-funds` (6), `finance-personal` (1)** — local, all four launched by `bin/finance-mcp.sh <market|company|funds|personal>`, together the only door to every number the plugin reasons about. 28 tools over seven verified sources (TradingView, Yahoo, screener.in, NSE, Tickertape, AMFI, Google News RSS) plus the compute engines that run on them; no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
 
 **`kite`** (Zerodha), **`upstox`**, **`indmoney`** — optional, read-only, personal. They answer only *what you own and what it is worth* and never feed a view (CLAUDE.md rule 3). Connect whichever you use: IndMoney is the broadest — every asset class, per-position P&L and XIRR — but carries no order history, so exact entry fills come from a broker MCP. All three run through `bin/mcp-bridge.sh`, an `mcp-remote` wrapper that gives each Claude session its own OAuth config dir (`~/.mcp-auth-sessions/<pid>`) so concurrent sessions register on independent callback ports instead of colliding on one; it reaps the dirs of exited sessions and any orphaned bridge. The cost of that isolation is authenticating once per session.
 
@@ -73,15 +73,16 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 ```
 finance/          the one library — transport, spine, paths, deps
   sources/        one module per data domain (prices market funds fundamentals news filings)
-  compute/        ta strategy holdings alerts context rolling lookthrough fund_scan screen backtest
-  mcp/            the three servers: declaration + delegation only
-  tests/          harness.py + 18 standalone test files
+  compute/        ta strategy holdings alerts context rolling lookthrough fund_scan
+                  screen backtest dcf relval trade_check insurance_math
+  mcp/            the four servers: declaration + delegation only
+  tests/          harness.py + 23 standalone test files
   contracts.md    the artifact handoffs between skills — producer and consumer per field
 skills/<name>/    SKILL.md, plus references/ assets/ scripts/ where the skill needs them
 agents/  bin/  docs/  hooks/
 ```
 
-A skill's `scripts/` holds only pure compute over user-supplied files. Everything that fetches — and every compute that needs fetched data — is a tool on one of the three servers. See [CLAUDE.md](CLAUDE.md) → *The `finance/` package* for the rules, and [`finance/contracts.md`](finance/contracts.md) for the contracts between skills.
+A skill's `scripts/` holds only pure compute over user-supplied files. Everything that fetches — and every compute a skill would otherwise re-implement — is a tool on one of the four servers. See [CLAUDE.md](CLAUDE.md) → *The `finance/` package* for the rules, and [`finance/contracts.md`](finance/contracts.md) for the contracts between skills.
 
 ## Tests
 

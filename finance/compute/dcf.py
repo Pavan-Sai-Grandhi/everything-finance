@@ -41,6 +41,8 @@ Usage:
       --out artifacts/stocks/RELIANCE/2026-06-12/dcf.json
   PYTHONPATH=<plugin> python3 -m finance.compute.dcf --selftest
 Exit: 0 = valued, 2 = input/usage error, 3 = model-invalid (e.g. wacc<=g).
+
+Reached through: run_dcf, which pairs this with the relative read from `relval.py`.
 """
 import argparse
 import json
@@ -48,7 +50,11 @@ import os
 import sys
 from functools import reduce
 
+from finance import paths, spine
+from finance.compute import relval
 from finance.deps import need as _need
+
+_SOURCE = "finance.compute.dcf"
 
 def _as_path(value, n, default):
     """Expand a scalar OR a list into an N-length list. Last value carries forward."""
@@ -579,6 +585,78 @@ SELFTEST_SPEC = {
 }
 
 
+def compute(spec, sensitivity_grid=False, story=False, reverse=False,
+            reverse_solve="growth", reverse_target=None):
+    """The DCF result plus whichever optional grids were asked for."""
+    result = value(spec)
+    if sensitivity_grid:
+        result["sensitivity"] = sensitivity(spec)
+    if story:
+        result["story_sensitivity"] = story_sensitivity(spec)
+    if reverse:
+        result["reverse_dcf"] = reverse_dcf(spec, target_per_share=reverse_target,
+                                            solve=reverse_solve)
+    return result
+
+
+def _grid_range(grid):
+    """(low, high) across a sensitivity grid's cells, or None when nothing solved."""
+    cells = [c for row in (grid or {}).get("cells", []) for c in row if c is not None]
+    return [min(cells), max(cells)] if cells else None
+
+
+def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=False,
+        reverse_solve="growth", reverse_target=None, date=None):
+    """Intrinsic value and relative value as one envelope.
+
+    The full result JSON is bulk: it is written to `dcf.json` in the ticker's run-day
+    folder and `data` carries the headline numbers plus `dcf_path`. `relative` is the
+    optional figures mapping `relval.relative_read` reads — omit it and only the DCF
+    comes back. Inputs the model rejects are a labelled gap, never an exception.
+    """
+    if not isinstance(inputs, dict) or not inputs:
+        return spine.envelope(False, _SOURCE, {"ticker": ticker},
+                              ["dcf inputs missing or not a mapping"])
+    try:
+        result = compute(inputs, sensitivity_grid=sensitivity, story=story,
+                         reverse=reverse, reverse_solve=reverse_solve,
+                         reverse_target=reverse_target)
+    except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
+        return spine.envelope(False, _SOURCE, {"ticker": ticker},
+                              [f"dcf inputs rejected: {exc}"])
+
+    gaps = []
+    read = None
+    if relative is not None:
+        if isinstance(relative, dict):
+            read = relval.relative_read(relative)
+        else:
+            gaps.append("relative valuation skipped: `relative` is not a mapping")
+
+    path = os.path.join(paths.stock_dir(ticker, date), "dcf.json")
+    try:
+        with open(path, "w") as fh:
+            json.dump(result, fh, indent=2)
+    except OSError as exc:
+        gaps.append(f"could not write the DCF result to {path}: {exc}")
+        path = None
+
+    data = {k: result[k] for k in (
+        "currency_unit", "explicit_years", "enterprise_value", "equity_value",
+        "shares_outstanding", "intrinsic_value_per_share", "current_price",
+        "margin_of_safety", "terminal_value_fraction", "flags")}
+    data["ticker"] = paths.ticker_key(ticker)
+    data["relative"] = read
+    data["dcf_path"] = path
+    if sensitivity:
+        data["sensitivity_range"] = _grid_range(result.get("sensitivity"))
+    if story:
+        data["story_range"] = _grid_range(result.get("story_sensitivity"))
+    if reverse:
+        data["reverse_dcf"] = result.get("reverse_dcf")
+    return spine.envelope(True, _SOURCE, data, gaps)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Story-driven FCFF DCF (Damodaran).")
     ap.add_argument("--inputs",
@@ -606,14 +684,12 @@ def main():
         ap.error("need --inputs <file> or --selftest")
 
     try:
-        result = value(spec)
-        if args.sensitivity or args.selftest:
-            result["sensitivity"] = sensitivity(spec)
-        if args.story or args.selftest:
-            result["story_sensitivity"] = story_sensitivity(spec)
-        if args.reverse or args.selftest:
-            result["reverse_dcf"] = reverse_dcf(spec, target_per_share=args.reverse_target,
-                                                solve=args.reverse_solve)
+        result = compute(spec,
+                         sensitivity_grid=args.sensitivity or args.selftest,
+                         story=args.story or args.selftest,
+                         reverse=args.reverse or args.selftest,
+                         reverse_solve=args.reverse_solve,
+                         reverse_target=args.reverse_target)
     except ValueError as e:
         print(f"MODEL-INVALID: {e}", file=sys.stderr)
         sys.exit(3)

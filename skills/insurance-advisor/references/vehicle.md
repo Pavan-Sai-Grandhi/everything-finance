@@ -11,7 +11,7 @@ Make / model / year / variant · current IDV + no-claim bonus (NCB) % · usage p
 - **Third-party (TP)** is the legal minimum — covers only damage you cause to others. Never sufficient for anything but a very old, low-value vehicle.
 - **Comprehensive** = TP + own-damage (theft, accident, fire, natural calamity). Default recommendation for any vehicle with meaningful value.
 
-## IDV & NCB sanity (feeds `insurance_math.idv_ncb_sanity`)
+## IDV & NCB sanity (feeds `idv_ncb_sanity`)
 
 - **IDV (Insured Declared Value)** = the sum insured = ex-showroom × an age-based retention factor (IRDAI grid: ~95% ≤6mo, 85% 1y, 80% 2y, 70% 3y, 60% 4y, 50% 5y; >5y mutually agreed). A quote **below** the band under-insures you (lower claim/theft payout); **above** the band just inflates premium. Don't chase the lowest IDV to cut premium — it caps your total-loss payout.
 - **NCB** rewards claim-free years on a slab: 20% (1y) → 25% (2y) → 35% (3y) → 45% (4y) → 50% (5y, caps). A quoted NCB **above** the slab your claim-free history entitles is a red flag (verify history — misdeclaration voids it). **NCB is portable** across insurers and vehicles; **NCB-protect** add-on preserves it through one claim.

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Alert schema, producers, consumers and invariants: `finance/contracts.md`
 ("Artifact: alert"). This module owns the storage, dedup and cheap evaluation.
+
+Reached through: manage_alerts.
 """
 import hashlib
 import os
@@ -8,10 +10,14 @@ import re
 
 import yaml
 
-from finance import paths
+from finance import paths, spine
 from finance.spine import today as _today
 
+_SOURCE = "finance.compute.alerts"
+
 OPEN_STATUSES = ("open", "triggered", "snoozed")
+# The inbox order every consumer sees: what to act on before what to merely watch.
+SEVERITY_ORDER = {"act": 0, "watch": 1, "info": 2}
 _OPS = {"<": lambda a, b: a < b, ">": lambda a, b: a > b,
         "<=": lambda a, b: a <= b, ">=": lambda a, b: a >= b}
 
@@ -193,3 +199,69 @@ def sweep():
             _save(a)
             unsnoozed.append(a["id"])
     return {"expired": expired, "unsnoozed": unsnoozed}
+
+
+_ACTIONS = ("list", "add", "dismiss", "snooze", "sweep")
+
+
+def manage(action, alert_id=None, subject=None, until=None, created_by="alert-manager",
+           subject_type="stock", subject_id=None, kind="custom", metric=None, op=None,
+           level=None, due=None, check=None, text=None, suggest=None, severity="watch",
+           expires_at=None, dedup_key=None):
+    """Every inbox operation in the shared envelope: list | add | dismiss | snooze | sweep.
+
+    `list` comes back severity-first (act before watch before info) then by subject, so
+    every consumer reads the same order. An unknown action, a missing alert or an
+    incomplete `add` is a labelled gap.
+    """
+    if action == "list":
+        items = load_open(subject)
+        items.sort(key=lambda a: (SEVERITY_ORDER.get(a.get("severity"), 9),
+                                  a.get("subject", {}).get("id") or ""))
+        return spine.envelope(True, _SOURCE,
+                              {"action": action, "count": len(items), "alerts": items}, [])
+
+    if action == "sweep":
+        return spine.envelope(True, _SOURCE, dict(sweep(), action=action), [])
+
+    if action == "add":
+        if metric is not None and op and level is not None:
+            trigger = {"metric": metric, "op": op, "level": level}
+        elif due:
+            trigger = {"due": due}
+        elif check:
+            trigger = {"check": check}
+        else:
+            return spine.envelope(False, _SOURCE, {"action": action},
+                                  ["add needs a trigger: metric+op+level, due, or check"])
+        if not subject_id or not text:
+            return spine.envelope(False, _SOURCE, {"action": action},
+                                  ["add needs subject_id and the action text"])
+        act = {"text": text}
+        if suggest:
+            act["suggest"] = suggest
+        alert = create(created_by=created_by,
+                       subject={"type": subject_type, "id": subject_id},
+                       kind=kind, trigger=trigger, action=act, severity=severity,
+                       expires_at=expires_at, dedup_key=dedup_key)
+        return spine.envelope(True, _SOURCE, {"action": action, "alert": alert}, [])
+
+    if action in ("dismiss", "snooze"):
+        if not alert_id:
+            return spine.envelope(False, _SOURCE, {"action": action},
+                                  [f"{action} needs an alert id"])
+        if action == "snooze":
+            if not until:
+                return spine.envelope(False, _SOURCE, {"action": action, "id": alert_id},
+                                      ["snooze needs `until` as YYYY-MM-DD"])
+            alert = snooze(alert_id, until, note=f"snoozed via {created_by}")
+        else:
+            alert = set_status(alert_id, "done", note=f"dismissed via {created_by}")
+        if alert is None:
+            return spine.envelope(False, _SOURCE, {"action": action, "id": alert_id},
+                                  [f"no alert {alert_id}"])
+        return spine.envelope(True, _SOURCE, {"action": action, "alert": alert}, [])
+
+    return spine.envelope(
+        False, _SOURCE, {"action": action},
+        [f"unknown action {action!r}; expected one of {', '.join(_ACTIONS)}"])

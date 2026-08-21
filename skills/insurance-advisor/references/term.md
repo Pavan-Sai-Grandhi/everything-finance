@@ -6,7 +6,7 @@ Pure protection for dependents.
 
 Age · annual income · dependents + their ages · outstanding loans (home/auto/personal) · existing life cover · smoker/tobacco · target retirement age. Also useful: existing liquid corpus (nets down the goals method), any known health conditions (affects insurability + premium honesty).
 
-## Cover sizing (feeds `insurance_math.term_cover_need`)
+## Cover sizing (feeds `term_cover_need`)
 
 Take the **larger** of:
 - **Income replacement**: 10–15× annual income (use 15× when dependents are young, 10× near retirement).

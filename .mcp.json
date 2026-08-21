@@ -21,6 +21,13 @@
         "PYTHONUNBUFFERED": "1"
       }
     },
+    "finance-personal": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-mcp.sh",
+      "args": ["personal"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
     "kite": {
       "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
       "args": ["https://mcp.kite.trade/mcp"]

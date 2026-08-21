@@ -133,4 +133,47 @@ check("snooze hides from load_open", s["id"] not in {a["id"] for a in alerts.loa
 check("snooze persisted snooze_until",
       [a for a in alerts.load_all() if a["id"] == s["id"]][0]["snooze_until"] == "2099-01-01")
 
+# --- manage(): the whole manage_alerts surface -------------------------------
+_isolated()
+env = alerts.manage("add", subject_id="RELIANCE", kind="price_cross", metric="close",
+                    op="<", level=1450, text="stop watch",
+                    suggest="/trade-tracker RELIANCE", severity="act",
+                    dedup_key="reliance-stop")
+check("manage: envelope carries the contract keys",
+      {"ok", "source", "fetched_at", "data", "gaps"} <= set(env), sorted(env))
+check("manage: source names the computation", env["source"] == "finance.compute.alerts",
+      env["source"])
+check("manage add: writes the alert", env["ok"] and env["data"]["alert"]["severity"] == "act", env)
+infy = alerts.manage("add", subject_id="INFY", due="2030-09-01", text="recheck")
+
+listed = alerts.manage("list")
+check("manage list: counts every open alert", listed["data"]["count"] == 2, listed["data"])
+check("manage list: act sorts before watch",
+      [a["severity"] for a in listed["data"]["alerts"]] == ["act", "watch"], listed["data"])
+check("manage list: subject filters to one name",
+      alerts.manage("list", subject="INFY")["data"]["count"] == 1)
+
+check("manage snooze: hides it from the inbox",
+      alerts.manage("snooze", alert_id=env["data"]["alert"]["id"], until="2099-01-01")["ok"]
+      and alerts.manage("list")["data"]["count"] == 1)
+check("manage dismiss: removes it from the inbox",
+      alerts.manage("dismiss", alert_id=infy["data"]["alert"]["id"])["ok"]
+      and alerts.manage("list")["data"]["count"] == 0)
+check("manage sweep: reports both housekeeping lists",
+      set(alerts.manage("sweep")["data"]) == {"action", "expired", "unsnoozed"},
+      alerts.manage("sweep")["data"])
+
+unknown = alerts.manage("purge")
+check("manage: an unknown action is a labelled gap",
+      unknown["ok"] is False and any("unknown action" in g for g in unknown["gaps"]),
+      unknown["gaps"])
+check("manage add: no trigger is a gap",
+      alerts.manage("add", subject_id="X", text="no trigger")["ok"] is False)
+check("manage add: no subject is a gap",
+      alerts.manage("add", due="2030-01-01", text="orphan")["ok"] is False)
+check("manage snooze: no until date is a gap",
+      alerts.manage("snooze", alert_id="whatever")["ok"] is False)
+check("manage dismiss: a missing alert is a gap, not a raise",
+      alerts.manage("dismiss", alert_id="nope")["ok"] is False)
+
 summary()

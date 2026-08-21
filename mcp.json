@@ -25,6 +25,14 @@
         "PYTHONUNBUFFERED": "1"
       }
     },
+    "finance-personal": {
+      "type": "stdio",
+      "command": "./bin/finance-mcp.sh",
+      "args": ["personal"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
     "kite": {
       "type": "stdio",
       "command": "./bin/mcp-bridge.sh",

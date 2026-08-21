@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Thin CLI over finance/compute/alerts.py — the documented owner of the alert contract
-(the way strategy-manager owns specs). All real logic lives there; this just
-exposes it on the command line for the skill.
+"""Thin CLI over finance/compute/alerts.py for a human at a terminal. Every operation
+is one call into `alerts.manage`; this file only parses arguments and prints.
 
   python3 manage.py list [--subject RELIANCE]
   python3 manage.py dismiss <id>
@@ -18,8 +17,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
                    os.path.dirname(os.path.abspath(__file__))))))
 from finance.compute import alerts  # noqa: E402
-
-_SEV_ORDER = {"act": 0, "watch": 1, "info": 2}
 
 
 def _fmt(a):
@@ -38,93 +35,54 @@ def _fmt(a):
     return line + (f"   → {suggest}" if suggest else "")
 
 
-def cmd_list(args):
-    items = alerts.load_open(args.subject)
-    if not items:
-        print("no open alerts.")
-        return 0
-    items.sort(key=lambda a: (_SEV_ORDER.get(a.get("severity"), 9), a["subject"]["id"]))
-    cur = None
-    for a in items:
-        sub = a["subject"]["id"]
-        if sub != cur:
-            print(f"\n{sub}:")
-            cur = sub
-        print(_fmt(a))
-    print(f"\n{len(items)} open alert(s).")
-    return 0
-
-
-def cmd_dismiss(args):
-    r = alerts.set_status(args.id, "done", note="dismissed via alert-manager")
-    print("dismissed." if r else f"no alert {args.id}")
-    return 0 if r else 1
-
-
-def cmd_snooze(args):
-    r = alerts.snooze(args.id, args.until, note="snoozed via alert-manager")
-    print(f"snoozed until {args.until}." if r else f"no alert {args.id}")
-    return 0 if r else 1
-
-
-def cmd_sweep(args):
-    res = alerts.sweep()
-    print(f"expired: {len(res['expired'])}  un-snoozed: {len(res['unsnoozed'])}")
-    for i in res["expired"]:
-        print(f"  expired   {i}")
-    for i in res["unsnoozed"]:
-        print(f"  unsnoozed {i}")
-    return 0
-
-
-def cmd_add(args):
-    if args.metric:
-        trigger = {"metric": args.metric, "op": args.op, "level": args.level}
-    elif args.due:
-        trigger = {"due": args.due}
-    elif args.check:
-        trigger = {"check": args.check}
-    else:
-        print("error: one of --metric/--op/--level, --due, or --check is required",
-              file=sys.stderr)
-        return 2
-    action = {"text": args.text}
-    if args.suggest:
-        action["suggest"] = args.suggest
-    a = alerts.create(
-        created_by=args.created_by,
-        subject={"type": args.subject_type, "id": args.subject_id},
-        kind=args.kind, trigger=trigger, action=action, severity=args.severity,
-        expires_at=args.expires, dedup_key=args.dedup_key)
-    print(f"created {a['id']}")
-    return 0
+def _print(env):
+    data = env["data"]
+    for gap in env["gaps"]:
+        print(gap, file=sys.stderr)
+    action = data.get("action")
+    if action == "list":
+        cur = None
+        for a in data["alerts"]:
+            sub = a["subject"]["id"]
+            if sub != cur:
+                print(f"\n{sub}:")
+                cur = sub
+            print(_fmt(a))
+        print(f"\n{data['count']} open alert(s).")
+    elif action == "sweep":
+        print(f"expired: {len(data['expired'])}  un-snoozed: {len(data['unsnoozed'])}")
+        for i in data["expired"]:
+            print(f"  expired   {i}")
+        for i in data["unsnoozed"]:
+            print(f"  unsnoozed {i}")
+    elif env["ok"]:
+        print(f"{action}: {data['alert']['id']}")
+    return 0 if env["ok"] else 1
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    pl = sub.add_parser("list"); pl.add_argument("--subject"); pl.set_defaults(fn=cmd_list)
-    pd = sub.add_parser("dismiss"); pd.add_argument("id"); pd.set_defaults(fn=cmd_dismiss)
-    ps = sub.add_parser("snooze"); ps.add_argument("id"); ps.add_argument("until")
-    ps.set_defaults(fn=cmd_snooze)
-    pw = sub.add_parser("sweep"); pw.set_defaults(fn=cmd_sweep)
+    pl = sub.add_parser("list"); pl.add_argument("--subject")
+    pd = sub.add_parser("dismiss"); pd.add_argument("alert_id")
+    ps = sub.add_parser("snooze"); ps.add_argument("alert_id"); ps.add_argument("until")
+    sub.add_parser("sweep")
 
     pa = sub.add_parser("add")
     pa.add_argument("--created-by", default="alert-manager")
     pa.add_argument("--subject-type", default="stock",
                     choices=["stock", "fund", "strategy", "portfolio"])
-    pa.add_argument("--subject-id", required=True)
+    pa.add_argument("--subject-id")
     pa.add_argument("--kind", default="custom")
     pa.add_argument("--metric"); pa.add_argument("--op"); pa.add_argument("--level", type=float)
     pa.add_argument("--due"); pa.add_argument("--check")
-    pa.add_argument("--text", required=True); pa.add_argument("--suggest")
+    pa.add_argument("--text"); pa.add_argument("--suggest")
     pa.add_argument("--severity", default="watch", choices=["info", "watch", "act"])
-    pa.add_argument("--expires"); pa.add_argument("--dedup-key")
-    pa.set_defaults(fn=cmd_add)
+    pa.add_argument("--expires", dest="expires_at"); pa.add_argument("--dedup-key")
 
-    args = p.parse_args(argv)
-    return args.fn(args)
+    args = vars(p.parse_args(argv))
+    return _print(alerts.manage(args.pop("cmd"), **args))
 
 
 if __name__ == "__main__":

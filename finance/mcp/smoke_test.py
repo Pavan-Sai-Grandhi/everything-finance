@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live end-to-end smoke test for the three finance MCP servers.
+"""Live end-to-end smoke test for the finance MCP servers.
 
 Speaks the real MCP wire protocol over stdio to a real server process and calls EVERY tool
 against its real upstream. Deliberately not mocked: the failure this catches is a source
@@ -9,7 +9,7 @@ unit tests in `finance/tests/test_*.py` rather than replacing them.
 A tool returning `ok:false` with a labelled gap is DEGRADED, not FAILED — that is the
 contract working. Only a protocol error, an exception, or a malformed envelope fails.
 
-Run:  python3 -m finance.mcp.smoke_test [--quick] [--server market|company|funds]
+Run:  python3 -m finance.mcp.smoke_test [--quick] [--server market|company|funds|personal]
 """
 from __future__ import annotations
 
@@ -22,6 +22,9 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+sys.path.insert(0, ROOT)
+from finance.compute.dcf import SELFTEST_SPEC as SELFTEST_DCF_SPEC  # noqa: E402
 
 # server -> [(tool, args, what a healthy response must contain), ...]
 CASES = {
@@ -42,6 +45,7 @@ CASES = {
         ("run_backtest",
          {"spec": "SPEC", "symbols": ["RELIANCE"], "years": 2}, ["summary"]),
         ("check_trade", {"trade": "TRADE"}, ["verdict"]),
+        ("manage_alerts", {"action": "sweep"}, ["expired", "unsnoozed"]),
     ],
     "company": [
         ("get_company_fundamentals",
@@ -55,6 +59,8 @@ CASES = {
         ("get_filings", {"symbol": "RELIANCE", "days": 30}, ["material_count"]),
         ("get_shareholding", {"symbol": "VEDL", "quarters": 4}, ["quarters"]),
         ("get_corporate_actions", {"symbol": "RELIANCE"}, ["corporate_actions"]),
+        ("run_dcf", {"ticker": "SMOKETEST", "inputs": SELFTEST_DCF_SPEC},
+         ["intrinsic_value_per_share", "dcf_path"]),
     ],
     "funds": [
         ("resolve_fund", {"name": "Bandhan Small Cap"}, ["scheme_code"]),
@@ -64,6 +70,11 @@ CASES = {
         ("get_nav_history", {"scheme_code": "147946"}, ["navs_total"]),
         ("get_fund_scan", {"category": "Small Cap Fund", "top": 3}, ["shortlist"]),
         ("get_fund_lookthrough", {"mf_id": None}, ["metrics"]),
+    ],
+    "personal": [
+        ("run_insurance_math",
+         {"calculation": "term_cover_need", "inputs": {"annual_income": 20_00_000}},
+         ["result"]),
     ],
 }
 
@@ -220,7 +231,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--python", default=sys.executable)
     ap.add_argument("--server", choices=sorted(CASES), action="append",
-                    help="test one server (repeatable); default: all three")
+                    help="test one server (repeatable); default: every server")
     ap.add_argument("--quick", action="store_true",
                     help="skip the slow valuation, context and spec-engine tools")
     ap.add_argument("--spec", help="strategy YAML for run_strategy_screen / run_backtest")

@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Offline unit tests for insurance_math. No network — deterministic inputs.
-Run: python3 skills/insurance-advisor/scripts/test_insurance_math.py
+"""Offline unit tests for the insurance math. No network — deterministic inputs.
+Run: python3 finance/tests/test_insurance_math.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))))
-import insurance_math as im  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from finance.compute import insurance_math as im  # noqa: E402
 from finance.tests.harness import approx, check, run  # noqa: E402
 
 
@@ -139,6 +137,48 @@ def test_marginal_irr_validates_inputs():
         check("rejects remaining > maturity", False)
     except ValueError:
         check("rejects remaining > maturity", True)
+
+
+# --- the run_insurance_math envelope ------------------------------------------
+
+def test_run_envelope_shape():
+    env = im.run("term_cover_need", {"annual_income": 20_00_000, "income_multiple": 12})
+    check("envelope carries the contract keys",
+          {"ok", "source", "fetched_at", "data", "gaps"} <= set(env), sorted(env))
+    check("run reports ok with no gaps", env["ok"] and env["gaps"] == [], env["gaps"])
+    check("source names the computation",
+          env["source"] == "finance.compute.insurance_math", env["source"])
+    check("a dataclass result comes back as a mapping",
+          approx(env["data"]["result"]["need"], 2_40_00_000, tol=1.0), env["data"])
+
+
+def test_run_scalar_result_passes_through():
+    env = im.run("expected_ncb", {"claim_free_years": 3})
+    check("scalar result is the value itself",
+          approx(env["data"]["result"], 0.35, tol=1e-6), env["data"])
+
+
+def test_run_unknown_calculation_is_a_gap():
+    env = im.run("guess_the_premium", {})
+    check("unknown calculation is not ok", env["ok"] is False)
+    check("unknown calculation is labelled",
+          any("unknown calculation" in g for g in env["gaps"]), env["gaps"])
+
+
+def test_run_bad_inputs_are_a_gap_not_an_exception():
+    tier = im.run("health_sum_insured", {"city_tier": 9})
+    check("a rejected value is not ok", tier["ok"] is False)
+    check("a rejected value is labelled", any("city_tier" in g for g in tier["gaps"]),
+          tier["gaps"])
+    missing = im.run("idv_ncb_sanity", {"ex_showroom": 10_00_000})
+    check("a missing keyword is a gap, not a TypeError", missing["ok"] is False, missing)
+
+
+def test_run_unsolvable_result_is_not_ok():
+    env = im.run("irr", {"cashflows": [100, 100, 100]})
+    check("an unbracketed IRR returns no result", env["data"]["result"] is None, env["data"])
+    check("no result is ok:false with a gap", env["ok"] is False and bool(env["gaps"]),
+          env["gaps"])
 
 
 if __name__ == "__main__":

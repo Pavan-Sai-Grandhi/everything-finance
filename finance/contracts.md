@@ -11,16 +11,18 @@ and **shared code** (`finance/` modules imported by several callers).
 
 ## The data layer: one door, one transport
 
-**`finance/mcp/{market,company,funds}.py` — the three servers.** The only door to decision
-data. 25 tools over the seven finalized sources (CLAUDE.md's source table), each delegating to
-the matching `finance/sources/` or `finance/compute/` module and returning the shared
-**envelope** `{ok, source, fetched_at, data, gaps}`. No name appears on two servers.
+**`finance/mcp/{market,company,funds,personal}.py` — the four servers.** The only door to
+decision data. 28 tools over the seven finalized sources (CLAUDE.md's source table) and the
+compute engines that run on them, each delegating to the matching `finance/sources/` or
+`finance/compute/` module and returning the shared **envelope**
+`{ok, source, fetched_at, data, gaps}`. No name appears on two servers.
 
 | server | tools |
 |---|---|
-| `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `run_strategy_screen` `run_backtest` `check_trade` |
-| `finance-company` | `get_company_fundamentals` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` |
+| `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `run_strategy_screen` `run_backtest` `check_trade` `manage_alerts` |
+| `finance-company` | `get_company_fundamentals` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `run_dcf` |
 | `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
+| `finance-personal` | `run_insurance_math` |
 
 The layering rule: **anything that fetches, or that computes over fetched data, is a tool.**
 A skill's `scripts/` holds only pure compute over user-supplied files (statements, policy
@@ -122,9 +124,9 @@ bar → `run_strategy_screen`) and `compute/backtest.py` (historical, every bar 
   as a Backtesting.py `Strategy` (next-open fills, pessimistic intrabar exits, time-stop, risk
   sizing). Engine: **Backtesting.py** (auto-pip). Covered by `finance/tests/test_screen.py`.
 
-### `finance/compute/` — the fetch-driven compute behind the composite tools
-Each module owns one interpreted answer and needs fetched data to produce it, so each is
-reached through exactly one tool and never re-implemented in a skill:
+### `finance/compute/` — the compute behind the composite tools
+Each module owns one interpreted answer, so each is reached through exactly one tool and
+never re-implemented in a skill:
 
 | module | tool | produces |
 |---|---|---|
@@ -135,8 +137,11 @@ reached through exactly one tool and never re-implemented in a skill:
 | `fund_scan.py` | `get_fund_scan` | a whole SEBI sub-category → gated, scored shortlist (rolling-return math from `rolling.py`) |
 | `lookthrough.py` | `get_fund_lookthrough` | complete holdings + per-stock ratios → weighted portfolio valuation, cap tilt, concentration |
 | `rolling.py` | *(internal to `fund_scan`)* | rolling returns, drawdown, risk-adjusted ratios from a NAV series |
+| `dcf.py` + `relval.py` | `run_dcf` | sourced inputs → intrinsic value/share (+ optional grids) and the relative-multiples read, one answer; full JSON spilled to `stocks/<TICKER>/<date>/dcf.json` |
+| `alerts.py` | `manage_alerts` | the alert inbox: list / add / dismiss / snooze / sweep (see *Artifact: alert*) |
+| `insurance_math.py` | `run_insurance_math` | user-supplied figures → term cover need, health sum insured, IDV/NCB sanity, marginal IRR of continuing a policy |
 
-Covered by `finance/tests/test_{context,screen,trade_check,fund_scan,lookthrough,rolling}.py`.
+Covered by `finance/tests/test_{context,screen,trade_check,fund_scan,lookthrough,rolling,dcf,relval,insurance_math,alerts}.py`.
 `backtest.py` has no test file of its own — its spec interpretation is covered through
 `compute/strategy.py` in `test_screen.py`; the Backtesting.py wiring is not.
 
@@ -460,7 +465,9 @@ stays under `sector-analysis/<date>/`.
 
 **Functions:** `create` (dedups on `dedup_key`), `load_open(subject=None)`, `evaluate_cheap(alerts,
 market_data)` (fires `metric`/`due` triggers from data the caller already fetched; ignores
-`{check}`), `set_status`, `snooze`, `sweep`. **Invariant:** alerts are only evaluated when a skill
+`{check}`), `set_status`, `snooze`, `sweep`, and `manage` (the `manage_alerts` surface:
+list / add / dismiss / snooze / sweep, `list` ordered `act` → `watch` → `info`).
+**Invariant:** alerts are only evaluated when a skill
 runs (no cron); `daily-brief` and `alert-manager` never place an order or auto-run a `{check}` alert.
 Covered by `finance/tests/test_alerts.py`.
 

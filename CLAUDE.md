@@ -28,7 +28,7 @@ India-focused personal financial intelligence. These rules bind every skill and 
 | **AMFI** (registry + mfapi.in NAV mirror) | fund identity, NAV history | `resolve_fund`, `get_nav_history` |
 | **Google News RSS** | company and market news | `get_news` |
 
-Three servers, split by domain — `finance-market` (prices, index and market state, plus `run_strategy_screen` / `run_backtest` / `check_trade`), `finance-company` (one company's fundamentals, disclosures, news), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`). The personal servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
+Four servers, split by domain — `finance-market` (prices, index and market state, plus `run_strategy_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `run_dcf`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
 
 `get_market_context` is the interpreted market-of-record, shared by every skill so reads cannot drift — prefer it over assembling a market view from raw tools.
 
@@ -59,7 +59,8 @@ finance/  transport spine paths deps
   sources/  prices market funds fundamentals news filings
   compute/  ta strategy holdings alerts context rolling
             lookthrough fund_scan screen backtest
-  mcp/      _server + market company funds
+            dcf relval trade_check insurance_math
+  mcp/      _server + market company funds personal
   tests/    harness + test_*
 ```
 

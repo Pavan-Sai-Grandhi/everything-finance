@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared plumbing for the three finance MCP servers (`market`, `company`, `funds`).
+"""Shared plumbing for the finance MCP servers (`market`, `company`, `funds`, `personal`).
 
 A server module is declaration and delegation only: it names its tools and hands each one
 straight to `finance/`. The library holds every decision — filtering, ranking, envelope

@@ -6,7 +6,7 @@ Indemnity cover for hospitalisation.
 
 Family composition + ages · city tier (metro / tier-2 / tier-3) · existing conditions / pre-existing diseases (PED) · current cover (employer group vs personal, sum insured of each) · preferred hospitals / network need · annual premium budget. Also useful: whether senior parents are to be covered (they need a separate policy, not the floater).
 
-## Sizing (feeds `insurance_math.health_sum_insured`)
+## Sizing (feeds `health_sum_insured`)
 
 - **Base sum insured** by city + family: metro individual ₹10L / family floater ₹15–25L; lift for older lives and senior parents.
 - **Employer cover counts at half weight** — it's real but vanishes with the job.
