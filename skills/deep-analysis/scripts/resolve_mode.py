@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Resolve the deep-analysis depth mode for a run — quick / standard / deep.
+"""Resolve the deep-analysis run mode — quick / standard / deep / fundamentals.
 
-deep-analysis runs three depth modes; this is the deterministic half of the selection.
-Resolution order, first match wins:
+This is the deterministic half of the selection. Resolution order, first match wins:
 
-  1. Explicit flag — `--quick` or `--deep` in the argument always wins, including
-     over the holding auto-escalation.
+  1. Explicit flag — `--fundamentals`, `--deep` or `--quick` in the argument always
+     wins, including over the holding auto-escalation. `--fundamentals` outranks the
+     two depth flags because it names a different question (the fundamentals-only
+     read, which has no debate) rather than a level of rigour within the debate.
   2. Holding auto-escalation — no explicit flag and the ticker is a live holding
      or open trade → `deep`. The broker-MCP holdings check is the orchestrator's
      job (it passes the result in as `broker_holding`, since script code can't call
@@ -26,7 +27,8 @@ import json
 import os
 import sys
 
-VALID_MODES = ("quick", "standard", "deep")
+VALID_MODES = ("quick", "standard", "deep", "fundamentals")
+FLAG_PRECEDENCE = ("--fundamentals", "--deep", "--quick")
 HOLDING_REASON = "Held position → running deep analysis (override with --quick)."
 
 
@@ -37,14 +39,14 @@ def _artifacts_root(root=None):
 
 
 def _explicit_flag(args):
-    """Return 'quick'/'deep' if the argument string carries that flag, else None.
-    `--deep` and `--quick` are mutually exclusive; if both appear, deep wins
-    (more rigour never harms, and it matches the held-position bias)."""
+    """Return the mode a flag in the argument string names, else None. Flags are
+    mutually exclusive; when several appear, FLAG_PRECEDENCE decides. Between the two
+    depth flags deep wins — more rigour never harms, and it matches the held-position
+    bias."""
     toks = args.split()
-    if "--deep" in toks:
-        return "deep"
-    if "--quick" in toks:
-        return "quick"
+    for flag in FLAG_PRECEDENCE:
+        if flag in toks:
+            return flag[2:]
     return None
 
 
@@ -81,6 +83,8 @@ def _selftest():
     ok = resolve("X --quick", symbol="X")["mode"] == "quick"
     ok &= resolve("X", symbol="X")["mode"] == "standard"
     ok &= resolve("X", symbol="X", broker_holding=True)["mode"] == "deep"
+    ok &= resolve("X --fundamentals", symbol="X",
+                  broker_holding=True)["mode"] == "fundamentals"
     print("selftest", "ok" if ok else "FAIL")
     return 0 if ok else 1
 

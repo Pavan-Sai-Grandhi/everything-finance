@@ -33,6 +33,8 @@ PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> [-
 PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> --mf-only                          # fund passes
 ```
 
+**A caller may hand you the payload instead.** When the invocation names a holdings payload path, that file *is* the book — run the resolver over it and **make no broker call of your own**. That is how the `quick` leg reaches the book from a context with no personal-broker grant.
+
 Each equity row drives the per-stock passes (§2); each MF row drives the per-fund passes (§3).
 
 - **XIRR** (from IndMoney) drives position-level performance and laggard detection where present; where absent (broker/manual path), label the performance read **inferred**.

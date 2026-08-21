@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, Agent, mcp__indmoney__*, mcp__kite__*, mcp__up
 
 Every spoke owns one domain and sees only that domain; **this is the only thing that sees the whole picture and the interactions between domains**. It does two things no spoke can: it builds the total net-worth spine across the asset classes no spoke touches (real estate, gold, EPF, FDs, cash, US equity, insurance value), and it weighs investments, protection, and cashflow *together* to answer "where does my next rupee go" — often overruling the single-domain instinct (protection before a hot stock; emergency fund before more equity).
 
-It **orchestrates, it does not re-derive**: each domain's depth is a forked leg-runner that invokes the spoke in its cheap mode and returns a compact digest, and the orchestrator holds digests, not full reports. Read `references/reference.md` for the financial-health framework and the prioritization rubric.
+It **orchestrates, it does not re-derive**: each domain's depth is a profile agent that invokes the spoke in its cheap mode and returns a compact digest, and the orchestrator holds digests, not full reports. Read `references/reference.md` for the financial-health framework and the prioritization rubric.
 
 **Sources for this skill only:** live net worth + holdings — **IndMoney** (`networth_snapshot` / `networth_allocation_breakdown` / `networth_holdings`) first, **broker MCP** (Kite/Upstox) equity fallback, `portfolio.yml` last — normalized through `finance/compute/holdings.py`. Nothing else: **every market number this report contains arrives inside a leg digest**, so the hub itself never calls a market or company tool.
 
@@ -31,15 +31,17 @@ The data foundation, and the only place the non-tradeable classes are seen. `fin
 
 ## Section 2 — Orchestrate the three legs (full-review only)
 
-Fork **one `wealth-leg` sub-agent per available leg, in parallel** (all Agent calls in one message). Each runs its spoke in cheap mode in isolation, writes the spoke's full report, and returns **only its digest** + the report `path`:
+Fork **one profile agent per available leg, in parallel** (all Agent calls in one message). Each runs its spoke in cheap mode in isolation, writes the spoke's full report, and returns **only its digest** + the report `path`:
 
-| Leg | Spoke + mode | Digest returned |
-|---|---|---|
-| Investments | `portfolio-review --quick` (covers stocks **and** funds — funds already deferred to `mf-analysis` inside it) | `investments-block` |
-| Protection | `insurance-advisor` (Audit) | `protection-block` (distilled from the audit) |
-| Cashflow | `budget-tracker --quick` | `cashflow-block` |
+| Leg | Profile | Spoke + mode | Digest returned |
+|---|---|---|---|
+| Investments | `terminal-analyst` | `portfolio-review --quick` (covers stocks **and** funds — funds already deferred to `mf-analysis` inside it) | `investments-block` |
+| Protection | `desk-analyst` | `insurance-advisor` (Audit) | `protection-block` |
+| Cashflow | `desk-analyst` | `budget-tracker --quick` | `cashflow-block` |
 
-Funds are **not** a separate leg — they ride inside the investments leg. Pass each leg-runner the connected data source it needs and an `output_path` under `paths.report_dir("wealth")`.
+Funds are **not** a separate leg — they ride inside the investments leg. Each dispatch names the skill, its mode, an `output_path` under `paths.report_dir("wealth")`, and the leg's inputs.
+
+**No profile carries a personal-broker grant**, so the investments leg cannot fetch the book itself. Hand it the **path** to the `networth_holdings` payload (and any broker payload) you already wrote in Section 1 — `portfolio-review` §1 takes a supplied payload over a fetch. The protection and cashflow legs work from the policy and statement files the user supplied.
 
 **IO hygiene:** you receive digests + paths, not report bodies. Transcribe each returned digest block into the `legs` object of the picture JSON below — Read a leg's full report only if you need a specific detail for the write-up.
 

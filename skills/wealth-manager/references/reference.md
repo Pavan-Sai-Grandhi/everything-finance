@@ -56,9 +56,9 @@ Ordered by the health stack above, not by domain size. Each action carries a con
 
 If the foundation is sound and the equity share has room, the last slot surfaces the "room to add growth assets" nudge instead. Fund depth routes to `/mf-analysis`; single-stock depth to `/deep-analysis`.
 
-## Leg digest contracts (what each leg-runner returns)
+## Leg digest contracts (what each leg returns)
 
-Defined in `finance/contracts.md` — `investments-block` (portfolio-review quick), `cashflow-block` (budget-tracker quick), `protection-block` (insurance-advisor audit, distilled by the leg-runner). The orchestrator transcribes each returned block into the `legs` object of the picture JSON that `wealth.py` consumes; it never re-derives a leg's numbers.
+Defined in `finance/contracts.md` — `investments-block` (portfolio-review quick), `cashflow-block` (budget-tracker quick), `protection-block` (insurance-advisor audit, distilled by the leg). The orchestrator transcribes each returned block into the `legs` object of the picture JSON that `wealth.py` consumes; it never re-derives a leg's numbers.
 
 ## Guardrails specific to this skill
 

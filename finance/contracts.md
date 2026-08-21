@@ -578,9 +578,9 @@ Holdings-value detail (the full KEEP/TRIM/EXIT table) stays in the artifact, nev
 digest (values are sensitive; the digest carries verdicts and percentages only).
 
 ## Convention: protection-leg digest (insurance-advisor Audit)
-**Producer:** `insurance-advisor` Audit mode, **distilled by wealth-manager's `wealth-leg` runner**
-(the Audit writes a full report; the runner transcribes its already-computed need-vs-have gap table
-and red-flag list into this compact block — no insurance logic is duplicated). **Consumer:**
+**Producer:** `insurance-advisor` Audit mode — it opens its report with this block, transcribing the
+need-vs-have gap table and red-flag list it already computed, so no insurance logic is duplicated
+anywhere else. **Consumer:**
 `wealth-manager` (the protection leg). Same hygiene as the other two leg digests: a compact block,
 never the full report.
 

@@ -3,8 +3,11 @@
 > **{{CALL}}** · conviction {{CONVICTION}} · CMP ₹{{CMP}}{{COMPANY_NAME_SUFFIX}} · depth: {{MODE}}
 > {{ONE_LINE_THESIS}}
 
-<!-- QUICK_BANNER: include this block ONLY in `quick` mode; delete it entirely in standard/deep. -->
-> ⚡ **Quick read — not full diligence.** Skipped: annual report & concall (lite data-pack), and the management, news, and sector lenses. Re-run `/deep-analysis {{TICKER}}` (standard) or `--deep` for the full debate. ({{MODE_REASON}})
+<!-- QUICK_BANNER: include this block ONLY in `quick` mode; delete it entirely in the others. -->
+> ⚡ **Quick read — not full diligence.** Skipped: the annual report & concall, and the management, news, and sector lenses. Re-run `/deep-analysis {{TICKER}}` (standard) or `--deep` for the full debate. ({{MODE_REASON}})
+
+<!-- FUNDAMENTALS_BANNER: include this block ONLY in `fundamentals` mode; delete it entirely in the others. -->
+> 📊 **Fundamentals only — no position call.** Ran: financials, management, valuation. Skipped: the technical, news and sector lenses, the debate, and the portfolio-manager's verdict. Re-run `/deep-analysis {{TICKER}}` for the full debate. ({{MODE_REASON}})
 
 ## Telegram Brief
 {{CALL}} {{TICKER}} @ ₹{{CMP}} (conviction: {{CONVICTION}})
@@ -15,10 +18,17 @@ Key level: {{KEY_LEVEL}}
 Invalidation: {{INVALIDATION}}
 Review: {{REVIEW_TRIGGER}}
 
+<!-- In `fundamentals` mode: the brief instead carries the fundamentals verdict
+     (investment-grade / watch / avoid), the integrity gate, the intrinsic range with its DCF
+     confidence, and the strongest red flag — same ≤ 10 lines, same section heading. {{CALL}}
+     is that verdict and there is no conviction; section 1's table keeps only Verdict and
+     Review trigger; sections 4 and 5 are deleted whole; the At-a-Glance table marks Sector,
+     Technical and News "not run (fundamentals)". -->
+
 <!-- The Stop hook extracts exactly the section above and sends it to Telegram.
      Keep it ≤ 10 lines, no markdown tables, no links.
-     This whole report is SYNTHESIZED by the orchestrator from the agent work papers in
-     ./agents/ — write prose, don't paste raw agent reports. Fill every {{PLACEHOLDER}}. -->
+     This whole report is SYNTHESIZED by the orchestrator from the leg work papers in
+     ./agents/ — write prose, don't paste raw leg reports. Fill every {{PLACEHOLDER}}. -->
 
 ---
 
@@ -55,14 +65,14 @@ Prior run: `{{PRIOR_PATH}}`
 | 🛡️ Management | {{MGMT_STANCE}} | {{MGMT_ONELINE}} |
 | ⚖️ Valuation | {{VAL_STANCE}} | {{VAL_ONELINE}} |
 | 📰 News & sentiment | {{NEWS_STANCE}} | {{NEWS_ONELINE}} |
-<!-- standard/deep show all six. In `quick`, only Technical, Financials, Valuation ran —
-     mark Sector / Management / News rows "not run (quick)" rather than dropping them, so the
-     gap is visible. Valuation one-line carries the combined stance + DCF confidence (low/med/high).
+<!-- standard/deep show all six. In a mode that ran fewer, mark the rows that did not run
+     "not run (<mode>)" rather than dropping them, so the gap is visible.
+     Valuation one-line carries the combined stance + DCF confidence (low/med/high).
      Management stance is the integrity gate (PASS/FLAG/FAIL) + skill grade; a FAIL here forces the verdict to Avoid. -->
 
 ## 3 · Company Overview
 {{COMPANY_OVERVIEW}}
-<!-- Lift from the financials analyst's "Company overview": what it does, segments & revenue mix,
+<!-- Lift from the financials leg's "Company overview": what it does, segments & revenue mix,
      geography, flagship products, the moat — so a reader meeting the company here is oriented. -->
 
 ## 4 · The Debate — {{DEBATE_ROUNDS}}
@@ -79,7 +89,7 @@ Prior run: `{{PRIOR_PATH}}`
 
 ## 5 · Sector Context
 {{SECTOR_CONTEXT}}
-<!-- From the sector-analyst read: where the sector sits in rotation, the tailwind & headwind that
+<!-- From the sector leg: where the sector sits in rotation, the tailwind & headwind that
      matter, and specifically where {{TICKER}} sits within its sector (leader/laggard, RS vs sector). -->
 
 ## 6 · Evidence by Lens
@@ -100,17 +110,17 @@ Prior run: `{{PRIOR_PATH}}`
 
 ## 7 · Data Gaps & Caveats
 {{DATA_GAPS}}
-<!-- Union of every agent's gaps. Missing evidence is uncertainty, not neutral. -->
+<!-- Union of every leg's gaps. Missing evidence is uncertainty, not neutral. -->
 
 ---
 <details>
-<summary>Work papers — full agent reports</summary>
+<summary>Work papers — full leg reports</summary>
 
-The raw, unedited report from each forked agent is archived alongside this file under
-`./{{TICKER}}-deep-analysis/agents/` (the legs that ran — technical, financials, valuation, and in
-standard/deep management, news, sector — plus `contest` in quick or `bull-r1…N`, `bear-r1…N` in
-standard/deep, and verdict) and the sourced data-pack under `./{{TICKER}}-deep-analysis/fundamentals/`.
-This report is the synthesis of those; consult them for the full evidence trail.
+The raw, unedited report from each leg is archived alongside this file under
+`./{{TICKER}}-deep-analysis/agents/` — the legs that ran, plus `contest` in quick or `bull-r1…N`,
+`bear-r1…N` in standard/deep, and verdict. The valuation and management legs write to this same
+run-day folder as `dcf.md` (+ `dcf.json`) and `management.md`. This report is the synthesis of
+those; consult them for the full evidence trail.
 </details>
 
 *Generated by the everything-finance deep-analysis debate ({{AGENT_COUNT}} agents). Not investment advice — personal research tool.*
