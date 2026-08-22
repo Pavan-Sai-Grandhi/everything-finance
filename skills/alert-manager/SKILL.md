@@ -2,7 +2,7 @@
 name: alert-manager
 description: The inbox for the plugin's alerts — the durable "watch this / do this" items other skills raise (a stop level to watch, a filing to act on, a thesis recheck due, a vetted opportunity). Use to list open alerts, dismiss or snooze one, add a manual alert ("tell me if RELIANCE closes below 1450"), or sweep expired ones. daily-brief reads these every morning; this skill is how you curate them.
 argument-hint: "[list | add | dismiss <id> | snooze <id> <YYYY-MM-DD> | sweep]"
-allowed-tools: Read, mcp__finance-market__manage_alerts
+allowed-tools: Read, mcp__finance-market__manage_alerts, mcp__plugin_everything-finance_finance-market__manage_alerts
 disable-model-invocation: false
 ---
 

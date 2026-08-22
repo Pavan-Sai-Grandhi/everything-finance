@@ -2,7 +2,7 @@
 name: mf-analysis
 description: The plugin's mutual-fund authority — research or compare any Indian fund, scan a whole SEBI category down to a shortlist, AND review the funds the user holds, across two pillars: past performance (rolling returns and drawdown computed from NAV history, risk measures from the category screen) and forward-looking quality (full look-through portfolio valuation, style + drift, AMC & manager trust), read against live market context. Runs `quick` (a fast descriptive digest other skills consume) or `deep` (the full two-pillar verdict). Use whenever the user asks about a mutual fund, SIP choice, comparing funds, "is X fund good", which index/flexicap/smallcap fund to pick, whether to switch or replace a fund, or wants to review their MF portfolio — even casual phrasings like "where should my SIP go".
 argument-hint: "FUND NAME(s) / category / 'review my funds' [--quick] (e.g. 'best smallcap fund', 'Parag Parikh vs UTI Nifty 50')"
-allowed-tools: WebFetch, WebSearch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*, mcp__finance-funds__*
+allowed-tools: WebFetch, WebSearch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__plugin_everything-finance_indmoney__*, mcp__kite__*, mcp__plugin_everything-finance_kite__*, mcp__upstox__*, mcp__plugin_everything-finance_upstox__*, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*, mcp__finance-funds__*, mcp__plugin_everything-finance_finance-funds__*
 ---
 
 # Mutual Fund Analysis

@@ -1,11 +1,17 @@
 <!-- valuation-block
 combined_stance: Undervalued | Fair | Overvalued
 dcf_mos: <±x%>          dcf_confidence: low | med | high   terminal_weight: <x%>
-pe: <x>   pe_basis: reported | adjusted   peg: <x>
+pe: <x>   pe_basis: reported | adjusted | reported (unchecked)   peg: <x>
+eps_adjustments: <what the one-off scan found, or `none`>
 peer_median_pe: <x|n/a>   peers_priced: <n>   ev_ebitda: <x|n/a>   relative_stance: <undervalued|fair|overvalued|not computable>
 axis: valuation
 -->
 # Valuation — <COMPANY> (<SYMBOL>) · <YYYY-MM-DD>
+
+## Findings
+
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+
 
 > Story-driven FCFF DCF (Damodaran) triangulated with the multiples read. A model, not a price target. Every input is sourced below.
 

@@ -86,6 +86,17 @@ A skill's `scripts/` holds only pure compute over user-supplied files. **Never a
 - Every stock/fund recommendation ends with a risk note + "Not investment advice — personal research tool."
 - Report templates are bundled per skill in `skills/<name>/assets/` — fill the data, keep the structure.
 
+## How a report reads
+
+Someone is going to read this over morning coffee and decide where their money goes. Write for them.
+
+- **Prose, not machine output.** A report is written English. Field syntax (`integrity=PASS rpt=FLAG`), bare metric strings (`RS -4.79pp 1M / -13.53pp 3M`) and pipe-separated fragments belong in the machine-read block at the top, not in the body — spell them out when a reader needs them.
+- **Short paragraphs.** Three or four sentences, one idea each. A six-hundred-word block of reasoning is unreadable no matter how good the reasoning is; break it at the turns in the argument.
+- **Say the thing, then support it.** Lead each section with the conclusion in one sentence, then the evidence. Never make the reader assemble the point from clauses.
+- **Cut what carries nothing.** No restating the question, no "it is worth noting that", no summarising what the previous paragraph just said, no hedging stacked on hedging. If a sentence would not change what the reader does, delete it.
+- **A number arrives with its meaning.** "NIM 3.34%, down from 3.48% — fourteen basis points of core spread gone" beats "NIM: 3.34% (FY26) vs 3.48% (FY25)".
+- **Length is a cost, not a signal of effort.** Every downstream agent re-reads what a leg writes, and so does the user. Say it once, properly, and stop.
+
 ## Trading discipline (every signal this plugin emits)
 
 - Never present an entry without a stoploss and a target. Minimum reward:risk 1.5, prefer ≥ 2.

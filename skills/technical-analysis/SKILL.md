@@ -2,7 +2,7 @@
 name: technical-analysis
 description: Read the chart for one NSE stock — Dow trend stage, the support/resistance map with touch-count evidence, the active candlestick or structural pattern in its location context, the volume signature, RSI/MACD as confirmation only, and the two price levels that invalidate a bull or a bear thesis. Use whenever the user wants the chart view on a ticker — "what do the charts say on X", "is X in an uptrend", "where is support / resistance", "is this a breakout or a fakeout", "what is the RSI/MACD saying", "where would my stop go on X", "is it overbought" — even when they never say "technical analysis". This is the chart read on one stock: scanning the whole market against a strategy is find-trade, testing a strategy on history is strategy-manager, and the full bull/bear debate is deep-analysis.
 argument-hint: "TICKER [optional: a candles file already fetched]"
-allowed-tools: Read, Write, Bash, mcp__finance-market__*
+allowed-tools: Read, Write, Bash, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*
 ---
 
 # Technical Analysis — chart read on one NSE ticker
@@ -32,6 +32,10 @@ support: <S1>   resistance: <R1>   bull_invalidated_below: <level>   bear_invali
 axis: technical_structure
 -->
 ## Technical Read — <TICKER> (<date>)
+
+## Findings
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+
 **Trend (Dow stage)**: primary trend up/down/range; phase (accumulation/markup/distribution/markdown); HH-HL or LH-LL evidence
 **Key levels**: S1, S2 / R1, R2 with the touch-count evidence for each
 **Price vs MAs**: position vs 50-EMA and 200-EMA, slope of each

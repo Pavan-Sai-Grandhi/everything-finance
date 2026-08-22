@@ -2,7 +2,7 @@
 name: find-trade
 description: Find swing/positional trade candidates in the Nifty 500 by running a chosen, validated trading strategy against today's market — screen the universe down (fundamentals via Tickertape, technicals via TradingView or a local TA-Lib compute), then construct entry/stoploss/target/size signals and, on confirmation, persist a trade-idea artifact the trade-tracker skill monitors. This is the strategy-AGNOSTIC execution engine — it carries no setups of its own; the rules always come from an active strategy spec owned by strategy-manager. Use whenever the user asks to screen stocks, find swing trades, scan the market, look for setups, run the pipeline, or "anything worth trading this week?" — even if they don't say "screen". If the user names a strategy use it; if they don't, the skill asks strategy-manager to pick the active strategy that fits the current regime (it never falls back to a hardcoded default — a screen with no validated strategy behind it is not a tradeable signal).
 argument-hint: "[strategy:<name>] [optional: capital ₹ | sector filter]"
-allowed-tools: Read, Write, Bash, Skill, mcp__finance-market__*, mcp__finance-company__*
+allowed-tools: Read, Write, Bash, Skill, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
 # Find Trade — run a validated strategy against today's market (Nifty 500)

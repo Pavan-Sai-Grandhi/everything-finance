@@ -98,4 +98,32 @@ check("verdicts come from the fixed vocabulary",
 
 check("selftest passes", g._selftest() == 0)
 
+# --- the gate vocabulary is one word across the four files that speak it -------------
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def _read(rel):
+    with open(os.path.join(_ROOT, rel), encoding="utf-8") as fh:
+        return fh.read()
+
+_ref = _read("skills/management-analysis/references/reference.md")
+check("the gate aggregation names an outcome for a FLAGged sub-check",
+      "else **`FLAG`** if any check flagged" in _ref,
+      "a flagged check with no aggregate outcome forces the leg to improvise one")
+check("the aggregation still puts FAIL first", _ref.index("**`FAIL`** if any check failed")
+      < _ref.index("else **`FLAG`**"), "FAIL must outrank FLAG")
+
+_pm = _read("agents/portfolio-manager.md")
+check("verdict-block can express a FLAGged gate", "integrity_gate: PASS | FLAG | FAIL" in _pm, _pm[:0])
+check("the k-of-7 count is its own field, not smuggled into the verdict",
+      "integrity_partial:" in _pm and "PASS (partial" not in _pm,
+      "a partial count inside integrity_gate reads as PASS to every consumer")
+check("the PM is told to carry the gate through, not re-grade it",
+      "never `PASS` on a leg that reported `FLAG`" in _pm, "")
+check("the PM must verify a metric before calling it corroborated",
+      "Confluence means the same quantity, sourced independently" in _pm, "")
+
+_con = _read("finance/contracts.md")
+check("contracts forbids FLAG or partial reaching the verdict as PASS",
+      "neither may reach `verdict-block` as `PASS`" in _con, "")
+
 summary()

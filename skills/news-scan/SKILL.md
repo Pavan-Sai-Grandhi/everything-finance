@@ -2,7 +2,7 @@
 name: news-scan
 description: Scan roughly the last 60 days of press, exchange announcements and analyst commentary on one Indian company and score the sentiment from sourced, dated evidence — hard facts separated from narrative, the recurring storyline named, what the filings show that coverage has missed, and the scheduled events ahead. Use whenever the user asks what is being said about a company: "any news on X", "why did X fall today", "what's the sentiment on X", "is the coverage bullish or bearish", "anything I should know before their results", "is that story about X real". This is the press-and-sentiment read on one company — the exchange filings themselves are filings-watch, the whole-market morning digest is daily-brief, and the full bull/bear debate is deep-analysis.
 argument-hint: "TICKER or company name [optional: lookback window, default 60 days]"
-allowed-tools: Read, Write, mcp__finance-company__*
+allowed-tools: Read, Write, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
 # News Scan — sentiment on one company, from dated evidence
@@ -30,6 +30,10 @@ recurring_theme: <one phrase>   next_event: <item + date, or none>
 axis: growth_durability
 -->
 ## News & Sentiment — <COMPANY> (<date>)
+
+## Findings
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+
 **Sentiment score**: -2 (strongly negative) … +2 (strongly positive), with one-line justification
 **Material events (last 60d)**: dated list, each tagged FACT/NARRATIVE + source
 **Recurring theme**: the one storyline the coverage keeps returning to

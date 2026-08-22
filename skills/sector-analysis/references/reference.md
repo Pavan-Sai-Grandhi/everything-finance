@@ -76,6 +76,8 @@ With no list given, start from a bellwether you can name in the sector and take 
 
 Ratios and the ten fiscal years of P&L, balance sheet and cash flow arrive **one company per call**, and the deep sector KPIs (NIM/GNPA, EBITDA/tonne, VNB margin, combined ratio…) exist only at company level — no feed carries them by sector. So call it for the **3–4 names that matter**, take the sector median from those, and label the rest a gap rather than widening the fan-out.
 
+**Take the cross-section in one call.** `get_history` and `get_news` are one name per call, but the leaders/laggards pass does not need a candle series per constituent — it needs where each name stands right now. `run_technical_screen` returns the whole basket in a single scanner call: pass the constituents as the filter set and ask for the columns you are ranking on. Reserve `get_history` for the two index series the RS windows are computed from. A call per name per metric turns a six-name sector into thirty round-trips, each re-reading the whole context, for a table one call returns.
+
 ## Sectoral index ticker map
 
 Pass these to `get_history`: `^NSEI` (Nifty 50 benchmark), `^NSEBANK` (Bank), `NIFTY_FIN_SERVICE.NS` (Financial Services), `^CNXIT` (IT), `^CNXPHARMA` (Pharma), `^CNXAUTO` (Auto), `^CNXFMCG` (FMCG), `^CNXMETAL` (Metal), `^CNXREALTY` (Realty), `^CNXENERGY` (Energy), `^CNXPSUBANK` (PSU Bank), `^CNXMEDIA` (Media — thin index, flag it rather than calling it a leader). Known gaps: Consumer Durables & Healthcare have no Yahoo history (quote only), Oil & Gas has no ticker — list these as data gaps rather than hunting; the 11 covered indices are enough for the rotation read.

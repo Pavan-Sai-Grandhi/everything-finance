@@ -2,7 +2,7 @@
 name: deep-analysis
 description: Full multi-agent investment debate on a single Indian stock — six lenses (technical; the numbers, with the annual report and concall read directly; management integrity & skill; valuation triangulating a story-driven DCF with relative multiples; news sentiment; sector context), then bull vs bear researchers debate, and a portfolio-manager issues the verdict, synthesized into one readable report. Use whenever the user asks to analyze, research, deep-dive, evaluate, or form a view on a specific ticker or company name ("should I buy X?", "what do you think of Tata Motors?"), even if they don't say "deep analysis". Its fundamentals-only mode is also the home of the fundamental read without the debate — "are the fundamentals good?", "is X fundamentally sound?", "fundamental analysis of Y".
 argument-hint: "TICKER (NSE symbol or company name) [--quick | --deep | --fundamentals]"
-allowed-tools: Read, Write, Bash, Agent, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*
+allowed-tools: Read, Write, Bash, Agent, mcp__indmoney__*, mcp__plugin_everything-finance_indmoney__*, mcp__kite__*, mcp__plugin_everything-finance_kite__*, mcp__upstox__*, mcp__plugin_everything-finance_upstox__*, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
 # Deep Stock Analysis — multi-agent debate
@@ -37,7 +37,9 @@ Record `{mode, reason, gaps}` — the synthesis reports the first two and folds 
 
 Four phases. Phase 0 is two calls you make yourself; phase 1 is all six legs in **one** parallel wave; phase 2 is the debate; phase 3 decides. **The fan-out scales to the mode** — see the per-mode column.
 
-**Your context is the run's largest single cost**, because every turn re-reads all of it. Two rules keep it small: the phase table below **is** the plan — do not mirror it into a task list — and after launching a parallel wave, **wait silently**. The harness re-invokes you on each agent's completion; a scheduled wakeup or a filler command buys nothing and pays a full context re-read for it.
+**Your context is the run's largest single cost**, because every turn re-reads all of it. Two rules keep it small: the phase table below **is** the plan — do not mirror it into a task list — and after launching a parallel wave, **wait silently**. The harness re-invokes you on each agent's completion; a scheduled wakeup or a filler command buys nothing and pays a full context re-read for it. A completion notification is not a cue to write: summarising each digest as it lands costs a turn per leg and tells the user nothing the report will not. Say nothing until the wave is complete.
+
+**Scripts and assets are under this skill's own base directory**, given to you in the header above. Use it — do not search the filesystem for the plugin.
 
 ### Phase 0 — no agent, you run it
 
@@ -53,6 +55,8 @@ In `quick`, skip the document warm-up and tell each leg `documents: none (quick 
 
 Each leg is a **skill run inside a generic profile agent** — issue every `Agent` call in one message. The dispatch names the skill, its mode where the skill has one, the output path, the ticker, and the leg's inputs.
 
+**Name every agent `everything-finance:<agent>`.** A bare `terminal-analyst` does not resolve; the launch fails and the wave has to be reissued.
+
 | Leg skill | Profile | Inputs beyond the ticker | Modes |
 |---|---|---|---|
 | `technical-analysis` | `terminal-analyst` | — (it pulls its own candles) | quick, standard, deep |
@@ -66,7 +70,7 @@ The financials leg reports the earnings base (`clean_eps`, `eps_adjustments`) an
 
 **Output paths.** Staged work papers go under `artifacts/tmp/staging/<TICKER>/agents/` (`paths.tmp_dir("staging")`) — `technical.md`, `financials.md`, `news.md`, `sector.md`, `contest.md`, `bull-r<N>.md`, `bear-r<N>.md`, `verdict.md`. The valuation and management legs are given their own run-day paths instead — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (the engine also writes `dcf.json` beside it) and `management.md` (`paths.stock_dir`) — so `get_prior_run(skill="dcf"|"management")` finds them regardless of which skill produced them.
 
-**IO hygiene (all modes).** Each leg `Write`s its **full report to its file** and returns **only a compact digest** — its machine-readable top block plus the path, never the body. Downstream agents (`contest` / `bull` / `bear` / `portfolio-manager`) and your synthesis receive **paths** and Read what they need in their own context; you never hold six full reports at once. Pass each agent only what it needs — they are forked and share no context.
+**IO hygiene (all modes).** Each leg `Write`s its **full report to its file** — opening with its machine-read block, then a `## Findings` section carrying the leg's whole case in a few sentences — and returns **only a compact digest** — its machine-readable top block plus the path, never the body. Downstream agents (`contest` / `bull` / `bear` / `portfolio-manager`) and your synthesis receive **paths** and Read what they need in their own context; you never hold six full reports at once. Pass each agent only what it needs — they are forked and share no context.
 
 If phase 0 or any leg fails, state the gap and continue; the portfolio-manager weighs missing evidence as uncertainty, not as neutral. If the management leg's **integrity gate is FAIL**, that overrides the rest — the verdict is AVOID regardless of numbers or valuation.
 
@@ -76,7 +80,7 @@ If phase 0 or any leg fails, state the gap and continue; the portfolio-manager w
 |---|---|---|---|
 | 2 | `contest-researcher` | the leg report **paths** (technical, financials, valuation) | quick |
 | 2 | `bull-researcher` / `bear-researcher` | the phase-1 report **paths** (round 1); the opposing side's previous-round report, its own, the round number and the helper's `directive` (round r>1) | standard, deep |
-| 3 | `portfolio-manager` | the leg report **paths**, the full debate transcript paths, `position` (from step 2's broker check: `{held, qty, avg_cost, unrealised_pct}`), `debate` (`{rounds_run, stopped_because, engaged}`) and the market context — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level | quick, standard, deep |
+| 3 | `portfolio-manager` | its **output path** (`verdict.md`), the leg report **paths**, the full debate transcript paths, `position` (from step 2's broker check: `{held, qty, avg_cost, unrealised_pct}`), `debate` (`{rounds_run, stopped_because, engaged}`) and the market context — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level | quick, standard, deep |
 
 ## Debate — by mode
 
@@ -94,7 +98,7 @@ It is the source of truth for both modes and it caps the rounds itself (standard
 
 Write each round's reports as `bull-r<N>.md` / `bear-r<N>.md`. Record `rounds_run`, the helper's `reason` for stopping, and whether the sides ever engaged on a common axis — all three go to the portfolio-manager and into the synthesis. A `gaps` entry from the helper means a digest broke its contract; report it, do not treat it as convergence.
 
-The `portfolio-manager` then runs once on the full transcript (the contest, or all debate rounds) plus the phase-3 inputs above. **Pass it facts, not rulings** — it holds its own judging rules, and restating them in the dispatch anchors the decision you asked it to make.
+The `portfolio-manager` then runs once on the full transcript (the contest, or all debate rounds) plus the phase-3 inputs above. **Pass it facts, not rulings** — it holds its own judging rules, and restating them in the dispatch anchors the decision you asked it to make. Give it the `verdict.md` path in the dispatch: without one it replies with the verdict as body text, which lands the whole thing in your context and leaves you to copy it to disk by hand.
 
 ## Fundamentals mode — three legs, no debate
 

@@ -2,7 +2,7 @@
 name: strategy-manager
 description: Own the full lifecycle of rule-based trading strategies for Indian markets — (1) GENERATE a complete strategy from a reference article you supply, (2) VALIDATE it by backtesting the spec on historical NSE daily data (the bundled Backtesting.py engine on TA-Lib indicators — win rate, expectancy, profit factor, max drawdown vs buy-and-hold) and mark it active when it passes, (3) PICK the active strategy that fits the current market regime, and (4) OPTIMIZE or retire strategies from live trade outcomes fed back by trade-tracker. Use whenever the user asks to design/build a strategy, to backtest or validate one, "check if this strategy actually works", the historical performance of a setup, "what strategy should I run now / in this market", review or tune a strategy's live performance, activate/deactivate a strategy, or after find-trade produces signals and the user questions the strategy's edge.
 argument-hint: "[generate <article URL/file> | validate <name> [symbols] [years] | pick | optimize <name|all> | <name to inspect>]"
-allowed-tools: WebFetch, Read, Write, Bash, Skill, mcp__finance-market__*
+allowed-tools: WebFetch, Read, Write, Bash, Skill, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*
 ---
 
 # Strategy Manager — generate → validate → pick → optimize

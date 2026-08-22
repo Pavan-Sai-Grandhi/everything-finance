@@ -484,15 +484,15 @@ returns it unchanged plus `path`. The debate roles are named agents and own thei
 | `technical-analysis` | `technical-block` | `verdict`, `confidence`, `trend_stage`, `support`, `resistance`, `bull_invalidated_below`, `bear_invalidated_above`, `axis: technical_structure` |
 | `financial-analysis` | `financials-block` | `verdict`, `confidence`, `varsity_score` (of 7), `roce`, `de`, `cfo_ebitda`, `rev_cagr_5y`, **`clean_eps`**, **`eps_adjustments`**, `flags`, `axis: growth_durability` |
 | `management-analysis` | `management-block` | `integrity` (the hard gate), **`integrity_checks`** (all seven sub-checks, each PASS/FLAG/FAIL/NOT-CHECKED), `skill`, `overall_grade`, `confidence`, `axis: governance` |
-| `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, **`pe_basis`**, `peg`, `peer_median_pe`, **`peers_priced`**, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
+| `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, **`pe_basis`**, **`eps_adjustments`**, `peg`, `peer_median_pe`, **`peers_priced`**, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
 | `news-scan` | `news-block` | `sentiment_score` (−2…+2), `confidence`, `recurring_theme`, `next_event`, `axis: growth_durability` |
 | `sector-analysis` | `sector-block` | `sector`, `rs_class`, `stance`, `confidence`, `focus_position` |
 | `contest-researcher` | `contest-block` | `lean ∈ {bull, bear, genuinely split}`, `axis`, one-line `bull`, one-line `bear` |
 | `bull-researcher` / `bear-researcher` | `debate-block` | `axis`, `claim`, `conceded`, `new_evidence` |
-| `portfolio-manager` | `verdict-block` | `call`, `conviction`, **`value_stance`**, **`action_driver`**, `invalidation`, `review`, `integrity_gate`, **`evidence`**, **`weakest_load_bearing_input`** |
+| `portfolio-manager` | `verdict-block` | `call`, `conviction`, **`value_stance`**, **`action_driver`**, `invalidation`, `review`, `integrity_gate`, `integrity_partial`, **`evidence`**, **`weakest_load_bearing_input`** |
 
 An **integrity FAIL** in `management-block` overrides every other lens; an `integrity` of
-`PASS (partial, k of 7)` is uncertainty, not a cleared gate.
+`FLAG` is a live concern short of disqualifying, and `PASS (partial, k of 7)` is uncertainty; neither is a cleared gate, and neither may reach `verdict-block` as `PASS`.
 
 The `debate-block`'s `axis` + `claim` + `conceded` + `new_evidence` are exactly what
 `deep-analysis/scripts/escalation.py` reads to decide the next round, in both `standard` and
@@ -507,7 +507,13 @@ auto-escalates.
 
 `financials-block.clean_eps` is the earnings base `valuation-analysis` strikes its multiples
 on: where `eps_adjustments` is not `none`, the valuation leg's `pe_basis` is `adjusted` and its
-peer P/Es must be struck the same way or `relval` voids the peer comparison.
+peer P/Es must be struck the same way or `relval` voids the peer comparison. The two legs run in
+the **same parallel wave**, so this is not a handoff — neither can read the other's block. Each
+runs the one-off scan itself and carries `eps_adjustments` in its own block; the synthesis compares
+the two and names the disagreement. A `pe_basis` of `reported (unchecked)` says the scan did not
+happen and travels as a gap, never as a clean multiple.
+
+Every leg report opens with its machine-read block and then a **`## Findings`** section carrying the leg's whole case in a few plain sentences. The debaters and the portfolio-manager read that far and stop; they open the rest of a report only when a specific finding is load-bearing and they need the evidence under it. The `report-writer` is the one consumer that reads every paper in full — it is authoring from them. Six agents re-reading six full reports is the largest avoidable cost in a run, and a finding that never made the section is a finding the leg failed to surface.
 
 ## Artifact: deep-analysis report
 **Producer:** `deep-analysis` → `artifacts/stocks/<TICKER>/<date>/` (`paths.stock_dir`). The

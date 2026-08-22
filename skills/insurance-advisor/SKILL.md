@@ -2,7 +2,7 @@
 name: insurance-advisor
 description: Advise on buying, auditing, or understanding insurance — term life, health, and vehicle. Three modes. (1) Advise/buy — interview, size the need, research the market, shortlist exactly two policies and compare them side by side. (2) Audit — need-vs-have gap, red flags, and whether to keep an in-force endowment/ULIP. (3) Ask — answer questions about a policy the user already holds. Use whenever the user wants to buy/compare insurance, asks if their cover is enough, mentions a policy document, asks about ULIPs/endowment plans, "how much cover do I need", or a question about their own policy.
 argument-hint: "[what you want: buy/compare, review my cover, or a question about my policy — + policy type and details]"
-allowed-tools: WebFetch, WebSearch, Read, Write, mcp__finance-personal__run_insurance_math
+allowed-tools: WebFetch, WebSearch, Read, Write, mcp__finance-personal__run_insurance_math, mcp__plugin_everything-finance_finance-personal__run_insurance_math
 ---
 
 # Insurance Advisor

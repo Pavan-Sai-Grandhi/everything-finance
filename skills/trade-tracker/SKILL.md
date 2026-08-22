@@ -2,7 +2,7 @@
 name: trade-tracker
 description: Track your live broker positions against the rationale that put you in them, and flag when to hold or exit early. Reads live positions read-only via IndMoney (net worth across assets, with XIRR) or your broker (Kite/Upstox), takes exact fills from broker order history, matches each open position to its trade-idea artifact (from find-trade), a deep-analysis report, a strategy spec, or a rationale you type, then re-validates the thesis — stop hit, target hit, time stop, broken setup, or regime change — and recommends hold / trim / exit. Use whenever the user asks to check open trades, review positions, "is my thesis still valid", "should I exit X", track a trade, or sync the broker.
 argument-hint: "[optional: SYMBOL to check one position | 'all' | broker:kite|upstox]"
-allowed-tools: Read, Write, Bash, Skill, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*
+allowed-tools: Read, Write, Bash, Skill, mcp__indmoney__*, mcp__plugin_everything-finance_indmoney__*, mcp__kite__*, mcp__plugin_everything-finance_kite__*, mcp__upstox__*, mcp__plugin_everything-finance_upstox__*, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
 # Trade Tracker — does the reason I'm in this trade still hold?

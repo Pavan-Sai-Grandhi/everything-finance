@@ -177,4 +177,79 @@ for rel in _agent_files:
     check(f"{stem} frontmatter name matches its filename",
           f"\nname: {stem}\n" in head, head[:120])
 
+# An agent's `tools:` MCP patterns must name servers this plugin actually declares, under
+# the prefix the runtime registers them with. A pattern that matches nothing does not error
+# — the agent simply launches without the tool and improvises — so it is pinned here.
+_servers = set(claude_mcp.get("mcpServers") or {})
+_PLUGIN_PREFIX = f"plugin_{claude['name']}_"
+for rel in _agent_files:
+    stem = os.path.basename(rel)[:-3]
+    with open(os.path.join(ROOT, rel[2:]), encoding="utf-8") as fh:
+        body = fh.read()
+    line = re.search(r"^tools: (.*)$", body, re.M)
+    if not line:
+        continue
+    pats = [x.strip() for x in line.group(1).split(",") if x.strip().startswith("mcp__")]
+    named = set()
+    for pat in pats:
+        server = pat[len("mcp__"):].rsplit("__", 1)[0]
+        bare = server[len(_PLUGIN_PREFIX):] if server.startswith(_PLUGIN_PREFIX) else server
+        check(f"{stem} grants a server the plugin declares: {pat}", bare in _servers, sorted(_servers))
+        named.add(bare)
+    # both registration spellings, or a leg silently loses the tool under one install mode
+    for bare in named:
+        check(f"{stem} grants {bare} under both the qualified and bare name",
+              f"mcp__{_PLUGIN_PREFIX}{bare}__*" in pats and f"mcp__{bare}__*" in pats, pats)
+
+# same rule for a skill's own allowed-tools: an unqualified name grants nothing under the
+# install mode that prefixes the server, and the skill silently loses the tool
+for rel in _skill_dirs:
+    name = rel.split("/")[-1]
+    with open(os.path.join(ROOT, rel[2:], "SKILL.md"), encoding="utf-8") as fh:
+        body = fh.read()
+    line = re.search(r"^allowed-tools: (.*)$", body, re.M)
+    if not line:
+        continue
+    toks = [x.strip() for x in line.group(1).split(",") if x.strip().startswith("mcp__")]
+    for tok in toks:
+        server, _, rest = tok[len("mcp__"):].partition("__")
+        if server.startswith(_PLUGIN_PREFIX):
+            continue
+        check(f"{name} grants {server}__{rest} under the qualified name too",
+              f"mcp__{_PLUGIN_PREFIX}{server}__{rest}" in toks, toks)
+
+# the Findings contract: every leg defines the section, and every downstream reader that is
+# not the report-writer is told to stop there. Six agents re-reading six full reports is the
+# largest avoidable cost in a deep-analysis run.
+_LEGS = {
+    "skills/technical-analysis/SKILL.md": None,
+    "skills/financial-analysis/SKILL.md": None,
+    "skills/news-scan/SKILL.md": None,
+    "skills/sector-analysis/SKILL.md": None,
+    "skills/valuation-analysis/assets/dcf-report.example.md": None,
+    "skills/management-analysis/assets/management-scorecard.example.md": None,
+}
+for rel in _LEGS:
+    with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+        body = fh.read()
+    check(f"{rel.split('/')[1]} leg report defines ## Findings", "## Findings" in body, rel)
+
+for rel in ("agents/bull-researcher.md", "agents/bear-researcher.md",
+            "agents/contest-researcher.md", "agents/portfolio-manager.md"):
+    with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+        body = fh.read()
+    check(f"{os.path.basename(rel)[:-3]} reads Findings, not whole reports",
+          "## Findings" in body and "not the whole report" in body.replace("not its whole report",
+                                                                          "not the whole report"), rel)
+
+with open(os.path.join(ROOT, "agents/report-writer.md"), encoding="utf-8") as fh:
+    _rw = fh.read()
+check("report-writer is the one consumer that reads in full",
+      "reads every paper **in full**" in _rw, "")
+check("report-writer carries the prose standard", "Short paragraphs" in _rw, "")
+
+with open(os.path.join(ROOT, "CLAUDE.md"), encoding="utf-8") as fh:
+    _cl = fh.read()
+check("the prose standard is stated plugin-wide", "## How a report reads" in _cl, "")
+
 summary()

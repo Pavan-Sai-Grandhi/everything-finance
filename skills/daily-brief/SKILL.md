@@ -2,7 +2,7 @@
 name: daily-brief
 description: Morning market one-pager — index levels and tone, a market-moving news digest, sector leaders/laggards, the open-alert inbox and any actions due, a strictly-capped opportunities shortlist, watchlist filings and news, and open-position health — formatted for Telegram. Use when the user asks for the daily brief, morning summary, "what's the market doing", "anything I should know today", or wants a pre-market/post-market rundown.
 argument-hint: "[optional: 'send' to push to Telegram immediately]"
-allowed-tools: Read, Write, Bash, mcp__indmoney__*, mcp__kite__*, mcp__upstox__*, mcp__finance-market__*, mcp__finance-company__*
+allowed-tools: Read, Write, Bash, mcp__indmoney__*, mcp__plugin_everything-finance_indmoney__*, mcp__kite__*, mcp__plugin_everything-finance_kite__*, mcp__upstox__*, mcp__plugin_everything-finance_upstox__*, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 disable-model-invocation: false
 ---
 

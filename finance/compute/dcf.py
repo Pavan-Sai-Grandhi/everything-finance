@@ -337,12 +337,24 @@ def value(spec):
     }
 
 
+_MODEL_SHAPES = ("fcff", "equity")
+
+
 def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, growth, margin,
                   equity_going_concern=None, p_fail=0.0, cx=0.0, wacc_detail=None):
     """Damodaran's reality checks — surfaced, not silently swallowed. Several are
     stage-aware: the same fact (e.g. value concentrated in the terminal year) is the
     *expected* shape for a young company and a *red flag* for a mature or declining one, so a
-    fixed threshold mislabels exactly the cases that most need judgement."""
+    fixed threshold mislabels exactly the cases that most need judgement.
+
+    `model_shape` selects which questions apply. `fcff` (the default) is the firm-side model
+    these checks were written for. `equity` is the standard adaptation for banks, NBFCs and
+    insurers, where FCFF is ill-defined: capex and working capital bear no relation to what
+    funds growth, so the run feeds an after-tax earnings stream and lets regulatory capital
+    be the reinvestment. Margin has no meaning under that shape."""
+    shape = str(spec.get("model_shape") or "fcff").strip().lower()
+    if shape not in _MODEL_SHAPES:
+        shape = "fcff"
     flags = []
     stage = lifecycle_stage(spec)
     young = stage in YOUNG_STAGES
@@ -386,7 +398,16 @@ def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, 
     # every year's cash flow. A year-1 margin well above the current EBIT margin is
     # that signature; a real expansion story starts at today's margin and glides.
     cur_ebit = spec.get("current_ebit_margin")
-    if cur_ebit is None:
+    if shape == "equity":
+        # An equity-shaped run feeds Net Income as "revenue", so margin is 1.0 by
+        # construction and tax is already paid. The margin checks below read that as an
+        # impossible business; they are the wrong questions for this shape, not answers.
+        flags.append("EQUITY_MODEL_SHAPE: levers read as FCFE — `base_revenue` is an "
+                     "after-tax earnings stream, `sales_to_capital` is marginal return on "
+                     "reinvested equity, and `terminal_roic` is the sustainable return "
+                     "whose spread over the cost of equity carries the value. Margin checks "
+                     "are suppressed; confirm the discount rate is a cost of EQUITY, not WACC.")
+    elif cur_ebit is None:
         flags.append("MARGIN_BASIS_UNCHECKED: no `current_ebit_margin` supplied, so the "
                      "EBITDA-in-an-EBIT-slot check did not run — pass the company's current "
                      "EBIT (PBIT / revenue) margin to enable it.")
@@ -407,7 +428,7 @@ def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, 
                      "regression beta that a volatile share price inflates, not the business's risk. Damodaran uses a "
                      "bottom-up/sector beta (unlevered industry beta, relevered for this firm's debt). Confirm that's "
                      "what this is; a regression beta over-discounts and depresses value for no business reason.")
-    if max(margin) > 0.40:
+    if shape != "equity" and max(margin) > 0.40:
         flags.append(f"HIGH_MARGIN_ASSUMPTION: peak operating margin {max(margin):.0%} "
                      "— confirm a real peer has sustained this; few do. And remember a bigger target market "
                      "usually comes WITH lower margins + heavier reinvestment, not higher margins (SpaceX).")

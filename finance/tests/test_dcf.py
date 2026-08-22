@@ -423,4 +423,30 @@ check("run: terminal wacc <= g is a gap, not a raise",
 check("run: missing inputs are a gap, not a traceback",
       dcf.run("INFY", None)["ok"] is False and dcf.run("INFY", {})["ok"] is False)
 
+# --- model_shape: an equity-shaped run is asked different questions ------------------
+def _codes(spec, **kw):
+    kw.setdefault("margin", [1.0])
+    kw.setdefault("growth", [0.10])
+    return [f.split(":")[0] for f in dcf._sanity_flags(
+        spec, 0.05, 0.12, 0.15, 100.0, 50.0, 50.0, 0.065, kw["growth"], kw["margin"])]
+
+_fcff = _codes({})
+check("fcff shape still runs the margin-basis check", "MARGIN_BASIS_UNCHECKED" in _fcff, _fcff)
+check("fcff shape still flags a 100% margin", "HIGH_MARGIN_ASSUMPTION" in _fcff, _fcff)
+
+_eq = _codes({"model_shape": "equity"})
+check("equity shape declares itself", "EQUITY_MODEL_SHAPE" in _eq, _eq)
+check("equity shape suppresses the margin-basis check",
+      "MARGIN_BASIS_UNCHECKED" not in _eq, _eq)
+check("equity shape suppresses the high-margin flag",
+      "HIGH_MARGIN_ASSUMPTION" not in _eq, _eq)
+check("equity shape keeps the checks that still apply",
+      _codes({"model_shape": "equity"}, growth=[0.60]) and
+      "HIGH_GROWTH_ASSUMPTION" in _codes({"model_shape": "equity"}, growth=[0.60]),
+      _codes({"model_shape": "equity"}, growth=[0.60]))
+check("an unknown model_shape falls back to fcff, never silently skips checks",
+      "MARGIN_BASIS_UNCHECKED" in _codes({"model_shape": "nonsense"}), _codes({"model_shape": "nonsense"}))
+check("model_shape is case- and space-insensitive",
+      "EQUITY_MODEL_SHAPE" in _codes({"model_shape": " Equity "}), _codes({"model_shape": " Equity "}))
+
 summary()

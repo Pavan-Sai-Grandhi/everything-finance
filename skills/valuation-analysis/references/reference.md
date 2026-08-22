@@ -182,6 +182,8 @@ Multiples are **DCF in shorthand**: every one of them traces to the same drivers
 
 Two structural cases **override to low** whatever the grid says: **banks / NBFCs / insurers**, and **violently cyclical / commodity** firms. Both are in SKILL.md § Boundaries.
 
+For a lender or insurer, run the DCF as an **equity-shaped** model rather than bending the firm-side levers silently: pass `model_shape: equity` alongside `base_revenue` = net income, `operating_margin` = 1.0, `tax_rate` = 0 (the stream is already post-tax), `sales_to_capital` = marginal return on reinvested equity, `terminal_roic` = the sustainable ROE, `net_debt` = 0, and a discount rate that is a **cost of equity, not WACC**. The engine then suppresses the margin checks, which have no meaning on that shape, and states the shape in its flags so a reader knows which model produced the number. The stance still leads on P/B×RoE and peer multiples — the equity DCF is the sanity band.
+
 **Combine into one stance, weighted by that grade:**
 
 | DCF confidence | How the two views combine |

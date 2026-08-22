@@ -2,7 +2,7 @@
 name: filings-watch
 description: Pull NSE exchange filings for a ticker — corporate announcements, corporate actions (dividend/split/bonus/buyback), board meetings, and shareholding pattern changes — and classify what's material. Use whenever the user asks what a company announced, about recent filings, results dates, dividends, promoter stake changes, bulk/block deals, or "any news from the exchanges on X".
 argument-hint: "TICKER [lookback window, default 30 days]"
-allowed-tools: Read, Write, mcp__finance-company__*, mcp__finance-market__get_prior_run
+allowed-tools: Read, Write, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*, mcp__finance-market__get_prior_run, mcp__plugin_everything-finance_finance-market__get_prior_run
 ---
 
 # Exchange Filings Watch

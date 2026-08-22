@@ -2,7 +2,7 @@
 name: sector-analysis
 description: Read one Indian sector deep — relative strength vs Nifty, the sector's own KPIs, sourced tailwinds and headwinds, leaders and laggards, and where a focus stock sits inside it — or, when no sector is named, rank the NSE sectoral indices by relative strength and deep-dive the top three. Use whenever the user asks about a sector: "how does banking look", "is IT turning", "which sectors are hot", sector rotation, where money is flowing, "which sector should I look at", or wants sector context before picking a stock.
 argument-hint: "[sector, e.g. 'banking' or 'IT' — omit to rank the rotation and deep-dive the top three] [optional: a focus stock to position inside it]"
-allowed-tools: Read, Write, Bash, Agent, mcp__finance-market__*, mcp__finance-company__*
+allowed-tools: Read, Write, Bash, Agent, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
 # Sector Analysis — one sector deep, or the rotation ranked
@@ -39,6 +39,10 @@ stance: favorable | neutral | unfavorable   confidence: low | med | high
 focus_position: leader | laggard | n/a
 -->
 ## Sector Read — <SECTOR> (<date>)
+
+## Findings
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+
 **RS vs Nifty**: 1M <±x.x%> / 3M <±x.x%> / 6M <±x.x%> → classification (Leading/Improving/Weakening/Lagging)
 **Cycle position**: one line — where this sector sits in the rotation cycle and why now
 **KPI snapshot**: the sector's signature KPIs, current reading + trend, each sourced (NIM/GNPA/CASA, EBITDA/tonne, VNB margin/combined ratio, SSSG, ARR/RevPAR, etc.)

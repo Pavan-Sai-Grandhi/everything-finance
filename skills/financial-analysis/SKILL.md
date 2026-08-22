@@ -2,7 +2,7 @@
 name: financial-analysis
 description: Score one Indian company's numbers against the Varsity due-diligence checklist and write a standalone Company Overview of what the business actually is — returns (ROE DuPont'd, ROCE vs cost of capital), the five-year operating-margin trend, debt and interest cover, whether cash follows profit, promoter holding and pledge, revenue growth, and whether reported profit is the profit the business earned — with the annual report and latest concall read directly and cited by page. Use whenever the user asks whether a company's numbers stack up: "are the fundamentals good", "is X financially sound", "what's their ROCE / debt like", "is the profit backed by real cash", "is that P/E real", "what does this company actually do", "what did their annual report / last concall say", "any red flags in the accounts". This is the numbers-and-business read on one company — what it's worth is valuation-analysis, whether the people running it can be trusted is management-analysis, and the full bull/bear debate is deep-analysis.
 argument-hint: "TICKER [optional: company name; optional: document paths already fetched]"
-allowed-tools: Read, Write, mcp__finance-company__*
+allowed-tools: Read, Write, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
 # Financial Analysis — the Varsity checklist and the Company Overview
@@ -33,6 +33,10 @@ flags: <comma-separated top red/green flags>
 axis: growth_durability
 -->
 ## Financials — <TICKER> (<date>)
+
+## Findings
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+
 **Company overview**: what it does, segments & revenue (and EBIT where disclosed) mix %, geography split, flagship products/brands, key end-markets, and the moat that protects economics. Self-contained — a reader meeting the company here should be oriented.
 **Checklist scorecard**: ROE/ROCE (3y trend) | margins | D/E + interest cover | CFO vs EBITDA | promoter holding & pledge | revenue CAGR | earnings quality — each PASS/FLAG/FAIL + the number
 **Annual report findings**: 3–5 specifics with page/section cites (auditor quals, RPTs, contingent liabilities, segment shifts)

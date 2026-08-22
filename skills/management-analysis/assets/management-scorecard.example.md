@@ -1,10 +1,15 @@
 <!-- management-block
-integrity: PASS | PASS (partial, <k> of 7) | FLAG | FAIL   skill: STRONG | ADEQUATE | WEAK | n/a
+integrity: PASS | FLAG | FAIL | PASS (partial, <k> of 7)   skill: STRONG | ADEQUATE | WEAK | n/a
 integrity_checks: remuneration=<v> rpt=<v> record=<v> media=<v> churn=<v> ego=<v> pledge=<v>   <v ∈ PASS|FLAG|FAIL|NOT-CHECKED>
 overall_grade: <one phrase>   confidence: low | med | high
 axis: governance
 -->
 # Management — <COMPANY> (<SYMBOL>) · <YYYY-MM-DD>
+
+## Findings
+
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+
 
 > Integrity is a hard gate; skill is graded for honest managements. Judges intention and pattern, not fixed ratios. Evidence cited or it doesn't count.
 

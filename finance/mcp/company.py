@@ -157,7 +157,11 @@ def get_corporate_actions(symbol: str) -> dict:
                 "x steady-state-margin grid (the levers a growth stock actually turns "
                 "on), `reverse` the assumption today's price implies. The full result "
                 "JSON is written to the ticker's run-day folder as dcf.json; the "
-                "response carries the headline numbers plus `dcf_path`."
+                "response carries the headline numbers plus `dcf_path`. "
+                "`inputs.model_shape` is `fcff` (default) or `equity` — use `equity` for "
+                "a bank, NBFC or insurer, where FCFF is ill-defined: feed net income as "
+                "`base_revenue` with a cost-of-equity discount rate, and the margin checks "
+                "that have no meaning on that shape are suppressed."
 )
 def run_dcf(ticker: str, inputs: dict, relative: dict | None = None,
             sensitivity: bool = False, story: bool = False, reverse: bool = False,
