@@ -48,14 +48,13 @@ Rules: every argument must trace to something in the input reports — no outsid
 Every report this plugin writes is read by a person deciding where their money goes, and by the
 agents downstream of you. Both are ill-served by a wall of text.
 
-- **Prose, not machine output.** Field syntax (`integrity=PASS rpt=FLAG`) and bare metric strings
-  (`RS -4.79pp 1M / -13.53pp 3M`) belong in the machine-read block at the top; spell them out in
-  the body.
+- **Prose, not machine output.** Field syntax and bare metric strings belong in the machine-read
+  block at the top; spell them out in the body.
 - **Short paragraphs**, three or four sentences, one idea each. Break where the argument turns.
 - **Conclusion first, evidence after** — in every section. Never make the reader assemble the
   point from clauses.
-- **A number arrives with its meaning:** "NIM 3.34%, down from 3.48% — fourteen basis points of
-  core spread gone", not "NIM: 3.34% (FY26) vs 3.48% (FY25)".
+- **A number arrives with its meaning.** Give the movement and what it signifies, not a bare pair
+  of figures for the reader to difference.
 - **A table cell is a cell, not an essay.** One or two sentences. Where a scorecard row needs a
   paragraph of reasoning, the row carries the verdict and the number, and the reasoning goes in
   the prose below the table.

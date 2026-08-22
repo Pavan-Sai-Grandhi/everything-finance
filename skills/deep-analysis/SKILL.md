@@ -55,7 +55,7 @@ In `quick`, skip the document warm-up and tell each leg `documents: none (quick 
 
 Each leg is a **skill run inside a generic profile agent** — issue every `Agent` call in one message. The dispatch names the skill, its mode where the skill has one, the output path, the ticker, and the leg's inputs.
 
-**Name every agent `everything-finance:<agent>`.** A bare `terminal-analyst` does not resolve; the launch fails and the wave has to be reissued.
+**Name every agent `everything-finance:<agent>`.** The unqualified name does not resolve; the launch fails and the whole wave has to be reissued.
 
 | Leg skill | Profile | Inputs beyond the ticker | Modes |
 |---|---|---|---|
