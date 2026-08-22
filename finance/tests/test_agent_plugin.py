@@ -252,4 +252,15 @@ with open(os.path.join(ROOT, "CLAUDE.md"), encoding="utf-8") as fh:
     _cl = fh.read()
 check("the prose standard is stated plugin-wide", "## How a report reads" in _cl, "")
 
+# CLAUDE.md does not reach a forked subagent, so every agent that persists a report carries the
+# writing standard itself — and carries the same one, or the reports drift apart in voice.
+_WRITERS = ("terminal-analyst", "field-analyst", "desk-analyst", "bull-researcher",
+            "bear-researcher", "contest-researcher", "portfolio-manager", "report-writer")
+_marker = "- **Cut what carries nothing.** If a sentence would not change what the reader does, delete it."
+for stem in _WRITERS:
+    with open(os.path.join(ROOT, "agents", stem + ".md"), encoding="utf-8") as fh:
+        body = fh.read()
+    check(f"{stem} carries the report-writing standard", "## How the report reads" in body, stem)
+    check(f"{stem} carries the same wording, not a variant", _marker in body, stem)
+
 summary()

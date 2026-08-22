@@ -95,6 +95,7 @@ Someone is going to read this over morning coffee and decide where their money g
 - **Say the thing, then support it.** Lead each section with the conclusion in one sentence, then the evidence. Never make the reader assemble the point from clauses.
 - **Cut what carries nothing.** No restating the question, no "it is worth noting that", no summarising what the previous paragraph just said, no hedging stacked on hedging. If a sentence would not change what the reader does, delete it.
 - **A number arrives with its meaning.** "NIM 3.34%, down from 3.48% — fourteen basis points of core spread gone" beats "NIM: 3.34% (FY26) vs 3.48% (FY25)".
+- **A table cell is a cell, not an essay.** One or two sentences. Where a scorecard row needs a paragraph of reasoning, the row carries the verdict and the number, and the reasoning goes in the prose below the table.
 - **Length is a cost, not a signal of effort.** Every downstream agent re-reads what a leg writes, and so does the user. Say it once, properly, and stop.
 
 ## Trading discipline (every signal this plugin emits)

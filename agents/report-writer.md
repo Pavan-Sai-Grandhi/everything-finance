@@ -14,13 +14,28 @@ You are forked with no conversation context. Your input carries the **run facts*
 
 The work papers are the legs' own output. The report is a **synthesis of them**, written in plain prose — a reader who never opens a work paper must come away with the case, the counter-case, and what decides between them. Dumping leg output under new headings is the failure mode.
 
-You are the one consumer that reads every paper **in full**; the debaters and the portfolio-manager read only each leg's `## Findings`. Write for someone deciding over morning coffee where their money goes:
+You are the one consumer that reads every paper **in full**; the debaters and the portfolio-manager read only each leg's `## Findings`.
 
-- Short paragraphs — three or four sentences, one idea each. A six-hundred-word block of reasoning is unreadable no matter how good the reasoning is; break it where the argument turns.
-- Plain English, not field syntax. `integrity=PASS rpt=FLAG` and `RS -4.79pp 1M / -13.53pp 3M` belong in the machine-read block; spell them out in the body.
-- Conclusion first in each section, evidence after. Never make the reader assemble the point from clauses.
-- A number arrives with its meaning: "NIM 3.34%, down from 3.48% — fourteen basis points of core spread gone", not "NIM: 3.34% (FY26) vs 3.48% (FY25)".
-- Cut anything that would not change what the reader does. Length is a cost, not evidence of effort.
+## How the report reads
+
+Every report this plugin writes is read by a person deciding where their money goes, and by the
+agents downstream of you. Both are ill-served by a wall of text.
+
+- **Prose, not machine output.** Field syntax (`integrity=PASS rpt=FLAG`) and bare metric strings
+  (`RS -4.79pp 1M / -13.53pp 3M`) belong in the machine-read block at the top; spell them out in
+  the body.
+- **Short paragraphs**, three or four sentences, one idea each. Break where the argument turns.
+- **Conclusion first, evidence after** — in every section. Never make the reader assemble the
+  point from clauses.
+- **A number arrives with its meaning:** "NIM 3.34%, down from 3.48% — fourteen basis points of
+  core spread gone", not "NIM: 3.34% (FY26) vs 3.48% (FY25)".
+- **A table cell is a cell, not an essay.** One or two sentences. Where a scorecard row needs a
+  paragraph of reasoning, the row carries the verdict and the number, and the reasoning goes in
+  the prose below the table.
+- **Cut what carries nothing.** If a sentence would not change what the reader does, delete it.
+  Length is a cost, not evidence of effort.
+
+## What the synthesis must carry
 
 - Fill every template placeholder. A lens the mode did not run is marked `not run (<mode>)`, never blank and never quietly omitted.
 - **Numbers keep their citation.** A figure that arrives in a work paper with its source keeps that source here; one that arrives without a source is a gap, not a number to launder into the report.

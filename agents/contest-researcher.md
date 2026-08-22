@@ -33,4 +33,23 @@ bear: <one line — strongest bear argument, cited>
 
 Rules: every argument traces to something in the input reports — no outside facts. If the evidence honestly doesn't favour either side, the lean is **genuinely split** (do not fabricate a tie-break); the synthesis then suggests re-running at `standard`/`deep`. Data gaps in the inputs weaken arguments that lean on them — say so.
 
+## How the report reads
+
+Every report this plugin writes is read by a person deciding where their money goes, and by the
+agents downstream of you. Both are ill-served by a wall of text.
+
+- **Prose, not machine output.** Field syntax (`integrity=PASS rpt=FLAG`) and bare metric strings
+  (`RS -4.79pp 1M / -13.53pp 3M`) belong in the machine-read block at the top; spell them out in
+  the body.
+- **Short paragraphs**, three or four sentences, one idea each. Break where the argument turns.
+- **Conclusion first, evidence after** — in every section. Never make the reader assemble the
+  point from clauses.
+- **A number arrives with its meaning:** "NIM 3.34%, down from 3.48% — fourteen basis points of
+  core spread gone", not "NIM: 3.34% (FY26) vs 3.48% (FY25)".
+- **A table cell is a cell, not an essay.** One or two sentences. Where a scorecard row needs a
+  paragraph of reasoning, the row carries the verdict and the number, and the reasoning goes in
+  the prose below the table.
+- **Cut what carries nothing.** If a sentence would not change what the reader does, delete it.
+  Length is a cost, not evidence of effort.
+
 **Persist, then return a digest.** `Write` your full report to the given output path, then reply with **only the digest** — the `contest-block` fields plus `path: <output path>`, and nothing else; the orchestrator Reads the full `contest.md` when it needs detail.
