@@ -220,7 +220,7 @@ Consumers: `get_company_fundamentals` / `run_fundamental_screen`, read by `finan
 and `valuation-analysis` and by
 `find-trade` / `strategy-manager` for a fundamental candidate cut. Key contract — each returns
 the shared **envelope**:
-- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,period_kinds,rows}, balance_sheet_10y:{columns,period_kinds,rows}, cash_flow_10y:{columns,period_kinds,rows}, quarters:{columns,period_kinds,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `period_kinds` parallels `columns`, tagging each `FY`/`TTM`/`interim`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
+- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,period_kinds,rows}, balance_sheet_10y:{columns,period_kinds,rows}, cash_flow_10y:{columns,period_kinds,rows}, quarters:{columns,period_kinds,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid,ttm_pe,pb}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `period_kinds` parallels `columns`, tagging each `FY`/`TTM`/`interim`. Each peer row carries its own **trailing** multiples from the same response, so the relative read needs no per-peer call and every peer is struck on one basis; a multiple the source does not publish is `None`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
 - `screen(query, limit=1000)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`), biggest market cap first. `query` is `FIELD > VALUE` / `FIELD < VALUE` clauses joined by `AND` over Tickertape's published screener field names; `>=`/`<=` and an unresolvable name **refuse the whole query** with a labelled gap, because a half-resolved query returns companies that never passed the cut.
 
 Line-item labels are **Tickertape's own published vocabulary**, and three of them mean less
@@ -450,9 +450,19 @@ it defers the regime check to the skill.
 `financial-analysis`, `management-analysis`, `valuation-analysis` — every leg that must cite a
 primary document. The envelope carries **paths, never body text**: `data:{symbol, documents:[{kind ∈
 annual_report|concall, label, url, publisher, text_path, text_chars, text_lines, extracted_by,
-cached}], documents_total, annual_reports_available, concalls_available}`. A published report never
-changes at its URL, so the cache has **no expiry** and `fresh=True` is the only re-download; a
+cached, outline}], documents_total, annual_reports_available, concalls_available}`. A published report
+never changes at its URL, so the cache has **no expiry** and `fresh=True` is the only re-download; a
 document that will not download or convert is a labelled gap and the others still come back.
+
+`outline` is `{section_key: [{line, text}]}` — the notes a leg must cite, mapped to their
+best-first candidate line numbers in `text_path`. Keys: `auditors_report`,
+`emphasis_of_matter`, `auditor_remuneration`, `mdna`, `directors_report`,
+`corporate_governance`, `related_party`, `contingent_liabilities`, `remuneration`,
+`tax_note`, `segment`, `cash_flow`, `esop`, `shareholding`, `qna`. Candidates are ranked so
+the first is the section rather than its contents-page entry, and capped at four. **An absent
+key means the document has no such section** — that is the labelled gap for the check that
+needed it, not a reason to grep. Built once at conversion and cached with the document, so
+every leg reading the same report gets the same map for free.
 
 The handoff: an orchestrator calls `get_documents` once and hands each leg the `text_path`s, so
 several legs reading the same annual report land on the same bytes. A leg given no paths calls the
@@ -472,22 +482,32 @@ returns it unchanged plus `path`. The debate roles are named agents and own thei
 | Producer | Block | Fields |
 |---|---|---|
 | `technical-analysis` | `technical-block` | `verdict`, `confidence`, `trend_stage`, `support`, `resistance`, `bull_invalidated_below`, `bear_invalidated_above`, `axis: technical_structure` |
-| `financial-analysis` | `financials-block` | `verdict`, `confidence`, `varsity_score`, `roce`, `de`, `cfo_ebitda`, `rev_cagr_5y`, `flags`, `axis: growth_durability` |
-| `management-analysis` | `management-block` | `integrity` (the hard gate), `skill`, `overall_grade`, `confidence`, `axis: governance` |
-| `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, `peg`, `peer_median_pe`, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
+| `financial-analysis` | `financials-block` | `verdict`, `confidence`, `varsity_score` (of 7), `roce`, `de`, `cfo_ebitda`, `rev_cagr_5y`, **`clean_eps`**, **`eps_adjustments`**, `flags`, `axis: growth_durability` |
+| `management-analysis` | `management-block` | `integrity` (the hard gate), **`integrity_checks`** (all seven sub-checks, each PASS/FLAG/FAIL/NOT-CHECKED), `skill`, `overall_grade`, `confidence`, `axis: governance` |
+| `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, **`pe_basis`**, `peg`, `peer_median_pe`, **`peers_priced`**, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
 | `news-scan` | `news-block` | `sentiment_score` (−2…+2), `confidence`, `recurring_theme`, `next_event`, `axis: growth_durability` |
 | `sector-analysis` | `sector-block` | `sector`, `rs_class`, `stance`, `confidence`, `focus_position` |
 | `contest-researcher` | `contest-block` | `lean ∈ {bull, bear, genuinely split}`, `axis`, one-line `bull`, one-line `bear` |
 | `bull-researcher` / `bear-researcher` | `debate-block` | `axis`, `claim`, `conceded`, `new_evidence` |
-| `portfolio-manager` | `verdict-block` | `call`, `conviction`, `invalidation`, `review`, `integrity_gate` |
+| `portfolio-manager` | `verdict-block` | `call`, `conviction`, **`value_stance`**, **`action_driver`**, `invalidation`, `review`, `integrity_gate`, **`evidence`**, **`weakest_load_bearing_input`** |
 
-An **integrity FAIL** in `management-block` overrides every other lens. The `debate-block`'s
-`axis` + `claim` + `conceded` are exactly what `deep-analysis/scripts/escalation.py` reads to
-decide a round 2 — it escalates only when both sides' top points sit on the *same* axis from
-`VALID_AXES` (`valuation`, `growth_durability`, `balance_sheet_risk`, `governance`,
-`technical_structure`), with distinct claims and neither conceded. A `contest-block` lean of
-`genuinely split` makes the synthesis suggest a re-run at `standard`/`deep`; it never
+An **integrity FAIL** in `management-block` overrides every other lens; an `integrity` of
+`PASS (partial, k of 7)` is uncertainty, not a cleared gate.
+
+The `debate-block`'s `axis` + `claim` + `conceded` + `new_evidence` are exactly what
+`deep-analysis/scripts/escalation.py` reads to decide the next round, in both `standard` and
+`deep`. It escalates whenever the two sides have something left to test: **different** axes
+(a cross-examination round) or the **same** axis with distinct, unconceded claims (a rebuttal
+round). A concession, an identical claim, `new_evidence: false` on both sides after round 1,
+or the mode's round cap (standard 2, deep 3) ends it. `axis` must come from `VALID_AXES`
+(`valuation`, `growth_durability`, `balance_sheet_risk`, `governance`, `technical_structure`);
+anything else is reported as a broken contract, not a converged debate. A `contest-block` lean
+of `genuinely split` makes the synthesis suggest a re-run at `standard`/`deep`; it never
 auto-escalates.
+
+`financials-block.clean_eps` is the earnings base `valuation-analysis` strikes its multiples
+on: where `eps_adjustments` is not `none`, the valuation leg's `pe_basis` is `adjusted` and its
+peer P/Es must be struck the same way or `relval` voids the peer comparison.
 
 ## Artifact: deep-analysis report
 **Producer:** `deep-analysis` → `artifacts/stocks/<TICKER>/<date>/` (`paths.stock_dir`). The

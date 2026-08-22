@@ -22,7 +22,7 @@ Read `references/reference.md` first — it owns the method: the five-step per-s
 
 ## Single-sector workflow
 
-1. **Inputs**: the sector, optionally a focus ticker to position inside it, optionally an output path, optionally a cached sector body (a caller passes one only when its cache is fresh). Given a company name instead of a sector, resolve it to its sector first.
+1. **Inputs**: the sector, optionally a focus ticker to position inside it, optionally the constituent list the caller resolved, optionally an output path, optionally a cached sector body (a caller passes one only when its cache is fresh). Given a company name instead of a sector, resolve it to its sector first.
 2. **Cached body given — position-only.** Reuse the cached RS, cycle, KPI snapshot, tailwinds/headwinds, leaders/laggards and stance **as-is; recompute no part of the sector body**. Work only step 5 of the reference, the focus-stock position, and carry the reused body verbatim into the report with a one-line `sector body reused from cache (generated <date>)`, then skip to the report.
 3. **No cached body — work the reference's five steps in order**, computing the full body.
 4. **No unsourced tailwind or headwind.** Each bullet carries the KPI reading (company + period), the `get_news` item (publisher + date) or the index series and window behind it; a factor you cannot source becomes a **Data gaps** line instead of a bullet — the reference's *Evidence rule* has the standard.

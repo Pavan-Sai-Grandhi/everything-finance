@@ -146,6 +146,79 @@ def _measure(path):
     return chars, lines
 
 
+# The notes a leg must reach in an Indian annual report or concall, and the headings
+# they appear under. Keys are what a skill asks for; the regexes run over the extracted
+# text once, at conversion time, and the result is cached with the document.
+_SECTIONS = {
+    "auditors_report": r"independent auditor'?s?'? report",
+    "emphasis_of_matter": r"emphasis of matter",
+    "auditor_remuneration": r"(payment(s)? to auditor|auditor'?s?'? remuneration)",
+    "mdna": r"management discussion and analysis",
+    "directors_report": r"(board'?s? report|directors'? report)",
+    "corporate_governance": r"(corporate governance report|board of directors)",
+    "related_party": r"related part(y|ies) (disclosure|transaction)",
+    "contingent_liabilities": r"contingent liabilit",
+    "remuneration": r"(managerial remuneration|remuneration (of|to) (directors|key manageri)|section 197)",
+    "tax_note": r"(income tax expense|tax expense|current and deferred tax)",
+    "segment": r"(segment information|operating segments|segment reporting)",
+    "cash_flow": r"statement of cash flows?",
+    "esop": r"(employee stock option|esop scheme)",
+    "shareholding": r"(shareholding pattern|pattern of shareholding)",
+    "qna": r"(question[- ]and[- ]answer session|we will now begin the question)",
+}
+
+# A heading line is short and carries no page number; a contents-page entry is the
+# opposite. Ranking on that separates the real section from the table of contents,
+# which is otherwise the first hit for every pattern in the file.
+_PAGE_NUM = re.compile(r"(?<!\d)\d{1,4}(?!\d)")
+_MAX_HITS = 4
+
+
+def _rank(text, line_no, total_lines):
+    """Higher is more likely to be the section itself rather than a contents entry."""
+    stripped = " ".join(text.split())
+    score = 0.0
+    if len(stripped) <= 80:
+        score += 2.0
+    elif len(stripped) <= 160:
+        score += 1.0
+    if not _PAGE_NUM.search(stripped):
+        score += 1.5
+    if total_lines and line_no > total_lines * 0.08:
+        score += 1.0
+    return score
+
+
+def _outline(path, total_lines):
+    """Where each known section starts in the extracted text: {key: [{line, text}]}.
+
+    A leg needs four notes out of a 27,000-line annual report. Without this every leg
+    greps for them independently and the ones it cannot find become data gaps in a
+    report. Candidates are ranked best-first and capped, so the payload stays a few
+    hundred bytes and the leg reads the lines it needs instead of hunting.
+    """
+    pats = {k: re.compile(v, re.I) for k, v in _SECTIONS.items()}
+    hits = {k: [] for k in _SECTIONS}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for n, line in enumerate(fh, 1):
+                if not line.strip():
+                    continue
+                for key, pat in pats.items():
+                    if pat.search(line):
+                        hits[key].append((_rank(line, n, total_lines), n,
+                                          " ".join(line.split())[:120]))
+    except OSError:
+        return {}
+    out = {}
+    for key, found in hits.items():
+        if not found:
+            continue
+        found.sort(key=lambda h: (-h[0], h[1]))
+        out[key] = [{"line": n, "text": t} for _, n, t in found[:_MAX_HITS]]
+    return out
+
+
 def _document(link, kind, fresh, gaps):
     """One index entry → its `data.documents` row, or None having appended a gap."""
     label = (link.get("label") or "").strip() or kind
@@ -186,7 +259,7 @@ def _document(link, kind, fresh, gaps):
 
     row = {"kind": kind, "label": label, "url": url, "publisher": transport._host(url),
            "text_path": txt, "text_chars": chars, "text_lines": lines,
-           "extracted_by": method}
+           "extracted_by": method, "outline": _outline(txt, lines)}
     try:
         with open(meta, "w", encoding="utf-8") as fh:
             json.dump(row, fh, ensure_ascii=False)

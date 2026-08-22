@@ -16,18 +16,18 @@ Read `references/reference.md` — it owns how the six lenses combine into one v
 | Mode | Primary documents | Legs | Debate | ~Agents |
 |---|---|---|---|---|
 | `quick` | not fetched — ratios and CMP only | technical, financials, valuation | 1 `contest-researcher` (single pass) | ~4 |
-| `standard` *(default)* | warmed by you in phase 0 | all 6 | round 1, escalate to round 2 only on genuine divergence | ~7–8 |
-| `deep` | warmed by you in phase 0 | all 6 | up to 3 rounds with convergence check | ~12 |
+| `standard` *(default)* | warmed by you in phase 0 | all 6 | up to 2 rounds, the helper decides | ~7–8 |
+| `deep` | warmed by you in phase 0 | all 6 | up to 3 rounds, the helper decides | ~12 |
 | `fundamentals` | warmed by you in phase 0 | financials, management, valuation | none | 3 |
 
 Resolution — the two reads the helper can't make, then the helper itself, which decides first-match-wins:
 
 1. **A fundamentals-only request is the `--fundamentals` flag.** "Are the fundamentals good?", "is X fundamentally sound?", "fundamental analysis of X" ask for the numbers, the people and the price without the debate — append `--fundamentals` to the argument string you hand the helper.
-2. Check the broker: if a broker MCP is connected (`mcp__indmoney__*` / `mcp__kite__*` / `mcp__upstox__*`), look up whether the resolved ticker is a **live holding or open position**. Script code can't call MCP tools, so this is your job; pass the result to the helper.
-3. `python3 <plugin>/skills/deep-analysis/scripts/resolve_mode.py --args "<the raw argument string>" --symbol <TICKER> [--broker-holding]` → `{mode, reason}`. It applies: **an explicit flag wins** (over the holding escalation too, and `--fundamentals` over the two depth flags — it names the question, not the rigour); else a **holding / open-trade auto-escalates to `deep`**; else **`standard`**. It checks the open-trade artifact half (`state/trades/<SYMBOL>-*.yml` `status: open`) itself.
+2. **Check the broker, across every connected server.** Whether the resolved ticker is a **live holding or open position** decides the depth, so one server erroring is not an answer: try `mcp__indmoney__*`, then `mcp__upstox__*`, then `mcp__kite__*`, and stop at the first that returns. The result is `yes` (found in any book), `no` (at least one server answered and the ticker is not in it), or `unknown` (none connected, or every connected one errored). Script code can't call MCP tools, so this is your job. Keep the qty, avg cost and unrealised % where you get them — the portfolio-manager needs them in phase 3.
+3. `python3 <plugin>/skills/deep-analysis/scripts/resolve_mode.py --args "<the raw argument string>" --symbol <TICKER> --holding <yes|no|unknown>` → `{mode, reason, gaps}`. It applies: **an explicit flag wins** (over the holding escalation too, and `--fundamentals` over the two depth flags — it names the question, not the rigour); else a **holding / open-trade auto-escalates to `deep`**; else **`standard`**. It checks the open-trade artifact half (`state/trades/<SYMBOL>-*.yml` `status: open`) itself.
 4. When the holding auto-escalation fires (no explicit flag), print the one-line note: `Held position → running deep analysis (override with --quick).`
 
-Record `{mode, reason}` — the synthesis reports both.
+Record `{mode, reason, gaps}` — the synthesis reports the first two and folds the third into DATA_GAPS.
 
 **Refer the earlier run first.** Call `get_prior_run(skill="deep-analysis", subject=TICKER)` — `skill="fundamentals"` in `fundamentals`, so each mode builds on its own history — if a prior report exists, read it before launching the debate so this run builds on it rather than starting cold, and pass the prior verdict/levels to the legs as context. The synthesized report then opens with a **"What changed since `<date>`"** block (see Synthesize). No prior run is the normal first-time case.
 
@@ -37,10 +37,13 @@ Record `{mode, reason}` — the synthesis reports both.
 
 Four phases. Phase 0 is two calls you make yourself; phase 1 is all six legs in **one** parallel wave; phase 2 is the debate; phase 3 decides. **The fan-out scales to the mode** — see the per-mode column.
 
+**Your context is the run's largest single cost**, because every turn re-reads all of it. Two rules keep it small: the phase table below **is** the plan — do not mirror it into a task list — and after launching a parallel wave, **wait silently**. The harness re-invokes you on each agent's completion; a scheduled wakeup or a filler command buys nothing and pays a full context re-read for it.
+
 ### Phase 0 — no agent, you run it
 
 - **Market context.** `get_market_context(mode="quick")`. Costs nothing after the first caller of the day. Pass `market_posture` + `volatility.band` to the `portfolio-manager` (they govern **sizing**, never the verdict), and the stock's cap-tier `valuation.stance` to the valuation leg as context for its relative-multiple read.
-- **Primary documents.** `get_documents(TICKER, annual_reports=3)` — every mode but `quick`. It returns rows of `{kind, label, url, publisher, text_path, text_chars, text_lines, extracted_by, cached}`: **paths, never text**. Hand the `text_path`s to the legs that read documents; you never open one yourself.
+- **Primary documents.** `get_documents(TICKER, annual_reports=3)` — every mode but `quick`. It returns rows of `{kind, label, url, publisher, text_path, text_chars, text_lines, extracted_by, cached, outline}`: **paths, never text**. Hand each row's `text_path` *and* its `outline` — the map from each note to its line numbers — to the legs that read documents, so a leg reads the lines it needs instead of searching a report that runs to tens of thousands of lines. You never open one yourself.
+- **The peer set.** `get_company_fundamentals(TICKER)` already returned `peers`, each row carrying `ttm_pe` and `pb`. Pass that list to **both** the valuation and sector legs, so the peer-median multiple and the "leader or laggard in its group" read describe the same companies. Neither leg builds its own.
 
 Fetch-once is a **cache guarantee, not an ordering rule**: `get_documents` caches a converted document permanently and `get_company_fundamentals` caches for the day, so every leg that calls them lands on the same bytes whatever order it ran in. That is why phase 1 is a single wave.
 
@@ -53,11 +56,13 @@ Each leg is a **skill run inside a generic profile agent** — issue every `Agen
 | Leg skill | Profile | Inputs beyond the ticker | Modes |
 |---|---|---|---|
 | `technical-analysis` | `terminal-analyst` | — (it pulls its own candles) | quick, standard, deep |
-| `financial-analysis` | `terminal-analyst` | company name + the document `text_path`s | all |
-| `valuation-analysis` | `terminal-analyst` | the document `text_path`s + the cap-tier `valuation.stance` as context | all |
-| `sector-analysis` (mode `single-sector`) | `terminal-analyst` | the sector, the ticker **as focus stock**, the cached sector body when fresh (see *Sector leg*) | standard, deep |
-| `management-analysis` | `field-analyst` | company name + the document `text_path`s | standard, deep, fundamentals |
+| `financial-analysis` | `terminal-analyst` | company name + the document `text_path`s and `outline`s | all |
+| `valuation-analysis` | `terminal-analyst` | the document `text_path`s and `outline`s, the peer list, + the cap-tier `valuation.stance` as context | all |
+| `sector-analysis` (mode `single-sector`) | `terminal-analyst` | the sector, the ticker **as focus stock**, the peer list, the cached sector body when fresh (see *Sector leg*) | standard, deep |
+| `management-analysis` | `field-analyst` | company name + the document `text_path`s and `outline`s | standard, deep, fundamentals |
 | `news-scan` | `field-analyst` | company name | standard, deep |
+
+The financials leg reports the earnings base (`clean_eps`, `eps_adjustments`) and the valuation leg strikes its multiples on it. They run in the same wave, so the valuation leg derives its own adjustment from the same published rows; where the two disagree, the synthesis names both and says which the verdict used.
 
 **Output paths.** Staged work papers go under `artifacts/tmp/staging/<TICKER>/agents/` (`paths.tmp_dir("staging")`) — `technical.md`, `financials.md`, `news.md`, `sector.md`, `contest.md`, `bull-r<N>.md`, `bear-r<N>.md`, `verdict.md`. The valuation and management legs are given their own run-day paths instead — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (the engine also writes `dcf.json` beside it) and `management.md` (`paths.stock_dir`) — so `get_prior_run(skill="dcf"|"management")` finds them regardless of which skill produced them.
 
@@ -70,8 +75,8 @@ If phase 0 or any leg fails, state the gap and continue; the portfolio-manager w
 | Phase | Agent | Input | Modes |
 |---|---|---|---|
 | 2 | `contest-researcher` | the leg report **paths** (technical, financials, valuation) | quick |
-| 2 | `bull-researcher` / `bear-researcher` | the phase-1 report **paths** (round 1); the opposing side's previous-round report (round r>1) | standard, deep |
-| 3 | `portfolio-manager` | the leg report **paths** + the full debate transcript paths — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level | quick, standard, deep |
+| 2 | `bull-researcher` / `bear-researcher` | the phase-1 report **paths** (round 1); the opposing side's previous-round report, its own, the round number and the helper's `directive` (round r>1) | standard, deep |
+| 3 | `portfolio-manager` | the leg report **paths**, the full debate transcript paths, `position` (from step 2's broker check: `{held, qty, avg_cost, unrealised_pct}`), `debate` (`{rounds_run, stopped_because, engaged}`) and the market context — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level | quick, standard, deep |
 
 ## Debate — by mode
 
@@ -79,22 +84,23 @@ Phase 2's shape depends on the resolved mode.
 
 **`quick` — single-pass contest.** Fork one `contest-researcher` with the three leg paths. It reads them, writes `contest.md` (strongest bull case, strongest bear case, balance-of-evidence lean), and returns the digest. No bull/bear loop. If its lean is **`genuinely split`**, the synthesis appends a one-line suggestion to re-run `standard`/`deep` — it does **not** auto-escalate (the user chose quick).
 
-**`standard` — round 1 + conditional round 2.** Fork `bull-researcher` and `bear-researcher` in parallel (round 1) from the phase-1 paths. Then decide escalation deterministically from their two digests' `debate-block`s (axis + claim + concession): `python3 <plugin>/skills/deep-analysis/scripts/escalation.py --bull <bull-r1.json> --bear <bear-r1.json>` → `{escalate, reason}`. **Escalate to round 2 only on genuine divergence** (both top points on the *same* verdict-relevant axis, distinct evidence-tied claims, neither conceded); otherwise stop at round 1 and go to the PM. (Write each digest's `debate-block` fields to a small JSON for the helper, or apply the same rule by hand — the helper is the source of truth.) One round is the baseline; a second is opt-in on evidence.
+**`standard` and `deep` — round 1, then the helper decides.** Fork `bull-researcher` and `bear-researcher` in parallel (round 1) from the phase-1 paths. After every round, write each side's `debate-block` fields to a small JSON and run:
 
-**`deep` — up to 3 rounds, early-stop on convergence.** The full loop, capped at 3:
-- **Round 1:** `bull` and `bear` in parallel from the phase-1 paths.
-- **Round r > 1:** each re-forked, fed the *other* side's round r-1 report (and its own), required to **add new load-bearing evidence or explicitly concede** (`new_evidence: false` is not a valid turn). Tell each agent its round number.
-- **Convergence check** after each round (you, the orchestrator — no extra agent): did either side introduce a *new* evidence-tied argument this round (`new_evidence: true`, no concession)? If neither did, **stop**. Otherwise continue, up to round 3.
+`python3 <plugin>/skills/deep-analysis/scripts/escalation.py --bull <bull-rN.json> --bear <bear-rN.json> --mode <standard|deep> --round <N>` → `{escalate, reason, directive, gaps}`
 
-Write each round's reports as `bull-r<N>.md` / `bear-r<N>.md`. Record how many rounds ran and why it stopped (converged / escalated / hit max / single contest) — the synthesis reports it.
+It is the source of truth for both modes and it caps the rounds itself (standard 2, deep 3); the reference's § "Debate protocol" owns when a further round is worth running. **Put `directive` in both round prompts verbatim** — it names what that round is for, and the researchers act on it.
 
-The `portfolio-manager` then runs once on the full transcript (the contest, or all debate rounds) plus the leg report paths.
+**Round r > 1:** re-fork each side with its own round r-1 report, the *other* side's round r-1 report, the directive, and its round number. Each must add new load-bearing evidence, explicitly concede, or report `new_evidence: false` — **which is a valid, debate-ending turn**. A side with nothing new says so; it does not manufacture a point to keep the loop alive.
+
+Write each round's reports as `bull-r<N>.md` / `bear-r<N>.md`. Record `rounds_run`, the helper's `reason` for stopping, and whether the sides ever engaged on a common axis — all three go to the portfolio-manager and into the synthesis. A `gaps` entry from the helper means a digest broke its contract; report it, do not treat it as convergence.
+
+The `portfolio-manager` then runs once on the full transcript (the contest, or all debate rounds) plus the phase-3 inputs above. **Pass it facts, not rulings** — it holds its own judging rules, and restating them in the dispatch anchors the decision you asked it to make.
 
 ## Fundamentals mode — three legs, no debate
 
 `fundamentals` runs phase 0 and exactly the three legs the phase-1 table marks, then **stops**: no debate, no portfolio-manager, no technical / news / sector lens.
 
-**Merge, don't paste.** Author one fundamentals report in plain prose from the three digests, re-reading a leg's file for any detail you need: the company overview and checklist highlights (financials), the integrity gate + skill grade (management), and the **combined valuation stance with its DCF-confidence grade**. An integrity FAIL is the headline — overall AVOID regardless of numbers or valuation. There is no verdict table, no entry/stop/target and no sizing: this mode reports what the business is and what it is worth, and leaves the position call to a full run.
+The `report-writer` merges the three legs the same way it does a full run — pass it the three paths and the run facts. There is no verdict table, no entry/stop/target and no sizing: this mode reports what the business is and what it is worth, and leaves the position call to a full run. An integrity FAIL is the headline — overall AVOID regardless of numbers or valuation.
 
 In chat, give the fundamentals verdict, the integrity gate result, the intrinsic-value range + DCF confidence, and the two strongest flags.
 
@@ -105,20 +111,19 @@ The sector body (RS, KPIs, tailwinds/headwinds, leaders/laggards, stance) is cac
 - **≤ 30** — pass the cached body *and* the focus ticker, so the leg reuses the body and computes only the stock's positioning.
 - **`None` or > 30** — pass no body; the leg computes a fresh one. Seeding the cache and raising the next-refresh reminder are steps the `sector-analysis` skill owns; you do neither.
 
-## Synthesize from the work papers
+## Synthesize — one forked `report-writer`
 
-The work papers above are the legs' own output — you do **not** write them. Build the report **from** them: the digests they returned, re-reading a leg's file for any detail you need.
+The work papers are the legs' own output; you do **not** write them, and you do **not** read them to write the report. Fork one `report-writer` with the template path, the output path, the work-paper paths, and the run facts only you hold:
 
-Write the synthesized report to `artifacts/tmp/staging/<TICKER>.md` — in `fundamentals`, `artifacts/tmp/staging/<TICKER>.fundamentals.md` (`paths.tmp_dir("staging")`) — using `assets/deep-analysis.md` (bundled with this skill). The template is a **readable synthesis** — you (the orchestrator) author every section in plain prose from the work papers, not by dumping leg output:
+`ticker`, company, date, CMP · `mode` + `MODE_REASON` · `debate` (`rounds_run`, `stopped_because`, `engaged`) · `agent_count` · the prior-run path when `get_prior_run` found one · the gaps you recorded yourself (the broker check, a failed leg, a skipped phase-0 call).
 
-- **Mode header & banners:** record the resolved `MODE` and the one-line `MODE_REASON`. In `quick` and in `fundamentals`, open with the template's banner for that mode, naming what was skipped, so the read is never mistaken for a full debate.
-- **Summary placeholders you fill yourself:** CMP, COMPANY_NAME_SUFFIX (" · <Company>" or empty), ONE_LINE_THESIS, CALL_NARRATIVE, the verdict table (ENTRY_SL_TARGET/RRR/ALLOC_CAP/INVALIDATION/REVIEW_TRIGGER from the portfolio-manager), the At-a-Glance lens table — every lens the mode ran, with the rest marked "not run (<mode>)"; each lens's stance + one-line read; the valuation line carries the **combined stance + DCF confidence**, the management line the integrity/skill grade. COMPANY_OVERVIEW (the financials leg's "Company overview" block), TOP_BULL_POINT / TOP_BEAR_POINT (from the debate or the contest's two sides), SECTOR_STANCE_ONELINE, KEY_LEVEL (nearest decision level from the technical read), DATA_GAPS (union of every leg's gaps, plus the lenses the mode skipped), DEBATE_ROUNDS (`single contest (quick)`, or `N rounds; stopped converged / escalated / hit max`), AGENT_COUNT (the profile agents that ran + the debate agents + the PM).
-- **Synthesized sections:** BULL_SYNTHESIS / BEAR_SYNTHESIS (distil each side's *strongest surviving* case across all rounds — or the contest's two sides — evidence-tied), DECISIVE_POINTS (what the PM kept/discarded + dissent worth keeping), SECTOR_CONTEXT (the sector read + where the stock sits in its sector), and the Evidence-by-Lens blocks (condense each leg report to its load-bearing facts and levels — keep the numbers and cites, drop the boilerplate).
-- **"What changed since `<date>`" block (only when a prior run was found):** verdict then→now, the DCF fair-value shift, whether the thesis is intact, and any notable new risk. Omit the block entirely on a first-ever run.
+It reads the papers in its own context, authors the report, and returns the path. Six leg reports, a multi-round transcript and a verdict never enter your context at once — that is the point of the fork, so do not read them "to check" and do not ask it for the body.
+
+Output path: `artifacts/tmp/staging/<TICKER>.md` — in `fundamentals`, `artifacts/tmp/staging/<TICKER>.fundamentals.md` (`paths.tmp_dir("staging")`). Template: `assets/deep-analysis.md`, bundled with this skill; it owns the section list and what fills each placeholder.
 
 The report **must contain a `## Telegram Brief` section** (≤ 10 lines). The plugin's Stop hook archives the staged report to `artifacts/stocks/<TICKER>/YYYY-MM-DD/` — `deep-analysis.md`, or `fundamental-analysis.md` from the `.fundamentals` staging name — moves the work papers to the folder of the same name beside it, and sends the brief to Telegram. Do not send Telegram messages yourself and do not move the files. **The two modes archive to separate files on purpose**: a fundamentals run must never overwrite the day's full run, and `get_prior_run(skill="deep-analysis"|"fundamentals")` then builds each mode on its own history.
 
-In chat (the debate modes), give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — not the whole report.
+In chat (the debate modes), give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — from the digests you already hold, not from the report file.
 
 ## Alerts this skill raises (via `finance/compute/alerts.py`)
 

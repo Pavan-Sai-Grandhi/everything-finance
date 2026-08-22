@@ -369,12 +369,23 @@ def _shareholding(sid):
 
 
 def _peers(sid):
-    """Sub-sector peers, self excluded. `sid` travels so get_stock_ratios can join."""
+    """Sub-sector peers, self excluded, each with the multiples the valuation tab returns.
+
+    `ttm_pe` and `pb` arrive in this one response, so the relative read needs no
+    per-peer call and every peer is struck on the same trailing basis. `sid` travels
+    for the ratios a peer row does not carry.
+    """
     blob, gap = tickertape.get_json(f"/stocks/peers/{sid}?tab=valuation", timeout=25)
     if gap:
         return [], [f"Tickertape peers for {sid}: {gap}"]
-    out = [{"symbol": _norm(r.get("ticker")), "name": r.get("name"), "sid": r.get("sid")}
-           for r in ((blob or {}).get("data") or []) if r.get("sid") != sid]
+    out = []
+    for r in ((blob or {}).get("data") or []):
+        if r.get("sid") == sid:
+            continue
+        ratios = r.get("ratios") or {}
+        out.append({"symbol": _norm(r.get("ticker")), "name": r.get("name"),
+                    "sid": r.get("sid"), "ttm_pe": _f(ratios.get("ttmPe")),
+                    "pb": _f(ratios.get("pbr"))})
     return out, ([] if out else [f"Tickertape lists no peers for {sid}"])
 
 

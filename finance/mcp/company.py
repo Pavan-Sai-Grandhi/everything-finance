@@ -54,11 +54,17 @@ def get_company_fundamentals(symbol: str, sections: list | None = None,
     description="Download this company's primary documents — newest first from "
                 "screener.in's document index — convert them to text and cache them on "
                 "disk. Returns PATHS ONLY: each row is {kind, label, url, publisher, "
-                "text_path, text_chars, text_lines, extracted_by, cached}. Read "
+                "text_path, text_chars, text_lines, extracted_by, cached, outline}. Read "
                 "`text_path` and cite the filing itself; no document text is ever "
-                "returned inline. `annual_reports` and `concalls` raise how many of each "
-                "are pulled (1 each by default). A document that will not download or "
-                "convert is a labelled gap — the others still come back."
+                "returned inline. `outline` maps each note a leg needs — tax_note, "
+                "related_party, remuneration, contingent_liabilities, emphasis_of_matter, "
+                "mdna, segment, cash_flow, auditor_remuneration, corporate_governance, "
+                "qna and others — to its best-first candidate line numbers in that file, "
+                "so you read the lines you need instead of grepping a 27,000-line report. "
+                "A key absent from `outline` means the document has no such section. "
+                "`annual_reports` and `concalls` raise how many of each are pulled "
+                "(1 each by default). A document that will not download or convert is a "
+                "labelled gap — the others still come back."
 )
 def get_documents(symbol: str, annual_reports: int = 1, concalls: int = 1,
                   fresh: bool = False) -> dict:

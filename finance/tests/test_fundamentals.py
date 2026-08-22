@@ -90,9 +90,12 @@ HOLDINGS = {"success": True, "data": [
               "mfPctT": 9.934, "isPctT": 9.046, "rhPctT": 7.041, "othPctT": 5.599}}]}
 
 PEERS = {"success": True, "data": [
-    {"sid": "RELI", "ticker": "RELIANCE", "name": "Reliance Industries Ltd"},
-    {"sid": "IOC", "ticker": "IOC", "name": "Indian Oil Corporation Limited"},
-    {"sid": "HPCL", "ticker": "HINDPETRO", "name": "Hindustan Petroleum Corp Ltd"}]}
+    {"sid": "RELI", "ticker": "RELIANCE", "name": "Reliance Industries Ltd",
+     "ratios": {"ttmPe": 24.5, "pbr": 2.1}},
+    {"sid": "IOC", "ticker": "IOC", "name": "Indian Oil Corporation Limited",
+     "ratios": {"ttmPe": 11.25, "pbr": 1.05}},
+    {"sid": "HPCL", "ticker": "HINDPETRO", "name": "Hindustan Petroleum Corp Ltd",
+     "ratios": {"ttmPe": 9.8}}]}
 
 FILTERS = {"success": True, "data": {
     "none": [{"label": "mrktCapf", "display": "Market Cap", "short": "Market Cap",
@@ -345,6 +348,14 @@ def test_T2_peers():
     check("T2 the company itself is not its own peer", "RELIANCE" not in syms)
     check("T2 the join key travels with each peer",
           peers[1]["sid"] == "HPCL" and peers[1]["symbol"] == "HINDPETRO", peers[1])
+    # the valuation tab returns each peer's multiples in this one response, so the
+    # relative read needs no per-peer call and every peer is on the same basis
+    check("T2 each peer carries its trailing P/E",
+          [p["ttm_pe"] for p in peers] == [11.25, 9.8], peers)
+    check("T2 each peer carries its P/B where published",
+          peers[0]["pb"] == 1.05, peers[0])
+    check("T2 an unpublished multiple is None, not a guess",
+          peers[1]["pb"] is None, peers[1])
 
 
 def test_T2_documents_stay_on_screener():

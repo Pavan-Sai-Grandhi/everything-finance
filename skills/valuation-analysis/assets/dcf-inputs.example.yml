@@ -28,6 +28,11 @@ growth_glide:                   # 15% for 3y, then linear fade toward the termin
   years_high: 3
 
 # --- operating margin (pre-tax EBIT margin): explicit path OR a glide -------------------
+# `current_ebit_margin` is the latest FY PBIT / Total Revenue. It is what the engine checks
+# the year-1 margin against: the published "OPM %" is struck at EBITDA, and feeding that into
+# `operating_margin` overstates every year's cash flow. Omit it and the check is skipped, and
+# the engine says so.
+current_ebit_margin: 0.18         #   [src: PBIT / Total Revenue, FY25 consolidated]
 # operating_margin: [0.18, 0.19, 0.20, 0.21, 0.22, 0.22, 0.22, 0.22, 0.22, 0.22]
 margin_glide:                   # ramp 18% -> 22% by year 5, hold
   start: 0.18                   #   [src: current EBIT margin]

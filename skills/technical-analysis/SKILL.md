@@ -15,9 +15,10 @@ Read `references/reference.md` first — it owns the method: the six-step Varsit
 
 1. **Inputs**: the ticker, and — where an orchestrator already has them — a candles file path and an output path. Prefer a supplied candles file over fetching the same series again.
 2. **Get the series.** `get_history` for the year of daily candles, `get_quote` for the live bar, then `Read` the file at `candles_path`.
-3. **Compute the indicators** by running `finance/compute/ta.py` over that file — the reference's § "Working the data" carries the recipe. Never hand-roll an indicator value.
-4. **Work the checklist in the reference's order.** The order is part of the method: pattern → S&R → volume → Dow stage → indicators.
-5. **Name both invalidation levels**, each with the touch evidence behind it.
+3. **Check the last candle is a closed session.** Mid-session, and for a while after the close, the feed's final bar carries a provisional or missing open/high/low. **Drop an unclosed bar from every indicator and level computation** and read the live bar from `get_quote` instead — an estimated high or low silently moves a support level, a range and an ATR-derived stop. Say in the report which session the levels are struck on, and label a same-day reading as intraday.
+4. **Compute the indicators** by running `finance/compute/ta.py` over that file — the reference's § "Working the data" carries the recipe. Never hand-roll an indicator value.
+5. **Work the checklist in the reference's order.** The order is part of the method: pattern → S&R → volume → Dow stage → indicators.
+6. **Name both invalidation levels**, each with the touch evidence behind it.
 
 ## Produce this report
 

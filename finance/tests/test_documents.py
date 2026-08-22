@@ -111,7 +111,94 @@ def _harness(fn, docs=INDEX, bodies=None, index_gaps=None, pdftotext=PDF_TEXT,
 
 
 ROW_KEYS = {"kind", "label", "url", "publisher", "text_path", "text_chars",
-            "text_lines", "extracted_by", "cached"}
+            "text_lines", "extracted_by", "cached", "outline"}
+
+
+# --- the section outline: where each note lives in the extracted text --------- #
+def _fake_annual_report(path):
+    """An annual report shaped like a real one: a contents page listing every section
+    with its page number, then the sections themselves thousands of lines later."""
+    lines = ["ANNUAL REPORT 2025", ""]
+    lines += ["Contents", ""]
+    for title, page in (("Management Discussion and Analysis", 138),
+                        ("Board's Report", 92),
+                        ("Independent Auditor's Report", 210),
+                        ("Related party disclosures", 288),
+                        ("Contingent liabilities and commitments", 275),
+                        ("Corporate Governance Report", 104)):
+        lines.append(f"        {title} {page}")
+    lines += [""] * 400
+    lines.append("Board's Report")
+    lines += ["The directors present the annual accounts."] * 200
+    lines.append("Corporate Governance Report")
+    lines += ["Category of Director  Executive Chairman"] * 150
+    lines.append("Managerial Remuneration to Directors")
+    lines += ["Sitting fees and commission are set out below."] * 60
+    lines.append("Management Discussion and Analysis")
+    lines += ["The electronics manufacturing industry grew 21% during the year."] * 300
+    lines.append("Independent Auditor's Report")
+    lines += ["We have audited the accompanying financial statements."] * 120
+    lines.append("Emphasis of Matter")
+    lines += ["We draw attention to note 41 to the financial statements."] * 20
+    lines.append("Statement of Cash Flows")
+    lines += ["Net cash generated from operating activities"] * 40
+    lines.append("Income tax expense")
+    lines += ["The effective tax rate for the year was 24.9%."] * 30
+    lines.append("41 Contingent liabilities and commitments")
+    lines += ["Claims against the company not acknowledged as debt"] * 40
+    lines.append("51 Related party disclosures")
+    lines += ["Transactions with entities controlled by key management"] * 80
+    lines.append("Payment to auditors")
+    lines += ["Statutory audit fee 2.4"] * 15
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return len(lines) + 1
+
+
+def test_outline_finds_the_notes_a_leg_needs():
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "ar.txt")
+        total = _fake_annual_report(path)
+        out = dz._outline(path, total)
+
+        for key in ("mdna", "auditors_report", "emphasis_of_matter", "related_party",
+                    "contingent_liabilities", "remuneration", "tax_note", "cash_flow",
+                    "auditor_remuneration", "corporate_governance", "directors_report"):
+            check(f"outline locates {key}", key in out and out[key], sorted(out))
+
+        # the ranked best hit is the section, not its contents-page entry
+        toc_end = 12
+        for key in ("mdna", "auditors_report", "related_party",
+                    "contingent_liabilities", "corporate_governance"):
+            best = out[key][0]["line"]
+            check(f"{key} best hit is the section, not the contents page",
+                  best > toc_end, (key, out[key]))
+
+        check("the contents entry is still offered as a lower-ranked candidate",
+              any(h["line"] <= toc_end for h in out["mdna"]), out["mdna"])
+        check("each hit carries the heading text it matched",
+              "Management Discussion" in out["mdna"][0]["text"], out["mdna"])
+        check("candidates per section are capped",
+              all(len(v) <= dz._MAX_HITS for v in out.values()), 
+              {k: len(v) for k, v in out.items()})
+        check("a section the document does not contain is simply absent",
+              "esop" not in out and "shareholding" not in out, sorted(out))
+
+        # the payload is a summary, not bulk: it must stay tiny beside the document
+        size = len(json.dumps(out))
+        check("the outline is a few hundred bytes, not the document",
+              size < 3000 and size < os.path.getsize(path) / 20, size)
+
+
+def test_outline_survives_a_document_with_no_known_sections():
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "empty.txt")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("just some prose about nothing in particular\n" * 50)
+        check("an unrecognisable document yields an empty outline, not a crash",
+              dz._outline(path, 50) == {})
+        check("an unreadable path yields an empty outline",
+              dz._outline(os.path.join(d, "missing.txt"), 0) == {})
 
 
 # --- cache miss: the first read downloads, converts and writes ---------------- #

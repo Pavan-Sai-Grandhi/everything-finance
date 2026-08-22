@@ -90,4 +90,64 @@ with open(os.path.join(_ROOT, "skills/valuation-analysis/SKILL.md"), encoding="u
 check("valuation SKILL names the trailing peer field (ttm_pe), not the annualised one",
       "ttm_pe" in _skill and "annualised" in _skill, "step 6 must pin the TTM basis")
 
+
+# --- the peer-set floor: an absent comparison must not arrive as a computed one ---
+r = relval.relative_read({"pe": 122.0, "peer_pe": [], "own_pe_history": [],
+                          "growth": {"value": 15.2, "basis": "10y EPS CAGR",
+                                     "estimated": True}})
+check("no peers, no own band → not computable",
+      r["relative_stance"] == "not computable", r)
+check("no peers → peer read does not count", r["peer_read_counts"] is False, r)
+check("no peers → peer label says so", r["pe_vs_peer_median"] == "not comparable", r)
+check("no peers raises two gaps", len(r["gaps"]) == 2, r)
+check("a gap names the thin peer set", any("too thin" in g for g in r["gaps"]), r)
+
+# two peers is still too thin — one company's accident, not a peer centre
+r = relval.relative_read({"pe": 40.0, "peer_pe": [20.0, 22.0],
+                          "own_pe_history": [30, 35, 40, 45, 50]})
+check("2 peers → peer read void", r["peer_read_counts"] is False, r)
+check("2 peers → median still reported for context", r["peer_median_pe"] == 21.0, r)
+check("2 peers → stance falls back to the own band alone",
+      r["relative_stance"] == "fair", r)
+check("MIN_PEERS is three", relval.MIN_PEERS == 3, relval.MIN_PEERS)
+
+# three peers is the floor, and it counts
+r = relval.relative_read({"pe": 40.0, "peer_pe": [20.0, 22.0, 21.0],
+                          "own_pe_history": [30, 35, 40, 45, 50]})
+check("3 peers → peer read counts", r["peer_read_counts"] is True, r)
+check("3 peers → premium is read", r["pe_vs_peer_median"] == "premium", r)
+check("3 peers → stance moves to overvalued", r["relative_stance"] == "overvalued", r)
+check("a sufficient peer set raises no gap", r["gaps"] == [], r)
+
+# --- the earnings basis must match on both sides --------------------------------
+same = {"pe": 89.8, "peer_pe": [123.0, 80.0, 70.0, 86.0],
+        "own_pe_history": [40, 50, 60, 70, 80]}
+r = relval.relative_read(same)
+check("default basis is reported on both sides",
+      (r["pe_basis"], r["peer_pe_basis"]) == ("reported", "reported"), r)
+check("matched basis → peer read counts", r["peer_read_counts"] is True, r)
+
+r = relval.relative_read(dict(same, pe_basis="adjusted"))
+check("adjusted company P/E vs reported peers → peer read void",
+      r["peer_read_counts"] is False, r)
+check("basis mismatch is a gap", any("basis mismatch" in g for g in r["gaps"]), r)
+check("basis mismatch keeps the median visible", r["peer_median_pe"] == 83.0, r)
+check("basis mismatch still reads the own band",
+      r["relative_stance"] == "overvalued", r)
+
+r = relval.relative_read(dict(same, pe_basis="adjusted", peer_pe_basis="adjusted"))
+check("both sides adjusted → peer read counts again",
+      r["peer_read_counts"] is True, r)
+check("both-adjusted raises no gap", r["gaps"] == [], r)
+
+r = relval.relative_read(dict(same, pe_basis="clean"))
+check("an unknown basis name is a gap",
+      any("not one of" in g for g in r["gaps"]), r)
+
+# every read carries the keys the report and the PM cite
+for figs in ({"pe": 20.0, "peer_pe": [18.0, 19.0, 21.0]}, {"pe": None, "peer_pe": []}):
+    r = relval.relative_read(figs)
+    check("read carries gaps + basis + peer_read_counts",
+          {"gaps", "pe_basis", "peer_pe_basis", "peer_read_counts"} <= set(r), r)
+
 summary()

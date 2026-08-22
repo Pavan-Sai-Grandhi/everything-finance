@@ -28,6 +28,13 @@ import sys
 PEG_CAVEAT = ("PEG assumes equal risk across the peer set and a linear growth↔P/E "
               "relationship — a cross-check, not a standalone verdict.")
 
+# Below this many priced peers a median is one company's accident, not a peer centre.
+MIN_PEERS = 3
+
+# Whether a P/E is struck on reported earnings or on earnings adjusted for one-offs.
+# The two are not comparable: a recurring fair-value gain can halve a reported P/E.
+PE_BASES = ("reported", "adjusted")
+
 
 def median(values):
     """Median of a numeric list (median, not mean — multiples are skewed). None if empty."""
@@ -85,15 +92,23 @@ def relative_read(figures):
     and a relative-only stance — undervalued / fair / overvalued. `valuation-analysis`
     reconciles this against the DCF; this is the reproducible relative component.
 
-    Two consistency requirements the caller must meet, because this module sees only
-    numbers and cannot detect a breach:
-      - `pe` and every `peer_pe` MUST be the SAME basis — the trailing-twelve-month P/E
-        (the company's `Stock P/E` and each peer's `ttm_pe`, NOT the annualised `pe`).
-        Mixing TTM with annualised injects an ~8% skew into a ±10% peer band, enough to
-        flip the premium/discount read on its own.
+    One consistency requirement the caller must meet, because this module sees only
+    numbers and cannot detect a breach: `pe` and every `peer_pe` MUST be the
+    trailing-twelve-month P/E (the company's `Stock P/E` and each peer's `ttm_pe`, NOT
+    the annualised `pe`). Mixing TTM with annualised injects an ~8% skew into a ±10%
+    peer band, enough to flip the premium/discount read on its own.
+
+    The *earnings* basis is checked here instead of assumed: `pe_basis` and
+    `peer_pe_basis` each declare "reported" or "adjusted". When they differ the peer
+    comparison is directional only and contributes nothing to the stance.
+
     A negative or zero peer P/E is not a multiple (loss-making peer): it is excluded from
     the median here and the count is reported, so a couple of loss-makers cannot drag the
-    peer centre and read the company as a spurious 'premium'."""
+    peer centre and read the company as a spurious 'premium'.
+
+    Fewer than `MIN_PEERS` priced peers voids the peer half of the read; with no own-band
+    history either, there is nothing left and the stance is `not computable` — an absent
+    comparison must not arrive downstream as a computed one."""
     pe = figures.get("pe")
     peer_pe_raw = figures.get("peer_pe") or []
     peer_pe = [p for p in peer_pe_raw if p is not None and p > 0]
@@ -108,25 +123,55 @@ def relative_read(figures):
     if growth.get("estimated"):
         g_basis = f"{g_basis} (estimate)"
 
+    gaps = []
+    basis = figures.get("pe_basis", "reported")
+    peer_basis = figures.get("peer_pe_basis", "reported")
+    for name, b in (("pe_basis", basis), ("peer_pe_basis", peer_basis)):
+        if b not in PE_BASES:
+            gaps.append(f"{name} {b!r} is not one of {list(PE_BASES)}")
+
     peer_score, peer_label = _peer_signal(pe, peer_med)
-    score = peer_score + _band_signal(pct)
-    stance = "fair"
-    if score <= -1:
-        stance = "undervalued"
-    elif score >= 1:
-        stance = "overvalued"
+    peer_counts = True
+    if len(peer_pe) < MIN_PEERS:
+        peer_counts = False
+        gaps.append(f"peer set too thin ({len(peer_pe)} priced, {MIN_PEERS} needed) — "
+                    f"the peer comparison is void; this is an own-band read only")
+    elif basis != peer_basis:
+        peer_counts = False
+        gaps.append(f"P/E basis mismatch: the company is {basis}, the peers are "
+                    f"{peer_basis} — the peer comparison is directional only and does "
+                    f"not carry the stance")
+
+    if not peer_counts:
+        peer_score = 0
+        peer_label = "not comparable"
+
+    if not peer_counts and pct is None:
+        stance = "not computable"
+        gaps.append("no priced peers and no own P/E history — there is no relative read")
+    else:
+        score = peer_score + _band_signal(pct)
+        stance = "fair"
+        if score <= -1:
+            stance = "undervalued"
+        elif score >= 1:
+            stance = "overvalued"
 
     return {
         "pe": pe,
+        "pe_basis": basis,
+        "peer_pe_basis": peer_basis,
         "peer_median_pe": peer_med,
         "peers_priced": len(peer_pe),
         "peers_excluded_nonpositive": peers_excluded,
+        "peer_read_counts": peer_counts,
         "pe_vs_peer_median": peer_label,
         "own_band_percentile": pct,
         "peg": peg(pe, g_val),
         "peg_caveat": PEG_CAVEAT,
         "growth_basis": g_basis,
         "relative_stance": stance,
+        "gaps": gaps,
     }
 
 

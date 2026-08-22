@@ -1,5 +1,6 @@
 <!-- management-block
-integrity: PASS | FLAG | FAIL   skill: STRONG | ADEQUATE | WEAK | n/a
+integrity: PASS | PASS (partial, <k> of 7) | FLAG | FAIL   skill: STRONG | ADEQUATE | WEAK | n/a
+integrity_checks: remuneration=<v> rpt=<v> record=<v> media=<v> churn=<v> ego=<v> pledge=<v>   <v ∈ PASS|FLAG|FAIL|NOT-CHECKED>
 overall_grade: <one phrase>   confidence: low | med | high
 axis: governance
 -->

@@ -51,6 +51,7 @@
     "./agents/bull-researcher.md",
     "./agents/bear-researcher.md",
     "./agents/contest-researcher.md",
-    "./agents/portfolio-manager.md"
+    "./agents/portfolio-manager.md",
+    "./agents/report-writer.md"
   ]
 }

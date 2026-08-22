@@ -15,7 +15,7 @@ Read `references/reference.md` first — it owns the method: the window rule, th
 
 1. **Inputs**: the ticker and the company name, and — where an orchestrator has one — an output path.
 2. **Fetch once.** `get_news` over the window, `get_filings` over the same span, then `Read` the filings file. The work here is judgement, not plumbing; widen the window only for the reason the reference gives.
-3. **Sort the items** into fact and narrative, weighing each by publisher tier and by whether a filing stands behind it.
+3. **Sort the items** into fact and narrative, weighing each by publisher tier and by whether a filing stands behind it. Where two outlets carry **different numbers for the same reported figure**, the disagreement is usually standalone-vs-consolidated or a restated comparative — resolve it against the filing in `get_filings`, which is the primary source, and report the filed figure with the discrepancy named. Leaving both numbers in as a gap passes a resolvable conflict downstream.
 4. **Find the storyline** the coverage keeps returning to, and the filing it has *not* picked up.
 5. **Score and grade confidence** on the reference's scale, then check the read against each of the four traps before you commit to it.
 

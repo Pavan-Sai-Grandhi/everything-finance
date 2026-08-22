@@ -1,10 +1,10 @@
 # Varsity due-diligence checklist (self-contained method)
 
-Grounded in Zerodha Varsity — Fundamental Analysis (https://zerodha.com/varsity/module/fundamental-analysis/). The scorecard is **six checks**, each PASS / FLAG / FAIL with the number that decided it; `varsity_score` is the count of PASS. A check you cannot source is a **data gap**, which is uncertainty — never a neutral PASS.
+Grounded in Zerodha Varsity — Fundamental Analysis (https://zerodha.com/varsity/module/fundamental-analysis/). The scorecard is **seven checks**, each PASS / FLAG / FAIL with the number that decided it; `varsity_score` is the count of PASS. A check you cannot source is a **data gap**, which is uncertainty — never a neutral PASS.
 
 Every claim carries a number and the row or page it came from. "Strong fundamentals" without a metric is a defect.
 
-## The six checks
+## The seven checks
 
 ### 1. Returns — ROE > 15% sustained, ROCE > 15% and above the cost of capital
 
@@ -30,7 +30,25 @@ Profit without cash is accounting, not business. CFO/EBITDA ≈ 1 across a cycle
 
 Compute it off `Total Revenue`, and read it beside EPS: `Earnings Per Share` now ties to `Net Income`, so revenue growth that does not reach EPS has been eaten by cost, interest, tax or dilution — check `Common Shares Outstanding` for the dilution case. A CAGR is a two-point measurement; state the endpoints and show the intervening years if the path was lumpy.
 
-## Beyond the six — read these, score them in the flags
+### 7. Earnings quality — reported profit is the profit the business earned
+
+The multiple every other leg quotes is struck on reported EPS, so a profit line inflated by something that is not the operating business misprices the company everywhere at once. Three sources, in order of how often they matter:
+
+- **Other income.** `Total Revenue` includes it and there is no separable line, so read the quarterly series: a large, *recurring* other-income contribution — a mark-to-market gain on a listed investment, treasury income, a revaluation — is not operating profit even when it repeats every quarter. Management's own "clean"/"adjusted" PAT in the results release or concall is the primary source for the split when it exists.
+- **Exceptional items.** The `Add/(Less): Exceptional items` row: an asset-sale gain, an impairment, a one-time levy. Both directions matter — a charge that flatters the *next* year's comparison is the same distortion.
+- **Minority interest.** Where subsidiaries are consolidated but not wholly owned, the parent's shareholders own less than reported PAT. `Net Income` before the minority share overstates what accrues to the equity you are pricing.
+
+Compute **clean EPS**: strip recurring non-operating income and exceptional items from PBT, apply the effective tax rate from the annual report's tax note, deduct the minority share, divide by `Common Shares Outstanding`. State each step and its source; where a component is not disclosed at the granularity needed, give the clean figure as a **bracketed range** with the assumption named, not a point estimate.
+
+| Adjustment vs reported PAT | Verdict |
+|---|---|
+| < 5% | PASS — reported earnings are the earnings |
+| 5–20%, or any size non-recurring | FLAG — quote both figures wherever the multiple appears |
+| > 20% and recurring | FAIL — reported EPS is not the earnings base; every multiple struck on it is wrong |
+
+Report `clean_eps` and `eps_adjustments` in the block whatever the verdict; `none` is a finding.
+
+## Beyond the seven — read these, score them in the flags
 
 - **Working-capital cycle.** Receivable days (`Total Receivables` ÷ `Total Revenue` × 365) and inventory days (`Total Inventory`). Receivable days creeping up while revenue grows is the channel-stuffing signature.
 - **Goodwill.** A rising `Goodwill & Intangibles` line is acquisition-funded growth; the impairment risk sits there.
@@ -64,6 +82,6 @@ Self-contained: a reader meeting the company here should come away oriented with
 
 ## Verdict
 
-**investment-grade** — the six checks pass or the flags are explained and bounded; the business is one you could own on the numbers. **watch** — a real defect with a plausible path back, or too many gaps to judge. **avoid** — a check fails structurally (cash that does not follow profit, leverage-carried returns, deteriorating working capital with no explanation).
+**investment-grade** — the seven checks pass or the flags are explained and bounded; the business is one you could own on the numbers. **watch** — a real defect with a plausible path back, or too many gaps to judge. **avoid** — a check fails structurally (cash that does not follow profit, leverage-carried returns, deteriorating working capital with no explanation, reported earnings that are not the earnings).
 
 Confidence low/med/high reflects how much of the scorecard came from primary documents versus how much stayed a gap. Missing evidence is uncertainty, not a neutral pass.

@@ -68,7 +68,11 @@ It is not a finding, and it never becomes a Tailwinds/Headwinds bullet on its ow
 
 ## Building the constituent set
 
-Start from a bellwether you can name in the sector and take its peer set from `get_company_fundamentals(<SYMBOL>, sections=["peers"])` — `peers` returns real sub-sector companies (`symbol`, `name`, `sid`), which is the constituent set for the KPI snapshot and the leaders/laggards pass.
+**A caller that hands you a peer list uses that list.** `deep-analysis` passes the focus stock's `peers`, and the valuation leg strikes its peer-median multiple on the same names — two legs describing the same company against two different baskets is how a report ends up saying "sector leader" and "trades at a premium to peers" about different sets.
+
+With no list given, start from a bellwether you can name in the sector and take its peer set from `get_company_fundamentals(<SYMBOL>, sections=["peers"])` — `peers` returns real sub-sector companies (`symbol`, `name`, `sid`, `ttm_pe`, `pb`), which is the constituent set for the KPI snapshot and the leaders/laggards pass.
+
+**Name the constituents wherever you report an aggregate.** A basket assembled for a niche with no official index is a judgement, and a reader cannot weigh an RS number without knowing whose prices are in it. Where one member moves idiosyncratically enough to shift the aggregate, say which and by how much.
 
 Ratios and the ten fiscal years of P&L, balance sheet and cash flow arrive **one company per call**, and the deep sector KPIs (NIM/GNPA, EBITDA/tonne, VNB margin, combined ratio…) exist only at company level — no feed carries them by sector. So call it for the **3–4 names that matter**, take the sector median from those, and label the rest a gap rather than widening the fan-out.
 

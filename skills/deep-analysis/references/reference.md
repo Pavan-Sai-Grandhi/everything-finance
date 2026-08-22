@@ -29,10 +29,15 @@ A lens that could not run is uncertainty, not neutrality. The synthesis names it
 
 **Round 1** — each researcher produces its three strongest arguments, every one tied to a specific figure, level or cite from a leg report, plus what would change its mind.
 
-**A later round is a turn, not a restatement.** Fed the other side's previous round, a researcher must add new load-bearing evidence or explicitly concede; repeating a prior round is not a valid turn (`new_evidence: false`). The orchestrator stops the loop when neither side managed one.
+**A later round is a turn, not a restatement.** Fed the other side's previous round, a researcher adds new load-bearing evidence, explicitly concedes, or reports `new_evidence: false` — an honest, debate-ending answer, not a failed turn.
 
-**The escalation axes.** `escalation.py` escalates only when both sides' top points sit on the *same* verdict-relevant axis — `valuation`, `growth_durability`, `balance_sheet_risk`, `governance`, `technical_structure` — with distinct evidence-tied claims and neither conceded. Points that talk past each other, agree, or carry a concession are not a divergence worth a second round.
+**A round is worth running while the two sides still have something to test**, which `escalation.py` decides from the `debate-block` digests and which comes in two shapes:
 
-**The portfolio-manager must state**, once, on the full transcript: position (Buy / Accumulate / Hold / Avoid / Exit), conviction (low / med / high), suggested allocation cap as a % of portfolio, the entry zone if Buy, and the invalidation — the price level or fundamental event that kills the thesis.
+- **Different axes** — say a bull on `technical_structure` against a bear on `valuation`. Neither case has been tested at all; the run has two unopposed monologues. The next round is a **cross-examination**: each side answers the opponent's axis on its own terms first. Stopping here would hand the portfolio-manager arguments that never met, and would reward a side for choosing an axis its opponent will not touch.
+- **Same axis, distinct claims** — a real clash. The next round is a **rebuttal**: attack the evidence under the opposing claim.
+
+The verdict-relevant axes are `valuation`, `growth_durability`, `balance_sheet_risk`, `governance` and `technical_structure`. What ends a debate is a concession, both sides restating one claim, `new_evidence: false` on both sides, or the mode's round cap — never non-engagement.
+
+**The portfolio-manager must state**, once, on the full transcript: the action (Buy / Accumulate / Hold / Avoid / Exit) and, separately, what the business is worth — they come apart routinely, and an "overvalued but held, chart intact" Hold is a different object from a "we could not see enough" Hold. Plus conviction (low / med / high), the allocation cap as a % of portfolio, the entry zone if Buy, the hold/trim/exit call when the ticker is a live holding, and the invalidation — the price level or fundamental event that kills the thesis.
 
 **Disagreement is the product.** If bull and bear both still sound right after the rounds, the verdict should usually be Hold or Avoid with the specific uncertainty named, not a split-the-difference Accumulate.

@@ -146,4 +146,35 @@ check("loader does not privilege a vendor home like ~/.claude",
 check("loader seeds $PLUGIN_DATA/.env from the template when none is found",
       'cp "$root/.env.example" "$data/.env"' in loader_src)
 
+# --- the manifest must match the filesystem ---------------------------------- #
+# A skill directory or agent file added without its manifest entry ships a plugin
+# that silently does not load it.
+_agent_files = sorted(f"./agents/{n}" for n in os.listdir(os.path.join(ROOT, "agents"))
+                      if n.endswith(".md"))
+_declared_agents = sorted(claude.get("agents") or [])
+check("every agents/*.md file is declared in the manifest",
+      set(_agent_files) <= set(_declared_agents),
+      sorted(set(_agent_files) - set(_declared_agents)))
+check("every declared agent exists on disk",
+      set(_declared_agents) <= set(_agent_files),
+      sorted(set(_declared_agents) - set(_agent_files)))
+
+_skill_dirs = sorted(f"./skills/{n}" for n in os.listdir(os.path.join(ROOT, "skills"))
+                     if os.path.isfile(os.path.join(ROOT, "skills", n, "SKILL.md")))
+_declared_skills = sorted(claude.get("skills") or [])
+check("every skills/*/SKILL.md is declared in the manifest",
+      set(_skill_dirs) <= set(_declared_skills),
+      sorted(set(_skill_dirs) - set(_declared_skills)))
+check("every declared skill exists on disk",
+      set(_declared_skills) <= set(_skill_dirs),
+      sorted(set(_declared_skills) - set(_skill_dirs)))
+
+# each agent file's frontmatter name matches its filename, so a dispatch by name resolves
+for rel in _agent_files:
+    with open(os.path.join(ROOT, rel[2:]), encoding="utf-8") as fh:
+        head = fh.read(600)
+    stem = os.path.basename(rel)[:-3]
+    check(f"{stem} frontmatter name matches its filename",
+          f"\nname: {stem}\n" in head, head[:120])
+
 summary()

@@ -162,11 +162,13 @@ When it returns `solved: false`, that is a finding, not a failure: either the pr
 
 Multiples are **DCF in shorthand**: every one of them traces to the same drivers — cash flow/payout, growth, risk. That is what makes the relative read a genuine second view rather than decoration, and it is why a higher multiple than peers can be entirely *justified*. It also survives the cases where the DCF is fragile, so it runs on every company.
 
-- **Peer group built for comparability** — same industry, similar size, growth and risk. `get_company_fundamentals` returns real sub-sector peers, each row carrying a `sid` you feed straight to `get_stock_ratios` for that peer's own P/E, P/B, RoE and market cap. Still read the list: a peer set that ignores size/growth/risk makes the median meaningless, and a four-name list is thin enough that one outlier matters.
+- **Peer group built for comparability** — same industry, similar size, growth and risk. `get_company_fundamentals` returns real sub-sector peers, each row carrying `ttm_pe` and `pb` already, plus a `sid` for any other ratio via `get_stock_ratios`. Still read the list: a peer set that ignores size/growth/risk makes the median meaningless, and a four-name list is thin enough that one outlier matters.
 - **Median, not mean.** Multiple distributions are right-skewed (a few very-high outliers); the **median** is the representative peer value, and the engine enforces it.
 - **Consistent definitions.** Same trailing-vs-forward basis across the peer set; same numerator/denominator (equity multiples like P/E to equity, enterprise multiples like EV/EBITDA to the firm). State the basis.
 - **PEG = P/E ÷ expected EPS growth (%).** A cross-check that normalises P/E for growth — but it hides two assumptions: **equal risk** across the peer set and a **linear** growth↔P/E relationship. Flag both; PEG is never a standalone verdict. The growth input is a labelled estimate (forward/analyst or historical EPS CAGR, basis stated), never fabricated.
 - **Own-band percentile.** Where the company's P/E sits inside its own historical band is the one comparison immune to a bad peer set.
+- **Same earnings basis on both sides.** A P/E struck on earnings adjusted for one-offs is not comparable to peers struck on reported earnings — a recurring fair-value gain can halve a reported multiple, so the two bases can differ by 2x on the same company. Declare `pe_basis` and `peer_pe_basis`; when they differ the peer read is directional only and does not carry the stance.
+- **A peer median needs peers.** Under three priced peers is one company's accident, not a centre. The engine voids the peer half below that floor and returns the gap; report it and lean on the own band rather than presenting a stance the peer set could not support.
 - **Pick the multiple to the business.** P/E for profitable firms; **P/B with RoE** for banks, NBFCs and insurers (EV/EBITDA and FCFF are both ill-defined there); P/S or EV/Sales for loss-makers; **EV/EBITDA** where capital structure differs across the peer set.
 
 ## Reconcile and grade confidence
@@ -176,7 +178,7 @@ Multiples are **DCF in shorthand**: every one of them traces to the same drivers
 **Grade DCF confidence — low / med / high** from two stated, checkable factors, so the grade is auditable:
 
 - **Terminal-value weight** — terminal value as a % of enterprise value (`terminal_value_fraction`). Below ~60% supports *high*; above ~75% pulls toward *low*.
-- **Assumption stretch** — projected growth and margin against the company's *demonstrated* history. Inside history supports *high*; well above it pulls toward *low*. Any engine flag (`BETA_LOOKS_LIKE_REGRESSION`, a rejected model) pulls it down.
+- **Assumption stretch** — projected growth and margin against the company's *demonstrated* history. Inside history supports *high*; well above it pulls toward *low*. Any engine flag (`BETA_LOOKS_LIKE_REGRESSION`, `MARGIN_BASIS_SUSPECT`, `MARGIN_BASIS_UNCHECKED`, a rejected model) pulls it down.
 
 Two structural cases **override to low** whatever the grid says: **banks / NBFCs / insurers**, and **violently cyclical / commodity** firms. Both are in SKILL.md § Boundaries.
 
@@ -187,6 +189,8 @@ Two structural cases **override to low** whatever the grid says: **banks / NBFCs
 | high | Lead with the DCF — the intrinsic-vs-price gap drives the call; the relative read corroborates or qualifies |
 | med | DCF and relative carry equal weight; agreement raises conviction, disagreement lowers it |
 | low | Lean on the relative read; the DCF is a sanity band only, reported with its weakness stated |
+
+**When the relative read is void** — under three priced peers, or a basis mismatch — the *low* row has nothing to lean on. Say so: the stance rests on a low-confidence DCF and the own band alone, and the combined stance carries that as its stated weakness rather than borrowing confidence it does not have.
 
 Emit a single **Undervalued / Fair / Overvalued** with a margin-of-safety range blending the DCF intrinsic range and the relative read.
 

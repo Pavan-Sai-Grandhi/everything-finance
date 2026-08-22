@@ -381,6 +381,27 @@ def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, 
     if roic_T <= wacc_T + 1e-9:
         flags.append(f"NO_TERMINAL_EXCESS_RETURN: terminal_roic={roic_T:.2%} <= terminal_wacc={wacc_T:.2%} "
                      "— the firm creates no value in perpetuity (fine for a no-moat business; flag if you assumed a moat).")
+    # `operating_margin` is an EBIT margin, and India's published feeds hand out an
+    # "OPM %" struck at EBITDA — one keystroke apart, and the substitution overstates
+    # every year's cash flow. A year-1 margin well above the current EBIT margin is
+    # that signature; a real expansion story starts at today's margin and glides.
+    cur_ebit = spec.get("current_ebit_margin")
+    if cur_ebit is None:
+        flags.append("MARGIN_BASIS_UNCHECKED: no `current_ebit_margin` supplied, so the "
+                     "EBITDA-in-an-EBIT-slot check did not run — pass the company's current "
+                     "EBIT (PBIT / revenue) margin to enable it.")
+    elif margin:
+        cur_ebit = float(cur_ebit)
+        excess = margin[0] - cur_ebit
+        rel = excess / abs(cur_ebit) if cur_ebit else 0.0
+        if excess > 0.0025 and rel > 0.20:
+            flags.append(
+                f"MARGIN_BASIS_SUSPECT: year-1 operating margin {margin[0]:.2%} is "
+                f"{rel:+.0%} above the current EBIT margin {cur_ebit:.2%}. Check you have "
+                f"not fed a published \"OPM %\", which is struck at EBITDA (pre-depreciation). "
+                f"If the step-up is a real forecast, start the path at the current margin "
+                f"and glide to the target.")
+
     if wacc_detail and wacc_detail.get("beta", 0.0) > 1.3:
         flags.append(f"BETA_LOOKS_LIKE_REGRESSION: beta={wacc_detail['beta']:.2f} — a beta this high is usually a raw "
                      "regression beta that a volatile share price inflates, not the business's risk. Damodaran uses a "
@@ -622,6 +643,89 @@ def _grid_range(grid):
     return [min(cells), max(cells)] if cells else None
 
 
+def _inr(v):
+    """Indian-grouped integer rupees, or an em dash for an unsolved cell."""
+    if v is None:
+        return "—"
+    n = int(round(v))
+    sign, n = ("-", -n) if n < 0 else ("", n)
+    s = str(n)
+    if len(s) > 3:
+        head, tail = s[:-3], s[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        s = ",".join(([head] if head else []) + parts + [tail])
+    return sign + s
+
+
+def grid_markdown(grid, row_axis, col_axis, corner, axis_kind="shift"):
+    """Render a sensitivity grid as a GFM table, base cell bolded.
+
+    The report pastes this verbatim. Engine output is never retyped into a template.
+    `axis_kind` is "shift" for a delta axis (signed, zero labelled `base`) or "level"
+    for an absolute-rate axis.
+    """
+    if not grid or not grid.get("cells"):
+        return None
+    rows, cols = grid.get(row_axis) or [], grid.get(col_axis) or []
+    cells = grid["cells"]
+    if axis_kind == "shift":
+        # a delta axis: signed, and the zero point is the story as written
+        fmt = lambda v: "base" if abs(v) < 1e-9 else f"{v:+.0%}"
+    else:
+        # a level axis: the absolute rate, to one decimal (0.5% steps are common)
+        fmt = lambda v: f"{v * 100:.1f}%"
+    # the base row/col is the zero-shift one for a shift axis, else the middle
+    def base_i(axis):
+        if axis_kind == "shift" and 0.0 in axis:
+            return axis.index(0.0)
+        return len(axis) // 2
+    br, bc = base_i(rows), base_i(cols)
+    head = [corner] + [f"**{fmt(c)}**" if i == bc else fmt(c) for i, c in enumerate(cols)]
+    out = ["| " + " | ".join(head) + " |",
+           "|" + "---|" * len(head)]
+    for i, r in enumerate(rows):
+        label = f"**{fmt(r)}**" if i == br else fmt(r)
+        vals = []
+        for j, v in enumerate(cells[i] if i < len(cells) else []):
+            t = _inr(v)
+            vals.append(f"**{t}**" if (i == br and j == bc) else t)
+        out.append("| " + " | ".join([label] + vals) + " |")
+    return "\n".join(out)
+
+
+_LEDGER_LEVERS = ("growth_path", "margin_path", "tax_path", "sales_to_capital_path",
+                  "wacc_path", "terminal_growth", "terminal_wacc", "terminal_roic")
+
+
+def _revisions(path, result):
+    """The ledger of superseded runs for this ticker-day, oldest first.
+
+    Re-running the same day overwrites `dcf.json`, so without this the only surviving
+    version is the last one — and a flag answered by editing the input that raised it
+    leaves no trace. Each entry records what the superseded run produced and which
+    levers moved, so a changed assumption is visible in the artifact itself.
+    """
+    try:
+        with open(path) as fh:
+            prior = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    old_a, new_a = prior.get("assumptions", {}), result.get("assumptions", {})
+    changed = [k for k in _LEDGER_LEVERS if old_a.get(k) != new_a.get(k)]
+    ledger = list(prior.get("revisions") or [])
+    ledger.append({
+        "n": len(ledger) + 1,
+        "intrinsic_value_per_share": prior.get("intrinsic_value_per_share"),
+        "terminal_value_fraction": prior.get("terminal_value_fraction"),
+        "flags": prior.get("flags", []),
+        "changed_levers": changed,
+    })
+    return ledger
+
+
 def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=False,
         reverse_solve="growth", reverse_target=None, date=None):
     """Intrinsic value and relative value as one envelope.
@@ -651,6 +755,7 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
             gaps.append("relative valuation skipped: `relative` is not a mapping")
 
     path = os.path.join(paths.stock_dir(ticker, date), "dcf.json")
+    result["revisions"] = _revisions(path, result)
     try:
         with open(path, "w") as fh:
             json.dump(result, fh, indent=2)
@@ -671,10 +776,19 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
     data["ticker"] = paths.ticker_key(ticker)
     data["relative"] = read
     data["dcf_path"] = path
+    data["revisions"] = result["revisions"]
     if sensitivity:
-        data["sensitivity_range"] = _grid_range(result.get("sensitivity"))
+        g = result.get("sensitivity")
+        data["sensitivity_range"] = _grid_range(g)
+        data["sensitivity_md"] = grid_markdown(
+            g, "wacc_axis", "growth_axis", "terminal WACC ↓ / terminal g →",
+            axis_kind="level")
     if story:
-        data["story_range"] = _grid_range(result.get("story_sensitivity"))
+        g = result.get("story_sensitivity")
+        data["story_range"] = _grid_range(g)
+        data["story_sensitivity_md"] = grid_markdown(
+            g, "growth_shift_axis", "margin_shift_axis",
+            "growth shift ↓ / margin shift →")
     if reverse:
         data["reverse_dcf"] = result.get("reverse_dcf")
     return spine.envelope(True, _SOURCE, data, gaps)

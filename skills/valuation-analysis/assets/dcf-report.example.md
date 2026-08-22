@@ -1,7 +1,8 @@
 <!-- valuation-block
 combined_stance: Undervalued | Fair | Overvalued
 dcf_mos: <±x%>          dcf_confidence: low | med | high   terminal_weight: <x%>
-pe: <x>   peg: <x>   peer_median_pe: <x>   ev_ebitda: <x|n/a>   relative_stance: <undervalued|fair|overvalued>
+pe: <x>   pe_basis: reported | adjusted   peg: <x>
+peer_median_pe: <x|n/a>   peers_priced: <n>   ev_ebitda: <x|n/a>   relative_stance: <undervalued|fair|overvalued|not computable>
 axis: valuation
 -->
 # Valuation — <COMPANY> (<SYMBOL>) · <YYYY-MM-DD>
@@ -18,6 +19,8 @@ axis: valuation
 <3–4 sentences: the narrative the numbers encode — what drives growth, why margins land where they do, what it costs to grow. The numbers below must be consistent with this story.>
 
 ## Assumptions (each traced to a source)
+
+<Where the engine returned a non-empty `revisions` ledger, add a `was → now` line per changed lever with the reason it moved. A lever that changed after a flag was raised is stated, never quietly replaced.>
 | Lever | Value / path | Source / justification |
 |---|---|---|
 | Base revenue | ₹<…> Cr | `Total Revenue` FY<…> (consolidated) |
@@ -40,13 +43,15 @@ Lease / R&D capitalisation: <applied | not material | data gap — explain>.
 - Terminal value = <…>% of EV
 
 ### Sensitivity — the levers that move value (story-driver grid: growth × steady-state margin)
-| growth shift ↓ / margin → | <m−3%> | **<m>** | <m+3%> |
-|---|---|---|---|
-| <g−4%> | … | … | … |
-| **<g>** | … | **<base>** | … |
-| <g+4%> | … | … | … |
+<paste `story_sensitivity_md` from the engine verbatim — do not retype the numbers>
 
-Lead with this **range** (and the `duration` read: does extending the *demonstrated* growth a couple of years close the gap to price?). The WACC × terminal-growth grid is a secondary check — for a growth firm it perturbs the lowest-leverage levers.
+Lead with this **range** (and the `duration` read: does extending the *demonstrated* growth a couple of years close the gap to price?).
+
+<details><summary>WACC × terminal-growth (secondary check — for a growth firm it perturbs the lowest-leverage levers)</summary>
+
+<paste `sensitivity_md` from the engine verbatim>
+
+</details>
 
 ## Reverse DCF — what ₹<price> already assumes
 - To justify ₹<price>, the market is pricing in **~<implied>% revenue growth** (year 1) ≈ **~<implied CAGR>% over <N> years** — vs your base story of <base>% and the company's <history>% history / <guidance> guidance.
@@ -56,9 +61,11 @@ Lead with this **range** (and the `duration` read: does extending the *demonstra
 ## Relative value — multiples vs peers
 | Multiple | Company | Peer median | Own 5y band | Reads as |
 |---|---|---|---|---|
-| P/E | <…> | <…> (<n> peers: <names>) | <…>th percentile | <cheap / in line / dear> |
+| P/E | <…> (<reported / adjusted>) | <…> (<n> peers, <reported / adjusted>: <names>) | <…>th percentile | <cheap / in line / dear / not comparable> |
 | PEG | <…> | — | — | growth basis: <forward / historical EPS CAGR — labelled estimate>; PEG assumes equal risk and a linear growth↔P/E link |
 | EV/EBITDA <or P/B · RoE for a bank / NBFC / insurer> | <…> | <…> | — | <…> |
+
+<Where the engine's `relative.gaps` is non-empty — a peer set under three, or a basis mismatch — say here that the peer half is void and what the stance rests on instead.>
 
 **Relative stance:** <undervalued / fair / overvalued> — <one line on what the multiples alone say>.
 

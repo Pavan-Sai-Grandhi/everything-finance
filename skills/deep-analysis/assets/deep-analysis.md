@@ -27,7 +27,7 @@ Review: {{REVIEW_TRIGGER}}
 
 <!-- The Stop hook extracts exactly the section above and sends it to Telegram.
      Keep it ≤ 10 lines, no markdown tables, no links.
-     This whole report is SYNTHESIZED by the orchestrator from the leg work papers in
+     This whole report is SYNTHESIZED by the report-writer from the leg work papers in
      ./agents/ — write prose, don't paste raw leg reports. Fill every {{PLACEHOLDER}}. -->
 
 ---
@@ -51,10 +51,19 @@ Prior run: `{{PRIOR_PATH}}`
 | | |
 |---|---|
 | **Verdict** | {{CALL}} · conviction {{CONVICTION}} |
+| **What it's worth** | {{VALUE_STANCE}} · call carried by {{ACTION_DRIVER}} |
+| **Your position** | {{POSITION_LINE}} |
 | **Entry / Stop / Target** | {{ENTRY_SL_TARGET}} · RRR {{RRR}} |
 | **Allocation cap** | {{ALLOC_CAP}} |
 | **Invalidation** | {{INVALIDATION}} |
 | **Review trigger** | {{REVIEW_TRIGGER}} |
+| **Evidence** | {{EVIDENCE_COUNTS}} · weakest load-bearing input: {{WEAKEST_INPUT}} |
+<!-- VALUE_STANCE is what the business is worth (the valuation leg's, unchanged); CALL is what
+     to do about it. They come apart routinely — say so when they do.
+     POSITION_LINE: the holding and the hold/trim/exit call when position.held is yes;
+     "not held" or "broker check unavailable" otherwise. Never leave it blank.
+     EVIDENCE_COUNTS and WEAKEST_INPUT come from the verdict-block — they say how much the
+     call rests on sourced figures versus derived and estimated ones. -->
 
 ## 2 · At a Glance — the lenses
 | Lens | Stance | One-line read |
@@ -76,7 +85,11 @@ Prior run: `{{PRIOR_PATH}}`
      geography, flagship products, the moat — so a reader meeting the company here is oriented. -->
 
 ## 4 · The Debate — {{DEBATE_ROUNDS}}
-<!-- e.g. "3 rounds (hit max)", "2 rounds (converged)", "1 round (no divergence)", or "single contest (quick)". -->
+<!-- rounds_run + the escalation helper's stop reason, e.g. "3 rounds (hit the deep cap)",
+     "2 rounds (the bull conceded)", "2 rounds (neither side brought new evidence)",
+     "1 round (a side gave no evidence-tied claim)", or "single contest (quick)".
+     Where the sides argued different axes and never engaged, say so here — neither
+     position survived scrutiny, and that is a caveat on the verdict, not a detail. -->
 **🐂 Bull thesis.** {{BULL_SYNTHESIS}}
 <!-- Distill the bull's strongest *surviving* arguments across all rounds (or the contest's bull side) + conviction into prose. -->
 
@@ -110,7 +123,9 @@ Prior run: `{{PRIOR_PATH}}`
 
 ## 7 · Data Gaps & Caveats
 {{DATA_GAPS}}
-<!-- Union of every leg's gaps. Missing evidence is uncertainty, not neutral. -->
+<!-- Union of every leg's gaps, the orchestrator's own (a failed broker check, a leg that did
+     not return, a phase-0 call that was skipped), and the lenses this mode did not run.
+     Missing evidence is uncertainty, not neutral. Do not trim this section for length. -->
 
 ---
 <details>
