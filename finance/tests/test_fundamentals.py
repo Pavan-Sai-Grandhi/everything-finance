@@ -251,6 +251,28 @@ def test_T2_pnl_10y():
           pnl["rows"]["Payout Ratio %"][1] == 10.05, pnl["rows"]["Payout Ratio %"])
 
 
+def test_T2_pnl_ttm_column_is_marked_not_a_fiscal_year():
+    # The annual income statement appends a trailing-twelve-month column that the balance
+    # sheet and cash flow do NOT — pairing the three by index silently mixes TTM with FY.
+    # `period_kinds` makes the last column's kind explicit so a consumer can pair by kind.
+    pnl = _data()["pnl_10y"]
+    check("T2 pnl period_kinds parallel the columns",
+          pnl["period_kinds"] == ["FY", "FY", "TTM"], pnl["period_kinds"])
+    check("T2 the last pnl column is TTM, not a fiscal year",
+          pnl["period_kinds"][-1] == "TTM", pnl["period_kinds"])
+    bs = _data()["balance_sheet_10y"]
+    cf = _data()["cash_flow_10y"]
+    check("T2 balance sheet carries no TTM column",
+          "TTM" not in bs["period_kinds"], bs["period_kinds"])
+    check("T2 cash flow carries no TTM column",
+          "TTM" not in cf["period_kinds"], cf["period_kinds"])
+    # The trap the marking prevents: latest-index CFO (FY) paired with latest-index EBITDA (TTM).
+    fy_ebitda = pnl["rows"]["EBITDA"][pnl["period_kinds"].index("TTM") - 1]
+    ttm_ebitda = pnl["rows"]["EBITDA"][pnl["period_kinds"].index("TTM")]
+    check("T2 the FY and TTM EBITDA genuinely differ (the mix would be silent)",
+          fy_ebitda != ttm_ebitda, (fy_ebitda, ttm_ebitda))
+
+
 def test_T2_balance_sheet_10y():
     bs = _data()["balance_sheet_10y"]
     check("T2 balance sheet columns", bs["columns"] == ["FY 2026"])
@@ -550,7 +572,9 @@ def test_T5_advertised_common_fields_are_all_real():
 if __name__ == "__main__":
     run((test_T1_resolve_sid, test_T1_resolve_sid_miss_is_a_labelled_gap,
          test_T1_resolve_sid_rejects_a_near_miss, test_T1_empty_symbol,
-         test_T2_ratios, test_T2_pnl_10y, test_T2_balance_sheet_10y,
+         test_T2_ratios, test_T2_pnl_10y,
+         test_T2_pnl_ttm_column_is_marked_not_a_fiscal_year,
+         test_T2_balance_sheet_10y,
          test_T2_cash_flow_10y, test_T2_quarters,
          test_T2_q_key, test_T2_shareholding, test_T2_peers,
          test_T2_documents_stay_on_screener,

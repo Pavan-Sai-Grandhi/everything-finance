@@ -133,7 +133,8 @@ def resolve_wacc(spec, n):
         return _as_path(spec["wacc"], n, 0.11), None
     b = spec.get("wacc_buildup")
     if not b:
-        return _as_path(0.11, n, 0.11), None
+        raise ValueError("inputs need a discount rate — either an explicit `wacc` (scalar/list) "
+                         "or a `wacc_buildup` block; WACC must be sourced, never defaulted")
     rf = float(b["risk_free"])
     beta = float(b.get("beta", 1.0))
     mature_erp = float(b["mature_erp"])
@@ -142,10 +143,16 @@ def resolve_wacc(spec, n):
     coe = rf + beta * mature_erp + lam * crp
     erp_total = mature_erp + lam * crp
     cod = float(b.get("cost_of_debt_pretax", coe))
-    # the buildup needs a SCALAR tax rate, so a per-year spec `tax_rate` path cannot
-    # stand in as the default.
-    scalar_spec_tax = not isinstance(spec.get("tax_rate"), (list, tuple))
-    tax = float(b.get("tax_rate", spec.get("tax_rate", 0.25) if scalar_spec_tax else 0.25))
+    # the buildup needs a SCALAR tax rate for the debt shield; a per-year spec `tax_rate` path
+    # cannot stand in, so require an explicit scalar rather than defaulting one.
+    tax_spec = b.get("tax_rate", spec.get("tax_rate"))
+    if isinstance(tax_spec, (list, tuple)):
+        raise ValueError("wacc_buildup needs a scalar `tax_rate` for the after-tax cost of debt "
+                         "— a per-year tax path cannot supply it; set `tax_rate` in the "
+                         "wacc_buildup block")
+    if tax_spec is None:
+        raise ValueError("wacc_buildup needs `tax_rate` for the after-tax cost of debt")
+    tax = float(tax_spec)
     we = float(b.get("equity_weight", 1.0))
     wd = float(b.get("debt_weight", 1.0 - we))
     wacc = we * coe + wd * cod * (1.0 - tax)
@@ -185,11 +192,21 @@ def value(spec):
     base_rev = float(spec["base_revenue"])
     growth = resolve_growth(spec, n)
     margin = resolve_margin(spec, n)
-    tax = _as_path(spec.get("tax_rate", 0.25), n, 0.25)
-    s2c = _as_path(spec.get("sales_to_capital"), n, 2.0)
+    if spec.get("tax_rate") is None:
+        raise ValueError("inputs need `tax_rate` — the effective tax rate must be sourced "
+                         "(annual-report tax note), never defaulted")
+    tax = _as_path(spec["tax_rate"], n, 0.0)
+    if spec.get("sales_to_capital") is None:
+        raise ValueError("inputs need `sales_to_capital` — the reinvestment efficiency ratio "
+                         "must be sourced (historical ΔRevenue ÷ reinvestment, or peer benchmark), "
+                         "never defaulted")
+    s2c = _as_path(spec["sales_to_capital"], n, 0.0)
     wacc, wacc_detail = resolve_wacc(spec, n)
 
-    g_T = float(spec.get("terminal_growth", 0.04))
+    if spec.get("terminal_growth") is None:
+        raise ValueError("inputs need `terminal_growth` — the perpetuity growth rate must be "
+                         "sourced (capped at the risk-free rate), never defaulted")
+    g_T = float(spec["terminal_growth"])
     wacc_T = float(spec.get("terminal_wacc", wacc[-1]))
     margin_T = float(spec.get("terminal_margin", margin[-1]))
     tax_T = float(spec.get("terminal_tax_rate", tax[-1]))
@@ -645,6 +662,12 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
         "currency_unit", "explicit_years", "enterprise_value", "equity_value",
         "shares_outstanding", "intrinsic_value_per_share", "current_price",
         "margin_of_safety", "terminal_value_fraction", "flags")}
+    # The resolved levers travel in the digest, not only into dcf.json, so a reader can see
+    # which discount rate, tax, reinvestment and terminal growth actually built this value.
+    a = result["assumptions"]
+    data["assumptions"] = {k: a[k] for k in (
+        "wacc_path", "wacc_buildup", "tax_path", "sales_to_capital_path",
+        "terminal_growth", "terminal_wacc", "terminal_roic")}
     data["ticker"] = paths.ticker_key(ticker)
     data["relative"] = read
     data["dcf_path"] = path

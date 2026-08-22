@@ -146,8 +146,8 @@ HYBRID_HOLDINGS_BLOB = {
 # Tickertape stocks/info/<sid> — note sid RECM vs ticker RECLTD, the join-key trap.
 STOCK_INFO_BLOB = {
     "data": {
-        "info": {"ticker": "RECLTD", "name": "REC Ltd", "sector": "Financials",
-                 "isin": "INE020B01018"},
+        "isin": "INE020B01018",
+        "info": {"ticker": "RECLTD", "name": "REC Ltd", "sector": "Financials"},
         "ratios": {"pe": 8.4, "ttmPe": 8.1, "pb": 1.6, "roe": 21.5, "eps": 62.3,
                    "marketCap": 132000.0, "marketCapLabel": "Midcap",
                    "divYield": 3.9, "beta": 1.4, "indpe": 14.2, "indpb": 2.1},
@@ -856,8 +856,8 @@ def test_stock_ratios_unranked_falls_back_to_the_provider_label():
 
 def test_stock_ratios_joins_on_isin_when_the_ticker_misses():
     fresh_root("ratios-isin")
-    blob = {"data": {"info": {"ticker": "RECLIMITED", "name": "REC Ltd",
-                              "isin": "INE020B01018"},
+    blob = {"data": {"isin": "INE020B01018",
+                     "info": {"ticker": "RECLIMITED", "name": "REC Ltd"},
                      "ratios": {"pe": 8.4}}}
     with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (blob, None)), \
             cap_index(cap_stocks()):

@@ -154,6 +154,42 @@ try:
 except ValueError:
     check("zero shares raises", True)
 
+# 16b) The four sourced-only levers are required, not silently defaulted (CLAUDE.md rule 1).
+#      Each must raise a ValueError naming the missing lever — never substitute a house number.
+for lever in ("tax_rate", "sales_to_capital", "terminal_growth"):
+    bare = {k: v for k, v in spec1.items() if k != lever}
+    try:
+        dcf.value(bare)
+        check(f"missing {lever} raises", False, "no exception")
+    except ValueError as e:
+        check(f"missing {lever} raises and names it", lever in str(e), str(e))
+
+# WACC is satisfied by EITHER `wacc` OR `wacc_buildup`; missing both raises.
+nowacc = {k: v for k, v in spec1.items() if k != "wacc"}
+try:
+    dcf.value(nowacc)
+    check("missing wacc AND wacc_buildup raises", False, "no exception")
+except ValueError as e:
+    check("missing discount rate raises and names wacc", "wacc" in str(e).lower(), str(e))
+check("wacc_buildup alone satisfies the discount-rate requirement",
+      dcf.value(dict(nowacc, wacc_buildup={"risk_free": 0.07, "mature_erp": 0.05,
+                                           "tax_rate": 0.25}))["intrinsic_value_per_share"] > 0)
+
+# 16c) A per-year tax path with a wacc_buildup cannot silently fall back to a house tax rate.
+try:
+    dcf.value(dict(nowacc, tax_rate=[0.25] * spec1["years"],
+                   wacc_buildup={"risk_free": 0.07, "mature_erp": 0.05}))
+    check("buildup with a per-year tax path and no scalar tax raises", False, "no exception")
+except ValueError as e:
+    check("buildup needs a scalar tax rate for the debt shield", "scalar" in str(e).lower(), str(e))
+
+# 16d) run() surfaces the resolved levers in the digest, so a substitution can never be invisible.
+adig = dcf.run("INFY", spec1)["data"]["assumptions"]
+check("run: assumptions carry the resolved wacc path", adig["wacc_path"][0] == 0.10, adig)
+check("run: assumptions carry the resolved tax path", adig["tax_path"][0] == 0.25, adig)
+check("run: assumptions carry sales-to-capital", adig["sales_to_capital_path"][0] == 2.0, adig)
+check("run: assumptions carry terminal growth", adig["terminal_growth"] == 0.04, adig)
+
 # --- reverse DCF ---------------------------------------------------------------------
 # Use a multi-year, value-creating spec (terminal ROIC 0.14 > WACC 0.11) so growth genuinely
 # drives value — the only setting in which a reverse-DCF on growth is well-posed.

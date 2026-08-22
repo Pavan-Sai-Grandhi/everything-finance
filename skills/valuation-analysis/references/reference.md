@@ -52,7 +52,7 @@ Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags.
 
 ## The valuation levers (and where to source each)
 
-`get_company_fundamentals` publishes **ten fiscal years** of consolidated P&L, balance sheet and cash flow under Tickertape's own row labels; the rows named below are those labels.
+`get_company_fundamentals` publishes **ten fiscal years** of consolidated balance sheet and cash flow, and **ten fiscal years plus a trailing-twelve-month column** of P&L, under Tickertape's own row labels; the rows named below are those labels. Only the P&L carries the TTM column, so the last column is not the same period across the three — pair by each table's `period_kinds`, never by index.
 
 | Lever | Source it from | Sanity rule |
 |---|---|---|

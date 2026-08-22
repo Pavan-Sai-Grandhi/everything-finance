@@ -254,9 +254,23 @@ def _periods(sid, statement, span, count):
     return rows, None
 
 
+def _period_kind(label):
+    """Classify a column's reporting period. The annual income statement appends a
+    trailing-twelve-month column the balance sheet and cash flow do NOT, so pairing the
+    three by index silently mixes a TTM value with a fiscal-year one — a consumer must
+    pair by kind/label, never by position."""
+    s = str(label or "").strip().upper()
+    if s == "TTM":
+        return "TTM"
+    if s.startswith("FY"):
+        return "FY"
+    return "interim"
+
+
 def _table(rows, labels, derived=None):
-    """Period dicts + a (label, key) map → the shared `{columns, rows}` table."""
+    """Period dicts + a (label, key) map → the shared `{columns, period_kinds, rows}` table."""
     columns = [str(r.get("displayPeriod") or "") for r in rows]
+    period_kinds = [_period_kind(c) for c in columns]
     out = {}
     for label, key in labels:
         series = [_f(r.get(key)) for r in rows]
@@ -266,7 +280,7 @@ def _table(rows, labels, derived=None):
         series = [fn(r) for r in rows]
         if any(v is not None for v in series):
             out[label] = series
-    return {"columns": columns, "rows": out}
+    return {"columns": columns, "period_kinds": period_kinds, "rows": out}
 
 
 # EBITDA is struck after other income, so this is not an operating-only margin.

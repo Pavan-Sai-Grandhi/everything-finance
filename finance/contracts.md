@@ -220,7 +220,7 @@ Consumers: `get_company_fundamentals` / `run_fundamental_screen`, read by `finan
 and `valuation-analysis` and by
 `find-trade` / `strategy-manager` for a fundamental candidate cut. Key contract — each returns
 the shared **envelope**:
-- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,rows}, balance_sheet_10y:{columns,rows}, cash_flow_10y:{columns,rows}, quarters:{columns,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
+- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,period_kinds,rows}, balance_sheet_10y:{columns,period_kinds,rows}, cash_flow_10y:{columns,period_kinds,rows}, quarters:{columns,period_kinds,rows}, shareholding:{columns,rows}, peers:[{symbol,name,sid}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `period_kinds` parallels `columns`, tagging each `FY`/`TTM`/`interim`. `sections` narrows both the answer and the **work** — only the endpoints behind the sections asked for are called, which is what keeps `get_documents` to one screener fetch — so a narrowed read does not populate the day cache; only a full one does.
 - `screen(query, limit=1000)` → `data:{query, count, candidates:[symbol,...]}` (the fundamental counterpart to `prices.screen()`), biggest market cap first. `query` is `FIELD > VALUE` / `FIELD < VALUE` clauses joined by `AND` over Tickertape's published screener field names; `>=`/`<=` and an unresolvable name **refuse the whole query** with a labelled gap, because a half-resolved query returns companies that never passed the cut.
 
 Line-item labels are **Tickertape's own published vocabulary**, and three of them mean less
@@ -240,6 +240,11 @@ than their name suggests:
   published rows and ΔWC from a **labelled derived** balance-sheet delta, or from the annual
   report's own cash-flow statement when the story turns on it.
 
+The **annual `pnl_10y` carries ten fiscal years plus a trailing-twelve-month column;
+`balance_sheet_10y` and `cash_flow_10y` do not** — so the last column of the three statements
+is not the same period. Pair by `period_kinds` (each column tagged `FY`/`TTM`/`interim`),
+never by index position: a latest-column CFO ÷ latest-column EBITDA silently divides FY by TTM,
+and a five-year revenue CAGR taken `[-6]`→`[-1]` spans FY→TTM (5.4 overlapping years read as 5).
 `EBITDA Margin %` and `Payout Ratio %` are the only derived rows.
 `cash_flow_10y` is the source of **CFO, capex and free cash flow** — none of which the P&L
 carries. `Free Cash Flow` is a **published** line, not a derived one (it reconciles to
@@ -290,7 +295,7 @@ Consumers: `resolve_fund` / `screen_funds` / `get_fund_holdings` / `get_nav_hist
 - `resolve(name)` → `{scheme_code, isin, amfi_name, plan, mf_id, tickertape_name}`; AMFI `NAVAll.txt` is the scheme-code/ISIN authority (mfapi's search misses funds outright).
 - `screen(subsector, option, min_aum)` → `data.funds:[{mf_id, name, aum, expRatio, ret1y/3y/5y, sharpe, sortino, alpha, stdDevAnn, percSmallcap/Midcap/Largecap, ageInMon, …}]` — the category scanner. String filters in the vendor's `match` are silently ignored, so category filtering happens client-side; `PREMIUM_FIELDS` are stripped before the request because one gated field 403s the whole call.
 - `holdings(mf_id)` → `data.positions:[{sid, ticker, name, weight, change3m, type}]` — the **complete** book (64-278 positions at 90-99% coverage), plus `equity_weight`, `sector_weights`, `allocation_history`. `sid` is the join key and genuinely differs from `ticker` (REC: ticker `RECLTD`, sid `RECM`).
-- `stock_ratios(sid)` / `enrich(positions)` → per-holding `{pe, ttm_pe, pb, roe, market_cap_cr, cap_rank, cap_label, sector, …}`, threaded and cached. **`cap_rank`/`cap_label` come from `amfi_cap_list()`** — AMFI's half-yearly `AverageMarketCapitalization*.xlsx` (link resolved dynamically from the categorisation index page), whose `Sr. No.` **is** the SEBI market-cap rank (`finance/caps.py`), joined on NSE symbol with ISIN as the fallback key. A symbol absent from the published period gets `cap_rank: None` plus a labelled gap, and `cap_label` falls back to the provider label. Everything else on the row is Tickertape's sid-joined ratio feed.
+- `stock_ratios(sid)` / `enrich(positions)` → per-holding `{pe, ttm_pe, pb, roe, market_cap_cr, cap_rank, cap_label, sector, …}`, threaded and cached. **`pe` is annualised, `ttm_pe` is trailing-twelve-month** — for a peer comparison against a company's own `Stock P/E` (which is TTM) use `ttm_pe`, or the two bases skew the read ~8%. **`cap_rank`/`cap_label` come from `amfi_cap_list()`** — AMFI's half-yearly `AverageMarketCapitalization*.xlsx` (link resolved dynamically from the categorisation index page), whose `Sr. No.` **is** the SEBI market-cap rank (`finance/caps.py`), joined on NSE symbol with ISIN as the fallback key. A symbol absent from the published period gets `cap_rank: None` plus a labelled gap, and `cap_label` falls back to the provider label. Everything else on the row is Tickertape's sid-joined ratio feed.
 - `nav_history(code)` → `data.navs:[{date ISO, nav}]` oldest-first, strictly parsed.
 **Fund holdings never come from the IndMoney MCP feed** — it caps at 20 rows, misreports its
 own coverage, and can be months stale. Covered by `finance/tests/test_funds.py` (offline fixtures).

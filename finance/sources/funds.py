@@ -510,7 +510,7 @@ def stock_ratios(sid, fresh=False):
     if not rat:
         return _envelope(False, "Tickertape", {"sid": sid},
                          [f"no ratios published for {sid} (unlisted or newly listed)"])
-    rank, label, gaps = _cap_rank(info.get("ticker"), info.get("isin"))
+    rank, label, gaps = _cap_rank(info.get("ticker"), d.get("isin"))
     data = {
         "sid": sid,
         "ticker": info.get("ticker"),

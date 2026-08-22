@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from finance.compute import relval  # noqa: E402
 from finance.tests.harness import approx, check, summary  # noqa: E402
 
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 # --- median (not mean — multiples are skewed) --------------------------------
 check("median odd count", relval.median([12, 15, 20, 25, 30]) == 20)
@@ -64,5 +66,28 @@ check("opposing signals cancel → fair", r["relative_stance"] == "fair", r)
 # missing growth → PEG is None, read still returns a stance
 r = relval.relative_read({"pe": 18.0, "peer_pe": [24, 26, 28], "own_pe_history": [20, 22, 24]})
 check("missing growth → peg None, stance present", r["peg"] is None and "relative_stance" in r, r)
+
+# --- I3: a negative/zero peer P/E is not a multiple → excluded from the median ---------
+# Raw median of [-14, 9, 11, 13, 18] is 11 (negatives drag the centre down); pricing only the
+# positives gives median([9,11,13,18]) = 12, and the count of loss-makers is reported.
+r = relval.relative_read({"pe": 20.0, "peer_pe": [-14, 9, 11, 13, 18],
+                          "own_pe_history": [15, 18, 20, 22, 24]})
+check("negative peer P/E excluded from the median", r["peer_median_pe"] == 12.0, r)
+check("priced-peer count excludes the loss-maker", r["peers_priced"] == 4, r)
+check("excluded loss-makers are reported", r["peers_excluded_nonpositive"] == 1, r)
+# A zero P/E is equally not a multiple.
+r = relval.relative_read({"pe": 20.0, "peer_pe": [0, 22, 24, 26]})
+check("zero peer P/E excluded too",
+      r["peers_priced"] == 3 and r["peers_excluded_nonpositive"] == 1, r)
+# All peers loss-making → no median, no false stance from an empty set.
+r = relval.relative_read({"pe": 20.0, "peer_pe": [-5, -8]})
+check("all-negative peer set → no peer median", r["peer_median_pe"] is None
+      and r["peers_priced"] == 0 and r["peers_excluded_nonpositive"] == 2, r)
+
+# --- I2: the leg must feed peers on the same TTM basis as the company's Stock P/E ------
+with open(os.path.join(_ROOT, "skills/valuation-analysis/SKILL.md"), encoding="utf-8") as fh:
+    _skill = fh.read()
+check("valuation SKILL names the trailing peer field (ttm_pe), not the annualised one",
+      "ttm_pe" in _skill and "annualised" in _skill, "step 6 must pin the TTM basis")
 
 summary()

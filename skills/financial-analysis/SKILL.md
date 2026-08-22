@@ -9,7 +9,7 @@ allowed-tools: Read, Write, mcp__finance-company__*
 
 Read `references/reference.md` first — it owns the method: the six checks with their thresholds and what each is really testing, the published-row vocabulary and the four labels that mean something other than they say, what the primary documents must supply, and how the verdict is graded. This SKILL is the workflow.
 
-**Sources for this skill only:** `finance-company` — `get_company_fundamentals(symbol)` (ten fiscal years of P&L, balance sheet and cash flow, quarters, ratios, six quarters of shareholding) and `get_documents(symbol)` (annual report and latest concall, downloaded and converted to cached local text).
+**Sources for this skill only:** `finance-company` — `get_company_fundamentals(symbol)` (ten fiscal years of balance sheet and cash flow, ten plus a trailing-twelve-month column of P&L, quarters, ratios, six quarters of shareholding) and `get_documents(symbol)` (annual report and latest concall, downloaded and converted to cached local text).
 
 ## Workflow
 
@@ -36,7 +36,7 @@ axis: growth_durability
 **Checklist scorecard**: ROE/ROCE (3y trend) | margins | D/E + interest cover | CFO vs EBITDA | promoter holding & pledge | revenue CAGR — each PASS/FLAG/FAIL + the number
 **Annual report findings**: 3–5 specifics with page/section cites (auditor quals, RPTs, contingent liabilities, segment shifts)
 **Concall takeaways**: guidance + 2–3 management quotes/paraphrases with quarter cite
-**Multiples (context, not a call)**: the current P/E, P/B and market cap as sourced facts, stated beside the growth and return numbers above
+**Multiples (context, not a call)**: the current P/E and market cap as sourced facts, and P/B **derived** (labelled) as `Current Price ÷ Book Value` — both are in `ratios`, but the P/B ratio itself is not published — stated beside the growth and return numbers above
 **Red flags** / **Green flags**: bulleted, evidence-tied
 **Verdict**: investment-grade / watch / avoid, one sentence, confidence low/med/high
 ```

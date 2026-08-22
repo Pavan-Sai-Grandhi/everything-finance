@@ -83,9 +83,21 @@ def relative_read(figures):
     """Compute the relative-only read from sourced figures. Returns peer-median
     P/E, the company's P/E vs that median, its own-band percentile, PEG (+ basis),
     and a relative-only stance — undervalued / fair / overvalued. `valuation-analysis`
-    reconciles this against the DCF; this is the reproducible relative component."""
+    reconciles this against the DCF; this is the reproducible relative component.
+
+    Two consistency requirements the caller must meet, because this module sees only
+    numbers and cannot detect a breach:
+      - `pe` and every `peer_pe` MUST be the SAME basis — the trailing-twelve-month P/E
+        (the company's `Stock P/E` and each peer's `ttm_pe`, NOT the annualised `pe`).
+        Mixing TTM with annualised injects an ~8% skew into a ±10% peer band, enough to
+        flip the premium/discount read on its own.
+    A negative or zero peer P/E is not a multiple (loss-making peer): it is excluded from
+    the median here and the count is reported, so a couple of loss-makers cannot drag the
+    peer centre and read the company as a spurious 'premium'."""
     pe = figures.get("pe")
-    peer_pe = figures.get("peer_pe") or []
+    peer_pe_raw = figures.get("peer_pe") or []
+    peer_pe = [p for p in peer_pe_raw if p is not None and p > 0]
+    peers_excluded = sum(1 for p in peer_pe_raw if p is not None and p <= 0)
     own_hist = figures.get("own_pe_history") or []
     growth = figures.get("growth") or {}
 
@@ -107,6 +119,8 @@ def relative_read(figures):
     return {
         "pe": pe,
         "peer_median_pe": peer_med,
+        "peers_priced": len(peer_pe),
+        "peers_excluded_nonpositive": peers_excluded,
         "pe_vs_peer_median": peer_label,
         "own_band_percentile": pct,
         "peg": peg(pe, g_val),

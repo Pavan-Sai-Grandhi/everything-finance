@@ -20,7 +20,7 @@ ROCE above the cost of capital is the moat signal: it is the one ratio that says
 
 ### 4. Cash reality — CFO tracking EBITDA over a cycle
 
-Profit without cash is accounting, not business. CFO/EBITDA ≈ 1 across a cycle; persistent divergence means the earnings are on paper. `cash_flow_10y` carries all three inputs over the same ten years as the P&L: **`Cash from Operating Activities`** is CFO, **`Capital Expenditures`** is capex, and **`Free Cash Flow`** is a published line, not something you compute. FCF positive across a cycle is the standard for a mature firm; a young firm burning cash is a different question, not automatically a fail. Read `Changes in Working Capital` beside them — CFO propped up by a working-capital release is the same finding the receivable-days check reaches from the other side.
+Profit without cash is accounting, not business. CFO/EBITDA ≈ 1 across a cycle; persistent divergence means the earnings are on paper. `cash_flow_10y` carries all three inputs: **`Cash from Operating Activities`** is CFO, **`Capital Expenditures`** is capex, and **`Free Cash Flow`** is a published line, not something you compute. It runs ten fiscal years — but the annual P&L appends an eleventh, trailing-twelve-month column that the cash flow does NOT, so the last cash-flow column (FY) is a different period from the last P&L column (TTM). Pair CFO to EBITDA by `period_kinds`, never by `[-1]`, or a fiscal-year CFO is silently divided by a TTM EBITDA. FCF positive across a cycle is the standard for a mature firm; a young firm burning cash is a different question, not automatically a fail. Read `Changes in Working Capital` beside them — CFO propped up by a working-capital release is the same finding the receivable-days check reaches from the other side.
 
 ### 5. Promoter holding & pledge — stable or rising, pledging not increasing
 
@@ -38,7 +38,7 @@ Compute it off `Total Revenue`, and read it beside EPS: `Earnings Per Share` now
 
 ## Reading the published rows — the vocabulary and its traps
 
-`get_company_fundamentals` returns **ten fiscal years** of P&L and balance sheet, thirteen quarters, and **six quarters** of shareholding, under the source's own published labels. Three of those labels mean something other than what a reader expects:
+`get_company_fundamentals` returns **ten fiscal years** of balance sheet and cash flow, and **ten fiscal years plus a trailing-twelve-month column** of P&L, thirteen quarters, and **six quarters** of shareholding, under the source's own published labels. Because only the P&L carries the TTM column, the last column is not the same period across the three statements — pair by each table's `period_kinds` (FY/TTM/interim), never by index. Three of those labels also mean something other than what a reader expects:
 
 | Row | What it actually is |
 |---|---|
