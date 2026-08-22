@@ -25,6 +25,8 @@ import argparse
 import json
 import sys
 
+from finance import spine
+
 # Companies Act s.197 ceilings, as a percentage of net profit computed under s.198.
 CAP_TOTAL_PCT = 11.0
 CAP_SINGLE_MD_PCT = 5.0
@@ -35,10 +37,6 @@ NORM_PCT = 5.0
 
 # An audit fee outrunning revenue by this much is worth naming.
 FEE_EXCESS_PP = 15.0
-
-
-def _pct(part, whole):
-    return None if not whole else round(part / whole * 100.0, 2)
 
 
 def remuneration_check(total_remuneration, net_profit, managing_directors=None):
@@ -57,7 +55,7 @@ def remuneration_check(total_remuneration, net_profit, managing_directors=None):
                           f"net profit ({net_profit:,.2f}) — s.197 requires central-government "
                           f"approval or Schedule V compliance in a loss year"}
 
-    ratio = _pct(total_remuneration, net_profit)
+    ratio = spine.pct(total_remuneration, net_profit)
     cap = CAP_TOTAL_PCT
     if managing_directors == 1:
         cap = CAP_SINGLE_MD_PCT
@@ -91,13 +89,13 @@ def auditor_fee_check(fees, revenues=None, profits=None):
         return {"verdict": "NOT-CHECKED", "fee_yoy_pct": None,
                 "reason": "prior-year audit fee is zero or negative — no trend to read"}
 
-    fee_yoy = _pct(fees[-1] - fees[-2], fees[-2])
+    fee_yoy = spine.pct(fees[-1] - fees[-2], fees[-2])
     rev_yoy = None
     if revenues and len(revenues) >= 2 and revenues[-2]:
-        rev_yoy = _pct(revenues[-1] - revenues[-2], revenues[-2])
+        rev_yoy = spine.pct(revenues[-1] - revenues[-2], revenues[-2])
     profit_yoy = None
     if profits and len(profits) >= 2 and profits[-2]:
-        profit_yoy = _pct(profits[-1] - profits[-2], profits[-2])
+        profit_yoy = spine.pct(profits[-1] - profits[-2], profits[-2])
 
     notes = []
     verdict = "PASS"

@@ -124,7 +124,7 @@ def _selftest():
     r = should_escalate({"axis": "valuation", "claim": "cheap"},
                         {"axis": "valuation", "claim": "fairly priced"})
     ok = r["escalate"] is True and r["directive"] == REBUT
-    # different axes → escalate to cross-examine (this is the inverted rule)
+    # different axes → escalate to cross-examine
     r = should_escalate({"axis": "valuation", "claim": "cheap"},
                         {"axis": "governance", "claim": "pledging"})
     ok &= r["escalate"] is True and r["directive"] == CROSS_EXAMINE

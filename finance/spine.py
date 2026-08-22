@@ -70,6 +70,13 @@ def iso_date(value):
     return None
 
 
+def pct(numerator, denominator, places=2):
+    """`numerator/denominator` as a percentage, or None if either is missing or the
+    denominator is zero. Coerces through `f`, so a published blank never becomes 0%."""
+    n, d = f(numerator), f(denominator)
+    return round(100.0 * n / d, places) if n is not None and d else None
+
+
 def first(row, *keys, default=None):
     """First present, non-empty value among `keys`, else `default`."""
     if not isinstance(row, dict):

@@ -20,7 +20,6 @@ The work papers are the legs' own output. The report is a **synthesis of them**,
 - Where two legs report the same quantity differently, name both and say which the verdict used.
 - Distil each side's *strongest surviving* case across all rounds, not its opening one; a point conceded later does not belong in the synthesis as if it stood.
 - The `## Telegram Brief` section is required and capped at 10 lines.
-- Every stock recommendation ends with a risk note + "Not investment advice — personal research tool."
 
 ## Return only the path
 

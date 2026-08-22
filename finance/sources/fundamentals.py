@@ -35,7 +35,7 @@ from finance import paths
 from finance import transport
 from finance.sources import tickertape
 from finance.spine import (CACHE_STAMP, envelope as _envelope, f as _f,
-                           iso_date as _iso_date, norm_symbol as _norm,
+                           iso_date as _iso_date, norm_symbol as _norm, pct as _pct,
                            read_cache as _read_cache, write_cache as _write_cache)
 
 SCREENER = "https://www.screener.in"
@@ -235,11 +235,6 @@ def _q_key(key):
     """The interim endpoint's name for an annual field: `incTrev` -> `qIncTrev`."""
     return "q" + key[0].upper() + key[1:]
 
-
-def _pct(numerator, denominator):
-    """`numerator/denominator` as a percentage, or None if either is missing or zero."""
-    n, d = _f(numerator), _f(denominator)
-    return round(100.0 * n / d, 2) if n is not None and d else None
 
 
 def _periods(sid, statement, span, count):

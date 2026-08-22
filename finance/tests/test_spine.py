@@ -160,6 +160,18 @@ def test_iso_date():
     check("bad month -> None", spine.iso_date("17-Xyz-2026") is None)
 
 
+def test_pct():
+    """The one percentage helper both sources/ and compute/ call."""
+    check("pct is a percentage to two places", spine.pct(30.0, 1000.0) == 3.0)
+    check("pct rounds to the requested places", spine.pct(1, 3, places=4) == 33.3333)
+    check("a zero denominator is None, not a crash", spine.pct(5, 0) is None)
+    check("a None denominator is None", spine.pct(5, None) is None)
+    check("a None numerator is None", spine.pct(None, 5) is None)
+    check("a published blank never becomes 0%", spine.pct("N/A", 100) is None)
+    check("a numeric string coerces through f", spine.pct("30", "1000") == 3.0)
+    check("negatives keep their sign", spine.pct(-89.0, 100.0) == -89.0)
+
+
 if __name__ == "__main__":
     run((test_envelope, test_f_coercion, test_first, test_norm_symbol, test_cache_roundtrip,
-         test_cache_never_blocks_a_fetch, test_cache_stamp_key_is_selectable, test_f_rejects_nonfinite, test_iso_date))
+         test_cache_never_blocks_a_fetch, test_cache_stamp_key_is_selectable, test_f_rejects_nonfinite, test_iso_date, test_pct))
