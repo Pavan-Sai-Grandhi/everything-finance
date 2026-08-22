@@ -80,6 +80,9 @@ def test_spine_xirr_summary():
     check("spine: xirr count", x["count"] == 2, x)
     check("spine: xirr best is RELIANCE", x["best"]["ticker"] == "RELIANCE", x["best"])
     check("spine: xirr worst is TCS", x["worst"]["ticker"] == "TCS", x["worst"])
+    # value-weighted: RELIANCE value 147500 @ 18.4 + TCS 60000 @ -3.1 = 12.2%, not the
+    # unweighted 7.6% mean — a small winner must not cancel a large holding.
+    check("spine: xirr avg is value-weighted", x["avg"] == 12.2, x["avg"])
 
 
 def test_spine_flat_breakdown_dict():

@@ -268,7 +268,9 @@ Key contract: `fetch(symbol, annual_reports=1, concalls=1, fresh=False)` returns
 **envelope**. It takes the index from `fundamentals.fetch(symbol, sections=["documents"])` —
 one screener fetch — and downloads each link through `transport.request(url, dest=…)`, so the
 BSE/NSE/investor-relations hosts that publish the documents are still reached through the one
-socket. Each section is listed newest-first, so the head of the list is the latest.
+socket. Each section is ordered newest-first by the year (and quarter) parsed from each
+label, so the head is the true latest; a label with no parseable year falls back to list
+position and raises a labelled gap rather than being cited as current on a guess.
 Conversion is `pdftotext -layout` for PDFs (the layout mode keeps the column alignment
 annual-report tables depend on) and an in-process strip for text/HTML; `extracted_by` records
 which ran. A PDF that converts to zero characters is a scanned image and becomes a labelled
@@ -658,7 +660,7 @@ the three leg digests above, and an optional `profile` (age/dependents/monthly_e
 every number (nothing eyeballed).
 
 - **Net-worth spine** (`build_spine`): `{ total_networth, as_of, allocation:{<bucket>:{label,value,pct}},
-  liquid, equity_share_pct, holdings_xirr:{count,avg,best,worst}, source, coverage:
+  liquid, equity_share_pct, holdings_xirr:{count,avg (value-weighted),best,worst}, source, coverage:
   complete|tradeable-only, gaps:[…] }`. Allocation precedence: IndMoney breakdown (sees every class)
   → else aggregate tradeable positions by class (labelled `tradeable-only`). Liquid = cash + FDs only;
   equity share = equity + funds + US equity. Buckets are the fixed `canonical_class` set (equity,

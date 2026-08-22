@@ -166,12 +166,25 @@ def test_run_unknown_calculation_is_a_gap():
 
 
 def test_run_bad_inputs_are_a_gap_not_an_exception():
-    tier = im.run("health_sum_insured", {"city_tier": 9})
+    tier = im.run("health_sum_insured", {"adults": 1, "eldest_age": 30, "city_tier": 9})
     check("a rejected value is not ok", tier["ok"] is False)
     check("a rejected value is labelled", any("city_tier" in g for g in tier["gaps"]),
           tier["gaps"])
     missing = im.run("idv_ncb_sanity", {"ex_showroom": 10_00_000})
     check("a missing keyword is a gap, not a TypeError", missing["ok"] is False, missing)
+
+
+def test_health_sum_insured_needs_the_household_inputs():
+    # With every input defaulted the tool would return a confident number built entirely
+    # from assumptions; the household-defining inputs must be supplied, not guessed.
+    env = im.run("health_sum_insured", {})
+    check("all-defaults health call is not ok", env["ok"] is False, env)
+    check("the gap names a missing required input",
+          any("adults" in g or "city_tier" in g or "eldest_age" in g for g in env["gaps"]),
+          env["gaps"])
+    check("no result is fabricated from defaults", env["data"].get("result") is None, env["data"])
+    ok = im.run("health_sum_insured", {"adults": 1, "eldest_age": 30, "city_tier": 1})
+    check("supplying the household inputs solves it", ok["ok"] is True, ok["gaps"])
 
 
 def test_run_unsolvable_result_is_not_ok():

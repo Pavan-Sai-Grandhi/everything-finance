@@ -39,6 +39,39 @@ _DROP_RE = re.compile(r"<(script|style)\b.*?</\1\s*>", re.I | re.S)
 _BLOCK_RE = re.compile(r"</(p|div|tr|li|h[1-6]|table|section|br)\s*/?>", re.I)
 _TAG_RE = re.compile(r"<[^>]+>")
 
+_YEAR_RE = re.compile(r"(?:19|20)\d{2}")
+_QUARTER_RE = re.compile(r"\bQ([1-4])\b", re.I)
+
+
+def _label_recency(label):
+    """(year, quarter) parsed from a document label, for a newest-first sort; None when the
+    label carries no 4-digit year. Annual reports name a year ("Financial Year 2026");
+    concalls add a quarter ("Q1 2026 Transcript"). The latest year in the label wins."""
+    years = _YEAR_RE.findall(label or "")
+    if not years:
+        return None
+    q = _QUARTER_RE.search(label or "")
+    return max(int(y) for y in years), (int(q.group(1)) if q else 0)
+
+
+def _order_newest_first(found, section, wanted, gaps):
+    """Order a section's index entries newest-first by the year+quarter in each label,
+    not by DOM position — screener's list order is not a guaranteed date order. Entries
+    with no parseable year keep DOM order behind the dated ones; if such an entry lands in
+    the cited head, raise a gap saying its recency is a list-position guess, not a date."""
+    dated, undated = [], []
+    for i, link in enumerate(found):
+        rec = _label_recency(link.get("label"))
+        (undated if rec is None else dated).append((rec, i, link))
+    dated.sort(key=lambda t: (-t[0][0], -t[0][1], t[1]))
+    ordered = [t[2] for t in dated] + [t[2] for t in undated]
+    undated_ids = {id(t[2]) for t in undated}
+    for link in ordered[:max(0, int(wanted or 0))]:
+        if id(link) in undated_ids:
+            label = (link.get("label") or "").strip() or section
+            gaps.append(f"{label}: no year in the label — ordered by list position, not date")
+    return ordered
+
 
 def _key(url):
     """Content address for a document.
@@ -141,6 +174,10 @@ def _document(link, kind, fresh, gaps):
     if gap:
         gaps.append(f"{label}: {gap}")
         return None
+    try:
+        os.remove(src)  # the raw download is never re-read; the .txt is the cached primary
+    except OSError:
+        pass
 
     chars, lines = _measure(txt)
     if not chars:
@@ -179,8 +216,9 @@ def fetch(symbol, annual_reports=1, concalls=1, fresh=False):
         if not found:
             gaps.append(f"screener.in lists no {section.replace('_', ' ')} for {sym}")
             continue
-        # screener lists each section newest first, so the head of the list is the latest.
-        for link in found[:max(0, int(wanted[section] or 0))]:
+        want_n = max(0, int(wanted[section] or 0))
+        ordered = _order_newest_first(found, section, want_n, gaps)
+        for link in ordered[:want_n]:
             row = _document(link, kind, fresh, gaps)
             if row:
                 rows.append(row)

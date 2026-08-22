@@ -395,14 +395,16 @@ def _blank(section):
 
 def _select(env, sections):
     """Narrow a company envelope to `sections` (None keeps all), always keeping the
-    identity fields and listing every section the envelope actually carries."""
+    identity fields and listing which sections this narrowed response carries. That set is
+    what was fetched, not the company's full section set — a narrowed read never queries the
+    others, so it cannot report them."""
     (env.get("data") or {}).pop(CACHE_STAMP, None)  # our bookkeeping, not the contract
     if not sections:
         return env
     data = env.get("data") or {}
     keep = set(sections) | set(_IDENTITY)
     env["data"] = {k: v for k, v in data.items() if k in keep}
-    env["data"]["sections_available"] = sorted(k for k in data if k in _SECTIONS)
+    env["data"]["sections_returned"] = sorted(k for k in data if k in _SECTIONS)
     return env
 
 

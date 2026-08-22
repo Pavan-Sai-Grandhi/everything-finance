@@ -314,5 +314,60 @@ def test_cache_key_is_the_url():
     _harness(body)
 
 
+# --- M5: the raw .src is dropped once its text is extracted ------------------- #
+def test_raw_source_deleted_after_conversion():
+    def body(call, calls):
+        env = call()
+        for row in env["data"]["documents"]:
+            src, txt, meta = dz._cache_paths(row["url"])
+            check(f"{row['kind']}: the extracted .txt is kept",
+                  os.path.isfile(txt), txt)
+            check(f"{row['kind']}: the raw .src download is deleted after conversion",
+                  not os.path.isfile(src), src)
+    _harness(body)
+
+
+# --- M6: the latest is chosen by the year in the label, not by list position --- #
+AR_OLD = "https://www.bseindia.com/bseplus/AnnualReport/FY2024.pdf"
+AR_NEW = "https://www.bseindia.com/bseplus/AnnualReport/FY2026.pdf"
+
+
+def test_label_recency_parses_year_and_quarter():
+    check("a year is parsed from an annual-report label",
+          dz._label_recency("Financial Year 2026 from bse") == (2026, 0))
+    check("a quarter and year are parsed from a concall label",
+          dz._label_recency("Q3 2025 Transcript") == (2025, 3))
+    check("the latest year in the label wins",
+          dz._label_recency("Annual Report 2023 (filed 2026)") == (2026, 0))
+    check("a label with no year has no recency", dz._label_recency("Annual Report") is None)
+
+
+def test_out_of_order_index_returns_the_true_latest():
+    # index head is the OLDER report; the newest by label-year must still be chosen.
+    docs = {"annual_reports": [{"label": "Financial Year 2024", "url": AR_OLD},
+                               {"label": "Financial Year 2026", "url": AR_NEW}],
+            "concalls": []}
+
+    def body(call, calls):
+        env = call(concalls=0)
+        check("the newest annual report by label-year is picked, not the list head",
+              env["data"]["documents"][0]["label"] == "Financial Year 2026",
+              env["data"]["documents"])
+        check("only the true-latest document was downloaded", calls == [AR_NEW], calls)
+    _harness(body, docs=docs, bodies={AR_OLD: PDF_BYTES, AR_NEW: PDF_BYTES})
+
+
+def test_undated_label_is_a_gap_not_a_silent_miscite():
+    docs = {"annual_reports": [{"label": "Annual Report", "url": AR_URL}], "concalls": []}
+
+    def body(call, calls):
+        env = call(concalls=0)
+        check("an undated cited document raises a labelled gap",
+              any("no year" in g and "list position" in g for g in env["gaps"]), env["gaps"])
+        check("the document still comes back on the DOM-order fallback",
+              env["data"]["documents_total"] == 1, env["data"])
+    _harness(body, docs=docs, bodies={AR_URL: PDF_BYTES})
+
+
 if __name__ == "__main__":
     run(globals())

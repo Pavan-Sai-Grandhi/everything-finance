@@ -170,10 +170,15 @@ def build_spine(snapshot=None, breakdown=None, positions_env=None):
 
     xirrs = [(p.get("ticker"), p.get("xirr")) for p in positions if p.get("xirr") is not None]
     if xirrs:
-        vals = [x for _, x in xirrs]
         best = max(xirrs, key=lambda t: t[1])
         worst = min(xirrs, key=lambda t: t[1])
-        xirr_summary = {"count": len(xirrs), "avg": round(sum(vals) / len(vals), 1),
+        # value-weight the average: an unweighted mean lets ₹1L at +80% cancel ₹50L at −5%
+        # and misreads as the book's return. None when no holding carries a market value.
+        weighted = [(v, p["xirr"]) for p in positions
+                    if p.get("xirr") is not None and (v := _position_value(p)) is not None]
+        wsum = sum(v for v, _ in weighted)
+        avg = round(sum(v * x for v, x in weighted) / wsum, 1) if wsum else None
+        xirr_summary = {"count": len(xirrs), "avg": avg,
                         "best": {"ticker": best[0], "xirr": best[1]},
                         "worst": {"ticker": worst[0], "xirr": worst[1]}}
     else:

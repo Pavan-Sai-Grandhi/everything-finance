@@ -104,10 +104,10 @@ class HealthNeed:
 
 def health_sum_insured(
     *,
-    adults: int = 1,
+    adults: int,
+    eldest_age: int,
+    city_tier: int,
     children: int = 0,
-    eldest_age: int = 30,
-    city_tier: int = 1,
     personal_cover: float = 0.0,
     employer_cover: float = 0.0,
     has_senior_parents: bool = False,

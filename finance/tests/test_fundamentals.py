@@ -396,9 +396,9 @@ def test_T3_sections_narrow_the_work_not_just_the_answer():
     check("T3 the documents section still comes back",
           len(env["data"]["documents"]["annual_reports"]) == 2)
     check("T3 identity survives the narrowing", env["data"]["symbol"] == "RELIANCE")
-    check("T3 a narrowed read lists the sections it carries",
-          env["data"]["sections_available"] == ["documents"],
-          env["data"].get("sections_available"))
+    check("T3 a narrowed read lists the sections it returns, not the company's full set",
+          env["data"]["sections_returned"] == ["documents"],
+          env["data"].get("sections_returned"))
 
 
 def test_T3_sections_keep_the_sections_own_content():
@@ -409,8 +409,8 @@ def test_T3_sections_keep_the_sections_own_content():
           narrow["data"]["ratios"] == full["data"]["ratios"])
     check("T3 a narrowed read drops the rest",
           "pnl_10y" not in narrow["data"], sorted(narrow["data"]))
-    check("T3 a full read adds no sections_available",
-          "sections_available" not in full["data"], sorted(full["data"]))
+    check("T3 a full read adds no sections_returned",
+          "sections_returned" not in full["data"], sorted(full["data"]))
 
 
 # --- T4: every failure is a labelled gap, never an abort -------------------- #
