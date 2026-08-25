@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Peer-median P/E, own-band percentile and PEG — returned by `run_dcf` beside the intrinsic
-value. `pe` and every `peer_pe` must be trailing-twelve-month: this module sees bare numbers
-and cannot catch a breach, and mixing in an annualised figure skews a +/-10% peer band by ~8%,
-enough to flip the premium/discount read on its own.
+"""Peer-median P/E, own-band percentile and PEG, returned by `run_dcf`.
+
+`pe` and every `peer_pe` must be trailing-twelve-month. Bare numbers arrive here, so a breach
+is undetectable, and an annualised figure among them skews a +/-10% band by ~8% — enough to
+flip the premium/discount read on its own.
 """
 from __future__ import annotations
 
@@ -24,8 +25,8 @@ def _num(value):
 
 
 def _num_list(value):
-    """(numbers, rejected_count) — the rows, maps and prose an LLM fills a tool schema with
-    are counted rejections here rather than an exception out of the tool."""
+    """(numbers, rejected_count) — a tool schema is filled by an LLM, so a bad shape is
+    counted, never raised."""
     if isinstance(value, dict):
         value = list(value.values())
     elif not isinstance(value, (list, tuple)):
@@ -35,7 +36,7 @@ def _num_list(value):
 
 
 def median(values):
-    """Median, not mean — multiples are skewed. None if empty."""
+    """Median, not mean — multiples are skewed."""
     xs = sorted(v for v in values if v is not None)
     if not xs:
         return None
@@ -44,20 +45,18 @@ def median(values):
 
 
 def peg(pe, growth_pct):
-    """P/E over expected EPS growth in percent. None when growth is non-positive."""
     if pe is None or growth_pct is None or growth_pct <= 0:
         return None
     return round(pe / growth_pct, 2)
 
 
 def band_percentile(current, history):
-    """Share of the company's own historical band strictly below `current`, 0-100."""
+    """Share of the company's own historical band below `current`, 0-100."""
     xs = [v for v in history if v is not None]
     return round(sum(v < current for v in xs) / len(xs) * 100.0, 1) if xs else None
 
 
 def _peer_signal(pe, peer_median):
-    """Premium/discount against the peer centre, outside a +/-10% band."""
     if peer_median is None or pe is None:
         return 0, "n/a"
     if pe < peer_median * 0.9:
@@ -66,13 +65,12 @@ def _peer_signal(pe, peer_median):
 
 
 def _band_signal(pct):
-    """High or low in the company's own history, outside the middle third."""
     return 0 if pct is None or 35 <= pct <= 65 else (-1 if pct < 35 else 1)
 
 
 def relative_read(figures):
-    """`peer_pe` and `own_pe_history` are flat lists of numbers and `growth` is {value, basis}
-    in percent; anything else is a gap voiding the line it fed, never an exception."""
+    """`peer_pe`/`own_pe_history` are flat number lists, `growth` is {value, basis} in percent;
+    anything else becomes a gap, never an exception."""
     gaps = []
     pe = _num(figures.get("pe"))
     if pe is None and figures.get("pe") is not None:
@@ -81,7 +79,8 @@ def relative_read(figures):
     peer_nums, rejected = _num_list(figures.get("peer_pe"))
     peer_pe = [p for p in peer_nums if p > 0]
     if rejected:
-        gaps.append(f"{rejected} peer_pe entries were not a number and were dropped — pass a flat list of P/E values")
+        gaps.append(f"{rejected} peer_pe entr{'y' if rejected == 1 else 'ies'} were not a number "
+                    f"and were dropped — pass a flat list of P/E values")
 
     own_hist, hist_rejected = _num_list(figures.get("own_pe_history"))
     if hist_rejected:
@@ -94,7 +93,8 @@ def relative_read(figures):
     if growth.get("estimated"):
         g_basis = f"{g_basis} (estimate)"
     if g_val is not None and pe is not None and 0 < g_val < MIN_GROWTH_PCT:
-        gaps.append(f"growth {g_val} is a fraction, not a percent — pass {g_val * 100:g}; PEG withheld")
+        gaps.append(f"growth {g_val} looks like a fraction, not a percent — PEG needs "
+                    f"{g_val * 100:g} for {g_val * 100:g}% growth; PEG withheld")
         g_val = None
 
     basis, peer_basis = figures.get("pe_basis", "reported"), figures.get("peer_pe_basis", "reported")
@@ -107,15 +107,18 @@ def relative_read(figures):
     peer_score, peer_label = _peer_signal(pe, peer_med)
     peer_counts = len(peer_pe) >= MIN_PEERS and basis == peer_basis
     if len(peer_pe) < MIN_PEERS:
-        gaps.append(f"peer set too thin ({len(peer_pe)} priced, {MIN_PEERS} needed) — the peer comparison is void")
+        gaps.append(f"peer set too thin ({len(peer_pe)} priced, {MIN_PEERS} needed) — the peer "
+                    f"comparison is void; this is an own-band read only")
     elif not peer_counts:
-        gaps.append(f"P/E basis mismatch: company {basis} vs peers {peer_basis} — the peer comparison is directional only")
+        gaps.append(f"P/E basis mismatch: the company is {basis}, the peers are {peer_basis} — the "
+                    f"peer comparison is directional only and does not carry the stance")
     if not peer_counts:
         peer_score, peer_label = 0, "not comparable"
 
     if not peer_counts and pct is None:
         stance = "not computable"
-        gaps.append(f"{len(peer_pe)} priced peers and no own P/E history — nothing is left to read")
+        gaps.append(f"the peer comparison does not count ({len(peer_pe)} priced peers) and there "
+                    f"is no own P/E history — nothing is left to read")
     else:
         score = peer_score + _band_signal(pct)
         stance = "undervalued" if score <= -1 else "overvalued" if score >= 1 else "fair"
