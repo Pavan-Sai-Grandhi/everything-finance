@@ -34,7 +34,9 @@ axis: technical_structure
 ## Technical Read — <TICKER> (<date>)
 
 ## Findings
-<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case.>
+
+## Detail
 
 **Trend (Dow stage)**: primary trend up/down/range; phase (accumulation/markup/distribution/markdown); HH-HL or LH-LL evidence
 **Key levels**: S1, S2 / R1, R2 with the touch-count evidence for each

@@ -74,7 +74,7 @@ Suggest the single highest-conviction candidate (or top 2–3 if genuinely tied)
 
 Confirm the saved path in chat and tell the user to run `/trade-tracker` once they execute. If the user says no, persist nothing.
 
-## Alerts this skill raises (via `finance/compute/alerts.py`)
+## Alerts this skill raises (via `manage_alerts`)
 
 As a side-effect of a confirmed run, write watch-items so `daily-brief` can surface them later (set `dedup_key` so re-runs update in place, never pile up):
 

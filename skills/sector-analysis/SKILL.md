@@ -26,7 +26,7 @@ Read `references/reference.md` first — it owns the method: the five-step per-s
 2. **Cached body given — position-only.** Reuse the cached RS, cycle, KPI snapshot, tailwinds/headwinds, leaders/laggards and stance **as-is; recompute no part of the sector body**. Work only step 5 of the reference, the focus-stock position, and carry the reused body verbatim into the report with a one-line `sector body reused from cache (generated <date>)`, then skip to the report.
 3. **No cached body — work the reference's five steps in order**, computing the full body.
 4. **No unsourced tailwind or headwind.** Each bullet carries the KPI reading (company + period), the `get_news` item (publisher + date) or the index series and window behind it; a factor you cannot source becomes a **Data gaps** line instead of a bullet — the reference's *Evidence rule* has the standard.
-5. **Seed the shared cache**, whenever step 3 computed a fresh body (never on the position-only path): write the **sector-level body** — not the focus-stock overlay — to `paths.sector_cache_path(sector)` with frontmatter `generated: <today>` + `rs_class: <classification>`, and set the next-refresh reminder via `finance/compute/alerts.py`: `kind: sector_refresh_due`, `subject: {type: sector, id: <sector>}`, `trigger: {due: <today + 30d>}`, `created_by: sector-analysis`, `severity: watch`, `action.suggest: "/sector-analysis <sector>"`, `dedup_key: sector-refresh-<sector>` (dedup updates any existing reminder in place). A later `deep-analysis` on a stock in this sector reuses that body instead of recomputing it.
+5. **Seed the shared cache**, whenever step 3 computed a fresh body (never on the position-only path): write the **sector-level body** — not the focus-stock overlay — to `paths.sector_cache_path(sector)` with frontmatter `generated: <today>` + `rs_class: <classification>`, and set the next-refresh reminder with `manage_alerts(action="add", kind="sector_refresh_due", subject_type="sector", subject_id="<sector>", due="<today + 30d>", created_by="sector-analysis", severity="watch", suggest="/sector-analysis <sector>", dedup_key="sector-refresh-<sector>")` (dedup updates any existing reminder in place). A later `deep-analysis` on a stock in this sector reuses that body instead of recomputing it.
 
 ### Produce this report
 
@@ -41,7 +41,9 @@ focus_position: leader | laggard | n/a
 ## Sector Read — <SECTOR> (<date>)
 
 ## Findings
-<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case.>
+
+## Detail
 
 **RS vs Nifty**: 1M <±x.x%> / 3M <±x.x%> / 6M <±x.x%> → classification (Leading/Improving/Weakening/Lagging)
 **Cycle position**: one line — where this sector sits in the rotation cycle and why now
@@ -59,7 +61,7 @@ Write it to the output path you were given, or to `artifacts/sector-analysis/YYY
 ## Multi-sector workflow
 
 1. **Rank the rotation** — only when no sector was named; with sectors named, go straight to step 2 and keep the grid as light context. Cheap first pass: `get_market_context` (mode `quick`) and its `sectors.leaders` / `sectors.laggards` (a 1-year ranking, already computed from one NSE fetch) decides which sectors are worth the full treatment. For those, pull the index series with `get_history` and compute RS over the reference's windows and classification. Then pick the **top three** by the reference's ranking rule.
-2. **Fan out — one `terminal-analyst` per sector, in parallel.** Each call names the skill `sector-analysis`, the mode `single-sector`, the sector, no focus stock, and the output path `artifacts/sector-analysis/YYYY-MM-DD/<sector>.md` (`paths.report_dir("sector-analysis", date)`). Each returns the `sector-block` digest plus its `path`; `Read` the files and synthesize from them — do not paste the digests back.
+2. **Fan out — one `everything-finance:terminal-analyst` per sector, in parallel.** Each call names the skill `sector-analysis`, the mode `single-sector`, the sector, no focus stock, and the output path `artifacts/sector-analysis/YYYY-MM-DD/<sector>.md` (`paths.report_dir("sector-analysis", date)`). Each returns the `sector-block` digest plus its `path`; `Read` the files and synthesize from them — do not paste the digests back.
 3. **Output.** Render `assets/sector-analysis.html` — the RS grid colored by classification (the full grid when the ranking ran, the named sectors otherwise), plus a picks table built from the per-sector leaders — to `artifacts/sector-analysis/YYYY-MM-DD.html` (`paths.report_path("sector-analysis", date, "html")`). In chat: open with the 2–3 sentence rotation story (what leads, what is turning, what to avoid), then per analyzed sector its stance, the one tailwind and one headwind that matter, and its top pick with a one-line reason.
 
 ## Boundaries

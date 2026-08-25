@@ -52,6 +52,6 @@ Summarize in chat: posture and trend, the breadth check, the cap-tier valuation 
 - **Report the earnings-collapse exclusion count.** Samples above 3× the median are dropped from a P/E percentile because an earnings trough sends the ratio to five figures; the count dropped is part of the finding, not a silent filter (`references/reference.md` has the full case).
 - Never explain a **trailing-window** number with a **calendar-year** number. "The trailing 1Y is weak but CY2025 was worse" compares two different windows and is not an argument.
 
-## Alerts this skill raises (via `finance/compute/alerts.py`)
+## Alerts this skill raises (via `manage_alerts`)
 
 On a **posture change** versus the most recent prior reading (e.g. `risk_on` → `risk_off`), raise a **`regime_change`** alert (`subject: {type: market, id: nifty}`, `created_by: market-analysis`, `trigger: {from: <prior>, to: <current>}`, `severity: watch`, `action.text: "Market posture changed — re-check open positions and active strategy fit"`, `dedup_key: regime-<date>`). `daily-brief` surfaces it and `trade-tracker` re-validates against it. It is a prompt to re-examine, never an instruction to transact.

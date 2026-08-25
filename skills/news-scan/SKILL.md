@@ -32,7 +32,9 @@ axis: growth_durability
 ## News & Sentiment — <COMPANY> (<date>)
 
 ## Findings
-<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case.>
+
+## Detail
 
 **Sentiment score**: -2 (strongly negative) … +2 (strongly positive), with one-line justification
 **Material events (last 60d)**: dated list, each tagged FACT/NARRATIVE + source

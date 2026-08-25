@@ -90,6 +90,6 @@ Holdings values are sensitive — the **full table lives in the artifact**; in c
 - **`mf-analysis` / `deep-analysis` not invokable** → a labelled gap + a manual `/…` suggestion instead of the auto deep-dive.
 - **Missing target allocation** → report the relative splits and say drift is relative.
 
-## Alerts this skill raises (via `finance/compute/alerts.py`)
+## Alerts this skill raises (via `manage_alerts`)
 
 When the review concludes the book has drifted from target (concentration breach, large cash drag, an allocation well off plan), raise a **`rebalance_due`** alert (`subject: {type: portfolio}`, `created_by: portfolio-review`, `severity: watch`, `action.text` = the drift in one line, `action.suggest: "/portfolio-review"`, `dedup_key: rebalance`). It is a date/standing reminder, not a cheap price trigger — `daily-brief` lists it among due actions until the next review clears it.

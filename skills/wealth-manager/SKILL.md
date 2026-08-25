@@ -35,9 +35,9 @@ Fork **one profile agent per available leg, in parallel** (all Agent calls in on
 
 | Leg | Profile | Spoke + mode | Digest returned |
 |---|---|---|---|
-| Investments | `terminal-analyst` | `portfolio-review --quick` (covers stocks **and** funds — funds already deferred to `mf-analysis` inside it) | `investments-block` |
-| Protection | `desk-analyst` | `insurance-advisor` (Audit) | `protection-block` |
-| Cashflow | `desk-analyst` | `budget-tracker --quick` | `cashflow-block` |
+| Investments | `everything-finance:terminal-analyst` | `portfolio-review --quick` (covers stocks **and** funds — funds already deferred to `mf-analysis` inside it) | `investments-block` |
+| Protection | `everything-finance:desk-analyst` | `insurance-advisor` (Audit) | `protection-block` |
+| Cashflow | `everything-finance:desk-analyst` | `budget-tracker --quick` | `cashflow-block` |
 
 Funds are **not** a separate leg — they ride inside the investments leg. Each dispatch names the skill, its mode, an `output_path` under `paths.report_dir("wealth")`, and the leg's inputs.
 

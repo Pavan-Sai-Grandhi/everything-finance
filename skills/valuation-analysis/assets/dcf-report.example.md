@@ -10,7 +10,7 @@ axis: valuation
 
 ## Findings
 
-<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case.>
 
 
 > Story-driven FCFF DCF (Damodaran) triangulated with the multiples read. A model, not a price target. Every input is sourced below.

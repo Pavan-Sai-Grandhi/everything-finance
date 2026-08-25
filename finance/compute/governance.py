@@ -16,6 +16,9 @@ and unit-tested, rather than eyeballed.
 Both return a PASS / FLAG / FAIL verdict with the number that decided it, and both
 return `NOT-CHECKED` when an input is missing rather than assuming the benign reading.
 
+Reached through the `run_governance_checks` tool on `finance-company`; the CLI below is
+for a human at a terminal.
+
 CLI:
   PYTHONPATH=<plugin> python3 -m finance.compute.governance --selftest
 """
@@ -112,6 +115,26 @@ def auditor_fee_check(fees, revenues=None, profits=None):
                      (f" against revenue {rev_yoy:+.1f}%" if rev_yoy is not None else ""))
     return {"verdict": verdict, "fee_yoy_pct": fee_yoy, "revenue_yoy_pct": rev_yoy,
             "profit_yoy_pct": profit_yoy, "reason": "; ".join(notes)}
+
+
+def checks(total_remuneration=None, net_profit=None, managing_directors=None,
+           fees=None, revenues=None, profits=None):
+    """Both arithmetic checks in one envelope, for the `run_governance_checks` tool.
+
+    A check whose figures were not supplied is absent from `data` and named in `gaps`,
+    so `management-analysis` scores it NOT-CHECKED rather than reading silence as a pass.
+    """
+    data, gaps = {}, []
+    if total_remuneration is None and net_profit is None:
+        gaps.append("remuneration: no pay or net-profit figure supplied — NOT-CHECKED")
+    else:
+        data["remuneration"] = remuneration_check(total_remuneration, net_profit,
+                                                  managing_directors)
+    if not fees:
+        gaps.append("auditor_fee: no audit-fee series supplied — NOT-CHECKED")
+    else:
+        data["auditor_fee"] = auditor_fee_check(fees, revenues, profits)
+    return spine.envelope(bool(data), "finance.compute.governance", data, gaps)
 
 
 def _selftest():

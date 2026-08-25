@@ -12,6 +12,7 @@ https://agent-plugins.org/specification
 Run: python3 finance/tests/test_agent_plugin.py
 """
 import ast
+import glob
 import json
 import os
 import re
@@ -131,6 +132,39 @@ for server, cases in smoke_test.CASES.items():
     check(f"[{server}] every smoke case names a declared tool",
           covered <= declared, str(sorted(covered - declared)))
 
+# A `subagent_type` is matched literally, so an unqualified name does not resolve and the
+# launch fails. The rule cannot live in prose above a table that then spells the names bare:
+# the agent copies the cell. Every dispatch site — table row or Fork instruction — carries
+# the qualified form.
+_AGENT_NAMES = tuple(sorted(
+    f[:-3] for f in os.listdir(os.path.join(ROOT, "agents")) if f.endswith(".md")))
+_DISPATCH_RE = re.compile(r"`(" + "|".join(_AGENT_NAMES) + r")`")
+for rel in sorted(glob.glob(os.path.join(ROOT, "skills", "*", "SKILL.md"))):
+    with open(rel, encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    bare = [ln for ln in lines
+            if (ln.startswith("|") or "Fork " in ln) and _DISPATCH_RE.search(ln)]
+    check(f"{os.path.basename(os.path.dirname(rel))} names every dispatched agent "
+          f"`everything-finance:<agent>`", not bare,
+          bare[0][:120] if bare else "")
+
+# `manage_alerts` is the door to the alert inbox. A skill pointing at the module instead
+# sends its agent hunting the filesystem for a file it then has to import by hand.
+for rel in sorted(glob.glob(os.path.join(ROOT, "skills", "*", "SKILL.md"))):
+    name = os.path.basename(os.path.dirname(rel))
+    if name == "alert-manager":                 # the contract owner names its own module
+        continue
+    with open(rel, encoding="utf-8") as fh:
+        body = fh.read()
+    check(f"{name} reaches alerts through the tool, not the module",
+          "finance/compute/alerts.py" not in body, rel)
+
+with open(os.path.join(ROOT, "skills", "management-analysis", "SKILL.md"),
+          encoding="utf-8") as fh:
+    _mgmt = fh.read()
+check("management-analysis computes the gate arithmetic through run_governance_checks",
+      "run_governance_checks" in _mgmt and "python3 -m finance.compute.governance" not in _mgmt)
+
 check(".env.example template ships", os.path.isfile(os.path.join(ROOT, ".env.example")))
 loader = os.path.join(ROOT, "bin", "load-env.sh")
 check("bin/load-env.sh exists", os.path.isfile(loader))
@@ -218,29 +252,33 @@ for rel in _skill_dirs:
         check(f"{name} grants {server}__{rest} under the qualified name too",
               f"mcp__{_PLUGIN_PREFIX}{server}__{rest}" in toks, toks)
 
-# the Findings contract: every leg defines the section, and every downstream reader that is
-# not the report-writer is told to stop there. Six agents re-reading six full reports is the
-# largest avoidable cost in a deep-analysis run.
-_LEGS = {
-    "skills/technical-analysis/SKILL.md": None,
-    "skills/financial-analysis/SKILL.md": None,
-    "skills/news-scan/SKILL.md": None,
-    "skills/sector-analysis/SKILL.md": None,
-    "skills/valuation-analysis/assets/dcf-report.example.md": None,
-    "skills/management-analysis/assets/management-scorecard.example.md": None,
-}
+# the Findings contract: every leg opens its report with the section AND closes it with the
+# next heading, so a reader knows where the case ends. Findings with nothing after it swallows
+# the whole report and the downstream instruction to build on it means nothing.
+_LEGS = (
+    "skills/technical-analysis/SKILL.md",
+    "skills/financial-analysis/SKILL.md",
+    "skills/news-scan/SKILL.md",
+    "skills/sector-analysis/SKILL.md",
+    "skills/valuation-analysis/assets/dcf-report.example.md",
+    "skills/management-analysis/assets/management-scorecard.example.md",
+)
 for rel in _LEGS:
     with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
         body = fh.read()
-    check(f"{rel.split('/')[1]} leg report defines ## Findings", "## Findings" in body, rel)
+    leg = rel.split("/")[1]
+    check(f"{leg} leg report defines ## Findings", "## Findings" in body, rel)
+    after = body.split("## Findings", 1)[-1]
+    closing = [ln for ln in after.splitlines() if ln.startswith("## ")]
+    check(f"{leg} closes ## Findings with a heading", bool(closing),
+          "nothing follows ## Findings — it runs to the end of the report")
 
 for rel in ("agents/bull-researcher.md", "agents/bear-researcher.md",
             "agents/contest-researcher.md", "agents/portfolio-manager.md"):
     with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
         body = fh.read()
-    check(f"{os.path.basename(rel)[:-3]} reads Findings, not whole reports",
-          "## Findings" in body and "not the whole report" in body.replace("not its whole report",
-                                                                          "not the whole report"), rel)
+    check(f"{os.path.basename(rel)[:-3]} builds on Findings and knows the Detail boundary",
+          "## Findings" in body and "## Detail" in body, rel)
 
 with open(os.path.join(ROOT, "agents/report-writer.md"), encoding="utf-8") as fh:
     _rw = fh.read()

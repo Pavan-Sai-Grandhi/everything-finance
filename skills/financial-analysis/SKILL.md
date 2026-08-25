@@ -35,7 +35,9 @@ axis: growth_durability
 ## Financials — <TICKER> (<date>)
 
 ## Findings
-<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case; a downstream agent reads only this far unless it needs the detail behind a line.>
+<Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case.>
+
+## Detail
 
 **Company overview**: what it does, segments & revenue (and EBIT where disclosed) mix %, geography split, flagship products/brands, key end-markets, and the moat that protects economics. Self-contained — a reader meeting the company here should be oriented.
 **Checklist scorecard**: ROE/ROCE (3y trend) | margins | D/E + interest cover | CFO vs EBITDA | promoter holding & pledge | revenue CAGR | earnings quality — each PASS/FLAG/FAIL + the number

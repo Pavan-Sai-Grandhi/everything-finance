@@ -10,7 +10,7 @@ disable-model-invocation: false
 
 A fast composite — breadth over depth; every section is 2–4 lines. Target: readable in 60 seconds on a phone.
 
-**Sources for this skill only:** `finance-market` — `get_market_context` / `get_indices` / `get_flows` (market state); `finance-company` — `get_news` (`India stock market` for the market digest; `<company> share` per name) and `get_filings` (NSE announcements + materiality); plus `finance/compute/alerts.py` (the alert inbox) and live holdings through the shared `finance/compute/holdings.py` resolver (**IndMoney** first, **broker MCP** Kite/Upstox fallback). Method specifics live in this skill's `references/reference.md`.
+**Sources for this skill only:** `finance-market` — `get_market_context` / `get_indices` / `get_flows` (market state); `finance-company` — `get_news` (`India stock market` for the market digest; `<company> share` per name) and `get_filings` (NSE announcements + materiality); plus `manage_alerts` (the alert inbox) and live holdings through the shared `finance/compute/holdings.py` resolver (**IndMoney** first, **broker MCP** Kite/Upstox fallback). Method specifics live in this skill's `references/reference.md`.
 
 ## Inputs
 
@@ -25,7 +25,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
    "positions": [{"ticker","entry","sl","target","qty","entry_date"}]}
   ```
   `entry_date` (YYYY-MM-DD) enables the STALE check. Missing file + no broker → build the brief without those sections and suggest creating one once. Renamed/demerged tickers that 404: report "ticker not found — possibly renamed (corporate action?)", don't silently drop.
-- **Alert inbox** — `finance/compute/alerts.py`. Load open alerts for held + watched names plus portfolio-wide ones with `alerts.load_open()`; this feeds the Alerts & actions section and the vetted half of Opportunities.
+- **Alert inbox** — `manage_alerts(action="list")` returns the open alerts, severity first; pass `subject` to narrow to one name. Take the held + watched names plus the portfolio-wide items; this feeds the Alerts & actions section and the vetted half of Opportunities.
 
 ## Sections (in order, using `assets/daily-brief.md` (bundled with this skill))
 
@@ -33,7 +33,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
 2. **Market analysis** (a market-level news digest, not stock-specific): the top **3–5 genuinely market-moving** items of the day — RBI/Fed, crude, FII/DII flows, global cues, major domestic policy or index-heavyweight results — one line each, then the **net read taken from market-analysis, not authored here** — call `get_market_context` (mode `quick`) and quote its `market_posture` + `rationale`, plus one breadth line (`breadth.pct_above_sma200` of `breadth.universe`) and the FII/DII nets from `flows`. **Never author a second verdict beside the computed one.** Sources: `get_news` (`India stock market`), preferring items whose `publisher_tier` is `established`. **Skip opinion, listicles, and target-price clickbait.** Cap at 5 items; if nothing genuinely moved the market, say so in one line.
 3. **Sector tone**: top 2 / bottom 2 sectoral indices today — from `get_market_context` (`sectors.leaders` / `sectors.laggards`) or `get_indices`.
 4. **⏰ Alerts & actions** (the inbox the rest of the plugin fills): surface what's open and what fired, never run anything.
-   1. `alerts.load_open()` for held + watched names and portfolio-wide alerts.
+   1. `manage_alerts(action="list")` for held + watched names and portfolio-wide alerts.
    2. `alerts.evaluate_cheap(open_alerts, market_data)` where `market_data` is what this brief **already fetched** (indices, holdings/watchlist last + day-change, today's filings) — `{"date": "<today>", "prices": {SYMBOL: {"close":…, "day_change_pct":…, "dist_to_sl_pct":…}}}`. Print fired alerts inline with their `action.text`.
    3. List due date-based alerts (`sip_due`, `reanalyze_due`, `revalidate_due`, `rebalance_due`).
    4. For `{check: …}` alerts, print the exact `action.suggest` command for the user — **never auto-run it.**

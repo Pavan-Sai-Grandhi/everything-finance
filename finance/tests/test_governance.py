@@ -126,4 +126,23 @@ _con = _read("finance/contracts.md")
 check("contracts forbids FLAG or partial reaching the verdict as PASS",
       "neither may reach `verdict-block` as `PASS`" in _con, "")
 
+# `run_governance_checks` serves both checks in one envelope; a check whose figures were
+# not supplied is absent from data and named in gaps, so the skill scores it NOT-CHECKED
+# instead of reading an empty result as a clean pass.
+env = g.checks(total_remuneration=30.0, net_profit=1000.0,
+                        fees=[2.0, 2.6], revenues=[100.0, 102.0])
+check("checks returns the standard envelope",
+      {"ok", "source", "fetched_at", "data", "gaps"} <= set(env), env)
+check("checks scores both halves", set(env["data"]) == {"remuneration", "auditor_fee"}, env)
+check("checks raises no gap when both were supplied", env["gaps"] == [], env)
+
+env = g.checks(fees=[2.0, 2.1], revenues=[100.0, 108.0])
+check("a missing pay figure is a gap, not a pass",
+      "remuneration" not in env["data"]
+      and any("remuneration" in g for g in env["gaps"]), env)
+
+env = g.checks()
+check("neither check supplied is ok:false with both gaps",
+      env["ok"] is False and len(env["gaps"]) == 2, env)
+
 summary()

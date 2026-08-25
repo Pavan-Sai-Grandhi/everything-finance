@@ -55,7 +55,7 @@ Fold these into the final call: `check_trade`'s verdict is the floor; a broken q
 
 Render `assets/tracker-report.md` (bundled) — one row per position with: symbol, qty, avg/LTP, unrealized R & P&L, the verdict, the one-line reason, and the **action** (Hold / Trim / Exit + the level to watch). Save to `artifacts/trade-tracker/YYYY-MM-DD.md` (`paths.report_path("trade-tracker")`; per-position `validate-<SYMBOL>.json` work papers go under `artifacts/trade-tracker/YYYY-MM-DD/` via `paths.report_dir`) and summarize in chat, leading with anything that needs action today. Include a **Data gaps** line for positions with no rationale found or no price data.
 
-## Alerts this skill raises (via `finance/compute/alerts.py`)
+## Alerts this skill raises (via `manage_alerts`)
 
 As it re-validates each open position, write watch-items for `daily-brief` (set `dedup_key` per symbol so a re-run updates in place):
 

@@ -53,7 +53,13 @@ def get_history(symbol: str, period: str = "1y", adjusted: bool = False,
 @SERVER.tool(
     description="Run a technical screen over the Indian market via the TradingView "
                 "scanner. `filters` is the scanner filter list, e.g. "
-                "[{\"left\":\"close\",\"operation\":\"greater\",\"right\":100}]."
+                "[{\"left\":\"close\",\"operation\":\"greater\",\"right\":100}] — or, "
+                "to read a known basket rather than search for one, the payload form "
+                "{\"symbols\": {\"tickers\": [\"NSE:TCS\", ...]}, \"sort\": {...}}, "
+                "which returns those names and only those. `columns` takes any scanner "
+                "field (Perf.1M / Perf.3M / Perf.6M, relative_volume_10d_calc, RSI, "
+                "price_earnings_ttm), so a cross-section of a peer set is one call, not "
+                "one call per name."
 )
 def run_technical_screen(filters: list, columns: list | None = None,
                          limit: int = 50) -> dict:
@@ -170,7 +176,11 @@ def check_trade(trade: str, ohlcv: str | None = None, ltp: float | None = None,
                 "and exactly one trigger: `metric`+`op`+`level` for a price watch, "
                 "`due` for a date reminder, or `check` for something needing a skill "
                 "run. `dedup_key` updates a matching open alert in place instead of "
-                "piling up a duplicate."
+                "piling up a duplicate. Skills describe an alert in the stored shape "
+                "`contracts.md` defines; it flattens onto these parameters as "
+                "`subject.{type,id}` -> `subject_type`/`subject_id`, `trigger.due`, "
+                "`trigger.check` and `trigger.{metric,op,level}` -> the same-named "
+                "parameters, and `action.{text,suggest}` -> `text`/`suggest`."
 )
 def manage_alerts(action: str, alert_id: str | None = None, subject: str | None = None,
                   until: str | None = None, created_by: str = "alert-manager",

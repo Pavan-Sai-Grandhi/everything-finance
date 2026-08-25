@@ -2,7 +2,7 @@
 name: filings-watch
 description: Pull NSE exchange filings for a ticker — corporate announcements, corporate actions (dividend/split/bonus/buyback), board meetings, and shareholding pattern changes — and classify what's material. Use whenever the user asks what a company announced, about recent filings, results dates, dividends, promoter stake changes, bulk/block deals, or "any news from the exchanges on X".
 argument-hint: "TICKER [lookback window, default 30 days]"
-allowed-tools: Read, Write, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*, mcp__finance-market__get_prior_run, mcp__plugin_everything-finance_finance-market__get_prior_run
+allowed-tools: Read, Write, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*, mcp__finance-market__get_prior_run, mcp__finance-market__manage_alerts, mcp__plugin_everything-finance_finance-market__get_prior_run, mcp__plugin_everything-finance_finance-market__manage_alerts
 ---
 
 # Exchange Filings Watch
@@ -27,6 +27,6 @@ The tools do the mechanical fetch and first-pass classification; this skill is t
 
 Markdown report (text-first, no HTML template): materiality-grouped filing list with dates and one-line summaries, corporate-actions calendar (ex-dates), shareholding delta table, and a 2–3 sentence "so what". Save to `artifacts/stocks/<TICKER>/YYYY-MM-DD/filings.md` (`paths.stock_dir(ticker, date)`). On a re-run, `get_prior_run(skill="filings", subject=TICKER)` finds the previous scan in `data.path` — add a one-line `prior run: <path> (<date>)` link and report only what's new since then.
 
-## Alerts this skill raises (via `finance/compute/alerts.py`)
+## Alerts this skill raises (via `manage_alerts`)
 
 For every **🔴 act-on** filing found, raise a **`filing_act_on`** alert so `daily-brief` surfaces it (`subject: {type: stock, id: <TICKER>}`, `created_by: filings-watch`, `severity: act`, `action.text` = the one-line filing summary, `action.suggest: "/filings-watch <TICKER>"` or `/deep-analysis <TICKER>`, `trigger: {check: filings-watch, args: {symbol: <TICKER>}}`, `dedup_key: filing-<TICKER>-<filing-date>`). 🟡 monitor / ⚪ routine items do **not** raise alerts — keep the inbox act-worthy only.

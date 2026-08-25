@@ -28,7 +28,7 @@ India-focused personal financial intelligence. These rules bind every skill and 
 | **AMFI** (registry + mfapi.in NAV mirror) | fund identity, NAV history, SEBI market-cap rank | `resolve_fund`, `get_nav_history`, `get_stock_ratios` |
 | **Google News RSS** | company and market news | `get_news` |
 
-Four servers, split by domain — `finance-market` (prices, index and market state, plus `run_strategy_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `run_dcf`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
+Four servers, split by domain — `finance-market` (prices, index and market state, plus `run_strategy_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `run_dcf` / `run_governance_checks`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
 
 `get_market_context` is the interpreted market-of-record, shared by every skill so reads cannot drift — prefer it over assembling a market view from raw tools.
 
@@ -58,7 +58,7 @@ finance/  transport spine paths deps caps
   sources/  tickertape prices market funds fundamentals documents news filings
   compute/  ta strategy holdings alerts context rolling
             lookthrough fund_scan screen backtest
-            dcf relval trade_check insurance_math wealth allocation
+            dcf relval governance trade_check insurance_math wealth allocation
   mcp/      _server + market company funds personal
   tests/    harness + test_*
 ```
@@ -105,6 +105,3 @@ Someone is going to read this over morning coffee and decide where their money g
 - Technical signals need volume confirmation (above the 10-day average) or must be flagged "low-volume, weak signal".
 - Indicators (RSI, MACD) confirm; price action + S/R decide. Checklist order: pattern → S&R → volume → Dow stage → indicator agreement → RRR.
 
-## Excluded by design
-
-No scheduled cron inside the plugin (run it externally) and **no order execution, ever**. Backtesting lives in `strategy-manager`'s VALIDATE mode — historical validation only, never live signals.

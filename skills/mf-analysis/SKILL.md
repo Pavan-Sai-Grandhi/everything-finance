@@ -94,6 +94,6 @@ Summarize the verdict in chat with the look-through coverage stated ("ratios cov
 - **Low ROE is not automatically a cycle trough.** Distinguish a cyclical industry at the bottom of its cycle from a company underperforming a healthy sector — the first can mean-revert, the second is a mistake in the book. A P/E on collapsed earnings is not cheap.
 - Holdings staleness, look-through coverage and every gated-out fund are always surfaced.
 
-## Alerts this skill raises (via `finance/compute/alerts.py`)
+## Alerts this skill raises (via `manage_alerts`)
 
 If the user has (or sets up) a SIP in a researched fund and mentions its date, raise a **`sip_due`** alert (`subject: {type: fund, id: <scheme-slug>}`, `created_by: mf-analysis`, `trigger: {due: <next-SIP-date>}`, `severity: info`, `action.text: "SIP due"`, `dedup_key: sip-<scheme-slug>`). It is a date reminder `daily-brief` lists among due actions; never an instruction to transact.

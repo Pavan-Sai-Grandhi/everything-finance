@@ -45,8 +45,9 @@ Prior run: `{{PRIOR_PATH}}`
 
 ## 1 · The Call
 {{CALL_NARRATIVE}}
-<!-- One tight paragraph: what decided the verdict, which lenses agreed (confluence) and which
-     conflicted, and the single biggest risk to being wrong. Plain English, no agent jargon. -->
+<!-- Two or three short paragraphs, one idea each: what decided the verdict; which lenses agreed
+     (confluence) and which conflicted; the single biggest risk to being wrong. Plain English,
+     no agent jargon. -->
 
 | | |
 |---|---|

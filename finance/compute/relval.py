@@ -35,6 +35,44 @@ MIN_PEERS = 3
 # The two are not comparable: a recurring fair-value gain can halve a reported P/E.
 PE_BASES = ("reported", "adjusted")
 
+# A P/E divided by a growth *fraction* is a PEG a hundred times too large. Below this,
+# a growth figure alongside a real P/E is a unit error, not a company growing 0.5%/yr.
+MIN_GROWTH_PCT = 1.0
+
+
+def _num(value):
+    """`value` as a float, or None if it is not a number. Bools are not numbers here."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _num_list(value):
+    """A numeric list from whatever the caller passed. Returns (numbers, rejected_count).
+
+    A caller reaching this module is an LLM filling a tool schema, and the shapes it
+    reaches for — a list of `{symbol, pe}` rows, a `{symbol: pe}` map, a sentence where
+    a series was not available — are all iterable and none are numbers. Each is a counted
+    rejection the caller sees as a gap, never an exception out of the tool.
+    """
+    if value is None:
+        return [], 0
+    if isinstance(value, dict):
+        value = list(value.values())
+    elif isinstance(value, str) or not isinstance(value, (list, tuple)):
+        return [], 1
+    out, rejected = [], 0
+    for v in value:
+        n = _num(v)
+        if n is None:
+            rejected += 1
+        else:
+            out.append(n)
+    return out, rejected
+
 
 def median(values):
     """Median of a numeric list (median, not mean — multiples are skewed). None if empty."""
@@ -108,22 +146,44 @@ def relative_read(figures):
 
     Fewer than `MIN_PEERS` priced peers voids the peer half of the read; with no own-band
     history either, there is nothing left and the stance is `not computable` — an absent
-    comparison must not arrive downstream as a computed one."""
-    pe = figures.get("pe")
-    peer_pe_raw = figures.get("peer_pe") or []
-    peer_pe = [p for p in peer_pe_raw if p is not None and p > 0]
-    peers_excluded = sum(1 for p in peer_pe_raw if p is not None and p <= 0)
-    own_hist = figures.get("own_pe_history") or []
-    growth = figures.get("growth") or {}
+    comparison must not arrive downstream as a computed one.
+
+    Every figure is coerced, never trusted: `peer_pe` and `own_pe_history` are flat lists
+    of numbers and `growth` is `{value, basis}` (a bare number is read as the value), but
+    this runs behind a tool schema, so anything else arrives as a counted gap and the read
+    that depended on it is void. A malformed field must degrade one line of the read, not
+    raise out of the tool carrying no result at all."""
+    gaps = []
+    pe = _num(figures.get("pe"))
+    if pe is None and figures.get("pe") is not None:
+        gaps.append("pe is not a number — the company multiple is void")
+
+    peer_nums, peer_rejected = _num_list(figures.get("peer_pe"))
+    peer_pe = [p for p in peer_nums if p > 0]
+    peers_excluded = sum(1 for p in peer_nums if p <= 0)
+    if peer_rejected:
+        gaps.append(f"{peer_rejected} peer_pe entr{'y' if peer_rejected == 1 else 'ies'} "
+                    f"were not a number and were dropped — pass a flat list of P/E values")
+
+    own_hist, hist_rejected = _num_list(figures.get("own_pe_history"))
+    if hist_rejected:
+        gaps.append("own_pe_history is not a list of numbers — the own-band read is void")
+
+    growth = figures.get("growth")
+    if not isinstance(growth, dict):
+        growth = {"value": growth, "basis": "unstated"}
+    g_val = _num(growth.get("value"))
 
     peer_med = median(peer_pe)
     pct = band_percentile(pe, own_hist) if pe is not None else None
-    g_val = growth.get("value")
-    g_basis = growth.get("basis", "unstated")
+    g_basis = growth.get("basis") or "unstated"
     if growth.get("estimated"):
         g_basis = f"{g_basis} (estimate)"
+    if g_val is not None and pe is not None and 0 < g_val < MIN_GROWTH_PCT:
+        gaps.append(f"growth {g_val} looks like a fraction, not a percent — PEG needs "
+                    f"{g_val * 100:g} for {g_val * 100:g}% growth; PEG withheld")
+        g_val = None
 
-    gaps = []
     basis = figures.get("pe_basis", "reported")
     peer_basis = figures.get("peer_pe_basis", "reported")
     for name, b in (("pe_basis", basis), ("peer_pe_basis", peer_basis)):
@@ -148,7 +208,8 @@ def relative_read(figures):
 
     if not peer_counts and pct is None:
         stance = "not computable"
-        gaps.append("no priced peers and no own P/E history — there is no relative read")
+        gaps.append(f"the peer comparison does not count ({len(peer_pe)} priced peers) and "
+                    f"there is no own P/E history — nothing is left to read")
     else:
         score = peer_score + _band_signal(pct)
         stance = "fair"

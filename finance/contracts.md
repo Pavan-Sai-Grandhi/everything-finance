@@ -513,7 +513,7 @@ runs the one-off scan itself and carries `eps_adjustments` in its own block; the
 the two and names the disagreement. A `pe_basis` of `reported (unchecked)` says the scan did not
 happen and travels as a gap, never as a clean multiple.
 
-Every leg report opens with its machine-read block and then a **`## Findings`** section carrying the leg's whole case in a few plain sentences. The debaters and the portfolio-manager read that far and stop; they open the rest of a report only when a specific finding is load-bearing and they need the evidence under it. The `report-writer` is the one consumer that reads every paper in full — it is authoring from them. Six agents re-reading six full reports is the largest avoidable cost in a run, and a finding that never made the section is a finding the leg failed to surface.
+Every leg report opens with its machine-read block, then a **`## Findings`** section carrying the leg's whole case in a few plain sentences, then **`## Detail`** with the workings behind it. Findings is what the debaters and the portfolio-manager build on; they reach into the detail when a specific finding is load-bearing and they need the evidence under it. The `report-writer` is the one consumer that reads every paper in full — it is authoring from them. A finding that never made the section is a finding the leg failed to surface.
 
 ## Artifact: deep-analysis report
 **Producer:** `deep-analysis` → `artifacts/stocks/<TICKER>/<date>/` (`paths.stock_dir`). The

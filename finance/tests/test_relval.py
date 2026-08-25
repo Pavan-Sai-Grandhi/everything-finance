@@ -150,4 +150,51 @@ for figs in ({"pe": 20.0, "peer_pe": [18.0, 19.0, 21.0]}, {"pe": None, "peer_pe"
     check("read carries gaps + basis + peer_read_counts",
           {"gaps", "pe_basis", "peer_pe_basis", "peer_read_counts"} <= set(r), r)
 
+# A malformed `relative` block reaches this module straight off a tool schema. Every shape
+# below is one an LLM actually filled in; each must land as a gap, never as an exception —
+# a tool that raises returns no DCF either, and the whole valuation leg is lost with it.
+_MALFORMED = {
+    "own_pe_history as a sentence":
+        {"pe": 83.31, "peer_pe": [48.5, 166.5, 24.0],
+         "own_pe_history": "not available - no per-stock historical P/E series"},
+    "peer_pe as symbol rows":
+        {"pe": 83.31, "peer_pe": [{"symbol": "VMART", "pe": 48.5},
+                                  {"symbol": "STANLEY", "pe": 166.5}]},
+    "peer_pe as a symbol map":
+        {"pe": 83.31, "peer_pe": {"VMART": 48.5, "STANLEY": 166.5, "TRENT": 24.0}},
+    "growth as a bare number":
+        {"pe": 83.31, "peer_pe": [48.5, 166.5, 24.0], "growth": 7.5},
+    "pe as a formatted string":
+        {"pe": "83.31x", "peer_pe": [48.5, 166.5, 24.0]},
+}
+for name, figs in _MALFORMED.items():
+    try:
+        r = relval.relative_read(figs)
+        raised = None
+    except Exception as exc:                                  # noqa: BLE001
+        r, raised = None, exc
+    check(f"{name} does not raise", raised is None, raised)
+    if r is not None:
+        check(f"{name} still returns a stance", bool(r.get("relative_stance")), r)
+
+r = relval.relative_read({"pe": 83.31, "peer_pe": [{"symbol": "VMART", "pe": 48.5}]})
+check("non-numeric peers are counted in a gap",
+      any("not a number" in g for g in r["gaps"]), r)
+
+r = relval.relative_read({"pe": 83.31, "peer_pe": [48.5, 166.5, 24.0],
+                          "own_pe_history": "unavailable"})
+check("a prose own_pe_history voids the own-band read",
+      r["own_band_percentile"] is None
+      and any("own_pe_history" in g for g in r["gaps"]), r)
+
+# A P/E over a growth *fraction* is a PEG a hundred times too large, and it reads as a
+# damning number rather than an obviously broken one.
+r = relval.relative_read({"pe": 83.31, "peer_pe": [48.5, 166.5, 24.0],
+                          "growth": {"value": 0.075, "basis": "3Y EPS CAGR"}})
+check("a growth fraction withholds PEG rather than printing 1110",
+      r["peg"] is None and any("fraction, not a percent" in g for g in r["gaps"]), r)
+
+r = relval.relative_read({"pe": 83.31, "peer_pe": [48.5, 166.5, 24.0], "growth": 7.5})
+check("a bare growth percent is read as the value", r["peg"] == 11.11, r)
+
 summary()
