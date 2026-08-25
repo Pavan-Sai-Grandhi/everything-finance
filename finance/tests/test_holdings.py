@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the holdings resolver/normalizer. No network, no MCP.
-Run: python3 finance/tests/test_holdings.py
-"""
+"""Offline tests for the holdings resolver/normalizer. No network, no MCP."""
 import os
 import sys
 
@@ -9,8 +7,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from finance.compute import holdings
 from finance.tests.harness import check, run
 
-
-# --- captured sample payloads (shapes the skills hand off via temp files) --- #
 
 INDMONEY = {
     "as_of": "2026-06-27",
@@ -24,7 +20,7 @@ INDMONEY = {
          "xirr": 22.1, "broker": "IND Money"},
         {"name": "Apple Inc", "symbol": "AAPL", "asset_class": "US Stocks",
          "units": 5, "avg_price": 180.0, "ltp": 210.0, "invested": 75000,
-         "current_value": 87500, "xirr": 12.0},  # pnl absent -> derived
+         "current_value": 87500, "xirr": 12.0},
     ],
 }
 
@@ -33,14 +29,14 @@ KITE = {
         {"tradingsymbol": "RELIANCE", "exchange": "NSE", "isin": "INE002A01018",
          "quantity": 50, "average_price": 2400.0, "last_price": 2950.5, "pnl": 27525.0},
         {"tradingsymbol": "TITAN", "exchange": "NSE", "quantity": 10,
-         "average_price": 3300.0, "last_price": 3650.0},  # pnl absent -> derived
+         "average_price": 3300.0, "last_price": 3650.0},
     ],
     "positions": {
         "net": [
             {"tradingsymbol": "INFY", "quantity": 20, "average_price": 1500.0,
              "last_price": 1620.0, "pnl": 2400.0},
             {"tradingsymbol": "SBIN", "quantity": 0, "average_price": 600.0,
-             "last_price": 610.0, "pnl": 0.0},  # closed intraday -> skipped
+             "last_price": 610.0, "pnl": 0.0},
         ],
         "day": [],
     },
@@ -58,8 +54,6 @@ PORTFOLIO = {
     ],
 }
 
-
-# --- normalize: IndMoney ----------------------------------------------------- #
 
 def test_indmoney_normalize():
     pos = holdings.normalize(INDMONEY, "indmoney")
@@ -82,8 +76,6 @@ def test_indmoney_normalize():
           mf["pnl"] == round((78.2 - 60.0) * 1200.5, 2), mf["pnl"])
 
 
-# --- normalize: broker ------------------------------------------------------- #
-
 def test_kite_normalize():
     pos = holdings.normalize(KITE, "kite")
     tks = [p["ticker"] for p in pos]
@@ -101,8 +93,6 @@ def test_upstox_list_normalize():
     check("upstox: source label", pos[0]["source"] == "upstox")
 
 
-# --- normalize: portfolio ---------------------------------------------------- #
-
 def test_portfolio_normalize():
     pos = holdings.normalize(PORTFOLIO, "portfolio")
     check("portfolio: 1 position", len(pos) == 1)
@@ -113,31 +103,23 @@ def test_portfolio_normalize():
     check("portfolio: entry_date -> as_of", p["as_of"] == "2026-05-01")
 
 
-# --- equity_only ------------------------------------------------------------- #
-
 def test_equity_only():
     pos = holdings.normalize(INDMONEY, "indmoney")
     eq = holdings.equity_only(pos)
     tks = sorted(p["ticker"] for p in eq)
     check("equity_only: drops mutual fund, keeps stocks", tks == ["AAPL", "RELIANCE"], tks)
-    # broker/portfolio (asset_class None) are equity by construction
     bro = holdings.equity_only(holdings.normalize(KITE, "kite"))
     check("equity_only: broker None-class kept", len(bro) == 3, len(bro))
 
-
-# --- mf_only ----------------------------------------------------------------- #
 
 def test_mf_only():
     pos = holdings.normalize(INDMONEY, "indmoney")
     mf = holdings.mf_only(pos)
     tks = sorted(p["ticker"] for p in mf)
     check("mf_only: keeps mutual fund, drops stocks", tks == ["PPFAS"], tks)
-    # broker rows carry no asset_class tag → no funds to keep
     bro = holdings.mf_only(holdings.normalize(KITE, "kite"))
     check("mf_only: broker None-class dropped", bro == [], bro)
 
-
-# --- resolve: precedence ----------------------------------------------------- #
 
 def test_resolve_indmoney_wins():
     env = holdings.resolve(payloads={"indmoney": INDMONEY, "kite": KITE, "portfolio": PORTFOLIO})
@@ -182,7 +164,6 @@ def test_resolve_empty_source_falls_through():
 
 
 def test_resolve_broken_source_falls_through():
-    # a payload that makes normalize raise -> must fall through, not abort
     class Boom(dict):
         def get(self, *a, **k):
             raise RuntimeError("boom")
@@ -191,8 +172,6 @@ def test_resolve_broken_source_falls_through():
     check("resolve: failure recorded as gap",
           any("normalize failed" in g for g in env["gaps"]), env["gaps"])
 
-
-# --- coercion helpers -------------------------------------------------------- #
 
 def test_num_coercion():
     check("num: ₹/comma string", holdings._num("₹1,23,456") == 123456.0)

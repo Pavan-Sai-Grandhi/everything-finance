@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Offline unit tests for finance/sources/fundamentals.py + finance/sources/tickertape.py.
-
-Deterministic, no network — the Tickertape parsers and the screener document-index parser
-run against saved payload fixtures, mirroring test_prices.py / test_funds.py. Run:
-    python3 finance/tests/test_fundamentals.py
-"""
+"""Offline unit tests for finance/sources/fundamentals.py + finance/sources/tickertape.py."""
 import os
 import sys
 
@@ -15,9 +10,6 @@ from finance.sources import tickertape as tt
 from finance.tests.harness import check, run
 
 
-# --- saved fixtures: real Tickertape payload shapes, trimmed ---------------- #
-# The search is a substring match returning every near-miss, which is what makes exact
-# ticker equality in resolve_sid load-bearing.
 LISTED = [
     {"ticker": "RECLTD", "name": "REC Ltd", "sid": "RECM", "sector": "Financials",
      "slug": "/stocks/rec-RECM", "match": "EXACT"},
@@ -69,8 +61,6 @@ BALANCE_SHEET = {"success": True, "data": [
      "balComs": 13532, "balApic": 93118, "balRtne": 797380, "balTeq": 1085866,
      "balTlse": 2177546, "balTcso": 1353.24, "balTdep": None}]}
 
-# `cafFee` is carried in the payload with no published name and a null value; the parser
-# must not invent a label for it.
 CASH_FLOW = {"success": True, "data": [
     {"displayPeriod": "FY 2025", "endDate": "2025-03-31T00:00:00.000Z",
      "cafCfoa": 178703, "cafCfia": -137535, "cafCffa": -31891, "cafNcic": 9277,
@@ -107,8 +97,6 @@ FILTERS = {"success": True, "data": {
     "Valuation": [{"label": "apef", "display": "PE Ratio", "short": "PE", "premium": False},
                   {"label": "pef", "display": "Forward PE Ratio", "short": "Fwd PE",
                    "premium": True}],
-    # A field with no display/short name at all: its blank alias must not become a
-    # wildcard that resolves every query field to it.
     "Financial Ratios": [{"label": "dbtEqt", "display": "Debt to Equity",
                           "short": "D/E", "premium": False},
                          {"label": "aint", "premium": False}]}}
@@ -137,7 +125,6 @@ REGISTER_PAGE = """<html><head><title>Register - Screener</title></head>
 <body><form action="/login/" method="post"><input name="username"></form></body></html>"""
 
 
-# --- the Tickertape rung, stubbed by path ----------------------------------- #
 ROUTES = [
     ("/stocks/info/", INFO), ("/stocks/holdings/", HOLDINGS),
     ("/stocks/peers/", PEERS), ("/screener/filters", FILTERS),
@@ -185,7 +172,6 @@ class _Offline:
         return False
 
 
-# --- T1: symbol -> sid resolution, and its failure gap ---------------------- #
 def test_T1_resolve_sid():
     with _Offline():
         rec, gap = tt.resolve_sid("RECLTD", fresh=True)
@@ -217,7 +203,6 @@ def test_T1_empty_symbol():
     check("T1 an empty symbol is a gap, not a fetch", rec is None and bool(gap), gap)
 
 
-# --- T2: each re-pointed endpoint parses into the shared table shape -------- #
 def _data():
     with _Offline():
         return fz.fetch("RELIANCE", fresh=True)["data"]
@@ -255,9 +240,6 @@ def test_T2_pnl_10y():
 
 
 def test_T2_pnl_ttm_column_is_marked_not_a_fiscal_year():
-    # The annual income statement appends a trailing-twelve-month column that the balance
-    # sheet and cash flow do NOT — pairing the three by index silently mixes TTM with FY.
-    # `period_kinds` makes the last column's kind explicit so a consumer can pair by kind.
     pnl = _data()["pnl_10y"]
     check("T2 pnl period_kinds parallel the columns",
           pnl["period_kinds"] == ["FY", "FY", "TTM"], pnl["period_kinds"])
@@ -269,7 +251,6 @@ def test_T2_pnl_ttm_column_is_marked_not_a_fiscal_year():
           "TTM" not in bs["period_kinds"], bs["period_kinds"])
     check("T2 cash flow carries no TTM column",
           "TTM" not in cf["period_kinds"], cf["period_kinds"])
-    # The trap the marking prevents: latest-index CFO (FY) paired with latest-index EBITDA (TTM).
     fy_ebitda = pnl["rows"]["EBITDA"][pnl["period_kinds"].index("TTM") - 1]
     ttm_ebitda = pnl["rows"]["EBITDA"][pnl["period_kinds"].index("TTM")]
     check("T2 the FY and TTM EBITDA genuinely differ (the mix would be silent)",
@@ -348,8 +329,6 @@ def test_T2_peers():
     check("T2 the company itself is not its own peer", "RELIANCE" not in syms)
     check("T2 the join key travels with each peer",
           peers[1]["sid"] == "HPCL" and peers[1]["symbol"] == "HINDPETRO", peers[1])
-    # the valuation tab returns each peer's multiples in this one response, so the
-    # relative read needs no per-peer call and every peer is on the same basis
     check("T2 each peer carries its trailing P/E",
           [p["ttm_pe"] for p in peers] == [11.25, 9.8], peers)
     check("T2 each peer carries its P/B where published",
@@ -366,7 +345,6 @@ def test_T2_documents_stay_on_screener():
           docs["annual_reports"][1]["url"].startswith(fz.SCREENER + "/company/"))
 
 
-# --- T3: the envelope shape is unchanged ------------------------------------ #
 def test_T3_envelope_and_identity():
     with _Offline():
         env = fz.fetch("RELIANCE", fresh=True)
@@ -424,7 +402,6 @@ def test_T3_sections_keep_the_sections_own_content():
           "sections_returned" not in full["data"], sorted(full["data"]))
 
 
-# --- T4: every failure is a labelled gap, never an abort -------------------- #
 def test_T4_unresolvable_symbol_degrades():
     with _Offline(get_json=lambda p, payload=None, timeout=30: (None, "HTTP 503")):
         env = fz.fetch("ZZZZ", sections=["ratios", "pnl_10y"], fresh=True)
@@ -488,7 +465,6 @@ def test_T4_thin_ratio_block_is_labelled():
           0 < fz._MIN_RATIOS <= 10, fz._MIN_RATIOS)
 
 
-# --- T5: the screen query contract ------------------------------------------ #
 def _screen(query, **kw):
     with _Offline():
         return fz.screen(query, fresh=True, **kw)

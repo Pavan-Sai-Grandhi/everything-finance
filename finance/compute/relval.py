@@ -1,19 +1,7 @@
 #!/usr/bin/env python3
-"""Relative-valuation math for the valuation leg.
-
-Per Damodaran, relative multiples are shortcuts to the same DCF drivers (cash
-flow/payout, growth, risk), so the valuation leg triangulates intrinsic (DCF) and
-relative (multiples) into one stance. This module is the *relative* half, kept
-deterministic and unit-tested so the figures are reproducible:
-
-  - PEG = P/E ÷ expected EPS growth (%) — a cross-check, never a standalone verdict;
-    its equal-risk + linear-growth assumptions travel with it as `PEG_CAVEAT`.
-  - peer-group **median** multiple (median, not mean — multiples are skewed).
-  - the company's position within its **own historical multiple band** (percentile).
-
-Every input comes from `get_company_fundamentals` — the company's own ratios and its
-peer rows. The expected-growth input for PEG is a labelled estimate (basis stated),
-never fabricated.
+"""The relative half of the valuation leg: PEG, peer-median multiple, own-band
+percentile and a relative-only stance, which `valuation-analysis` reconciles against
+the DCF. Every input traces to `get_company_fundamentals`.
 
 CLI:
   PYTHONPATH=<plugin> python3 -m finance.compute.relval --figures figures.json
@@ -31,12 +19,11 @@ PEG_CAVEAT = ("PEG assumes equal risk across the peer set and a linear growth↔
 # Below this many priced peers a median is one company's accident, not a peer centre.
 MIN_PEERS = 3
 
-# Whether a P/E is struck on reported earnings or on earnings adjusted for one-offs.
-# The two are not comparable: a recurring fair-value gain can halve a reported P/E.
+# Reported and adjusted P/Es are not comparable — a one-off gain can halve a reported one.
 PE_BASES = ("reported", "adjusted")
 
-# A P/E divided by a growth *fraction* is a PEG a hundred times too large. Below this,
-# a growth figure alongside a real P/E is a unit error, not a company growing 0.5%/yr.
+# Growth under this alongside a real P/E is a fraction passed as a percent, not a company
+# growing 0.5%/yr — and it yields a PEG a hundred times too large.
 MIN_GROWTH_PCT = 1.0
 
 
@@ -51,13 +38,8 @@ def _num(value):
 
 
 def _num_list(value):
-    """A numeric list from whatever the caller passed. Returns (numbers, rejected_count).
-
-    A caller reaching this module is an LLM filling a tool schema, and the shapes it
-    reaches for — a list of `{symbol, pe}` rows, a `{symbol: pe}` map, a sentence where
-    a series was not available — are all iterable and none are numbers. Each is a counted
-    rejection the caller sees as a gap, never an exception out of the tool.
-    """
+    """`value` as (numbers, rejected_count). Reached from a tool schema, so the rows,
+    maps and prose an LLM fills in are counted rejections, never an exception."""
     if value is None:
         return [], 0
     if isinstance(value, dict):
@@ -125,34 +107,17 @@ def _band_signal(pct):
 
 
 def relative_read(figures):
-    """Compute the relative-only read from sourced figures. Returns peer-median
-    P/E, the company's P/E vs that median, its own-band percentile, PEG (+ basis),
-    and a relative-only stance — undervalued / fair / overvalued. `valuation-analysis`
-    reconciles this against the DCF; this is the reproducible relative component.
+    """The relative-only read: peer-median P/E, the company against it, its own-band
+    percentile, PEG, and a stance of undervalued / fair / overvalued.
 
-    One consistency requirement the caller must meet, because this module sees only
-    numbers and cannot detect a breach: `pe` and every `peer_pe` MUST be the
-    trailing-twelve-month P/E (the company's `Stock P/E` and each peer's `ttm_pe`, NOT
-    the annualised `pe`). Mixing TTM with annualised injects an ~8% skew into a ±10%
-    peer band, enough to flip the premium/discount read on its own.
+    `peer_pe` and `own_pe_history` are flat lists of numbers, `growth` is
+    `{value, basis}` in **percent**; anything else becomes a gap and voids the line it
+    fed, never an exception.
 
-    The *earnings* basis is checked here instead of assumed: `pe_basis` and
-    `peer_pe_basis` each declare "reported" or "adjusted". When they differ the peer
-    comparison is directional only and contributes nothing to the stance.
-
-    A negative or zero peer P/E is not a multiple (loss-making peer): it is excluded from
-    the median here and the count is reported, so a couple of loss-makers cannot drag the
-    peer centre and read the company as a spurious 'premium'.
-
-    Fewer than `MIN_PEERS` priced peers voids the peer half of the read; with no own-band
-    history either, there is nothing left and the stance is `not computable` — an absent
-    comparison must not arrive downstream as a computed one.
-
-    Every figure is coerced, never trusted: `peer_pe` and `own_pe_history` are flat lists
-    of numbers and `growth` is `{value, basis}` (a bare number is read as the value), but
-    this runs behind a tool schema, so anything else arrives as a counted gap and the read
-    that depended on it is void. A malformed field must degrade one line of the read, not
-    raise out of the tool carrying no result at all."""
+    The one requirement this module cannot enforce, seeing only numbers: `pe` and every
+    `peer_pe` must be the trailing-twelve-month figure (`Stock P/E` and each peer's
+    `ttm_pe`, not the annualised `pe`). Mixing the two skews a ±10% peer band by ~8% —
+    enough to flip the premium/discount read on its own."""
     gaps = []
     pe = _num(figures.get("pe"))
     if pe is None and figures.get("pe") is not None:

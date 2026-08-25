@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Offline unit tests for finance/sources/funds.py (the mutual-fund data-spine fetcher).
-
-Deterministic, no network — every rung runs against saved response fixtures with the
-shared transport and Tickertape seams swapped out, mirroring test_prices.py /
-test_fundamentals.py / test_market.py. Artifact roots are temp dirs, so a run never touches the user's real
-./artifacts. Run:
-    python3 finance/tests/test_funds.py
-"""
+"""Offline unit tests for finance/sources/funds.py (the mutual-fund data-spine fetcher)."""
 import atexit
 import contextlib
 import json
@@ -18,7 +11,6 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Point the path authority at a throwaway root BEFORE anything can write a cache file.
 _TMP_ROOT = tempfile.mkdtemp(prefix="ef-test-funds-")
 os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = os.path.join(_TMP_ROOT, "artifacts")
 atexit.register(shutil.rmtree, _TMP_ROOT, True)
@@ -51,13 +43,6 @@ def envelope_keys(env):
     return set(env) == {"ok", "source", "fetched_at", "data", "gaps"}
 
 
-# --------------------------------------------------------------------------- #
-# saved fixtures                                                               #
-# --------------------------------------------------------------------------- #
-
-# AMFI NAVAll.txt — headers, blank lines, scheme-type banners and AMC names all share the
-# file with the data rows, so the parser has to be picky about what a row is. Plan and
-# option are their own columns; the fund name column alone does not identify a scheme.
 AMFI_NAVALL = """Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date
 
 Open Ended Schemes(Equity Scheme - Small Cap Fund)
@@ -75,7 +60,6 @@ PPFAS Mutual Fund
 122639;INF879O01027;INF879O01019;Parag Parikh Flexi Cap Fund;Direct Plan;Growth;89.1200;16-Aug-2026
 """
 
-# Tickertape mf-screener/query — three funds across two sub-categories and two options.
 SCREEN_BLOB = {
     "data": {"result": [
         {"mfId": "M_ALPHA", "name": "Alpha Small Cap Fund - Direct Growth", "slug": "alpha-sc",
@@ -105,8 +89,6 @@ SCREEN_BLOB = {
     ]}
 }
 
-# Tickertape mutualfunds/<mfId>/holdings — the COMPLETE allocation, equity + debt + cash,
-# with one weightless row that must be dropped rather than counted as 0.
 HOLDINGS_BLOB = {
     "data": {
         "currentAllocation": [
@@ -133,7 +115,6 @@ HOLDINGS_BLOB = {
     }
 }
 
-# Same shape, but a cash-heavy book that must trip the low-equity gap.
 HYBRID_HOLDINGS_BLOB = {
     "data": {"currentAllocation": [
         {"sid": "RELI", "ticker": "RELIANCE", "title": "Reliance Industries",
@@ -143,7 +124,6 @@ HYBRID_HOLDINGS_BLOB = {
     ]}
 }
 
-# Tickertape stocks/info/<sid> — note sid RECM vs ticker RECLTD, the join-key trap.
 STOCK_INFO_BLOB = {
     "data": {
         "isin": "INE020B01018",
@@ -154,9 +134,6 @@ STOCK_INFO_BLOB = {
     }
 }
 
-# amfiindia.com/otherdata/categorisation-of-stocks — the live page lists every past
-# edition next to the current one, in both an <a href> and an escaped JSON blob, and the
-# newest is not last.
 CAP_INDEX_HTML = """<html><body>
 <a href="https://www.amfiindia.com/Themes/Theme1/downloads/AverageMarketCapitalization31Dec2025.xlsx">Dec 2025</a>
 <a href="https://portal.amfiindia.com/spages/AverageMarketCapitalization30Jun2026.xlsx">Jun 2026</a>
@@ -167,8 +144,6 @@ CAP_INDEX_HTML = """<html><body>
 
 CAP_XLSX_URL = "https://portal.amfiindia.com/spages/AverageMarketCapitalization30Jun2026.xlsx"
 
-# The workbook's own layout: a title row above the header, `Sr. No.` as the SEBI rank, a
-# "-" NSE symbol for the BSE-only listings that make the ISIN key load-bearing.
 CAP_XLSX_ROWS = [
     ("Average Market Capitalization of listed companies during the six months ended "
      "30 June 2026", None, None, None, None, None, None, None, None, None, None),
@@ -250,7 +225,6 @@ def serve_cap(index_html=CAP_INDEX_HTML, xlsx=CAP_XLSX_PATH, calls=None):
         return dest, None
     return fake
 
-# mfapi.in /mf/<code> — newest first, DD-MM-YYYY, with two rows that must be skipped.
 NAV_BLOB = {
     "meta": {"scheme_name": "Nippon India Small Cap Fund - Direct Plan - Growth Option",
              "scheme_code": 118778},
@@ -264,13 +238,9 @@ NAV_BLOB = {
 }
 
 
-# --------------------------------------------------------------------------- #
-# pure: name scoring                                                           #
-# --------------------------------------------------------------------------- #
 DIRECT_GROWTH = "Nippon India Small Cap Fund - Direct Plan - Growth Option"
 REGULAR_GROWTH = "Nippon India Small Cap Fund - Regular Plan - Growth Option"
 DIRECT_IDCW = "Nippon India Small Cap Fund - Direct Plan - IDCW Option"
-# Several AMCs leave AMFI's plan column blank, so the registered name names no plan.
 PLANLESS_GROWTH = "Nippon India Small Cap Fund - Growth Option"
 
 
@@ -323,9 +293,6 @@ def test_score_name_prefers_the_tighter_name():
                             "Small Cap Fund Of A Very Long Winded Asset Manager Series II"))
 
 
-# --------------------------------------------------------------------------- #
-# rung 1 — amfi_index() line parser                                            #
-# --------------------------------------------------------------------------- #
 def test_amfi_index_parses():
     fresh_root("amfi")
     with swap(transport, "request", lambda url, payload=None, timeout=30, referer=None:
@@ -385,9 +352,6 @@ def test_amfi_index_unparseable_body_degrades():
           env["gaps"] == ["AMFI NAVAll returned no parseable scheme rows"], env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# rung 1a — amfi_cap_list(): the SEBI cap rank                                 #
-# --------------------------------------------------------------------------- #
 def test_cap_label_boundaries():
     check("rank 1 is large", caps.cap_label(1) == "Large Cap")
     check("rank 100 is the LAST large cap", caps.cap_label(100) == "Large Cap")
@@ -539,9 +503,6 @@ def test_amfi_cap_list_degrades_at_every_step():
           any("cap workbook" in g for g in env["gaps"]), env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# rung 1b — resolve()                                                          #
-# --------------------------------------------------------------------------- #
 def _amfi_env(names):
     schemes = [{"code": str(100000 + i), "isin": f"INF{i:09d}", "name": n,
                 "nav": 10.0, "nav_date": "16-Aug-2026"} for i, n in enumerate(names)]
@@ -604,9 +565,6 @@ def test_resolve_no_match_at_all():
           any("no AMFI scheme matched" in g for g in env["gaps"]), env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# rung 2 — screen()                                                            #
-# --------------------------------------------------------------------------- #
 def _screen_seam(blob, captured):
     def fake(url, payload=None, timeout=30):
         captured.append({"url": url, "payload": payload})
@@ -629,7 +587,6 @@ def test_screen_filters_subsector_and_option_client_side():
     check("screen count matches the filtered list", env["data"]["count"] == 2, env["data"]["count"])
     check("screen echoes the filter it applied",
           (env["data"]["subsector"], env["data"]["option"]) == ("Small Cap Fund", "Growth"))
-    # the string filters are applied HERE, never sent — the endpoint silently ignores them
     check("no string filter is pushed into the server-side match",
           seen[0]["payload"]["match"] == {"aum": {"g": 100.0}}, seen[0]["payload"]["match"])
     check("the numeric AUM floor IS pushed server-side",
@@ -720,9 +677,6 @@ def test_screen_no_match_is_a_labelled_gap():
           any("no funds matched" in g for g in env["gaps"]), env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# rung 3 — holdings()                                                          #
-# --------------------------------------------------------------------------- #
 def test_holdings_parses_the_full_book():
     fresh_root("holdings")
     with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (HOLDINGS_BLOB, None)):
@@ -757,7 +711,6 @@ def test_holdings_equity_weight_and_sectors():
     check("a sector row with no weight is dropped, not zeroed", "Unweighted Sector" not in sw, sw)
     check("allocation history is passed through",
           d["allocation_history"] == [{"date": "2026-07-31", "equity": 95.1}], d)
-    # This fixture is a 20%-equity toy book, so the hybrid/cash-heavy warning SHOULD fire.
     check("a cash-heavy book raises the low-equity gap",
           any("equity weight only" in g for g in env["gaps"]), env["gaps"])
 
@@ -811,9 +764,6 @@ def test_holdings_empty_allocation_degrades():
           any("no currentAllocation" in g for g in env["gaps"]), env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# rung 4 — stock_ratios() / enrich()                                           #
-# --------------------------------------------------------------------------- #
 def test_stock_ratios_parses():
     fresh_root("ratios")
     with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (STOCK_INFO_BLOB, None)), \
@@ -973,9 +923,6 @@ def test_enrich_empty_input():
     check("enrich of a no-equity book raises no gap", gaps == [], gaps)
 
 
-# --------------------------------------------------------------------------- #
-# rung 5 — nav_history()                                                       #
-# --------------------------------------------------------------------------- #
 def test_nav_history_dates_and_order():
     fresh_root("nav")
     with swap(transport, "json_request", lambda url, payload=None, timeout=30: (NAV_BLOB, None)):
@@ -1018,9 +965,6 @@ def test_nav_history_empty_series_degrades():
           env["gaps"] == ["mfapi returned no NAV rows for 999999"], env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# the cache tier                                                               #
-# --------------------------------------------------------------------------- #
 def test_cache_round_trip_and_ageing():
     fresh_root("cache")
     p = funds._cache_path("meta", "probe key/with:junk")
@@ -1072,9 +1016,6 @@ def test_holdings_cache_round_trip():
           env["data"])
 
 
-# --------------------------------------------------------------------------- #
-# envelope + coercion primitives                                               #
-# --------------------------------------------------------------------------- #
 def test_envelope_shape():
     env = funds._envelope(True, "Tickertape", {"x": 1}, [])
     check("envelope has the contract keys", envelope_keys(env), sorted(env))

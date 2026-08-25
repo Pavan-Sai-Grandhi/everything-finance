@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the rolling-return math (spec §2, §8). No network. Run:
-  python3 finance/tests/test_rolling.py
-
-Validated against a *known* NAV series: exact exponential growth at rate r makes every
-daily-rolled annualised return equal r, so mean = median = min = r — a clean oracle.
-"""
+"""Offline tests for the rolling-return math (spec §2, §8). No network."""
 import os
 import sys
 from datetime import date, timedelta
@@ -25,7 +20,6 @@ def expo(rate, years, start=date(2016, 1, 1), nav0=100.0):
     return dates, navs
 
 
-# --- known-series rolling returns: every window equals the growth rate --------
 d10, n10 = expo(0.10, 6)
 for label, yrs in (("1y", 1), ("3y", 3), ("5y", 5)):
     s = R.rolling_stats(R.rolling_returns(d10, n10, yrs))
@@ -33,18 +27,12 @@ for label, yrs in (("1y", 1), ("3y", 3), ("5y", 5)):
     check(f"{label} rolling min = mean on a constant-rate series",
           approx(s["min"], 10.0, tol=0.05), s)
 
-# --- point-to-point CAGR matches the known rate ------------------------------
 check("max drawdown 100→120→90→130 = 25%",
       approx(R.max_drawdown([100, 120, 90, 130]), 25.0, tol=0.05))
 check("max drawdown monotonic-up series = 0", approx(R.max_drawdown(n10), 0.0, tol=0.05))
 check("max drawdown <2 points → None", R.max_drawdown([100]) is None)
 
-# --- Sharpe on a hand series (rf 6%) -----------------------------------------
-# rets [0.1, -0.1]: mean 0, sample sd 0.141421 → sharpe = (0 - 0.06)/(0.141421*√252)
-# Exercised through the same calls get_fund_scan makes, so this covers the path that
-# actually runs: a fund too young for the window must report nothing, not a padded
-# number computed off a partial history.
-dy, ny = expo(0.10, 0.5)  # 6 months
+dy, ny = expo(0.10, 0.5)
 y1 = R.rolling_stats(R.rolling_returns(dy, ny, 1))
 y5 = R.rolling_stats(R.rolling_returns(dy, ny, 5))
 check("young fund: 1Y rolling empty (n=0)", y1["n"] == 0)

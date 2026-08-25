@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the wealth-manager engine. No network, no MCP.
-Run: python3 finance/tests/test_wealth.py
-"""
+"""Offline tests for the wealth-manager engine. No network, no MCP."""
 import os
 import sys
 
@@ -9,8 +7,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from finance.compute import wealth
 from finance.tests.harness import check, run
 
-
-# --- captured sample payloads (shapes the SKILL hands off via a temp file) --- #
 
 SNAPSHOT = {"total_net_worth": 12000000, "as_of": "2026-06-28"}
 
@@ -57,9 +53,6 @@ FULL = {"snapshot": SNAPSHOT, "breakdown": BREAKDOWN, "positions": POSITIONS,
         "profile": {"age": 35, "dependents": 2}}
 
 
-# --------------------------------------------------------------------------- #
-# spine
-# --------------------------------------------------------------------------- #
 def test_spine_allocation():
     s = wealth.build_spine(SNAPSHOT, BREAKDOWN, POSITIONS)
     check("spine: total net worth from snapshot", s["total_networth"] == 12000000, s["total_networth"])
@@ -68,9 +61,7 @@ def test_spine_allocation():
           s["allocation"]["equity"])
     check("spine: real estate bucketed", "real_estate" in s["allocation"])
     check("spine: gold bucketed", s["allocation"]["gold"]["value"] == 300000)
-    # liquid = cash 600k + FD 600k
     check("spine: liquid = cash + FD", s["liquid"] == 1200000, s["liquid"])
-    # equity share = (3.6 + 2.4 + 0.6)M / 12M = 55%
     check("spine: equity share = equity+MF+US", s["equity_share_pct"] == 55.0, s["equity_share_pct"])
 
 
@@ -80,8 +71,6 @@ def test_spine_xirr_summary():
     check("spine: xirr count", x["count"] == 2, x)
     check("spine: xirr best is RELIANCE", x["best"]["ticker"] == "RELIANCE", x["best"])
     check("spine: xirr worst is TCS", x["worst"]["ticker"] == "TCS", x["worst"])
-    # value-weighted: RELIANCE value 147500 @ 18.4 + TCS 60000 @ -3.1 = 12.2%, not the
-    # unweighted 7.6% mean — a small winner must not cancel a large holding.
     check("spine: xirr avg is value-weighted", x["avg"] == 12.2, x["avg"])
 
 
@@ -91,7 +80,6 @@ def test_spine_flat_breakdown_dict():
 
 
 def test_spine_partial_tradeable_only():
-    # no IndMoney breakdown/snapshot → tradeable-only spine from broker positions
     broker = {"ok": True, "source": "kite", "fetched_at": "2026-06-28",
               "data": {"positions": [
                   {"ticker": "INFY", "qty": 10, "avg": 1500, "ltp": 1600, "pnl": 1000,
@@ -111,19 +99,12 @@ def test_canonical_class():
     check("class: unknown → other", wealth.canonical_class("Angel Investments") == "other")
 
 
-# --------------------------------------------------------------------------- #
-# cross-domain
-# --------------------------------------------------------------------------- #
 def test_emergency_fund():
-    # liquid 1.2M / 90k monthly = 13.3 months → strong
     ef = wealth.emergency_fund(1200000, 90000)
     check("ef: months", ef["months"] == 13.3, ef["months"])
     check("ef: strong ≥6 months", ef["status"] == "strong", ef["status"])
-    # thin band
     check("ef: thin 1-3 months", wealth.emergency_fund(150000, 90000)["status"] == "thin")
-    # critical <1 month
     check("ef: critical <1 month", wealth.emergency_fund(50000, 90000)["status"] == "critical")
-    # no expenses → not assessed
     check("ef: not assessed without expenses", wealth.emergency_fund(1200000, None)["status"] == "not_assessed")
 
 
@@ -146,7 +127,6 @@ def test_protection_read():
 
 
 def test_risk_posture():
-    # equity share 55%, ceiling 100-35=65, foundation sound (strong ef, but weak protection)
     r = wealth.risk_posture(55, "strong", "weak", age=35)
     check("risk: weak protection → fix foundation first", r["stance"] == "fix-foundation-first", r["stance"])
     r2 = wealth.risk_posture(55, "strong", "strong", age=35)
@@ -158,9 +138,6 @@ def test_risk_posture():
     check("risk: unknown share", wealth.risk_posture(None, "strong", "strong")["stance"] == "unknown")
 
 
-# --------------------------------------------------------------------------- #
-# scorecard + full run
-# --------------------------------------------------------------------------- #
 def test_full_run_scorecard():
     out = wealth.run(FULL)
     sc = out["scorecard"]
@@ -185,7 +162,6 @@ def test_action_priority_protection_before_investments():
 
 
 def test_full_run_missing_legs():
-    # cashflow + protection legs absent → degrade to not_assessed, still verdict on the rest
     partial = {"snapshot": SNAPSHOT, "breakdown": BREAKDOWN, "positions": POSITIONS,
                "legs": {"investments": INVEST_LEG}, "profile": {"age": 35}}
     out = wealth.run(partial)

@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for finance/sources/documents.py — the primary-document cache.
-
-No network and no real poppler: the document index and the transport are swapped for
-fakes (as in test_filings.py), and `pdftotext` is a stub script placed on PATH, so the
-PDF branch is exercised deterministically on any box. Each run gets its own artifacts
-root, so a cache hit is a real hit and never a leak from a previous run.
-
-Run: python3 finance/tests/test_documents.py
-"""
+"""Offline tests for finance/sources/documents.py — the primary-document cache."""
 import json
 import os
 import stat
@@ -73,7 +65,6 @@ def _stub_pdftotext(directory, body=PDF_TEXT, exit_code=0):
         if exit_code:
             fh.write(f'echo "Error: May not be a PDF file" >&2\nexit {exit_code}\n')
         else:
-            # invoked as: pdftotext -layout <src> <txt>; %b so the fixture keeps its newlines
             fh.write(f'printf %b {json.dumps(body)} > "$3"\n')
     os.chmod(script, os.stat(script).st_mode | stat.S_IEXEC)
     return directory
@@ -114,7 +105,6 @@ ROW_KEYS = {"kind", "label", "url", "publisher", "text_path", "text_chars",
             "text_lines", "extracted_by", "cached", "outline"}
 
 
-# --- the section outline: where each note lives in the extracted text --------- #
 def _fake_annual_report(path):
     """An annual report shaped like a real one: a contents page listing every section
     with its page number, then the sections themselves thousands of lines later."""
@@ -166,7 +156,6 @@ def test_outline_finds_the_notes_a_leg_needs():
                     "auditor_remuneration", "corporate_governance", "directors_report"):
             check(f"outline locates {key}", key in out and out[key], sorted(out))
 
-        # the ranked best hit is the section, not its contents-page entry
         toc_end = 12
         for key in ("mdna", "auditors_report", "related_party",
                     "contingent_liabilities", "corporate_governance"):
@@ -184,7 +173,6 @@ def test_outline_finds_the_notes_a_leg_needs():
         check("a section the document does not contain is simply absent",
               "esop" not in out and "shareholding" not in out, sorted(out))
 
-        # the payload is a summary, not bulk: it must stay tiny beside the document
         size = len(json.dumps(out))
         check("the outline is a few hundred bytes, not the document",
               size < 3000 and size < os.path.getsize(path) / 20, size)
@@ -201,7 +189,6 @@ def test_outline_survives_a_document_with_no_known_sections():
               dz._outline(os.path.join(d, "missing.txt"), 0) == {})
 
 
-# --- cache miss: the first read downloads, converts and writes ---------------- #
 def test_cache_miss_downloads_and_converts():
     def body(call, calls):
         env = call()
@@ -242,7 +229,6 @@ def test_cache_miss_downloads_and_converts():
     _harness(body)
 
 
-# --- cache hit: the second read is served entirely from disk ------------------ #
 def test_cache_hit_serves_from_disk():
     def body(call, calls):
         first = call()
@@ -269,7 +255,6 @@ def test_cache_hit_serves_from_disk():
     _harness(body)
 
 
-# --- pdftotext: the fallback for anything that is not already text ------------ #
 def test_pdftotext_fallback():
     def body(call, calls):
         env = call(concalls=0)
@@ -311,7 +296,6 @@ def test_pdftotext_failure_does_not_abort_the_other_document():
     _harness(body, pdf_exit=1)
 
 
-# --- fetch failure: labelled gap, never an abort ------------------------------ #
 def test_fetch_failure_is_a_labelled_gap():
     def body(call, calls):
         env = call()
@@ -367,7 +351,6 @@ def test_scanned_pdf_yielding_no_text_is_a_gap():
     _harness(body, pdftotext="")
 
 
-# --- R3: extraction only, and paths only -------------------------------------- #
 def test_no_document_text_is_ever_returned_inline():
     def body(call, calls):
         env = call()
@@ -384,7 +367,6 @@ def test_no_document_text_is_ever_returned_inline():
     _harness(body)
 
 
-# --- the cache is content-addressed on the URL -------------------------------- #
 def test_cache_key_is_the_url():
     check("the same URL keys the same cache entry",
           dz._key(AR_URL) == dz._key(AR_URL))
@@ -401,7 +383,6 @@ def test_cache_key_is_the_url():
     _harness(body)
 
 
-# --- M5: the raw .src is dropped once its text is extracted ------------------- #
 def test_raw_source_deleted_after_conversion():
     def body(call, calls):
         env = call()
@@ -414,7 +395,6 @@ def test_raw_source_deleted_after_conversion():
     _harness(body)
 
 
-# --- M6: the latest is chosen by the year in the label, not by list position --- #
 AR_OLD = "https://www.bseindia.com/bseplus/AnnualReport/FY2024.pdf"
 AR_NEW = "https://www.bseindia.com/bseplus/AnnualReport/FY2026.pdf"
 
@@ -430,7 +410,6 @@ def test_label_recency_parses_year_and_quarter():
 
 
 def test_out_of_order_index_returns_the_true_latest():
-    # index head is the OLDER report; the newest by label-year must still be chosen.
     docs = {"annual_reports": [{"label": "Financial Year 2024", "url": AR_OLD},
                                {"label": "Financial Year 2026", "url": AR_NEW}],
             "concalls": []}

@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Offline unit tests for finance/sources/news.py (the data-spine news fetcher).
-
-Deterministic, no network — the parsers, classifier, dedup and the ladder's degradation
-run against saved response fixtures, mirroring test_prices.py / test_filings.py / test_ta.py.
-Each test names the section-B acceptance criterion it proves. Run:
-    python3 finance/tests/test_news.py
-"""
+"""Offline unit tests for finance/sources/news.py (the data-spine news fetcher)."""
 import os
 import sys
 
@@ -14,7 +8,6 @@ from finance.sources import news
 from finance.tests.harness import check, run
 
 
-# --- saved fixture: a Google News RSS search response ----------------------- #
 RSS_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
   <title>Reliance - Google News</title>
@@ -50,11 +43,9 @@ RSS_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
   </item>
 </channel></rss>"""
 
-# A frozen "today" so the recency window is deterministic across runs.
 TODAY = news.date(2026, 6, 20)
 
 
-# --- B1: fetch returns the envelope with data.items ------------------------- #
 def test_B1_fetch_returns_envelope_with_items(monkeypatched=None):
     orig = news._fetch_google_rss
     news._fetch_google_rss = lambda c, t, d: (news._parse_rss(RSS_FIXTURE, "Google News RSS"), None)
@@ -70,7 +61,6 @@ def test_B1_fetch_returns_envelope_with_items(monkeypatched=None):
     check("B1 ok:true when items returned", env["ok"] is True)
 
 
-# --- B2: items are dated, deduped, classified, tagged; noise filtered ------- #
 def test_B2_items_dated():
     items = news._process(news._parse_rss(RSS_FIXTURE, "Google News RSS"),
                           "Reliance Industries", "RELIANCE", 60, today=TODAY)
@@ -169,7 +159,6 @@ def test_B2_every_item_carries_a_publisher_tier():
               for it in items))
 
 
-# --- B3: degradation — a blocked source records a gap and returns ok:false -- #
 def test_B3_blocked_source_returns_ok_false_with_gap():
     orig = news._fetch_google_rss
     news._fetch_google_rss = lambda c, t, d: ([], "no RSS items returned")
@@ -184,7 +173,6 @@ def test_B3_blocked_source_returns_ok_false_with_gap():
     check("B3 data.items present (empty list, not missing)", env["data"]["items"] == [])
 
 
-# --- parser fixtures: RSS (feeds B1/B2 inputs) ------------------------------ #
 def test_parse_rss_fixture():
     items = news._parse_rss(RSS_FIXTURE, "Google News RSS")
     check("rss parser emits one raw item per <item>", len(items) == 5)
@@ -200,7 +188,6 @@ def test_envelope_shape():
           set(env) == {"ok", "source", "fetched_at", "data", "gaps"})
 
 
-# --- B4 is this file passing: every test above runs offline on fixtures ----- #
 if __name__ == "__main__":
     run((test_B1_fetch_returns_envelope_with_items, test_B2_items_dated,
          test_B2_items_classified, test_B2_items_tagged, test_B2_items_deduped,

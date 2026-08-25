@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the integrity-gate arithmetic. No network.
-Run: python3 finance/tests/test_governance.py
-"""
+"""Offline tests for the integrity-gate arithmetic. No network."""
 import os
 import sys
 
@@ -11,7 +9,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
 from finance.compute import governance as g  # noqa: E402
 from finance.tests.harness import check, summary  # noqa: E402
 
-# --- remuneration vs profit ---------------------------------------------------
 r = g.remuneration_check(30.0, 1000.0)
 check("3% of profit passes", r["verdict"] == "PASS", r)
 check("the ratio is reported", r["ratio_pct"] == 3.0, r)
@@ -31,7 +28,6 @@ check("exactly at the 5% norm still passes",
 check("exactly at the 11% ceiling is a flag, not a fail",
       g.remuneration_check(110.0, 1000.0)["verdict"] == "FLAG")
 
-# the tighter per-MD ceilings
 r = g.remuneration_check(60.0, 1000.0, managing_directors=1)
 check("6% with one MD breaches the 5% single-MD ceiling", r["verdict"] == "FAIL", r)
 check("the single-MD cap is reported", r["cap_pct"] == 5.0, r)
@@ -41,21 +37,18 @@ check("the multiple-MD cap is reported", r["cap_pct"] == 10.0, r)
 check("no MD count falls back to the 11% total cap",
       g.remuneration_check(60.0, 1000.0)["cap_pct"] == 11.0)
 
-# a loss year is not a pass
 r = g.remuneration_check(30.0, -50.0)
 check("pay against a loss is a flag, not a division", r["verdict"] == "FLAG", r)
 check("the loss-year reason names Schedule V", "Schedule V" in r["reason"], r)
 check("zero profit is handled the same way",
       g.remuneration_check(30.0, 0.0)["verdict"] == "FLAG")
 
-# a missing input never becomes a benign reading
 for args in ((None, 1000.0), (30.0, None), (None, None)):
     r = g.remuneration_check(*args)
     check(f"missing input {args} → NOT-CHECKED", r["verdict"] == "NOT-CHECKED", r)
 check("NOT-CHECKED is distinct from PASS",
       g.remuneration_check(None, None)["verdict"] != "PASS")
 
-# --- auditor fee trend --------------------------------------------------------
 r = g.auditor_fee_check([2.0, 2.1], revenues=[100.0, 108.0])
 check("a fee growing slower than revenue passes", r["verdict"] == "PASS", r)
 check("the YoY is reported", r["fee_yoy_pct"] == 5.0, r)
@@ -85,7 +78,6 @@ check("no revenue series still reads the raw trend", r["verdict"] == "PASS", r)
 check("the reason states the YoY when there is nothing to compare against",
       "+30.0%" in r["reason"], r)
 
-# --- shape --------------------------------------------------------------------
 for r in (g.remuneration_check(30.0, 1000.0), g.remuneration_check(None, None)):
     check("every remuneration result carries verdict + reason",
           {"verdict", "reason", "ratio_pct", "cap_pct"} == set(r), sorted(r))
@@ -98,7 +90,6 @@ check("verdicts come from the fixed vocabulary",
 
 check("selftest passes", g._selftest() == 0)
 
-# --- the gate vocabulary is one word across the four files that speak it -------------
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def _read(rel):
@@ -126,9 +117,6 @@ _con = _read("finance/contracts.md")
 check("contracts forbids FLAG or partial reaching the verdict as PASS",
       "neither may reach `verdict-block` as `PASS`" in _con, "")
 
-# `run_governance_checks` serves both checks in one envelope; a check whose figures were
-# not supplied is absent from data and named in gaps, so the skill scores it NOT-CHECKED
-# instead of reading an empty result as a clean pass.
 env = g.checks(total_remuneration=30.0, net_profit=1000.0,
                         fees=[2.0, 2.6], revenues=[100.0, 102.0])
 check("checks returns the standard envelope",

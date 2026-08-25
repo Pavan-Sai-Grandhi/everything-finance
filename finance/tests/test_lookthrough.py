@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the look-through math. No network. Run:
-  python3 finance/tests/test_lookthrough.py
-
-Covers the three corrections that flipped real verdicts — rank-based cap classification,
-the coverage gate that withholds rather than annotates, and harmonic (not arithmetic)
-multiple aggregation — plus every analytic added on top of them.
-"""
+"""Offline tests for the look-through math. No network."""
 import json
 import os
 import sys
@@ -17,7 +11,6 @@ from finance.compute import lookthrough as L
 from finance.tests.harness import approx, check, summary
 
 
-# --- weighted harmonic: the correct P/E aggregation --------------------------
 pe, w = L.weighted_harmonic([(50, 10), (50, 30)])
 check("harmonic 50/50 of 10 & 30 = 15", approx(pe, 15.0) and w == 100)
 check("harmonic differs materially from arithmetic (20 vs 15)",
@@ -28,7 +21,6 @@ check("harmonic ignores a None multiple and excludes its weight from coverage",
 pe, w = L.weighted_harmonic([(50, -5), (50, 0)])
 check("harmonic drops non-positive multiples entirely", pe is None and w == 0.0)
 
-# --- weighted mean (ROE / growth) --------------------------------------------
 m, w = L.weighted_mean([(50, 20), (50, 10)])
 check("weighted mean 50/50 of 20 & 10 = 15", approx(m, 15.0) and w == 100)
 m, _ = L.weighted_mean([(50, 30), (50, -10)])
@@ -36,7 +28,6 @@ check("weighted mean carries a negative value", approx(m, 10.0))
 m, w = L.weighted_mean([])
 check("weighted mean of nothing → None, zero coverage", m is None and w == 0.0)
 
-# --- earnings yield keeps loss-makers visible --------------------------------
 EY = [{"weight": 50, "pe": 20}, {"weight": 50, "pe": -10}]
 ey, ey_w = L.weighted_mean(L.earnings_yields(EY))
 check("earnings yield averages +5% and -10% to -2.5%", approx(ey, -2.5) and ey_w == 100)
@@ -44,13 +35,11 @@ hpe, hw = L.weighted_harmonic((h["weight"], h["pe"]) for h in EY)
 check("harmonic P/E hides the loss-maker (20 on half the book) — the yield does not",
       approx(hpe, 20.0) and hw == 50)
 
-# --- CAGR --------------------------------------------------------------------
 check("cagr one period 100→121 = 21%", approx(L.cagr([100, 121]), 21.0))
 check("cagr two periods 100→110→121 = 10%", approx(L.cagr([100, 110, 121]), 10.0))
 check("cagr <2 points → None", L.cagr([100]) is None)
 check("cagr non-positive endpoint → None", L.cagr([-5, 121]) is None)
 
-# --- cap classification: SEBI RANK, not ₹Cr ----------------------------------
 check("rank 1 → large", caps.cap_bucket(cap_rank=1) == ("large", "rank"))
 check("rank 100 → large (boundary inclusive)", caps.cap_bucket(cap_rank=100) == ("large", "rank"))
 check("rank 101 → mid", caps.cap_bucket(cap_rank=101) == ("mid", "rank"))
@@ -67,8 +56,6 @@ check("no rank and no label → unclassified, never guessed",
 check("a ₹Cr market cap alone classifies nothing",
       caps.cap_bucket(cap_rank=None, cap_label=None) == (None, None))
 
-# A small-cap fund's biggest holdings are its largest names: under absolute ₹Cr bands
-# these read as large/mid-cap "drift"; under SEBI rank they are small.
 SMALLCAP_BOOK = [
     {"weight": 5.0, "cap_rank": 260, "cap_label": "Smallcap", "market_cap_cr": 48000},
     {"weight": 4.0, "cap_rank": 310, "cap_label": "Smallcap", "market_cap_cr": 31000},
@@ -84,7 +71,6 @@ ct3 = L.cap_tilt([{"weight": 100}])
 check("unclassifiable book → all None, zero coverage (not '0% small-cap')",
       ct3["small"] is None and ct3["coverage"] == 0.0)
 
-# --- the coverage GATE -------------------------------------------------------
 check("≥85% coverage is decision-grade", L.coverage_grade(0.85) == "decision-grade")
 check("60-85% coverage is indicative", L.coverage_grade(0.65) == "indicative")
 check("<60% coverage is unusable", L.coverage_grade(0.599) == "unusable")
@@ -101,7 +87,6 @@ check("no source at all grades 'unavailable', distinct from 'unusable'",
 g = L.gated(12.0, 50.0, 0.0)
 check("zero total weight cannot divide-by-zero", g["value"] is None)
 
-# --- P/B ÷ ROE ---------------------------------------------------------------
 r = L.pb_over_roe(2.28, 12.89, 100.0, 100.0, 100.0)
 check("pb_over_roe 2.28/12.89 = 0.1769 at 4dp", approx(r["value"], 0.1769, 0.0001))
 r = L.pb_over_roe(3.06, 11.14, 100.0, 100.0, 100.0)
@@ -115,7 +100,6 @@ r = L.pb_over_roe(2.28, 12.89, 30.0, 100.0, 100.0)
 check("pb_over_roe inherits the WORSE of the two coverages and is gated on it",
       r["value"] is None and r["confidence"] == "unusable")
 
-# --- concentration -----------------------------------------------------------
 c = L.concentration([{"weight": 40}, {"weight": 35}, {"weight": 15}, {"weight": 10}])
 check("top5/top10 = whole book when ≤10 holdings", c["top5"] == 1.0 and c["top10"] == 1.0)
 check("herfindahl of 40/35/15/10", approx(c["hhi"], 0.315) and c["n"] == 4)
@@ -125,13 +109,12 @@ check("100 equal positions → top10 = 10%, tiny HHI",
 check("empty book → None, never a fake zero",
       L.concentration([])["hhi"] is None)
 
-# --- sector mix --------------------------------------------------------------
 SECT = [
     {"weight": 30, "sector": "Industrial Machinery"},
     {"weight": 20, "sector": "Industrial Machinery"},
     {"weight": 25, "sector": "Private Banks"},
     {"weight": 15, "sector": "Pharma"},
-    {"weight": 10},  # unclassified — excluded from the denominator, not assumed
+    {"weight": 10},
 ]
 s = L.sector_mix(SECT)
 check("sector weights aggregate duplicates", approx(s["top_sectors"][0]["weight"], 50 / 90))
@@ -141,13 +124,12 @@ check("sector herfindahl", approx(s["hhi"], (50 / 90) ** 2 + (25 / 90) ** 2 + (1
 check("no sector data → zero coverage, empty list",
       L.sector_mix([{"weight": 10}])["top_sectors"] == [])
 
-# --- earnings-distress dispersion --------------------------------------------
 DIST = [
     {"weight": 20, "roe": 0.6, "pe": 122.1, "name": "Sudarshan", "sector": "Chemicals"},
     {"weight": 15, "roe": 5.1, "pe": 106.9, "name": "Carborundum", "sector": "Machinery"},
     {"weight": 25, "roe": 22.0, "pe": 18.0, "name": "Quality Co", "sector": "IT"},
     {"weight": 30, "roe": 12.0, "pe": 20.0, "name": "Middling", "sector": "Banks"},
-    {"weight": 10},  # no ROE — excluded from the denominator
+    {"weight": 10},
 ]
 d = L.earnings_distress(DIST)
 check("share of book at ROE<8% (35 of the 90 ROE-covered)", approx(d["pct_weight_roe_lt_8"], 38.89))
@@ -160,7 +142,6 @@ check("a 12% ROE is neither distressed nor quality — no double counting",
 d0 = L.earnings_distress([{"weight": 100}])
 check("no ROE anywhere → None, not 0%", d0["pct_weight_roe_lt_8"] is None)
 
-# --- full portfolio metrics, decision-grade ----------------------------------
 BOOK = [
     {"weight": 40, "pe": 20, "pb": 3, "roe": 18, "growth": 15,
      "cap_rank": 40, "sector": "IT", "priced": True},
@@ -168,7 +149,7 @@ BOOK = [
      "cap_rank": 150, "sector": "Banks", "priced": True},
     {"weight": 15, "pe": 10, "pb": 1.5, "roe": 12, "growth": 8,
      "cap_rank": 400, "sector": "Metals", "priced": True},
-    {"weight": 10, "priced": False},  # unlisted — keeps its weight, lowers coverage
+    {"weight": 10, "priced": False},
 ]
 pm = L.portfolio_metrics(BOOK, equity_weight=100)
 check("portfolio P/E harmonic over the priced 90%", approx(pm["portfolio_pe"]["value"], 19.29))
@@ -188,9 +169,6 @@ check("cap tilt from ranks: 44.4% large / 38.9% mid / 16.7% small",
 check("unpriced weight surfaced explicitly", pm["unpriced_weight_pct"] == 10.0)
 check("overall confidence is decision-grade", pm["confidence"] == "decision-grade")
 
-# --- what the gate exists for ------------------------------------------------
-# A truncated feed: the weights sum to a fifth of the fund, yet every ratio still looks
-# perfectly computable.
 TRUNCATED = [{"weight": 2.0, "pe": 45, "pb": 6, "roe": 14, "cap_rank": 300, "priced": True}
              for _ in range(10)]
 pm_t = L.portfolio_metrics(TRUNCATED, equity_weight=97.0)
@@ -203,7 +181,6 @@ gaps_t = L.metric_gaps(pm_t)
 check("truncated feed names the gate in its gaps",
       any("WITHHELD" in g for g in gaps_t) and any("unpriced" in g for g in gaps_t))
 
-# --- indicative band ---------------------------------------------------------
 INDICATIVE = [{"weight": 65.0, "pe": 20, "pb": 3, "roe": 15, "cap_rank": 300, "priced": True}]
 pm_i = L.portfolio_metrics(INDICATIVE, equity_weight=100.0)
 check("65% coverage publishes an indicative ratio",
@@ -211,13 +188,11 @@ check("65% coverage publishes an indicative ratio",
 check("indicative ratio carries a 'do not cite' gap",
       any("indicative only" in g for g in L.metric_gaps(pm_i)))
 
-# --- gaps for the label fallback ---------------------------------------------
 LABELLED = [{"weight": 100, "cap_label": "Smallcap", "pe": 20, "pb": 3, "roe": 15,
              "priced": True}]
 check("label-fallback share is reported as a gap",
       any("text label" in g for g in L.metric_gaps(L.portfolio_metrics(LABELLED, 100))))
 
-# --- offline holdings-file hatch ---------------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     p = os.path.join(tmp, "h.json")
     with open(p, "w") as f:
@@ -243,12 +218,10 @@ with tempfile.TemporaryDirectory() as tmp:
     check("build_report says NOT publishable below the floor",
           rep2["ratios_publishable"] is False and rep2["confidence"] == "unusable")
 
-# --- a bare list is accepted too ---------------------------------------------
 check("file hatch accepts a bare list",
       len(L.load_holdings_file([{"weight": 1}, {"weight": 2}])) == 2)
 check("file hatch skips non-dict rows", len(L.load_holdings_file([1, "x", {"weight": 1}])) == 1)
 
-# --- report(): the envelope the fund tool returns ----------------------------
 _orig_load_fund = L.load_fund
 PRICED_BOOK = [{"weight": 95.0, "pe": 25.0, "pb": 4.0, "roe": 18.0, "cap_rank": 50,
                 "priced": True, "name": "A", "sector": "IT"}]

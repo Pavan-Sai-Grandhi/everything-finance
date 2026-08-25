@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Offline unit tests for finance/sources/prices.py (data-spine prices fetcher).
-
-Deterministic, no network — the parsers and the reconcile decision run against saved
-response fixtures, mirroring test_filings.py / test_ta.py. Proves A6. Run:
-    python3 finance/tests/test_prices.py
-"""
+"""Offline unit tests for finance/sources/prices.py (data-spine prices fetcher)."""
 import os
 import sys
 
@@ -13,7 +8,6 @@ from finance.sources import prices
 from finance.tests.harness import check, run
 
 
-# --- saved fixture: a TradingView scanner response (NSE:RELIANCE single-symbol scan) --- #
 SCAN_FIXTURE = {
     "totalCount": 2,
     "data": [
@@ -22,7 +16,6 @@ SCAN_FIXTURE = {
     ],
 }
 
-# --- saved fixture: a yfinance-style OHLCV frame, built without a network call --------- #
 def _ohlcv_frame():
     import pandas as pd
     idx = pd.to_datetime(["2026-06-17", "2026-06-18", "2026-06-19"])
@@ -54,7 +47,6 @@ def test_quote_body_no_auth():
     body = prices._quote_body("reliance", prices.QUOTE_COLUMNS)
     check("quote_body targets the NSE ticker", body["symbols"]["tickers"] == ["NSE:RELIANCE"])
     check("quote_body carries the requested columns", body["columns"] == prices.QUOTE_COLUMNS)
-    # A2: the body carries no auth/session field — the public scanner needs none.
     check("quote_body has no auth field", "auth" not in body and "session" not in body)
 
 
@@ -64,7 +56,6 @@ def test_screen_body_india_params():
     check("screen_body sets the India market (A2)", body["markets"] == ["india"])
     check("screen_body keeps the filter rows", body["filter"][0]["left"] == "close")
     check("screen_body honors the limit range", body["range"] == [0, 25])
-    # passthrough of a ready scanner payload keeps its own sort
     ready = prices._screen_body({"filter": [], "sort": {"sortBy": "name", "sortOrder": "asc"}},
                                 prices.SCREEN_COLUMNS)
     check("screen_body passes a ready payload's sort through", ready["sort"]["sortBy"] == "name")
@@ -83,7 +74,6 @@ def test_unsettled_bars_dropped():
                if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
     check("the unsettled bar is identified", len(settled) == 1)
     check("the settled bar survives", settled[0]["date"] == "2026-08-13")
-    # the guard the fix relies on, stated as a fact about the language
     check("NaN is not None, so `is not None` cannot filter it",
           float("nan") is not None)
     check("NaN != NaN is the only reliable test", float("nan") != float("nan"))
@@ -125,7 +115,6 @@ def test_df_to_candles_multiindex():
 
 
 def test_reconcile_decision():
-    # A5: within tolerance -> not diverged; beyond -> diverged; missing -> None.
     diverged, pct = prices._diverges(2951.0, 2950.0, 0.01)
     check("reconcile agrees within tolerance", diverged is False and pct < 0.01)
     diverged, pct = prices._diverges(3100.0, 2950.0, 0.01)

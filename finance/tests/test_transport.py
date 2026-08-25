@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for finance/transport.py — the single HTTP transport.
-
-The contract that matters here is **degrade, never die**: every failure mode must come
-back as `(None, "<labelled gap>")` rather than an exception, because every caller in the
-plugin treats a gap as data to report and an exception as a crashed skill. These tests
-drive the failure modes directly (a curl that cannot run, a non-2xx status, a body that
-isn't JSON) rather than mocking around them.
-
-Run: python3 finance/tests/test_transport.py
-"""
+"""Offline tests for finance/transport.py — the single HTTP transport."""
 import os
 import sys
 
@@ -17,7 +8,6 @@ from finance import transport
 from finance.tests.harness import check, run
 
 
-# --- host labelling: gaps must name where the failure happened -------------- #
 def test_host_extraction():
     check("host pulled from a normal url",
           transport._host("https://www.nseindia.com/api/allIndices") == "www.nseindia.com")
@@ -28,7 +18,6 @@ def test_host_extraction():
     check("None is handled", isinstance(transport._host(None), str))
 
 
-# --- retry classification: only transient conditions are retried ------------ #
 def test_retry_classification():
     check("a DNS failure is transient", 6 in transport._TRANSIENT_EXITS)
     check("a connect failure is transient", 7 in transport._TRANSIENT_EXITS)
@@ -40,7 +29,6 @@ def test_retry_classification():
     check("404 is NOT retried", 404 not in transport._TRANSIENT_STATUS)
 
 
-# --- degrade-not-die: every failure is a labelled gap, never a raise -------- #
 def test_unresolvable_host_returns_gap():
     body, gap = transport.request(
         "https://nonexistent-host-for-tests.invalid/x", timeout=5, retries=0)
@@ -97,7 +85,6 @@ def test_json_request_parses_good_json():
     check("a successful parse carries no gap", gap is None)
 
 
-# --- dest: a binary download must never leave a half-file behind ------------ #
 def test_dest_writes_nothing_when_the_fetch_fails():
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
@@ -110,7 +97,6 @@ def test_dest_writes_nothing_when_the_fetch_fails():
               not os.path.exists(target), target)
 
 
-# --- cookie jars live in the disposable tier, never hardcoded --------------- #
 def test_jar_path_uses_the_path_authority():
     p = transport.jar_path("nse")
     check("jar path is absolute", os.path.isabs(p), p)
@@ -119,7 +105,6 @@ def test_jar_path_uses_the_path_authority():
           transport.jar_path("a/b c"))
 
 
-# --- one UA for the whole plugin ------------------------------------------- #
 def test_single_user_agent():
     check("a browser UA is defined once here", "Mozilla/5.0" in transport.DEFAULT_UA)
     sources = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the allocation engine. No network, no MCP.
-Run: python3 finance/tests/test_allocation.py
-"""
+"""Offline tests for the allocation engine. No network, no MCP."""
 import os
 import sys
 
@@ -10,22 +8,21 @@ from finance.compute import allocation
 from finance.tests.harness import check, run
 
 
-# A ₹10,00,000 mixed book: a 15% single stock, an over-weight sector, a fund. --- #
 BOOK = [
     {"ticker": "TCS", "value": 150000, "kind": "stock", "sector": "IT",
-     "asset_class": "equity"},                                    # 15% single-stock breach
+     "asset_class": "equity"},
     {"ticker": "INFY", "value": 120000, "kind": "stock", "sector": "IT",
-     "asset_class": "equity"},                                    # IT sector = 27% → breach
+     "asset_class": "equity"},
     {"ticker": "HDFCBANK", "qty": 100, "ltp": 1500, "kind": "stock", "sector": "Banking",
-     "asset_class": "equity"},                                    # value via qty*ltp = 150000
+     "asset_class": "equity"},
     {"ticker": "ITC", "invested": 80000, "kind": "stock", "sector": "FMCG",
-     "asset_class": "equity"},                                    # value via invested
+     "asset_class": "equity"},
     {"ticker": "PPFAS", "value": 300000, "kind": "fund", "amc": "PPFAS",
      "asset_class": "equity", "style": "value"},
     {"ticker": "LIQUIDBEES", "value": 100000, "kind": "fund", "asset_class": "cash"},
     {"ticker": "GILT", "value": 100000, "kind": "fund", "asset_class": "debt"},
 ]
-TOTAL = 150000 + 120000 + 150000 + 80000 + 300000 + 100000 + 100000  # 1,000,000
+TOTAL = 150000 + 120000 + 150000 + 80000 + 300000 + 100000 + 100000
 
 
 def test_market_value_precedence():

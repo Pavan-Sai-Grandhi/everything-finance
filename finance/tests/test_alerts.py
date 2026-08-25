@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the alert contract. No network. Each test runs inside a temp
-artifacts root. Run: python3 finance/tests/test_alerts.py
-"""
+"""Offline tests for the alert contract. No network."""
 import os
 import sys
 import tempfile
@@ -17,7 +15,6 @@ def _isolated():
     return tmp
 
 
-# --- create + dedup ----------------------------------------------------------
 _isolated()
 a = alerts.create(
     created_by="trade-tracker",
@@ -30,7 +27,6 @@ check("create writes a file", os.path.isfile(alerts._path(a["id"])))
 check("id follows <kind>-<subject>-<hash>", a["id"].startswith("price_cross-reliance-"), a["id"])
 check("create stamps status open", a["status"] == "open")
 
-# same dedup_key updates in place, no second file
 a2 = alerts.create(
     created_by="trade-tracker",
     subject={"type": "stock", "id": "RELIANCE"},
@@ -42,7 +38,6 @@ check("dedup keeps same id", a2["id"] == a["id"], a2["id"])
 check("dedup updates trigger level", a2["trigger"]["level"] == 1500)
 check("dedup did not create a second file", len(alerts.load_all()) == 1, len(alerts.load_all()))
 
-# --- sector_refresh_due (monthly sector cache reminder) ----------------------
 _isolated()
 sr = alerts.create(
     created_by="deep-analysis",
@@ -53,7 +48,6 @@ sr = alerts.create(
     severity="watch", dedup_key="sector-refresh-banking")
 check("sector_refresh_due id", sr["id"].startswith("sector_refresh_due-banking-"), sr["id"])
 check("sector subject persisted", sr["subject"]["type"] == "sector")
-# re-running deep-analysis on a same-sector stock updates the reminder in place
 sr2 = alerts.create(
     created_by="deep-analysis",
     subject={"type": "sector", "id": "banking"},
@@ -64,7 +58,6 @@ sr2 = alerts.create(
 check("sector refresh dedups in place", sr2["id"] == sr["id"] and len(alerts.load_all()) == 1)
 check("sector refresh due bumped", sr2["trigger"]["due"] == "2026-08-23")
 
-# --- load_open filtering -----------------------------------------------------
 _isolated()
 alerts.create(created_by="x", subject={"type": "stock", "id": "INFY"}, kind="custom",
               trigger={"due": "2026-01-01"}, action={"text": "a"}, dedup_key="infy")
@@ -78,7 +71,6 @@ check("load_open filters by subject", len(alerts.load_open("INFY")) == 1)
 check("load_open subject accepts dict",
       len(alerts.load_open({"id": "TCS"})) == 1)
 
-# --- evaluate_cheap ----------------------------------------------------------
 _isolated()
 m = alerts.create(created_by="x", subject={"type": "stock", "id": "RELIANCE"}, kind="price_cross",
                   trigger={"metric": "close", "op": "<", "level": 1450},
@@ -104,7 +96,6 @@ check("evaluate_cheap persists triggered status",
       alerts.set_status(m["id"], "triggered") and
       [a for a in alerts.load_all() if a["id"] == m["id"]][0]["status"] == "triggered")
 
-# --- sweep -------------------------------------------------------------------
 _isolated()
 exp = alerts.create(created_by="x", subject={"type": "stock", "id": "OLD"}, kind="custom",
                     trigger={"due": "2025-01-01"}, action={"text": "old"},
@@ -123,7 +114,6 @@ check("sweep un-snoozes elapsed", snz["id"] in res["unsnoozed"], res)
 check("un-snoozed now visible", snz["id"] in {a["id"] for a in alerts.load_open()})
 check("future snooze untouched by sweep", future["id"] not in res["unsnoozed"])
 
-# --- snooze helper -----------------------------------------------------------
 _isolated()
 s = alerts.create(created_by="x", subject={"type": "stock", "id": "ABC"}, kind="custom",
                   trigger={"due": "2030-01-01"}, action={"text": "z"}, dedup_key="abc")
@@ -133,7 +123,6 @@ check("snooze hides from load_open", s["id"] not in {a["id"] for a in alerts.loa
 check("snooze persisted snooze_until",
       [a for a in alerts.load_all() if a["id"] == s["id"]][0]["snooze_until"] == "2099-01-01")
 
-# --- manage(): the whole manage_alerts surface -------------------------------
 _isolated()
 env = alerts.manage("add", subject_id="RELIANCE", kind="price_cross", metric="close",
                     op="<", level=1450, text="stop watch",

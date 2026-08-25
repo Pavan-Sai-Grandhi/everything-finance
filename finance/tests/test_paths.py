@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the path resolver. No network. Each test runs inside a temp
-dir so it never touches a real workspace. Run: python3 finance/tests/test_paths.py
-"""
+"""Offline tests for the path resolver. No network."""
 import os
 import sys
 import tempfile
@@ -15,11 +13,10 @@ def _clean_env():
     os.environ.pop("EVERYTHING_FINANCE_ARTIFACTS", None)
 
 
-# --- root resolution ---------------------------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
     os.chdir(tmp)
-    tmp = os.getcwd()  # resolve macOS /var -> /private/var symlink
+    tmp = os.getcwd()
     check("root defaults to cwd/artifacts", paths.root() == os.path.join(tmp, "artifacts"),
           paths.root())
 
@@ -29,12 +26,10 @@ with tempfile.TemporaryDirectory() as tmp:
     check("root honours env override", paths.root() == override, paths.root())
     _clean_env()
 
-# --- key normalisation -------------------------------------------------------
 check("ticker strips .NS and upper-cases", paths.ticker_key("reliance.NS") == "RELIANCE")
 check("scheme slugifies", paths.scheme_key("Parag Parikh Flexi Cap — Direct") ==
       "parag-parikh-flexi-cap-direct", paths.scheme_key("Parag Parikh Flexi Cap — Direct"))
 
-# --- dated helpers create dirs and follow the convention ---------------------
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
     os.chdir(tmp)
@@ -80,7 +75,6 @@ with tempfile.TemporaryDirectory() as tmp:
           mmp == os.path.join(root, "budget", "merchant-map.json"), mmp)
     check("merchant_map_path parent created", os.path.isdir(os.path.dirname(mmp)))
 
-# --- sector cache ------------------------------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
     os.chdir(tmp)
@@ -105,7 +99,6 @@ with tempfile.TemporaryDirectory() as tmp:
     check("sector_cache_age_days None when undated",
           paths.sector_cache_age_days("auto") is None)
 
-# --- latest_prior ------------------------------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
     os.chdir(tmp)
@@ -113,7 +106,6 @@ with tempfile.TemporaryDirectory() as tmp:
     check("latest_prior none when no history",
           paths.latest_prior("deep-analysis", "INFY", before="2026-06-01") is None)
 
-    # seed three runs; ask before 2026-06-01 -> newest strictly earlier is 2026-05-10
     for day in ("2026-04-01", "2026-05-10", "2026-06-15"):
         d = paths.stock_dir("INFY", day)
         with open(os.path.join(d, "deep-analysis.md"), "w") as f:
@@ -123,7 +115,6 @@ with tempfile.TemporaryDirectory() as tmp:
     check("latest_prior picks newest strictly-earlier",
           got == os.path.join(paths.stock_dir("INFY", "2026-05-10"), "deep-analysis.md"), got)
 
-    # a dcf run on a day with no dcf.md is not matched
     got2 = paths.latest_prior("dcf", "INFY", before="2026-06-01")
     check("latest_prior None when report file absent for that skill", got2 is None, got2)
 
@@ -134,9 +125,6 @@ with tempfile.TemporaryDirectory() as tmp:
           paths.latest_prior("dcf", "INFY", before="2026-06-01") ==
           os.path.join(dd, "dcf.md"))
 
-# --- deep-analysis's two report modes never share a file ---------------------
-# A fundamentals run and a full run on the same day must both survive: the full run carries
-# the debate and the verdict, so an overwrite loses the more expensive artifact silently.
 check("deep-analysis and fundamentals map to different filenames",
       paths._STOCK_ARTIFACT["deep-analysis"] != paths._STOCK_ARTIFACT["fundamentals"],
       (paths._STOCK_ARTIFACT["deep-analysis"], paths._STOCK_ARTIFACT["fundamentals"]))
@@ -172,8 +160,6 @@ with tempfile.TemporaryDirectory() as tmp:
     check("the two prior-run lookups do not shadow each other", got_deep != got_fund,
           (got_deep, got_fund))
 
-    # each mode builds on its OWN history: a later fundamentals-only day must not become
-    # the prior run for a full analysis, and vice versa.
     fund_only = paths.stock_dir("TCS", "2026-05-25")
     with open(os.path.join(fund_only, "fundamental-analysis.md"), "w") as f:
         f.write("x")
@@ -191,7 +177,6 @@ with tempfile.TemporaryDirectory() as tmp:
           paths.latest_prior("fundamentals", "TCS", before="2026-06-01") ==
           os.path.join(fund_only, "fundamental-analysis.md"))
 
-# --- prior_run: the envelope the get_prior_run tool returns ------------------
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
     os.chdir(tmp)

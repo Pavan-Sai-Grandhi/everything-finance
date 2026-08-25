@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Offline unit tests for finance/sources/market.py (the market-wide data-spine fetcher).
-
-Deterministic, no network — every rung runs against saved response fixtures with the
-module's own HTTP/scanner seams swapped out, mirroring test_prices.py /
-test_fundamentals.py / test_filings.py. Artifact roots are temp dirs, so a run never
-touches the user's real ./artifacts. Run:
-    python3 finance/tests/test_market.py
-"""
+"""Offline unit tests for finance/sources/market.py (the market-wide data-spine fetcher)."""
 import atexit
 import contextlib
 import json
@@ -18,7 +11,6 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Point the path authority at a throwaway root BEFORE anything can write a cache file.
 _TMP_ROOT = tempfile.mkdtemp(prefix="ef-test-market-")
 os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = os.path.join(_TMP_ROOT, "artifacts")
 atexit.register(shutil.rmtree, _TMP_ROOT, True)
@@ -49,12 +41,6 @@ def envelope_keys(env):
     return set(env) == {"ok", "source", "fetched_at", "data", "gaps"}
 
 
-# --------------------------------------------------------------------------- #
-# saved fixtures                                                               #
-# --------------------------------------------------------------------------- #
-
-# NSE archives ind_close_all_<DDMMYYYY>.csv — note the blank P/E on Smallcap 250 (real:
-# NSE published none for it for years) and the "-" sentinel on the Microcap P/B.
 IND_CLOSE_CSV = (
     "Index Name,Index Date,Open Index Value,High Index Value,Low Index Value,"
     "Closing Index Value,Points Change,Change(%),Volume,Turnover (Rs. Cr.),"
@@ -70,7 +56,6 @@ IND_CLOSE_CSV = (
     ",16-08-2026,0,0,0,0,0,0,0,0,0,0,0\n"
 )
 
-# NSE /api/allIndices — the live rung. "-" P/E must land as None, not 0.
 ALL_INDICES_PAYLOAD = {
     "data": [
         {"index": "NIFTY 50", "last": "24,572.30", "pe": "22.45", "pb": "3.85",
@@ -82,7 +67,6 @@ ALL_INDICES_PAYLOAD = {
     ]
 }
 
-# NSE /api/fiidiiTradeReact — the flow rung.
 FII_DII_PAYLOAD = [
     {"category": "DII **", "date": "16-Aug-2026", "buyValue": "12,000.50",
      "sellValue": "9,000.25", "netValue": "3,000.25"},
@@ -91,7 +75,6 @@ FII_DII_PAYLOAD = [
     "not a dict",
 ]
 
-# prices.screen() breadth rows — deliberately holed so each metric's denominator differs.
 BREADTH_ROWS = [
     {"name": "A", "close": 100.0, "SMA50": 90.0, "SMA200": 80.0, "change": 1.2,
      "price_52_week_high": 105.0, "price_52_week_low": 60.0, "market_cap_basic": 9e11},
@@ -104,9 +87,6 @@ BREADTH_ROWS = [
 ]
 
 
-# --------------------------------------------------------------------------- #
-# pure: the archive CSV parser                                                 #
-# --------------------------------------------------------------------------- #
 def test_parse_ind_close_csv():
     snap = market._parse_ind_close_csv(IND_CLOSE_CSV)
     check("ind_close parses one entry per named index row", len(snap) == 4, sorted(snap))
@@ -124,7 +104,6 @@ def test_parse_ind_close_csv():
 def test_parse_ind_close_blank_pe_is_none_not_zero():
     snap = market._parse_ind_close_csv(IND_CLOSE_CSV)
     sc = snap["NIFTY SMALLCAP 250"]
-    # A zero here would silently drag every percentile down — the whole point of the rule.
     check("blank P/E cell becomes None", sc["pe"] is None, sc)
     check("blank P/E is NOT 0", sc["pe"] != 0 and sc["pe"] is not False, sc)
     check("the rest of a blank-P/E row still parses", sc["pb"] == 4.10 and sc["close"] == 17902.15, sc)
@@ -141,12 +120,7 @@ def test_parse_ind_close_empty():
           market._parse_ind_close_csv("Index Name,P/E,P/B,Div Yield\n") == {})
 
 
-# --------------------------------------------------------------------------- #
-# pure: canonicalisation                                                       #
-# --------------------------------------------------------------------------- #
 def test_canon():
-    # The live JSON and the archive CSV disagree on case and spacing; _canon is what makes
-    # a percentile of the archive comparable to today's live level.
     check("canon upper-cases", market._canon("Nifty Smallcap 250") == "NIFTY SMALLCAP 250")
     check("canon collapses inner whitespace", market._canon("NIFTY   50") == "NIFTY 50")
     check("canon strips outer whitespace", market._canon("  nifty bank  ") == "NIFTY BANK")
@@ -162,9 +136,6 @@ def test_canon():
           all(market._canon(k) == k for k in market.SECTOR_INDICES))
 
 
-# --------------------------------------------------------------------------- #
-# pure: month-end sampling                                                     #
-# --------------------------------------------------------------------------- #
 def test_month_ends():
     today = date(2026, 8, 16)
     got = market._month_ends(1, today=today)
@@ -197,9 +168,6 @@ def test_month_ends_on_the_first_of_a_month():
     check("month_ends on the 1st includes the prior month-end", date(2026, 2, 28) in got)
 
 
-# --------------------------------------------------------------------------- #
-# pure: percentile                                                             #
-# --------------------------------------------------------------------------- #
 def test_percentile():
     check("percentile of an empty pool is None", market.percentile([], 5) is None)
     check("percentile of None pool is None", market.percentile(None, 5) is None)
@@ -221,9 +189,6 @@ def test_percentile():
           market.percentile([-1, 0, 1], 0) == 50.0, market.percentile([-1, 0, 1], 0))
 
 
-# --------------------------------------------------------------------------- #
-# rung 1 — indices()                                                           #
-# --------------------------------------------------------------------------- #
 def test_indices_parses():
     fresh_root("indices")
     with swap(market, "_nse_json", lambda url, referer: (ALL_INDICES_PAYLOAD, None)):
@@ -306,9 +271,6 @@ def test_indices_empty_payload_gap():
           env["gaps"] == ["NSE allIndices returned no index rows"], env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# rung 2 — index_snapshot() / valuation_history()                              #
-# --------------------------------------------------------------------------- #
 def _csv_server(requested, empty_days=()):
     """Fake _http_get that serves the archive CSV for any weekday not in `empty_days`."""
     def fake(url, timeout=25, referer=None, cookie_jar=None):
@@ -335,7 +297,6 @@ def test_index_snapshot_skips_weekends():
 def test_index_snapshot_walks_back_over_a_holiday():
     fresh_root("snapshot-holiday")
     seen = []
-    # 2026-08-14 is a Friday; make it a holiday (empty body, not a 404) -> Thursday.
     with swap(market, "_http_get", _csv_server(seen, empty_days={"14082026"})):
         snap, actual, gap = market.index_snapshot("2026-08-14")
     check("snapshot treats an empty archive body as a holiday and walks back",
@@ -390,7 +351,6 @@ def test_valuation_history_offline():
           set(series[0]) == {"date", "close", "pe", "pb", "dy"}, sorted(series[0]))
     check("valuation_history has no P/E gap when every sample is priced", env["gaps"] == [], env["gaps"])
 
-    # One day-snapshot serves EVERY index — the second index costs no fetch at all.
     def explode(*a, **k):
         raise AssertionError("valuation_history re-fetched a day another index already cached")
 
@@ -461,9 +421,6 @@ def test_valuation_percentiles_unknown_index_is_a_labelled_gap():
           any("no valuation history sampled" in g for g in env["gaps"]), env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# rung 3 — breadth()                                                           #
-# --------------------------------------------------------------------------- #
 def _breadth_env(rows, gaps=None):
     return {"ok": True, "source": "TradingView", "fetched_at": "x",
             "data": {"rows": rows}, "gaps": gaps or []}
@@ -523,9 +480,6 @@ def test_breadth_no_rows_degrades():
     check("breadth with no rows reports a zero universe", env["data"]["universe"] == 0)
 
 
-# --------------------------------------------------------------------------- #
-# rung 4 — flows()                                                             #
-# --------------------------------------------------------------------------- #
 def test_flows_categorisation():
     fresh_root("flows")
     with swap(market, "_nse_json", lambda url, referer: (FII_DII_PAYLOAD, None)):
@@ -538,8 +492,6 @@ def test_flows_categorisation():
     check("'DII **' is categorised as DII", f["DII"]["net_cr"] == 3000.25, f["DII"])
     check("flows strips thousands separators from buy/sell",
           f["DII"]["buy_cr"] == 12000.50 and f["DII"]["sell_cr"] == 9000.25, f["DII"])
-    # NSE serves DD-Mon-YYYY; every date this plugin emits is ISO, so a consumer can
-    # sort filings against news against candles without knowing the source.
     check("flows normalises NSE's session date to ISO",
           env["data"]["session"] == "2026-08-16", env["data"])
     check("flows skips non-dict rows", len(f) == 2)
@@ -556,9 +508,6 @@ def test_flows_blocked_degrades():
     check("flows blocked returns no flow numbers", env["data"]["flows"] == {})
 
 
-# --------------------------------------------------------------------------- #
-# rung 5 — macro()                                                             #
-# --------------------------------------------------------------------------- #
 def test_macro_reduces_each_series_to_three_numbers():
     fresh_root("macro")
     candles = [{"date": (date(2026, 7, 1) + timedelta(days=i)).isoformat(),
@@ -598,9 +547,6 @@ def test_macro_missing_history_is_a_labelled_gap():
           all("no history" in g for g in env["gaps"]), env["gaps"])
 
 
-# --------------------------------------------------------------------------- #
-# the day-scoped cache                                                         #
-# --------------------------------------------------------------------------- #
 def test_day_cache_round_trip():
     fresh_root("daycache")
     f = os.path.join(paths.cache_dir("market"), "probe.json")
@@ -653,7 +599,6 @@ def test_indices_cache_round_trip_through_the_public_rung():
     check("cached indices round-trip canonical keys and values",
           env["data"]["indices"]["NIFTY 50"]["pe"] == 22.45, env["data"]["indices"])
 
-    # Age the cache file by a day; the stale copy must NOT be served.
     cache_file = os.path.join(paths.cache_dir("market"), "indices.json")
     with open(cache_file) as fh:
         blob = json.load(fh)
@@ -666,9 +611,6 @@ def test_indices_cache_round_trip_through_the_public_rung():
           env2["ok"] is False and env2["data"]["indices"] == {}, env2["data"])
 
 
-# --------------------------------------------------------------------------- #
-# envelope + coercion primitives                                               #
-# --------------------------------------------------------------------------- #
 def test_envelope_shape():
     env = market._envelope(True, "NSE", {"x": 1}, [])
     check("envelope has the contract keys", envelope_keys(env), sorted(env))
@@ -697,8 +639,6 @@ def test_percentile_rejects_nan():
     strongest possible 'cheapest ever' signal, from a value that does not exist."""
     pool = [10.0, 20.0, 30.0, 40.0]
     check("NaN target -> None, never 0.0", market.percentile(pool, float("nan")) is None)
-    # mid-rank: 30 against a cleaned pool of [10, 30] is (1 below + 0.5 tie)/2 = 75.0.
-    # If the NaN counted, the denominator would be 3 and the answer 50.0.
     check("NaN inside the pool is excluded from the denominator",
           market.percentile([10.0, float("nan"), 30.0], 30.0) == 75.0)
     check("a real target still ranks", market.percentile(pool, 25.0) == 50.0)

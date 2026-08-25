@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the backtest engine. No network — OHLCV is synthetic and
-deterministic, and `run` is exercised with its loader swapped out.
-
-The engine decides whether a strategy is tradeable, so the wiring assertions below
-(fill timing, cost inclusion, stop/target precedence, time-stop) matter as much as
-the arithmetic: a silently wrong fill makes a losing spec look validated.
-
-Run: python3 finance/tests/test_backtest.py
-"""
+"""Offline tests for the backtest engine. No network — OHLCV is synthetic."""
 import json
 import os
 import shutil
@@ -41,7 +33,6 @@ def crash_frame():
                          "Volume": pd.Series([1000] * len(idx), index=idx)}, index=idx)
 
 
-# --- universe resolution --------------------------------------------------- #
 def test_resolve_universe():
     check("list passes through", backtest.resolve_universe(["TCS", "INFY"]) == ["TCS", "INFY"])
     check("comma string splits", backtest.resolve_universe("TCS,INFY") == ["TCS", "INFY"])
@@ -59,7 +50,6 @@ def test_resolve_universe():
           backtest.resolve_universe("largecap20") is not backtest.LARGECAP20_BASKET)
 
 
-# --- buy and hold ---------------------------------------------------------- #
 def test_buy_and_hold():
     df = pd.DataFrame({"Close": [100.0, 110.0, 120.0]})
     bh = backtest.buy_and_hold(df)
@@ -71,14 +61,12 @@ def test_buy_and_hold():
     check("negative return", approx(bh["total_return_pct"], -25.0))
     check("drawdown from peak", approx(bh["max_dd_pct"], -50.0))
 
-    # drawdown is measured from the running peak, not from the first bar
     df = pd.DataFrame({"Close": [100.0, 200.0, 150.0, 400.0]})
     bh = backtest.buy_and_hold(df)
     check("dd measured off running peak", approx(bh["max_dd_pct"], -25.0))
     check("return still off the first bar", approx(bh["total_return_pct"], 300.0))
 
 
-# --- summary arithmetic ---------------------------------------------------- #
 def test_summarize_empty():
     s = backtest.summarize([], 500000)
     check("no trades reported as zero", s["trades"] == 0)
@@ -102,7 +90,6 @@ def test_summarize_core():
 
 
 def test_summarize_edges():
-    # a scratch trade (pnl == 0) is a loss, never a win — the gate must not be gamed
     s = backtest.summarize([trade(0, 0.0)], 100000)
     check("zero-pnl trade is not a win", approx(s["win_rate_pct"], 0.0))
 
@@ -114,7 +101,6 @@ def test_summarize_edges():
     check("no wins -> avg_win_R is 0, not NaN", s["avg_win_R"] == 0.0)
     check("all losses -> profit factor 0", approx(s["profit_factor"], 0.0))
 
-    # equity drawdown runs on the cumulative curve, not on single trades
     s = backtest.summarize([trade(10000, 1.0), trade(-4000, -1.0), trade(-1000, -0.5)],
                            100000)
     check("equity drawdown off the running peak", approx(s["max_dd_on_equity_pct"], -4.55, 0.05))
@@ -133,7 +119,6 @@ def test_summarize_partial_year():
     check("closed year not flagged", "2023 (partial)" not in s["by_year_pnl"])
 
 
-# --- exit labelling -------------------------------------------------------- #
 def test_exit_reason():
     check("stop hit", backtest._exit_reason(
         {"ExitPrice": 95.0, "SL": 95.0, "TP": 120.0}) == "SL")
@@ -143,7 +128,6 @@ def test_exit_reason():
         {"ExitPrice": 108.0, "SL": 95.0, "TP": 120.0}) == "SIGNAL/OTHER")
     check("float noise still counts as a stop", backtest._exit_reason(
         {"ExitPrice": 95.0000000001, "SL": 95.0, "TP": 120.0}) == "SL")
-    # a trailed stop can close a WINNER — the label is about mechanism, not P&L
     check("trailed stop above entry is still SL", backtest._exit_reason(
         {"ExitPrice": 130.0, "SL": 130.0, "TP": 200.0}) == "SL")
     check("time stop at the limit", backtest._exit_reason(
@@ -152,8 +136,6 @@ def test_exit_reason():
     check("held short of the limit is not TIME", backtest._exit_reason(
         {"ExitPrice": 108.0, "SL": 95.0, "TP": 120.0, "EntryBar": 10, "ExitBar": 24},
         time_stop=15) == "SIGNAL/OTHER")
-    # price levels win over the holding period: a stop that fired ON the time-stop bar
-    # is a stop, not a time exit
     check("stop takes precedence over time", backtest._exit_reason(
         {"ExitPrice": 95.0, "SL": 95.0, "TP": 120.0, "EntryBar": 10, "ExitBar": 30},
         time_stop=15) == "SL")
@@ -161,7 +143,6 @@ def test_exit_reason():
         {"ExitPrice": 108.0, "SL": float("nan"), "TP": float("nan")}) == "SIGNAL/OTHER")
 
 
-# --- symbol aliasing ------------------------------------------------------- #
 def test_load_ohlcv_alias():
     seen = {}
 
@@ -180,7 +161,6 @@ def test_load_ohlcv_alias():
         backtest.ta.load_ohlcv = orig
 
 
-# --- the engine wiring (Backtesting.py), on synthetic data ----------------- #
 def test_run_symbol_wiring():
     df = backtest._synth("up")
     trades = backtest.run_symbol(df, backtest.SELFTEST_SPEC, "SYNTH", 500000, 1.0)
@@ -203,10 +183,6 @@ def test_run_symbol_wiring():
     check("R sign agrees with P&L sign",
           all((t["r_multiple"] > 0) == (t["pnl"] > 0)
               for t in trades if t["pnl"] != 0 and t["r_multiple"] != 0))
-    # Entries fill at the NEXT bar's OPEN. If they filled at the signal bar's close
-    # the engine would be trading on information it could not have had — the error
-    # that makes a worthless spec backtest beautifully. Open != Close in this frame,
-    # so the two cases are distinguishable.
     for t in trades:
         bar = df.loc[pd.Timestamp(t["entry_date"])]
         check(f"fill is at the bar open ({t['entry_date']})",
@@ -217,29 +193,19 @@ def test_run_symbol_wiring():
               f"entry {t['entry']} equals close {float(bar['Close']):.4f} — lookahead")
     check("no fill on the first bar", all(t["entry_date"] > str(df.index[0].date())
                                           for t in trades))
-    # costs are inside every reported P&L — commission is charged on both sides, so
-    # net = gross - (entry + exit) * qty * rate. An engine that reported gross would
-    # make a marginal spec look tradeable.
     rate = backtest.COMMISSION_PER_SIDE
     for t in trades:
         gross = (t["exit"] - t["entry"]) * t["qty"]
         expected = gross - (t["entry"] + t["exit"]) * t["qty"] * rate
-        # entry/exit are reported rounded to paise while P&L is computed on the raw
-        # fills, so the residual scales with size — bound it rather than hide it
         tol = max(1.0, t["qty"] * 0.02)
         check(f"P&L is net of both-side commission ({t['entry_date']})",
               approx(t["pnl"], expected, tol), f"net {t['pnl']} vs expected {expected:.2f}")
         check(f"net is worse than gross ({t['entry_date']})", t["pnl"] < gross)
 
-    # The time-stop must actually fire, not merely be configured. A grinding uptrend
-    # reaches neither stop nor target, so the time-stop is the only thing that closes
-    # these trades; if it silently never fires they just drift to the next signal.
     ts = backtest.SELFTEST_SPEC["exit"]["time_stop_sessions"]
     timed = [t for t in trades if t["reason"] == "TIME"]
     check("the time-stop fires", len(timed) > 0,
           f"reasons={sorted({t['reason'] for t in trades})}")
-    # The threshold trips on bar `ts`, and the exit fills at the NEXT open — the same
-    # no-lookahead rule entries obey — so a time exit lands ts+1 bars after entry.
     for t in timed:
         held = len(df.loc[pd.Timestamp(t["entry_date"]):pd.Timestamp(t["exit_date"])]) - 1
         check(f"time exit fills the bar after the threshold ({t['entry_date']})",
@@ -267,19 +233,16 @@ def test_run_symbol_stop_out():
     check("stop-out exits AT the stop", approx(t["exit"], t["sl"], 1e-6))
     check("stop-out is a loss", t["pnl"] < 0)
 
-    # size comes from risk, not conviction: qty * (entry - sl) ~= capital * risk%
     budget = capital * risk_pct / 100.0
     gross_risk = (t["entry"] - t["sl"]) * t["qty"]
     check("position sized to the risk budget", approx(gross_risk, budget, budget * 0.01),
           f"risked {gross_risk:.0f} against a {budget:.0f} budget")
     check("never sized above the budget", gross_risk <= budget)
 
-    # a stop-out is -1R by construction, and costs make it slightly worse
     check("stop-out is about -1R", approx(t["r_multiple"], -1.0, 0.1), f"R={t['r_multiple']}")
     check("costs make it worse than -1R, never better", t["r_multiple"] < -1.0)
 
 
-# --- run(): envelope, artifacts, degradation ------------------------------- #
 def test_run_envelope():
     tmp = tempfile.mkdtemp()
     spec_path = os.path.join(tmp, "selftest.yml")
@@ -341,7 +304,6 @@ def test_run_degrades():
               any("BAD" in g for g in env["gaps"]), f"gaps={env['gaps']}")
         check("the good symbol still produced trades", env["data"]["trades"] > 0)
 
-        # a spec that never triggers must NOT read as a validated strategy
         backtest.load_ohlcv = lambda sym, years, cache: backtest._synth("down")
         env = backtest.run(spec_path, ["SYNTH1"], years=2, out=os.path.join(tmp, "r2"))
         check("no trades -> not ok", env["ok"] is False)
@@ -355,7 +317,6 @@ def test_run_degrades():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# --- the constants a report leans on --------------------------------------- #
 def test_caveats():
     check("caveats are non-empty", len(backtest.CAVEATS) >= 4)
     joined = " ".join(backtest.CAVEATS).lower()

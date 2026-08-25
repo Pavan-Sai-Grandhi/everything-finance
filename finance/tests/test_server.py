@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for finance/mcp/_server.py — the bulk-to-disk spill.
-
-`spill` is the one implementation of "bulk data is written to a file and the tool returns
-a summary plus `<key>_path`", so a regression here silently pushes a 3,000-row NAV series
-into a context window. The MCP SDK is supplied by the client at runtime and is not
-installed here, so a stub stands in for the one symbol the module imports from it.
-
-Run: python3 finance/tests/test_server.py
-"""
+"""Offline tests for finance/mcp/_server.py — the bulk-to-disk spill."""
 import os
 import sys
 import tempfile

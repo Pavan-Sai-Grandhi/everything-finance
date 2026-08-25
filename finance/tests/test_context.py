@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the market-of-record's pure logic. No network. Each test runs in a
-temp artifacts root so it never touches a real workspace.
-Run: python3 finance/tests/test_context.py
-"""
+"""Offline tests for the market-of-record's pure logic. No network."""
 import os
 import shutil
 import sys
@@ -13,7 +10,6 @@ from finance.compute import context as mc
 from finance.tests.harness import check, summary
 
 
-# --- classify_trend: the taxonomy strategy specs are validated against ------------
 check("trend up needs both EMAs and a rising slope",
       mc.classify_trend(True, True, True) == "up")
 check("trend down needs both below and a falling slope",
@@ -24,7 +20,6 @@ check("below both but slope rising is range",
       mc.classify_trend(False, False, True) == "range")
 check("mixed EMAs is range", mc.classify_trend(True, False, True) == "range")
 
-# --- classify_vol_band -----------------------------------------------------------
 check("VIX 11.3 is low", mc.classify_vol_band(11.31) == "low")
 check("VIX 13 is normal (boundary is exclusive below)",
       mc.classify_vol_band(13) == "normal")
@@ -34,9 +29,6 @@ check("VIX 24 is high", mc.classify_vol_band(24) == "high")
 check("missing VIX is unknown, never a silent default",
       mc.classify_vol_band(None) == "unknown")
 
-# --- robust_pe_percentile: the earnings-collapse trap -----------------------------
-# A history with three absurd prints from an earnings trough. Left in, today's 30 looks
-# cheap; excluded, it ranks where it belongs.
 hist = [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 4000, 9000, 44692]
 pct_raw = mc.market.percentile(hist, 30)
 pct_robust, used, dropped = mc.robust_pe_percentile(hist, 30)
@@ -52,7 +44,6 @@ check("robust percentile is None on an empty history",
       mc.robust_pe_percentile([], 30)[0] is None)
 check("a clean history drops nothing", mc.robust_pe_percentile([20, 22, 24], 22)[2] == 0)
 
-# --- classify_stance -------------------------------------------------------------
 check("low percentiles across the board read cheap",
       mc.classify_stance(5, 5, 95)[0] == "cheap")
 check("high P/E and P/B with a poor yield reads expensive",
@@ -67,7 +58,6 @@ _stance, blended = mc.classify_stance(60, 80, 10)
 check("blended percentile averages only the available parts",
       blended == round((60 + 80 + 90) / 3, 1), blended)
 
-# --- classify_posture ------------------------------------------------------------
 check("uptrend + calm + participation is risk_on",
       mc.classify_posture("up", "normal", 70)[0] == "risk_on")
 check("high volatility forces risk_off even in an uptrend",
@@ -81,14 +71,12 @@ check("posture always carries a rationale",
       all(mc.classify_posture(t, "normal", 55)[1]
           for t in ("up", "down", "range", "unknown")))
 
-# --- _pct: denominators ----------------------------------------------------------
 check("_pct computes against the priced denominator, not the universe",
       mc._pct({"count": 300, "of": 492}) == 61.0)
 check("_pct is None when nothing was priced (never 0%, which reads as a real finding)",
       mc._pct({"count": 0, "of": 0}) is None)
 check("_pct is None on a missing block", mc._pct(None) is None)
 
-# --- digest: the narrow report ---------------------------------------------------
 ctx = {
     "as_of": "2026-08-14", "generated": "2026-08-16",
     "market_trend": "range", "market_posture": "neutral", "rationale": "why",
@@ -128,7 +116,6 @@ check("a gap is surfaced in the digest, never swallowed",
 check("the excluded-sample note reaches the digest",
       "8 of 114 samples excluded" in mc.digest(ctx_gappy))
 
-# --- artifact path + quick-mode reuse --------------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = tmp
     check("no artifact yet means quick mode must compute", mc.load_today() is None)
@@ -148,9 +135,6 @@ with tempfile.TemporaryDirectory() as tmp:
           mc.load_today() is None)
     os.environ.pop("EVERYTHING_FINANCE_ARTIFACTS", None)
 
-# --- report: the envelope the market tool returns ----------------------------------
-# `report` persists the day's context, so every call here is pinned to a throwaway
-# artifact dir — a test must never read or write the live artifact tier.
 _orig_compute = mc.compute
 _orig_artifact_path = mc.artifact_path
 _report_tmp = tempfile.mkdtemp()
@@ -182,9 +166,6 @@ finally:
 check("report surfaces the context's gaps as the envelope's gaps",
       env_gappy["gaps"] == ["India VIX unavailable"], env_gappy["gaps"])
 
-# --- frozen key names -------------------------------------------------------------
-# select_strategy.py gates on exactly these paths. Renaming one silently breaks every
-# strategy spec's regime_required check, so the contract is asserted here.
 for key in ("market_trend", "trend_detail", "volatility", "breadth"):
     check(f"frozen: top-level {key!r} present", key in ctx)
 check("frozen: trend_detail.above_ema200", "above_ema200" in ctx["trend_detail"])
@@ -196,7 +177,6 @@ check("posture key is market_posture (wealth owns risk_posture)",
 
 
 import json  # noqa: E402
-# --- the daily artifact: computed once, reused by every caller -------------- #
 
 tmp = tempfile.mkdtemp()
 calls = []
@@ -211,28 +191,23 @@ orig_path = mc.artifact_path
 mc.compute = fake_compute
 mc.artifact_path = lambda day=None: os.path.join(tmp, "market.json")
 try:
-    # first call computes and writes the artifact
     ctx = mc.resolve(mode="quick")
     check("quick computes when no artifact exists", len(calls) == 1)
     check("the artifact is written", os.path.exists(mc.artifact_path()))
     with open(mc.artifact_path()) as fh:
         check("what is written is what is returned", json.load(fh) == ctx)
 
-    # second call reuses it — this is what makes quick cheap for every later skill
     ctx2 = mc.resolve(mode="quick")
     check("quick reuses the day's artifact", len(calls) == 1, f"computed {len(calls)}x")
     check("the reused context is the same", ctx2 == ctx)
 
-    # fresh forces a recompute and rewrites
     mc.resolve(mode="quick", fresh=True)
     check("fresh bypasses the artifact", len(calls) == 2)
 
-    # a deeper mode never serves a shallower cached read
     mc.resolve(mode="deep")
     check("deep always recomputes", len(calls) == 3)
     check("deep mode reaches compute", calls[-1] == "deep")
 
-    # report() carries the same reuse, or the tool and the CLI would disagree
     before = len(calls)
     env = mc.report(mode="quick")
     check("report reuses too", len(calls) == before, "report recomputed")

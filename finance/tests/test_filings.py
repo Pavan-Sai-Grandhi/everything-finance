@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the filings classifier + parsing helpers. No network.
-Run: python3 finance/tests/test_filings.py
-"""
+"""Offline tests for the filings classifier + parsing helpers. No network."""
 import os
 import sys
 
@@ -32,7 +30,6 @@ def test_routine():
 
 
 def test_suppressor_overrides_subject():
-    # a newspaper copy of results is routine, not act-on
     tier, _, why = filings.classify_materiality("Newspaper publication of audited results")
     check("newspaper copy suppressed to routine", tier == "routine", f"{tier}/{why}")
 
@@ -130,8 +127,6 @@ def test_corporate_actions_envelope():
     check("corporate_actions returns the data-spine envelope",
           set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
     check("corporate_actions ok:true with rows", env["ok"] is True)
-    # NSE serves DD-Mon-YYYY; everything this plugin emits is ISO, so filings, news and
-    # candles can be compared and sorted against each other.
     row = env["data"]["corporate_actions"][0]
     check("corporate_actions normalises ex/record dates to ISO",
           (row["ex_date"], row["record_date"]) == ("2026-08-10", "2026-08-11"), row)

@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for finance/spine.py — the primitives every data-spine fetcher shares.
-
-The coercion and cache rules have one implementation, so they get one test here; the
-per-module tests exercise the names those modules re-export.
-
-Run: python3 finance/tests/test_spine.py
-"""
+"""Offline tests for finance/spine.py — the primitives every data-spine fetcher shares."""
 import json
 import os
 import sys
@@ -75,8 +69,6 @@ def test_cache_roundtrip():
     env = {"ok": True, "data": {"v": 1}}
     spine.write_cache(p, env)
     check("write stamps today's date", env["data"][spine.CACHE_STAMP] == spine.today())
-    # the stamp lives under a reserved key so a source's own `date` cannot shadow it,
-    # and is assigned, not setdefault — an inherited value would make it a no-op
     p2 = os.path.join(d, "src.json")
     src = {"ok": True, "data": {"date": "2019-01-01", "v": 2}}
     spine.write_cache(p2, src)

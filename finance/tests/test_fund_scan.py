@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the category scanner's pure logic. No network.
-Run: python3 finance/tests/test_fund_scan.py
-"""
+"""Offline tests for the category scanner's pure logic. No network."""
 import json
 import os
 import sys
@@ -12,7 +10,6 @@ from finance.compute import fund_scan as S
 from finance.tests.harness import check, summary
 
 
-# --- percentile_ranks --------------------------------------------------------
 r = S.percentile_ranks([1, 2, 3, 4, 5])
 check("best value ranks 1.0 when higher is better", r[4] == 1.0, r)
 check("worst value ranks 0.0", r[0] == 0.0, r)
@@ -31,7 +28,6 @@ check("ties share the average rank", ties[0] == ties[1], ties)
 check("an outlier does not compress the rest (rank, not min-max)",
       S.percentile_ranks([1, 2, 1000])[1] == 0.5, S.percentile_ranks([1, 2, 1000]))
 
-# --- aum_agility -------------------------------------------------------------
 check("inside the band scores full marks", S.aum_agility(5000, 500, 20000) == 1.0)
 check("below the viability floor scores 0", S.aum_agility(200, 500, 20000) == 0.0)
 check("twice the ceiling decays to 0.5, not 0 (size is a headwind, not a veto)",
@@ -42,13 +38,11 @@ check("a nonsensical AUM is None", S.aum_agility(0, 500, 20000) is None)
 check("agility decays monotonically past the ceiling",
       S.aum_agility(30000, 500, 20000) > S.aum_agility(60000, 500, 20000))
 
-# --- cap_purity --------------------------------------------------------------
 check("85% in-mandate maps to 0.85", abs(S.cap_purity(85) - 0.85) < 1e-9)
 check("purity is clamped to 1.0", S.cap_purity(120) == 1.0)
 check("negative purity clamps to 0", S.cap_purity(-5) == 0.0)
 check("missing purity is None", S.cap_purity(None) is None)
 
-# --- composite ---------------------------------------------------------------
 score, cov, used = S.composite({k: 1.0 for k in S.WEIGHTS})
 check("all components present scores 1.0 at full coverage", score == 1.0 and cov == 1.0)
 check("every weighted component is reported as used", len(used) == len(S.WEIGHTS))
@@ -62,7 +56,6 @@ check("the dropped component is absent from scored_on", k0 not in used_p)
 check("no usable component yields a None score, not 0",
       S.composite({k: None for k in S.WEIGHTS}) == (None, 0.0, []))
 
-# --- gate --------------------------------------------------------------------
 good = {"option": "Growth", "expRatio": 0.7, "aum": 5000, "ageInMon": 60}
 ok, reasons = S.gate(good, 500, 36)
 check("a compliant fund passes every gate", ok and reasons == [], reasons)
@@ -83,13 +76,11 @@ check("gate reasons diagnose the fund, never name it",
       all("Growth" in r or "TER" in r or "AUM" in r or "age" in r or "expense" in r
           or "months" in r for r in reasons), reasons)
 
-# --- span_confidence ---------------------------------------------------------
 check("under 3 years is low confidence", S.span_confidence(2.0) == "low")
 check("3-7 years is ok", S.span_confidence(5.0) == "ok")
 check("7+ years earns full-cycle", S.span_confidence(8.0) == "full-cycle")
 check("unknown span is 'unknown', not a guess", S.span_confidence(None) == "unknown")
 
-# --- match_amfi_scheme -------------------------------------------------------
 schemes = [
     {"code": "1", "name": "ITI Small Cap Fund - Direct Plan - Growth"},
     {"code": "2", "name": "ITI Small Cap Fund - Direct Plan - IDCW"},
@@ -111,7 +102,6 @@ check("an unmatched fund returns None, never a near-miss",
 check("an empty scheme list returns None",
       S.match_amfi_scheme("ITI Small Cap Fund", []) is None)
 
-# --- nav_metrics -------------------------------------------------------------
 navs = [{"date": f"2020-01-{d:02d}", "nav": v}
         for d, v in zip(range(1, 11), [100, 110, 120, 90, 95, 130, 140, 120, 150, 160])]
 m = S.nav_metrics(navs, 1)
@@ -128,7 +118,6 @@ check("a one-point series is still safe", S.nav_metrics([navs[0]], 1)["confidenc
 check("unparseable rows are skipped, not crashed on",
       S.nav_metrics([{"date": "bad", "nav": "x"}] + navs, 1)["nav_as_of"] == "2020-01-10")
 
-# --- load_market_context -----------------------------------------------------
 check("a missing market-context path is None, not a fabricated market read",
       S.load_market_context("/nonexistent/path.json", "Small Cap Fund") is None)
 with tempfile.TemporaryDirectory() as tmp:
@@ -156,7 +145,6 @@ with tempfile.TemporaryDirectory() as tmp:
     check("a corrupt market context degrades to None rather than raising",
           S.load_market_context(p, "Small Cap Fund") is None)
 
-# --- report(): the envelope the fund tool returns ----------------------------
 SCAN_RESULT = {
     "as_of": "2026-08-17", "category": "Small Cap Fund", "window_credited": "3y",
     "universe": {"screened": 20, "passed_gates": 6, "scored": 5, "shortlisted": 2},

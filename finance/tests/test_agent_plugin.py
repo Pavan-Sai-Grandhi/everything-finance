@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Offline conformance tests for the portable Agent Plugins 1.0.0 packaging.
-
-The plugin ships two manifests side by side:
-  - .claude-plugin/plugin.json + .mcp.json  — Claude Code's native format (unchanged)
-  - plugin.json + mcp.json                  — the portable Agent Plugins 1.0.0 format
-
-These assertions pin the portable pair to the spec constraints AND to parity with the
-Claude pair, so the two can never silently drift. No network. Spec reference:
-https://agent-plugins.org/specification
-
-Run: python3 finance/tests/test_agent_plugin.py
-"""
+"""Offline conformance tests for the portable Agent Plugins 1.0.0 packaging."""
 import ast
 import glob
 import json
@@ -110,10 +99,6 @@ check("portable mcp.json exposes the same servers as .mcp.json",
 check("portable mcp.json carries no dead EVERYTHING_FINANCE_PLUGIN_ROOT",
       all("EVERYTHING_FINANCE_PLUGIN_ROOT" not in e.get("env", {}) for e in servers.values()))
 
-# The live smoke run is the only thing that exercises a tool against its real upstream, so
-# a tool it does not call is a tool nobody ever proves works. Read the declarations with
-# `ast` rather than importing the servers: the MCP SDK is supplied by the client at runtime
-# and is not installed where the offline suites run.
 def _declared_tools(server):
     with open(os.path.join(ROOT, "finance", "mcp", f"{server}.py"), encoding="utf-8") as fh:
         tree = ast.parse(fh.read())
@@ -132,10 +117,6 @@ for server, cases in smoke_test.CASES.items():
     check(f"[{server}] every smoke case names a declared tool",
           covered <= declared, str(sorted(covered - declared)))
 
-# A `subagent_type` is matched literally, so an unqualified name does not resolve and the
-# launch fails. The rule cannot live in prose above a table that then spells the names bare:
-# the agent copies the cell. Every dispatch site — table row or Fork instruction — carries
-# the qualified form.
 _AGENT_NAMES = tuple(sorted(
     f[:-3] for f in os.listdir(os.path.join(ROOT, "agents")) if f.endswith(".md")))
 _DISPATCH_RE = re.compile(r"`(" + "|".join(_AGENT_NAMES) + r")`")
@@ -148,11 +129,9 @@ for rel in sorted(glob.glob(os.path.join(ROOT, "skills", "*", "SKILL.md"))):
           f"`everything-finance:<agent>`", not bare,
           bare[0][:120] if bare else "")
 
-# `manage_alerts` is the door to the alert inbox. A skill pointing at the module instead
-# sends its agent hunting the filesystem for a file it then has to import by hand.
 for rel in sorted(glob.glob(os.path.join(ROOT, "skills", "*", "SKILL.md"))):
     name = os.path.basename(os.path.dirname(rel))
-    if name == "alert-manager":                 # the contract owner names its own module
+    if name == "alert-manager":
         continue
     with open(rel, encoding="utf-8") as fh:
         body = fh.read()
@@ -180,9 +159,6 @@ check("loader does not privilege a vendor home like ~/.claude",
 check("loader seeds $PLUGIN_DATA/.env from the template when none is found",
       'cp "$root/.env.example" "$data/.env"' in loader_src)
 
-# --- the manifest must match the filesystem ---------------------------------- #
-# A skill directory or agent file added without its manifest entry ships a plugin
-# that silently does not load it.
 _agent_files = sorted(f"./agents/{n}" for n in os.listdir(os.path.join(ROOT, "agents"))
                       if n.endswith(".md"))
 _declared_agents = sorted(claude.get("agents") or [])
@@ -203,7 +179,6 @@ check("every declared skill exists on disk",
       set(_declared_skills) <= set(_skill_dirs),
       sorted(set(_declared_skills) - set(_skill_dirs)))
 
-# each agent file's frontmatter name matches its filename, so a dispatch by name resolves
 for rel in _agent_files:
     with open(os.path.join(ROOT, rel[2:]), encoding="utf-8") as fh:
         head = fh.read(600)
@@ -211,9 +186,6 @@ for rel in _agent_files:
     check(f"{stem} frontmatter name matches its filename",
           f"\nname: {stem}\n" in head, head[:120])
 
-# An agent's `tools:` MCP patterns must name servers this plugin actually declares, under
-# the prefix the runtime registers them with. A pattern that matches nothing does not error
-# — the agent simply launches without the tool and improvises — so it is pinned here.
 _servers = set(claude_mcp.get("mcpServers") or {})
 _PLUGIN_PREFIX = f"plugin_{claude['name']}_"
 for rel in _agent_files:
@@ -230,13 +202,10 @@ for rel in _agent_files:
         bare = server[len(_PLUGIN_PREFIX):] if server.startswith(_PLUGIN_PREFIX) else server
         check(f"{stem} grants a server the plugin declares: {pat}", bare in _servers, sorted(_servers))
         named.add(bare)
-    # both registration spellings, or a leg silently loses the tool under one install mode
     for bare in named:
         check(f"{stem} grants {bare} under both the qualified and bare name",
               f"mcp__{_PLUGIN_PREFIX}{bare}__*" in pats and f"mcp__{bare}__*" in pats, pats)
 
-# same rule for a skill's own allowed-tools: an unqualified name grants nothing under the
-# install mode that prefixes the server, and the skill silently loses the tool
 for rel in _skill_dirs:
     name = rel.split("/")[-1]
     with open(os.path.join(ROOT, rel[2:], "SKILL.md"), encoding="utf-8") as fh:
@@ -252,9 +221,6 @@ for rel in _skill_dirs:
         check(f"{name} grants {server}__{rest} under the qualified name too",
               f"mcp__{_PLUGIN_PREFIX}{server}__{rest}" in toks, toks)
 
-# the Findings contract: every leg opens its report with the section AND closes it with the
-# next heading, so a reader knows where the case ends. Findings with nothing after it swallows
-# the whole report and the downstream instruction to build on it means nothing.
 _LEGS = (
     "skills/technical-analysis/SKILL.md",
     "skills/financial-analysis/SKILL.md",
@@ -290,8 +256,6 @@ with open(os.path.join(ROOT, "CLAUDE.md"), encoding="utf-8") as fh:
     _cl = fh.read()
 check("the prose standard is stated plugin-wide", "## How a report reads" in _cl, "")
 
-# CLAUDE.md does not reach a forked subagent, so every agent that persists a report carries the
-# writing standard itself — and carries the same one, or the reports drift apart in voice.
 _WRITERS = ("terminal-analyst", "field-analyst", "desk-analyst", "bull-researcher",
             "bear-researcher", "contest-researcher", "portfolio-manager", "report-writer")
 _marker = "- **Cut what carries nothing.** If a sentence would not change what the reader does, delete it."

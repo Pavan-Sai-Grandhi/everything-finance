@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the find-trade screen engine. No network.
-Run: python3 finance/tests/test_screen.py
-"""
+"""Offline tests for the find-trade screen engine. No network."""
 import os
 import sys
 
@@ -16,7 +14,6 @@ def row(**kw):
     return pd.Series(kw, dtype=float)
 
 
-# --- predicate evaluator --------------------------------------------------- #
 def test_eval_filter():
     r = row(Close=110, ema50=100, rsi14=55, vol10=1000, Volume=1800, ema50_rising=1)
     check("bare truthy col", screen.eval_filter("ema50_rising", r))
@@ -24,8 +21,8 @@ def test_eval_filter():
     check("lt false", not screen.eval_filter("Close < ema50", r))
     check("between true", screen.eval_filter("rsi14 between 40 and 60", r))
     check("between false", not screen.eval_filter("rsi14 between 60 and 70", r))
-    check("scalar-mul term", screen.eval_filter("Volume > 1.5 * vol10", r))   # 1800 > 1500
-    check("scalar-mul false", not screen.eval_filter("Volume > 2 * vol10", r))  # 1800 < 2000
+    check("scalar-mul term", screen.eval_filter("Volume > 1.5 * vol10", r))
+    check("scalar-mul false", not screen.eval_filter("Volume > 2 * vol10", r))
     check("case-insensitive AND/BETWEEN",
           screen.eval_filter("rsi14 BETWEEN 40 AND 60", r))
 
@@ -48,7 +45,6 @@ def test_passes_technical_collects_reasons():
     check("reasons name the failures", len(reasons) == 2, str(reasons))
 
 
-# --- build_signal ---------------------------------------------------------- #
 def _ind_frame(close, ema50, atr14=2.0, ll20=None, hh20=None, vol10=1000, rsi14=55):
     """One-row indicator frame plus a Low column for swing-low stop math."""
     n = 12
@@ -73,7 +69,6 @@ def test_build_signal_min_rrr_target():
     spec = {"exit": {"stop": "ema50_minus_2atr", "target": "next_resistance", "min_rrr": 1.5},
             "sizing": {"risk_per_trade_pct": 1.0}}
     sig = screen.build_signal(df, spec, capital=500000)
-    # stop = ema50 - 2*atr = 95 - 4 = 91; risk = 9; target = 100 + 1.5*9 = 113.5
     check("stop = ema50-2atr", sig["stop"] == 91.0, str(sig))
     check("target = entry + minRRR*risk", sig["target"] == 113.5, str(sig))
     check("rrr == min", sig["rrr"] == 1.5)
@@ -85,42 +80,33 @@ def test_build_signal_measured_move():
     spec = {"exit": {"stop": "range_low", "target": "measured_move", "min_rrr": 1.2},
             "sizing": {"risk_per_trade_pct": 1.0}}
     sig = screen.build_signal(df, spec, capital=500000)
-    # stop = ll20 = 90; risk 10; measured move = hh20-ll20 = 40 -> target 140
     check("measured-move target", sig["target"] == 140.0, str(sig))
     check("target_basis labelled", sig["target_basis"] == "measured-move")
 
 
 def test_build_signal_rejects_low_rrr():
-    # A measured-move target whose move is small vs the stop distance -> RRR below
-    # the gate. (next_resistance targets are defined AS entry + min_rrr*risk, so they
-    # meet the gate tautologically; only price-derived targets can fail it.)
-    df = _ind_frame(close=100, ema50=99, atr14=0.4, ll20=99, hh20=101)  # risk 1.8, move 2
+    df = _ind_frame(close=100, ema50=99, atr14=0.4, ll20=99, hh20=101)
     spec = {"exit": {"stop": "ema50_minus_2atr", "target": "measured_move", "min_rrr": 1.5},
             "sizing": {"risk_per_trade_pct": 1.0}}
-    sig = screen.build_signal(df, spec, capital=500000)  # rrr = 2/1.8 = 1.11 < 1.5
+    sig = screen.build_signal(df, spec, capital=500000)
     check("below min_rrr skipped", "skip" in sig and "RRR" in sig["skip"], str(sig))
-    spec["exit"]["min_rrr"] = 1.0  # now 1.11 >= 1.0 -> passes
+    spec["exit"]["min_rrr"] = 1.0
     check("at/above min_rrr passes", "skip" not in screen.build_signal(df, spec, 500000))
 
 
 def test_build_signal_floors_tight_stop():
-    # A swing-low stop a hair under entry (a squeeze/NR candle) must floor so the
-    # risk denominator can't collapse toward zero and blow up the R-multiple.
     df = _ind_frame(close=100, ema50=95, atr14=3.0)
-    df["Low"] = [99.9] * len(df)            # swing low only 0.1% under entry
+    df["Low"] = [99.9] * len(df)
     spec = {"exit": {"stop": "recent_swing_low", "target": "next_resistance", "min_rrr": 1.5},
             "sizing": {"risk_per_trade_pct": 1.0}}
     sig = screen.build_signal(df, spec, capital=500000)
-    # floor = max(0.5*atr=1.5, 1% of 100=1.0) = 1.5 -> stop 98.5, risk 1.5 (not 0.1)
     check("tight stop floored to entry-0.5atr", sig["stop"] == 98.5, str(sig))
     check("risk_per_share floored, not ~0", sig["risk_per_share"] == 1.5, str(sig))
 
 
 def test_exit_signal_series():
-    # The discretionary-exit grammar (entry's), e.g. a mean-reversion close back
-    # above the 5-SMA — fires only on the bars where the condition holds.
     df = _ind_frame(close=100, ema50=95)
-    df["sma5"] = [98, 99, 101, 102] + [100] * 8     # Close 100 > sma5 only at bars 0,1
+    df["sma5"] = [98, 99, 101, 102] + [100] * 8
     fires = list(screen.strategy.exit_signal_series(df, {"exit": {"exit_signal": "Close > sma5"}}))
     check("exit_signal fires where Close>sma5", fires[:4] == [True, True, False, False], str(fires[:4]))
     check("no exit_signal -> never fires",
@@ -128,13 +114,12 @@ def test_exit_signal_series():
 
 
 def test_build_signal_rejects_wide_stop():
-    df = _ind_frame(close=100, ema50=80, atr14=20)  # stop 40 -> 60% risk, too wide
+    df = _ind_frame(close=100, ema50=80, atr14=20)
     spec = {"exit": {"stop": "ema50_minus_2atr", "target": "measured_move", "min_rrr": 1.0},
             "sizing": {"risk_per_trade_pct": 1.0}}
     check("too-wide stop skipped", "skip" in screen.build_signal(df, spec, 500000))
 
 
-# --- screen_compute end to end (synthetic loader) -------------------------- #
 def test_screen_compute_discriminates():
     res = screen.screen_compute(["UPTREND", "DOWNTREND"], screen.SELFTEST_SPEC, 2,
                                 500000, "/tmp", loader=lambda s: screen._synth(s.lower()))
@@ -154,7 +139,6 @@ def test_screen_compute_handles_loader_failure():
     check("good symbol still screened", any(c["symbol"] == "GOOD" for c in res["candidates"]))
 
 
-# --- resolve_symbols: how a universe is expressed -------------------------- #
 def test_resolve_symbols():
     check("a list is normalised and upper-cased",
           screen.resolve_symbols([" reliance ", "tcs"]) == ["RELIANCE", "TCS"])
@@ -172,7 +156,6 @@ def test_resolve_symbols():
     os.unlink(path)
 
 
-# --- run(): the envelope the screen tool returns ---------------------------- #
 def _run_with(res, out):
     orig_load, orig_compute = screen.load_spec, screen.screen_compute
     screen.load_spec = lambda path: {"name": "test-spec"}

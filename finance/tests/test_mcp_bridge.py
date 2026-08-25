@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for bin/mcp-bridge.sh — one broker login shared by every session.
-
-Two layers:
-
-  * static — reads the script and asserts the properties the sharing rests on.
-    Always runs, costs nothing.
-  * end-to-end — drives real `mcp-remote` processes through the real bridge
-    against a stub broker that behaves like Kite/IndMoney (one live access token
-    per user). Needs network for `npx` and takes a couple of minutes, so it runs
-    only under EF_BRIDGE_E2E=1.
-
-Run: python3 finance/tests/test_mcp_bridge.py
-     EF_BRIDGE_E2E=1 python3 finance/tests/test_mcp_bridge.py
-"""
+"""Tests for bin/mcp-bridge.sh — one broker login shared by every session."""
 import json
 import os
 import shutil
@@ -30,8 +17,6 @@ BRIDGE = os.environ.get("EF_BRIDGE", os.path.join(ROOT, "bin", "mcp-bridge.sh"))
 E2E = os.environ.get("EF_BRIDGE_E2E") == "1"
 
 
-# --- static ------------------------------------------------------------------
-
 def test_bridge_script():
     src = open(BRIDGE).read()
 
@@ -45,13 +30,9 @@ def test_bridge_script():
     check("reaps orphaned bridges", '[ "$ppid" = "1" ]' in src)
 
 
-# --- end to end --------------------------------------------------------------
-
 def _session_env(work):
     home = os.path.join(work, "home")
     os.makedirs(home)
-    # A private HOME keeps the test off the real token store; npm's cache stays
-    # shared so npx does not re-download mcp-remote per scenario.
     return {"HOME": home, "npm_config_cache": os.path.expanduser("~/.npm")}
 
 
