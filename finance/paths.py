@@ -7,8 +7,8 @@ strings, so the layout (below) can never drift between skills — the same reaso
 
     artifacts/                         root: $EVERYTHING_FINANCE_ARTIFACTS or ./artifacts
       stocks/<TICKER>/<date>/          entity-first: a stock's whole run-day together
-        deep-analysis.md  deep-analysis/agents/*.md
-        fundamental-analysis.md  fundamental-analysis/agents/*.md
+        deep-analysis.html  deep-analysis.report.json  deep-analysis/agents/*.md
+        fundamental-analysis.html  fundamental-analysis.report.json  fundamental-analysis/agents/*.md
         dcf.md  dcf.json  dcf-inputs.yml
         management.md  filings.md
       funds/<SCHEME>/<date>/           funds are entities too
@@ -34,10 +34,14 @@ _SOURCE = "finance.paths"
 # skill -> report filename for the prior-run lookup. Only the entity-centric skills
 # that build on their own history are listed.
 _STOCK_ARTIFACT = {
-    "deep-analysis": "deep-analysis.md",
+    # deep-analysis emits no markdown — the deck (report.html) is the deliverable and the
+    # report.json is its render input and the readable prior-run artifact. The JSON, not the
+    # HTML, is what get_prior_run resolves to: it carries every figure and the prose in a form
+    # a later run can read to build on.
+    "deep-analysis": "deep-analysis.report.json",
     # deep-analysis's fundamentals mode: its own file, so a fundamentals run and a full
     # run on the same day cannot overwrite each other and each builds on its own history.
-    "fundamentals": "fundamental-analysis.md",
+    "fundamentals": "fundamental-analysis.report.json",
     "dcf": "dcf.md",
     "management": "management.md",
     "filings": "filings.md",

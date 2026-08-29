@@ -108,12 +108,12 @@ with tempfile.TemporaryDirectory() as tmp:
 
     for day in ("2026-04-01", "2026-05-10", "2026-06-15"):
         d = paths.stock_dir("INFY", day)
-        with open(os.path.join(d, "deep-analysis.md"), "w") as f:
+        with open(os.path.join(d, "deep-analysis.report.json"), "w") as f:
             f.write("x")
 
     got = paths.latest_prior("deep-analysis", "infy.NS", before="2026-06-01")
     check("latest_prior picks newest strictly-earlier",
-          got == os.path.join(paths.stock_dir("INFY", "2026-05-10"), "deep-analysis.md"), got)
+          got == os.path.join(paths.stock_dir("INFY", "2026-05-10"), "deep-analysis.report.json"), got)
 
     got2 = paths.latest_prior("dcf", "INFY", before="2026-06-01")
     check("latest_prior None when report file absent for that skill", got2 is None, got2)
@@ -128,12 +128,12 @@ with tempfile.TemporaryDirectory() as tmp:
 check("deep-analysis and fundamentals map to different filenames",
       paths._STOCK_ARTIFACT["deep-analysis"] != paths._STOCK_ARTIFACT["fundamentals"],
       (paths._STOCK_ARTIFACT["deep-analysis"], paths._STOCK_ARTIFACT["fundamentals"]))
-check("fundamentals filename is fundamental-analysis.md",
-      paths._STOCK_ARTIFACT["fundamentals"] == "fundamental-analysis.md",
+check("fundamentals filename is fundamental-analysis.report.json",
+      paths._STOCK_ARTIFACT["fundamentals"] == "fundamental-analysis.report.json",
       paths._STOCK_ARTIFACT["fundamentals"])
 check("the five stock artifact keys map one-to-one onto five files",
       sorted(paths._STOCK_ARTIFACT.values()) ==
-      ["dcf.md", "deep-analysis.md", "filings.md", "fundamental-analysis.md", "management.md"],
+      ["dcf.md", "deep-analysis.report.json", "filings.md", "fundamental-analysis.report.json", "management.md"],
       sorted(paths._STOCK_ARTIFACT.values()))
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -141,41 +141,41 @@ with tempfile.TemporaryDirectory() as tmp:
     os.chdir(tmp)
 
     same_day = paths.stock_dir("TCS", "2026-05-20")
-    for fname in ("deep-analysis.md", "fundamental-analysis.md"):
+    for fname in ("deep-analysis.report.json", "fundamental-analysis.report.json"):
         with open(os.path.join(same_day, fname), "w") as f:
             f.write(fname)
 
     check("both same-day reports survive side by side",
-          sorted(os.listdir(same_day)) == ["deep-analysis.md", "fundamental-analysis.md"],
+          sorted(os.listdir(same_day)) == ["deep-analysis.report.json", "fundamental-analysis.report.json"],
           sorted(os.listdir(same_day)))
     check("full run's file still holds its own content",
-          open(os.path.join(same_day, "deep-analysis.md")).read() == "deep-analysis.md")
+          open(os.path.join(same_day, "deep-analysis.report.json")).read() == "deep-analysis.report.json")
 
     got_deep = paths.latest_prior("deep-analysis", "TCS", before="2026-06-01")
     got_fund = paths.latest_prior("fundamentals", "TCS", before="2026-06-01")
-    check("latest_prior('deep-analysis') resolves to deep-analysis.md",
-          got_deep == os.path.join(same_day, "deep-analysis.md"), got_deep)
-    check("latest_prior('fundamentals') resolves to fundamental-analysis.md",
-          got_fund == os.path.join(same_day, "fundamental-analysis.md"), got_fund)
+    check("latest_prior('deep-analysis') resolves to deep-analysis.report.json",
+          got_deep == os.path.join(same_day, "deep-analysis.report.json"), got_deep)
+    check("latest_prior('fundamentals') resolves to fundamental-analysis.report.json",
+          got_fund == os.path.join(same_day, "fundamental-analysis.report.json"), got_fund)
     check("the two prior-run lookups do not shadow each other", got_deep != got_fund,
           (got_deep, got_fund))
 
     fund_only = paths.stock_dir("TCS", "2026-05-25")
-    with open(os.path.join(fund_only, "fundamental-analysis.md"), "w") as f:
+    with open(os.path.join(fund_only, "fundamental-analysis.report.json"), "w") as f:
         f.write("x")
     check("a fundamentals-only day is not the prior deep-analysis run",
           paths.latest_prior("deep-analysis", "TCS", before="2026-06-01") ==
-          os.path.join(same_day, "deep-analysis.md"))
+          os.path.join(same_day, "deep-analysis.report.json"))
     check("a fundamentals-only day IS the prior fundamentals run",
           paths.latest_prior("fundamentals", "TCS", before="2026-06-01") ==
-          os.path.join(fund_only, "fundamental-analysis.md"))
+          os.path.join(fund_only, "fundamental-analysis.report.json"))
 
     deep_only = paths.stock_dir("TCS", "2026-05-28")
-    with open(os.path.join(deep_only, "deep-analysis.md"), "w") as f:
+    with open(os.path.join(deep_only, "deep-analysis.report.json"), "w") as f:
         f.write("x")
     check("a full-run-only day is not the prior fundamentals run",
           paths.latest_prior("fundamentals", "TCS", before="2026-06-01") ==
-          os.path.join(fund_only, "fundamental-analysis.md"))
+          os.path.join(fund_only, "fundamental-analysis.report.json"))
 
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()

@@ -1,0 +1,159 @@
+{
+  "meta": {
+    "title": "Financial Health Review",
+    "household": "Sample household · age 34 · 2 dependents",
+    "date": "2026-08-28",
+    "subject_date": "As of 2026-08-28",
+    "data_note": "Illustrative sample — net worth from IndMoney; legs run in cheap mode. Real runs carry your own first-party figures."
+  },
+
+  "cover": {
+    "eyebrow_right": "whole-picture review",
+    "verdict": "FOUNDATION FIRST",
+    "verdict_tone": "neg",
+    "conviction": "1 domain critical",
+    "headline": "The investments are working — but a ₹1.9 Cr protection gap sits underneath a 66%-equity balance sheet. The single most valuable move here is not a better fund; it is closing the term-cover and emergency-fund gaps before another rupee goes into equity. That is the call no single spoke can make.",
+    "stats": [
+      { "label": "NET WORTH", "value": "₹1.85 Cr", "size": 40 },
+      { "label": "EQUITY SHARE", "value": "66%", "size": 40, "color": "#C9A24B" },
+      { "label": "EMERGENCY FUND", "value": "3.1 mo", "size": 40, "color": "#D98A76" },
+      { "label": "TERM COVER GAP", "value": "₹1.9 Cr", "size": 40, "color": "#D98A76" }
+    ]
+  },
+
+  "coverage": {
+    "lede": "Every spoke sees one domain; this is the only view that sees all of them and how they interact. It builds the net-worth spine across the classes no spoke touches — property, gold, EPF, FDs — then weighs investments, protection and cashflow together to answer one question: where does the next rupee go?",
+    "contents": [
+      { "name": "Net-worth spine", "num": "03" },
+      { "name": "The three legs", "num": "04" },
+      { "name": "Health scorecard", "num": "05" },
+      { "name": "Cross-domain read", "num": "06" },
+      { "name": "The action plan", "num": "07" },
+      { "name": "Gaps & sources", "num": "08" }
+    ],
+    "brief_label": "The whole picture in one line",
+    "brief": "Net worth ₹1.85 Cr, investments\nhealthy (14.2% XIRR) — but\nprotection is critically short and\nthe emergency fund sits at its\nfloor. Fix the foundation before\nadding equity risk.",
+    "ran_label": "What ran",
+    "ran": [
+      { "name": "Net-worth spine (IndMoney)", "state": "COMPLETE", "tone": "pos" },
+      { "name": "Investments — portfolio-review", "state": "QUICK", "tone": "pos" },
+      { "name": "Protection — insurance-advisor", "state": "AUDIT", "tone": "pos" },
+      { "name": "Cashflow — budget-tracker", "state": "QUICK", "tone": "pos" },
+      { "name": "Age / dependents / expenses", "state": "GIVEN", "tone": "pos" }
+    ],
+    "gaps_label": "SCOPE NOTE",
+    "gaps_line": "The spine is complete because IndMoney is connected; the legs run in cheap mode and defer their depth to the named spokes. Net-worth figures are your own first-party data — verify any action against the source.",
+    "papers": "Work papers\nartifacts/wealth/2026-08-28.md\n  legs/investments · protection · cashflow",
+    "footer": "everything-finance · wealth-manager · the only cross-domain view"
+  },
+
+  "spine": {
+    "title": "₹1.85 Cr — healthy total, thin at the base",
+    "lede": "The total is real and diversified, but two-thirds sits in equity and only ₹3.7 L is liquid. A strong net worth with a thin liquid base and no protection is a fragile balance sheet, not a safe one.",
+    "footer": "IndMoney net-worth snapshot + allocation breakdown · positions normalized through holdings.py",
+    "cards": [
+      { "label": "TOTAL NET WORTH", "value": "₹1.85 Cr", "sub": "complete coverage" },
+      { "label": "EQUITY SHARE", "value": "66%", "sub": "equity + funds + US", "tone": "warn" },
+      { "label": "LIQUID POOL", "value": "₹3.7 L", "sub": "cash + FDs", "tone": "warn" },
+      { "label": "HOLDINGS XIRR", "value": "14.2%", "sub": "avg · best +38% worst −12%", "tone": "pos" }
+    ],
+    "alloc_title": "Asset-class allocation",
+    "alloc": [
+      { "label": "INDIAN EQUITY", "pct": 40.0, "color": "#2C5B8F" },
+      { "label": "MUTUAL FUNDS", "pct": 24.0, "color": "#4E76A0" },
+      { "label": "REAL ESTATE", "pct": 22.0, "color": "#6E90B4" },
+      { "label": "EPF", "pct": 7.0, "color": "#8FAAC7" },
+      { "label": "GOLD", "pct": 3.0, "color": "#C9A24B" },
+      { "label": "US EQUITY", "pct": 2.0, "color": "#A9BDD1" },
+      { "label": "FDs", "pct": 1.4, "color": "#C3D0DE" },
+      { "label": "CASH", "pct": 0.6, "color": "#C4BFB2" }
+    ],
+    "table_title": "The classes no spoke sees",
+    "table": [
+      { "cells": ["Indian equity", "₹74.0 L", "40.0%"] },
+      { "cells": ["Mutual funds", "₹44.4 L", "24.0%"] },
+      { "cells": ["Real estate", "₹40.7 L", "22.0%"] },
+      { "cells": ["EPF", "₹12.95 L", "7.0%"] },
+      { "cells": ["Gold · US · FDs · cash", "₹12.95 L", "7.0%"] }
+    ]
+  },
+
+  "legs": {
+    "title": "Each leg's one-line verdict",
+    "lede": "Three spokes ran in cheap mode and returned a digest each. Two are in good shape; protection is the one that fails its audit — and protection is the domain that overrules the others.",
+    "footer": "Digests only — full leg reports at artifacts/wealth/2026-08-28.md/legs/",
+    "items": [
+      { "name": "Investments", "status": "STRONG", "tone": "pos", "read": "14.2% avg XIRR across 18 holdings, diversified across caps; the fund sleeve carries no red flags. One single-stock position is >8% of equity — a concentration to trim, not a crisis.", "spoke": "/portfolio-review" },
+      { "name": "Protection", "status": "CRITICAL", "tone": "neg", "read": "Term life ₹50 L against a ~₹2.4 Cr need (10× income + liabilities, net of assets) — a ₹1.9 Cr shortfall. Health cover is a single ₹5 L family floater, thin for a family of four.", "spoke": "/insurance-advisor" },
+      { "name": "Cashflow", "status": "ADEQUATE", "tone": "accent", "read": "~28% savings rate on ₹1.2 L monthly expenses, no lifestyle-creep flags. The one weakness is downstream: too little of the surplus is being held liquid.", "spoke": "/budget-tracker" }
+    ]
+  },
+
+  "scorecard": {
+    "title": "Strong where it shows, weak where it matters",
+    "lede": "Five domains, each a falsifiable one-liner. The overall grade is the worst assessed domain — because a critical protection gap is not averaged away by strong investments.",
+    "footer": "Status ∈ strong · adequate · weak · critical · not assessed · overall = worst assessed domain",
+    "overall_label": "OVERALL",
+    "overall": "FOUNDATION AT RISK",
+    "overall_tone": "neg",
+    "rows": [
+      { "domain": "Net worth & allocation", "status": "ADEQUATE", "tone": "accent", "read": "₹1.85 Cr, diversified — but 66% equity is aggressive while the foundation is open." },
+      { "domain": "Investments", "status": "STRONG", "tone": "pos", "read": "14.2% avg XIRR, diversified; only a single-stock concentration to trim." },
+      { "domain": "Protection", "status": "CRITICAL", "tone": "neg", "read": "₹50 L term vs ₹2.4 Cr need — a ₹1.9 Cr gap; health floater thin." },
+      { "domain": "Cashflow", "status": "ADEQUATE", "tone": "accent", "read": "~28% savings rate, no creep — surplus just isn't being held liquid." },
+      { "domain": "Emergency fund", "status": "WEAK", "tone": "warn", "read": "3.1 months of runway — at the floor of the 3-6 month target." }
+    ]
+  },
+
+  "cross": {
+    "title": "The calls no single spoke can make",
+    "lede": "This is where the whole-picture view earns its place. Each of these reads needs two domains at once — and each overrules the instinct a single spoke would have.",
+    "footer": "risk_posture is the personal balance-sheet posture — never loosened by a risk-on market",
+    "ef": {
+      "label": "EMERGENCY-FUND RUNWAY",
+      "months": 3.1,
+      "target_low": 3,
+      "target_high": 6,
+      "cap": 8,
+      "note": "₹3.7 L liquid ÷ ₹1.2 L monthly expenses = 3.1 months — inside the target band but at its floor. One job loss or medical event with a thin cover would force selling equity at the worst time."
+    },
+    "reads": [
+      { "label": "PROTECTION VS NET WORTH", "tone": "neg", "text": "On the earner's death the family faces a ₹1.9 Cr shortfall against its needs — the single biggest risk on this balance sheet, and it dwarfs any fund-selection or entry-timing decision." },
+      { "label": "RISK POSTURE", "tone": "warn", "text": "Fix-foundation-first. Do not add equity risk — no fresh lump sums, no new single-stock bets — until term cover and the emergency fund are closed. A risk-on market does not change this." }
+    ]
+  },
+
+  "plan": {
+    "title": "Where the next five rupees go",
+    "lede": "Ordered across domains, not within one. Protection and the emergency fund come before any investment optimization — because the downside they cover is larger than any upside the investments add.",
+    "footer": "Each action names the spoke to run for depth · max five, most-important first",
+    "rows": [
+      { "n": "1", "text": "Raise term life cover to ~₹2.4 Cr", "step": "Get a level-term quote today; buy before any new equity goes in.", "spoke": "/insurance-advisor", "tone": "neg" },
+      { "n": "2", "text": "Top up health cover", "step": "Take the family floater to ₹15–25 L via a super top-up.", "spoke": "/insurance-advisor", "tone": "neg" },
+      { "n": "3", "text": "Build the emergency fund to 6 months", "step": "Add ₹3.6 L to liquid (sweep FD / liquid fund) before fresh SIPs.", "spoke": "/budget-tracker", "tone": "warn" },
+      { "n": "4", "text": "Trim the single-stock concentration", "step": "Once the foundation is set, cut the >8% position back toward 5%.", "spoke": "/portfolio-review", "tone": "accent" },
+      { "n": "5", "text": "Check fund overlap in the MF sleeve", "step": "Review the 24% fund sleeve for duplicate exposure.", "spoke": "/mf-analysis", "tone": "accent" }
+    ]
+  },
+
+  "gaps": {
+    "title": "What this review does not cover",
+    "lede": "The spine is complete; the legs ran cheap and defer their depth. Every uncovered edge is labelled, and the net-worth figures are your own to verify.",
+    "items": [
+      { "label": "LEG DEPTH DEFERRED", "tone": "muted", "text": "Each leg ran in cheap mode — the deep portfolio, insurance and budget analyses live in the named spokes. Run them for the full working." },
+      { "label": "PROTECTION NEED IS A MODEL", "tone": "warn", "text": "The ₹2.4 Cr term need is a 10×-income-plus-liabilities estimate; a precise figure needs the household's actual liabilities and goal timeline (insurance-advisor computes it)." },
+      { "label": "PROPERTY VALUATION", "tone": "muted", "text": "Real estate is carried at the IndMoney-supplied value — an estimate, not a transacted price; a 20% swing there moves the allocation percentages." },
+      { "label": "ILLUSTRATIVE SAMPLE", "tone": "muted", "text": "This deck is a design specimen with sample figures. A real run carries your own IndMoney net worth and live leg digests." }
+    ],
+    "weakest": "The weakest link is protection: everything else can wait, but an uninsured earner with dependents is the one exposure that turns a strong balance sheet into a fragile one overnight.",
+    "sources": [
+      { "name": "IndMoney", "detail": "Net-worth snapshot, allocation breakdown, holdings" },
+      { "name": "holdings.py", "detail": "Positions normalized to canonical form" },
+      { "name": "portfolio-review", "detail": "Investments digest (stocks + funds, cheap mode)" },
+      { "name": "insurance-advisor", "detail": "Protection audit — term & health adequacy" },
+      { "name": "budget-tracker", "detail": "Cashflow digest — savings rate, creep" }
+    ],
+    "papers": "artifacts/wealth/2026-08-28.md\n  legs/investments-block\n  legs/protection-block\n  legs/cashflow-block",
+    "disclaimer": "Net-worth figures are first-party data; verify any action against the source. This is the only cross-domain view — position-level depth belongs to the spokes. <strong>Not investment advice — personal research tool.</strong>"
+  }
+}

@@ -78,10 +78,20 @@ Each row carries invested / current / XIRR. Cap-split comes from the look-throug
 
 Write to `artifacts/funds/<SCHEME>/YYYY-MM-DD/` (`paths.fund_dir`; for a comparison use the slug `<a>-vs-<b>`, for a category scan `<category>-scan`):
 - `mf-analysis.md` — the verdict + both-pillar metrics (the durable record `get_prior_run` finds on a re-run).
-- `mf-analysis.html` — the rich render of `assets/fund-comparison.html`.
+- `<SCHEME>.report.json` beside it — the deck's render input, a **render input with no consumer**: nothing reads it back into a decision, so a missing field renders as a labelled gap, never a fabricated number. Its shape is the worked example at `skills/_report/scripts/fixtures/mf-analysis.sample.json` (12 slides: cover · coverage · identity · at-a-glance · pillar-1 record · pillar-1 vs-peers · pillar-2 look-through · pillar-2 style · AMC & manager · cost & category · verdict · gaps). Coverage gates every look-through ratio; a withheld ratio is a gap slot, not a printed number.
+- `mf-analysis.html` — the one self-contained deck, produced from that JSON:
+
+  ```
+  python3 skills/_report/scripts/render_report.py \
+    --report-json artifacts/funds/<SCHEME>/<date>/<SCHEME>.report.json \
+    --template mf-analysis \
+    --out artifacts/funds/<SCHEME>/<date>/mf-analysis.html
+  ```
+
+  `render_report.py` is pure compute over that JSON (it fetches nothing); charts are the data-driven partials in `skills/_report/scripts/charts.py`, never hand-authored markup. Every number the deck prints comes from the artifact that sourced it.
 - the scan and look-through work papers — `get_fund_scan` writes `fund-scan.json` and returns its `report_path`.
 
-`quick` writes only the compact digest to `mf-analysis.md` — no HTML, no work papers.
+`quick` writes only the compact digest to `mf-analysis.md` — no projection, no HTML, no work papers.
 
 Summarize the verdict in chat with the look-through coverage stated ("ratios cover 95% of the book").
 

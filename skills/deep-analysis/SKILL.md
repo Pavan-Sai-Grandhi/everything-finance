@@ -1,6 +1,6 @@
 ---
 name: deep-analysis
-description: Full multi-agent investment debate on a single Indian stock — six lenses (technical; the numbers, with the annual report and concall read directly; management integrity & skill; valuation triangulating a story-driven DCF with relative multiples; news sentiment; sector context), then bull vs bear researchers debate, and a portfolio-manager issues the verdict, synthesized into one readable report. Use whenever the user asks to analyze, research, deep-dive, evaluate, or form a view on a specific ticker or company name ("should I buy X?", "what do you think of Tata Motors?"), even if they don't say "deep analysis". Its fundamentals-only mode is also the home of the fundamental read without the debate — "are the fundamentals good?", "is X fundamentally sound?", "fundamental analysis of Y".
+description: Full multi-agent investment debate on a single Indian stock — six lenses (technical; the numbers, with the annual report and concall read directly; management integrity & skill; valuation triangulating a story-driven DCF with relative multiples; news sentiment; sector context), then bull vs bear researchers debate, and a portfolio-manager issues the verdict, synthesized into one readable report deck. Use whenever the user asks to analyze, research, deep-dive, evaluate, or form a view on a specific ticker or company name ("should I buy X?", "what do you think of Tata Motors?"), even if they don't say "deep analysis". Its fundamentals-only mode is also the home of the fundamental read without the debate — "are the fundamentals good?", "is X fundamentally sound?", "fundamental analysis of Y".
 argument-hint: "TICKER (NSE symbol or company name) [--quick | --deep | --fundamentals]"
 allowed-tools: Read, Write, Bash, Agent, mcp__indmoney__*, mcp__plugin_everything-finance_indmoney__*, mcp__kite__*, mcp__plugin_everything-finance_kite__*, mcp__upstox__*, mcp__plugin_everything-finance_upstox__*, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
@@ -115,17 +115,32 @@ The sector body (RS, KPIs, tailwinds/headwinds, leaders/laggards, stance) is cac
 
 ## Synthesize — one forked `report-writer`
 
-The work papers are the legs' own output; you do **not** write them, and you do **not** read them to write the report. Fork one `everything-finance:report-writer` with the template path, the output path, the work-paper paths, and the run facts only you hold:
+The deck is the deliverable; **there is no markdown report.** The work papers are the legs' own output; you do **not** write them, and you do **not** read them to build the deck. Fork one `everything-finance:report-writer` with the fixture path (the worked shape example), the output path, the work-paper paths, and the run facts only you hold:
 
 `ticker`, company, date, CMP · `mode` + `MODE_REASON` · `debate` (`rounds_run`, `stopped_because`, `engaged`) · `agent_count` · the prior-run path when `get_prior_run` found one · the gaps you recorded yourself (the broker check, a failed leg, a skipped phase-0 call).
 
-It reads the papers in its own context, authors the report, and returns the path. Six leg reports, a multi-round transcript and a verdict never enter your context at once — that is the point of the fork, so do not read them "to check" and do not ask it for the body.
+It reads the papers in its own context, authors the deck's **render projection** — a single `.report.json` — and returns the path. Six leg reports, a multi-round transcript and a verdict never enter your context at once — that is the point of the fork, so do not read them "to check" and do not ask it for the body.
 
-Output path: `artifacts/tmp/staging/<TICKER>.md` — in `fundamentals`, `artifacts/tmp/staging/<TICKER>.fundamentals.md` (`paths.tmp_dir("staging")`). Template: `assets/deep-analysis.md`, bundled with this skill; it owns the section list and what fills each placeholder.
+Output path: `artifacts/tmp/staging/<TICKER>.report.json` — in `fundamentals`, `artifacts/tmp/staging/<TICKER>.fundamentals.report.json` (`paths.tmp_dir("staging")`). Fixture: `skills/_report/scripts/fixtures/deep-analysis.sample.json`, the worked example whose shape the projection mirrors slide-for-slide; its `finance/contracts.md` → *Artifact: report projection* entry owns the field list.
 
-The report **must contain a `## Telegram Brief` section** (≤ 10 lines). The plugin's Stop hook archives the staged report to `artifacts/stocks/<TICKER>/YYYY-MM-DD/` — `deep-analysis.md`, or `fundamental-analysis.md` from the `.fundamentals` staging name — moves the work papers to the folder of the same name beside it, and sends the brief to Telegram. Do not send Telegram messages yourself and do not move the files. **The two modes archive to separate files on purpose**: a fundamentals run must never overwrite the day's full run, and `get_prior_run(skill="deep-analysis"|"fundamentals")` then builds each mode on its own history.
+The projection **must carry `coverage.brief`** (≤ 10 lines) — it is the Telegram brief the Stop hook parses and sends, so it must stand alone as the run's headline. It is a **render input with no consumer**: nothing in the plugin ever reads it back into a decision, so a missing field renders as a labelled gap, never a fabricated number.
 
-In chat (the debate modes), give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — from the digests you already hold, not from the report file.
+In chat (the debate modes), give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — from the digests you already hold, not from the projection file.
+
+## Render the deck
+
+Once the report-writer returns the `.report.json` path, produce the one self-contained deck:
+
+```bash
+python3 skills/_report/scripts/render_report.py \
+  --report-json artifacts/tmp/staging/<TICKER>.report.json \
+  --template deep-analysis \
+  --out artifacts/tmp/staging/<TICKER>.report.html
+```
+
+`render_report.py` is pure compute over that JSON (it fetches nothing); charts are the data-driven partials in `skills/_report/scripts/charts.py`, never hand-authored markup. Every number the deck prints comes from the artifact that sourced it — a value the projection does not carry renders as a **labelled gap** (an empty pledge list is "unknown", not "none"), and the gaps slide is never trimmed.
+
+The plugin's Stop hook archives the staged deck to `artifacts/stocks/<TICKER>/YYYY-MM-DD/` — `deep-analysis.html` + `deep-analysis.report.json`, or `fundamental-analysis.html` + `fundamental-analysis.report.json` from the `.fundamentals` staging name — moves the work papers to the folder of the same name beside it, reads the brief from the projection's `coverage.brief` and sends it to Telegram with a `file://` link to the deck. Do not send Telegram messages yourself and do not move the files. **The two modes archive to separate files on purpose**: a fundamentals run must never overwrite the day's full run, and `get_prior_run(skill="deep-analysis"|"fundamentals")` — which resolves to the `.report.json` (`paths.py` `_STOCK_ARTIFACT`) — then builds each mode on its own history. In `fundamentals` mode the two staged files are `<TICKER>.fundamentals.report.json/.html`.
 
 ## Alerts this skill raises (via `manage_alerts`)
 

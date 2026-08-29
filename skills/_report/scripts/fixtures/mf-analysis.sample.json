@@ -1,0 +1,278 @@
+{
+  "meta": {
+    "scheme": "Tata Small Cap Fund",
+    "plan": "Direct · Growth",
+    "amc": "Tata Asset Management",
+    "category": "Equity · Small Cap",
+    "date": "2026-08-15",
+    "subject_date": "As of 2026-08-15",
+    "data_note": "NAV 13-Nov-2018 → 14-Aug-2026 (mfapi.in 145206, 1,911 obs) · look-through on Nov-2025 disclosure"
+  },
+
+  "cover": {
+    "eyebrow_right": "Small Cap · held-fund review",
+    "verdict": "HOLD-WORTHY",
+    "verdict_tone": "warn",
+    "conviction": "5 / 10",
+    "headline": "The strongest long-run record of the four small-cap funds compared — deepest history, one manager across the whole of it, every 5-year window positive — set against a real, category-wide correction it is sitting inside right now. Own it for the base rate, not the last twelve months.",
+    "stats": [
+      { "label": "NAV / AUM", "value": "₹12,696 Cr", "size": 40 },
+      { "label": "EXPENSE (DIRECT)", "value": "0.40%", "size": 40, "color": "#1B6E4F" },
+      { "label": "MANAGER TENURE", "value": "7.75 yr", "size": 40 },
+      { "label": "5Y WINDOWS ≥ +15%", "value": "100%", "size": 40, "color": "#1B6E4F" }
+    ]
+  },
+
+  "coverage": {
+    "lede": "A fund is judged on two pillars, not on last year's number: the record it has actually delivered across full cycles, and the quality of the book it holds now. This deck keeps the two separate — and keeps 'is this fund good' apart from 'is this category worth adding to today'.",
+    "contents": [
+      { "name": "Fund identity", "num": "03" },
+      { "name": "At a glance", "num": "04" },
+      { "name": "Pillar 1 · the record", "num": "05" },
+      { "name": "Pillar 1 · vs peers", "num": "06" },
+      { "name": "Pillar 2 · look-through", "num": "07" },
+      { "name": "Pillar 2 · style & cap", "num": "08" },
+      { "name": "AMC & manager", "num": "09" },
+      { "name": "Cost & category", "num": "10" },
+      { "name": "The verdict", "num": "11" },
+      { "name": "Gaps & sources", "num": "12" }
+    ],
+    "brief_label": "One-line verdict",
+    "brief": "Hold-worthy, near-term-pain caveat.\nOutperformance potential 5/10 —\nrevised down from 7 after a data\ncross-check struck two supports.\nThe base rate survives; the last\nyear does not flatter it.",
+    "ran_label": "What ran",
+    "ran": [
+      { "name": "Rolling returns (NAV-derived)", "state": "1/3/5Y", "tone": "pos" },
+      { "name": "Drawdown & risk", "state": "DONE", "tone": "pos" },
+      { "name": "Peer-relative (IndMoney)", "state": "DONE", "tone": "pos" },
+      { "name": "Look-through valuation", "state": "~20% AUM", "tone": "warn" },
+      { "name": "Style & cap-tilt", "state": "DONE", "tone": "pos" },
+      { "name": "AMC & manager trust", "state": "SOURCED", "tone": "pos" }
+    ],
+    "gaps_label": "COVERAGE GATE",
+    "gaps_line": "Look-through prices only ~20% of AUM (4 of 20 disclosed names failed to resolve), and the disclosed book is a stale Nov-2025 snapshot. Portfolio ratios are directional, never the valuation verdict.",
+    "papers": "Work papers\nfunds/tata-small-cap-fund/2026-08-15/\n  mf-analysis.md\nfunds/smallcap-4way-comparison/\n  2026-08-15/",
+    "footer": "everything-finance · mf-analysis · two-pillar fund review"
+  },
+
+  "identity": {
+    "title": "A pure small-cap book, run by one hand since day one",
+    "lede": "The deepest history of the four funds compared — 7.75 years live, spanning the 2020 crash, the 2022 correction and the 2025 small-cap de-rating — every year of it credited to the same manager.",
+    "footer": "Sources · AMFI 145206 · Tickertape fund id · IndMoney fund_id 1002043",
+    "cards": [
+      { "label": "INCEPTION", "value": "Nov 2018", "sub": "~7.75 years live" },
+      { "label": "AUM", "value": "₹12,696 Cr", "sub": "up from ₹9,620 Cr in Apr-26" },
+      { "label": "EXPENSE (DIRECT)", "value": "0.40%", "sub": "cheap · cost-rank 1" },
+      { "label": "HOLDINGS", "value": "62", "sub": "top-10 = 33.7% of AUM" }
+    ],
+    "table": {
+      "title": "The fund on paper",
+      "cols": "1fr 1.4fr",
+      "head": ["Field", "Detail"],
+      "rows": [
+        { "cells": ["AMC", "Tata Asset Management — Tata-group-backed, no SEBI/governance flags"] },
+        { "cells": ["Benchmark", "Nifty Smallcap 250 TR INR"] },
+        { "cells": ["Manager", "Chandraprakash Padiyar — since inception (Nov 2018)"] },
+        { "cells": ["Co-manager", "Jeetendra Khatri — since Oct 2023"] },
+        { "cells": ["Process", "GARP — growth at a reasonable price"] },
+        { "cells": ["Mandate", "Small Cap Fund · Direct-Growth plan"] }
+      ]
+    }
+  },
+
+  "glance": {
+    "title": "Six reads, weighed separately",
+    "lede": "Each pillar carries its own stance and its own confidence. The record is strong and well-evidenced; the near-term and the look-through are where the caution sits.",
+    "footer": "Stance is this run's read of each dimension — not a rating agency's.",
+    "lenses": [
+      { "name": "The record", "stance": "STRONG", "tone": "pos", "read": "Every 5Y rolling window ≥ +15%, 98% of them beating the benchmark. Deepest, most consistent of the four.", "confidence": "HIGH" },
+      { "name": "Near-term", "stance": "WEAK", "tone": "neg", "read": "Trails the category average on all six measured windows; 1Y +0.65% vs category +14.55%. Real, not noise.", "confidence": "HIGH", "highlight": true },
+      { "name": "Look-through", "stance": "UNCONFIRMED", "tone": "warn", "read": "Priced slice covers only ~20% of AUM on a stale book — can't confirm the current portfolio is cheap.", "confidence": "LOW" },
+      { "name": "Cap purity", "stance": "CLEANEST", "tone": "pos", "read": "84.8% small / 8.1% mid / 0% large — the truest-to-label small-cap mandate of the four.", "confidence": "HIGH" },
+      { "name": "Cost", "stance": "CHEAP", "tone": "pos", "read": "0.40% Direct TER, cost-rank 1 in category. Nothing to argue with here.", "confidence": "HIGH" },
+      { "name": "AMC & manager", "stance": "TRUSTED", "tone": "pos", "read": "Clean pedigree, 7.75y single-manager tenure, and a rare valuation-driven capital-discipline signal.", "confidence": "HIGH" }
+    ]
+  },
+
+  "perf": {
+    "title": "Every five-year holder has made at least 15% a year",
+    "lede": "Rolling returns — every possible holding window, not one lucky endpoint — are the metric that matters. On the long windows Tata's record is the best of the four funds; on the short ones it is mid-correction.",
+    "footer": "NAV-derived · benchmark = Nifty Smallcap 250 index-fund proxy · 1,911 daily obs",
+    "score_label": "5Y WINDOWS",
+    "passed": "98%",
+    "score_tone": "pos",
+    "total": "beat benchmark",
+    "checks": [
+      { "verdict": "PASS", "label": "Every 5Y rolling window positive", "detail": "min +15.01%" },
+      { "verdict": "PASS", "label": "Every 3Y rolling window positive", "detail": "min +10.45%" },
+      { "verdict": "PASS", "label": "5Y windows beating benchmark", "detail": "98.0% of 680" },
+      { "verdict": "FLAG", "label": "1Y windows can lose money", "detail": "min −28.05%" },
+      { "verdict": "FLAG", "label": "Deepest drawdown of the four", "detail": "−36.61% (captures 2020)" }
+    ],
+    "workings_label": "How the rolling record is computed",
+    "workings": "Daily-rolled windows over the full NAV series: for each window length the mean, median and minimum across every start date, with the count of windows (n). A positive minimum 5Y return means no five-year holder in the fund's life has lost money. Sharpe 0.90 at 6% risk-free; point-to-point CAGR is kept only for reference (1Y 0.65% · 3Y 13.38% · 5Y 15.49%) because its endpoints decide it.",
+    "cards": [
+      { "label": "5Y ROLLING · MEAN", "value": "29.16%", "tone": "pos" },
+      { "label": "5Y ROLLING · MIN", "value": "+15.01%", "tone": "pos" },
+      { "label": "MAX DRAWDOWN", "value": "−36.61%", "tone": "neg" },
+      { "label": "SHARPE (6% rf)", "value": "0.90" }
+    ],
+    "bars": {
+      "title": "% of rolling windows beating the benchmark",
+      "values": [61.2, 68.1, 98.0],
+      "labels": ["1Y (n=1666)", "3Y (n=1174)", "5Y (n=680)"],
+      "spec": { "fmt": "pct", "prec": 1 }
+    }
+  },
+
+  "peer": {
+    "title": "Against its peers, the last year is a genuine shortfall",
+    "lede": "A data cross-check struck the two supports the first read leaned on. Corrected, Tata trails the category average on every single window — the near-term weakness is peer-relative, not a category-wide de-rating.",
+    "footer": "IndMoney peer data, 14-Aug-2026 · trailing windows, not calendar years",
+    "matrix": {
+      "head": ["", "1M", "3M", "6M", "1Y", "3Y", "5Y"],
+      "rows": [
+        { "name": "Tata", "focus": true, "cells": ["1.89", "11.16", "11.96", "0.65", "13.39", "15.49"] },
+        { "name": "Category avg", "cells": ["2.24", "13.09", "16.62", "14.55", "17.46", "17.05"] },
+        { "name": "Benchmark", "cells": ["1.69", "8.87", "14.33", "9.74", "17.38", "15.58"] },
+        { "name": "Worst in cat.", "cells": ["−0.32", "7.03", "5.54", "0.20", "13.07", "14.62"] }
+      ]
+    },
+    "corrections_label": "What the cross-check struck",
+    "corrections": "Two supports removed: (1) the \"3/15 on 3Y\" rank came from a broken IndMoney field that also reports Tata worst-in-category while beating the worst fund — unusable. (2) The \"category-wide −5.5%\" defence of the weak 1Y used the CY2025 calendar year, not the trailing 1Y; over the trailing year the category made +14.55% and Tata +0.65%. The near-term shortfall is real and stands.",
+    "read": {
+      "label": "The read",
+      "text": "Tata's 3Y (13.39%) sits just above the category's worst fund (13.07%). IndMoney's composite rank of 23/23, tagged \"Bad\", is directionally consistent — a composite dominated by the current drawdown, not a verdict on long-run skill."
+    }
+  },
+
+  "lookthrough": {
+    "title": "The book it holds now, we cannot yet price",
+    "lede": "Coverage is a gate, not a footnote: ratios computed on a fifth of the fund describe a different fund. The look-through here is directional context, never the valuation verdict.",
+    "footer": "Look-through compute over cached Nov-2025 holdings weights · coverage gates every ratio",
+    "gate": {
+      "label": "COVERAGE ~20% OF AUM",
+      "text": "20 disclosed names sum to ~26.6% of the 93.2% equity book; 4 failed to resolve (renames/symbol mismatches). The priced slice skews to recent listings and capital-heavy names, so the portfolio P/E of ~46 is computed on holdings the fund may no longer hold — directional only, not used as the verdict."
+    },
+    "ratios": [
+      { "label": "PORTFOLIO P/E", "value": "~46.1", "sub": "harmonic · thin-coverage" },
+      { "label": "PORTFOLIO P/B", "value": "~2.53", "sub": "priced slice only" },
+      { "label": "WEIGHTED ROE", "value": "~0%", "sub": "distorted by loss-makers" },
+      { "label": "EARNINGS GROWTH", "value": "~5.1%", "sub": "58.7% coverage" }
+    ],
+    "distress": {
+      "label": "EARNINGS-DISTRESS DISPERSION",
+      "text": "36.6% of the book earns sub-8% ROE — the most depressed of the four funds. ~20% sits in steel/industrial machinery where a policy-backed capex upcycle is demonstrably beginning; ~12.9% in chemicals where the trough is passing but recovery is capped by Chinese overcapacity. But a meaningful slice is idiosyncratic, not cyclical — IDFC First Bank (3.8% ROE) and Wockhardt (4.3%) sit in sectors that are not in downcycles and may not mean-revert."
+    },
+    "caution": "Low ROE is not automatically a cycle trough. This fund is a leveraged bet on the Indian industrial capex cycle — not a cheap-and-safe holding."
+  },
+
+  "style": {
+    "title": "The truest-to-label small-cap of the four",
+    "lede": "A corrected cap-tilt withdrew a false '19% large-cap drift': this is a pure small-cap mandate with no large-cap exposure at all, holding 62 names — real diversified stock-picking, not closet-indexing and not a concentrated bet.",
+    "footer": "Cap-tilt by SEBI market-cap rank (AMC-disclosed), never ₹Cr bands · drift vs 4-Jul-2026 read",
+    "cap": {
+      "title": "Cap-tilt — by SEBI rank",
+      "items": [
+        { "label": "SMALL-CAP", "pct": 84.8, "color": "#2C5B8F", "sub": "251+ rank" },
+        { "label": "MID", "pct": 8.1, "color": "#6E90B4" },
+        { "label": "CASH", "pct": 6.8, "color": "#C4BFB2" },
+        { "label": "LARGE", "pct": 0.3, "color": "#D8D2C6" }
+      ]
+    },
+    "concentration": [
+      { "label": "TOP-10 OF AUM", "value": "33.7%", "sub": "62-name book" },
+      { "label": "HHI", "value": "0.082", "sub": "low / diffuse" },
+      { "label": "STYLE DRIFT", "value": "NONE", "sub": "vs 4-Jul read", "tone": "pos" }
+    ],
+    "sectors_title": "Sector mix",
+    "sectors": [
+      { "label": "Industrial", "value": 33.2, "color": "#2C5B8F" },
+      { "label": "Basic Materials", "value": 19.3, "color": "#4E76A0" },
+      { "label": "Consumer Cyclical", "value": 18.3, "color": "#6E90B4" },
+      { "label": "Financial Services", "value": 7.3, "color": "#8FAAC7" },
+      { "label": "Technology", "value": 6.8, "color": "#A9BDD1" },
+      { "label": "Healthcare", "value": 6.5, "color": "#C3D0DE" }
+    ]
+  },
+
+  "trust": {
+    "title": "A rare, genuine capital-discipline signal",
+    "lede": "The cleanest manager-attribution story of the four — one manager across the fund's entire record — and an AMC that closed the fund to lump-sums on its own valuation conviction, not to gather assets.",
+    "footer": "Sources · angelone.in reopening notice · valueresearchonline.com Padiyar interview · equitymaster.com Nov-2025 note",
+    "checks": [
+      { "verdict": "PASS", "label": "AMC pedigree — Tata AM, no red flags", "detail": "decade-plus" },
+      { "verdict": "PASS", "label": "Manager tenure covers the whole record", "detail": "7.75 yr" },
+      { "verdict": "PASS", "label": "Closed to lump-sums when valuations rich", "detail": "Jun-23 → Apr-26" },
+      { "verdict": "PASS", "label": "Reopened only after the correction", "detail": "6-Apr-2026" }
+    ],
+    "discipline": {
+      "label": "WHY THIS MATTERS",
+      "text": "The fund stopped taking lump-sum money for nearly three years — SIP/STP only — explicitly because small-cap valuations were elevated, and reopened in April 2026 with the AMC's stated reason being that valuations had moderated after the 2025 correction. A valuation-driven reopening, not asset-gathering: investor-first capital discipline that also reads as consistency with the stated GARP process."
+    }
+  },
+
+  "cost": {
+    "title": "Cheap fund, and the category is no longer expensive",
+    "lede": "Two different questions, answered separately. The fund itself is among the cheapest in its category; the category has already been through the correction that makes an entry more defensible than it was a year ago.",
+    "footer": "Cost from IndMoney cost-rank · category valuation stance from get_market_context",
+    "cards": [
+      { "label": "DIRECT TER", "value": "0.40%", "sub": "cost-rank 1 in category", "tone": "pos" },
+      { "label": "CATEGORY 2025", "value": "−2.7%", "sub": "Nifty Smallcap 250 TRI" },
+      { "label": "AUM DISCIPLINE", "value": "REOPENED", "sub": "post-correction, Apr-26" }
+    ],
+    "band": {
+      "metric": "Small-cap category valuation",
+      "pctile": "post-correction",
+      "note": "The AMC reopened the fund on its own read that small-cap valuations had moderated after the 2025 de-rating. 'Is this fund good' and 'is this the moment to add small-cap' are different calls — the fund is a hold on quality; the entry is more defensible than a year ago but the near-term drawdown is not over."
+    }
+  },
+
+  "verdict": {
+    "title": "Hold it for the base rate, watch the book",
+    "lede": "The strongest past-performance case of the four, offset by a real mid-correction near-term and a look-through too thin to confirm the current book is cheap rather than merely beaten down. The recommendation is a hold with a non-price review trigger.",
+    "footer": "The switch decision belongs to portfolio-review — it alone sees exit loads, tax and the whole book",
+    "conditions": [
+      { "condition": "The manager changes", "why": "The entire rolling record is Padiyar's — attribution is the thesis.", "action": "REVIEW", "tone": "warn" },
+      { "condition": "Small-cap P/B drops below its long-run median", "why": "Would turn a defensible entry into an attractive one.", "action": "ADD", "tone": "pos" },
+      { "condition": "Look-through coverage improves and shows the book expensive", "why": "The one thing the record cannot rule out today.", "action": "TRIM", "tone": "neg" },
+      { "condition": "Style drift — large-cap creep or index-hugging", "why": "The purity and the stock-picking are half the case.", "action": "REVIEW", "tone": "warn" }
+    ],
+    "review": "Review if the manager changes, if small-cap P/B falls below its median, or if a fuller look-through shows the book expensive — never on a price move alone.",
+    "plan": {
+      "title": "The call",
+      "rows": [
+        { "label": "Fund-quality grade", "value": "HOLD-WORTHY", "color": "warn" },
+        { "label": "Outperformance potential", "value": "5 / 10", "color": "warn" },
+        { "label": "Was (pre-correction)", "value": "7 / 10" },
+        { "label": "Cap purity rank (of 4)", "value": "1st", "color": "pos" },
+        { "label": "Near-term rank (of 4)", "value": "4th", "color": "neg" }
+      ]
+    },
+    "position": {
+      "label": "If you hold it",
+      "text": "Keep it for the base rate; do not add on the weak 1Y alone. If you are choosing fresh money in small-cap today, this is a defensible pick on quality and cost — but hand the switch/rebalance decision to portfolio-review, which sees your whole book."
+    },
+    "plan_note": "A shortlist is the input to a verdict, not the verdict. This is one named call with numbered triggers."
+  },
+
+  "gaps": {
+    "title": "What this review does not know",
+    "lede": "Every gap is labelled, never papered over. A partial-book ratio is withheld, not caveated — it describes a different fund.",
+    "items": [
+      { "label": "LOOK-THROUGH COVERAGE", "tone": "warn", "text": "P/E, P/B and ROE are computed on only ~20% of AUM — 4 of 20 disclosed holdings failed to price. Treated as directional context, never the valuation verdict." },
+      { "label": "STALE HOLDINGS", "tone": "warn", "text": "The disclosed book is a Nov-2025 snapshot; the 7-Aug-2026 top holding is Kirloskar Pneumatic at 6.55%, more concentrated than reported. The priced P/E is on names the fund may no longer hold." },
+      { "label": "BENCHMARK PROXY", "tone": "muted", "text": "Rolling-return win-rate uses a Nifty Smallcap 250 index-fund proxy, not the raw TR index." },
+      { "label": "PORTFOLIO DEPTH", "tone": "muted", "text": "Only the top-20 of 62 holdings are obtainable via IndMoney; the long tail is unpriced." }
+    ],
+    "weakest": "The weakest link is coverage: the record is strong and well-attributed, but the case for the price of the current book rests on ~20% of it. A fuller look-through is the single thing that would most move this verdict.",
+    "sources": [
+      { "name": "AMFI 145206", "detail": "Scheme identity, NAV series (mfapi.in mirror)" },
+      { "name": "IndMoney", "detail": "Peer-relative returns, cost-rank, held XIRR" },
+      { "name": "get_fund_holdings", "detail": "Complete disclosed positions + sector weights" },
+      { "name": "get_stock_ratios", "detail": "Per-holding P/E, P/B, ROE, SEBI cap-rank" },
+      { "name": "Web (sourced)", "detail": "AMC reopening notice, ValueResearch, Equitymaster" }
+    ],
+    "papers": "funds/tata-small-cap-fund/2026-08-15/mf-analysis.md\nfunds/smallcap-4way-comparison/2026-08-15/\n  sector-cycle-positioning.md\n  data-gaps-resolution.md\n  lookthrough-valuation.md",
+    "disclaimer": "Portfolio ratios come only from the look-through compute — every figure traceable to cached holdings weights and per-holding ratios. Cap-tilt is by SEBI market-cap rank, never ₹Cr bands. <strong>Not investment advice — personal research tool.</strong>"
+  }
+}

@@ -1,0 +1,222 @@
+{%- import '_partials/components.html' as c -%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financial Health Review — {{ r.meta.date }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="{{ fonts_href }}" rel="stylesheet">
+{% if fonts_css %}<style>{{ fonts_css }}</style>{% endif %}
+<style>{{ deck_css }}</style>
+</head>
+<body>
+<deck-stage width="1920" height="1620" hint-size="100%,100%">
+
+{#- ============================================================ 01 · COVER =============== -#}
+<section data-label="Cover" data-screen-label="01" data-speaker-notes="The whole-picture verdict — the cross-domain call no single spoke can make." style="background:var(--inkdark);color:#FCFAF6;font-family:var(--serif);padding:var(--pad-top) var(--pad-x) var(--pad-bottom);display:flex;flex-direction:column;">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:var(--t-label);letter-spacing:.16em;text-transform:uppercase;color:#8B857B;border-bottom:1px solid #34373C;padding-bottom:22px;">
+    <span>everything-finance · wealth-manager</span>
+    <span>{{ r.cover.eyebrow_right }}</span>
+  </div>
+  <div style="display:flex;gap:80px;margin-top:64px;flex:1;">
+    <div style="flex:1;display:flex;flex-direction:column;">
+      <div style="font-family:var(--mono);font-size:30px;letter-spacing:.16em;color:#C9C3B7;">{{ r.meta.household }}</div>
+      <div style="font-size:116px;line-height:1.02;letter-spacing:-.03em;margin-top:14px;font-weight:400;">{{ r.meta.title }}</div>
+      <div style="display:flex;align-items:center;gap:24px;margin-top:52px;">
+        <div style="font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:.08em;background:{{ {'pos':'#1B6E4F','neg':'#A63C2C','warn':'#8A6A1F'}[r.cover.verdict_tone] }};color:#fff;padding:16px 30px;">{{ r.cover.verdict }}</div>
+        <div style="font-family:var(--mono);font-size:var(--t-label);letter-spacing:.14em;color:#9A9488;">SCORECARD<br>{{ r.cover.conviction }}</div>
+      </div>
+      <div style="font-size:var(--t-sub);line-height:1.4;color:#E4DFD4;margin-top:48px;max-width:980px;font-weight:300;">{{ r.cover.headline }}</div>
+      <div style="margin-top:auto;font-family:var(--mono);font-size:var(--t-small);color:#8B857B;letter-spacing:.06em;line-height:1.7;">
+        {{ r.meta.data_note }}<br>Not investment advice — personal research tool
+      </div>
+    </div>
+    <div style="flex:0 0 620px;display:flex;flex-direction:column;gap:0;border-top:2px solid #FCFAF6;">
+      {% for row in r.cover.stats %}
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:26px 0;{% if not loop.last %}border-bottom:1px solid #34373C;{% endif %}">
+        <span style="font-family:var(--mono);font-size:var(--t-label);letter-spacing:.14em;color:#8B857B;">{{ row.label }}</span>
+        <span style="font-family:var(--mono);font-size:{{ row.size|default(40) }}px;{% if row.color %}color:{{ row.color }};{% endif %}">{{ row.value }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{#- ============================================================ 02 · COVERAGE ============ -#}
+{% call c.slide('How to read', '02', 'Coverage', r.meta.subject_date, 'How to read this review', r.coverage.lede, r.coverage.footer) %}
+  <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:60px;margin-top:56px;">
+    <div>
+      {{ c.eyebrow('Contents') }}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 48px;">
+        {% for item in r.coverage.contents %}
+        <div style="display:flex;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--rule);font-size:var(--t-small);"><span>{{ item.name }}</span><span style="font-family:var(--mono);color:var(--ink3);">{{ item.num }}</span></div>
+        {% endfor %}
+      </div>
+      <div style="margin-top:40px;background:var(--card);border:1px solid var(--rule);padding:32px 36px;">
+        {{ c.eyebrow(r.coverage.brief_label) }}
+        <div style="font-family:var(--mono);font-size:var(--t-small);line-height:1.85;color:var(--ink);">{{ r.coverage.brief | replace('\n', '<br>'|safe) }}</div>
+      </div>
+    </div>
+    <div>
+      {{ c.eyebrow(r.coverage.ran_label) }}
+      <div style="border:1px solid var(--rule);background:var(--card);">
+        {% for row in r.coverage.ran %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 30px;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}"><span style="font-size:var(--t-small);">{{ row.name }}</span><span style="font-family:var(--mono);font-size:24px;color:var(--{{ row.tone|default('pos') }});">{{ row.state }}</span></div>
+        {% endfor %}
+      </div>
+      <div style="border-left:3px solid var(--warn);background:var(--warnT);padding:26px 30px;margin-top:32px;">
+        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.16em;color:var(--warn);margin-bottom:12px;">{{ r.coverage.gaps_label }}</div>
+        <div style="font-size:var(--t-small);line-height:1.5;">{{ r.coverage.gaps_line }}</div>
+      </div>
+      <div style="margin-top:32px;font-family:var(--mono);font-size:24px;color:var(--ink3);line-height:1.7;">{{ r.coverage.papers | replace('\n','<br>'|safe) }}</div>
+    </div>
+  </div>
+{% endcall %}
+
+{#- ============================================================ 03 · SPINE =============== -#}
+{% call c.slide('Net-worth spine', '03', 'The spine', r.meta.subject_date, r.spine.title, r.spine.lede, r.spine.footer) %}
+  <div style="display:flex;flex-direction:column;gap:44px;margin-top:44px;">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;">
+      {% for m in r.spine.cards %}
+      {{ c.metric_card(m.label, m.value, m.sub, value_color='var(--'~m.tone~')' if m.tone else 'var(--ink)') }}
+      {% endfor %}
+    </div>
+    <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:60px;align-items:start;">
+      <div>
+        {{ c.eyebrow(r.spine.alloc_title) }}
+        {{ stacked_bar(r.spine.alloc) | safe }}
+      </div>
+      <div>
+        {{ c.eyebrow(r.spine.table_title) }}
+        <div style="border:1px solid var(--rule);background:var(--card);">
+          {% for row in r.spine.table %}
+          <div style="display:grid;grid-template-columns:1fr 150px 120px;align-items:center;padding:18px 28px;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}">
+            <span style="font-size:var(--t-small);">{{ row.cells[0] }}</span>
+            <span style="font-family:var(--mono);font-size:26px;text-align:right;">{{ row.cells[1] }}</span>
+            <span style="font-family:var(--mono);font-size:26px;text-align:right;color:var(--ink3);">{{ row.cells[2] }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endcall %}
+
+{#- ============================================================ 04 · THREE LEGS ========== -#}
+{% call c.slide('The three legs', '04', 'The legs', r.meta.subject_date, r.legs.title, r.legs.lede, r.legs.footer) %}
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:56px;flex:1;">
+    {% for it in r.legs['items'] %}
+    <div style="background:var(--card);border:1px solid var(--rule);border-top:4px solid var(--{{ it.tone }});padding:36px 38px;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:26px;">
+        <span style="font-size:var(--t-sub);">{{ it.name }}</span>
+        {{ c.chip(it.status, tone=it.tone, solid=true) }}
+      </div>
+      <div style="font-size:var(--t-body);line-height:1.5;color:var(--ink2);">{{ it.read }}</div>
+      <div style="margin-top:auto;padding-top:28px;font-family:var(--mono);font-size:26px;color:var(--accent);letter-spacing:.06em;">{{ it.spoke }}</div>
+    </div>
+    {% endfor %}
+  </div>
+{% endcall %}
+
+{#- ============================================================ 05 · SCORECARD =========== -#}
+{% call c.slide('Health scorecard', '05', 'Scorecard', r.meta.subject_date, r.scorecard.title, r.scorecard.lede, r.scorecard.footer) %}
+  <div style="display:flex;flex-direction:column;gap:30px;margin-top:44px;flex:1;">
+    <div style="display:flex;align-items:center;gap:24px;">
+      <span style="font-family:var(--mono);font-size:24px;letter-spacing:.16em;color:var(--ink3);">{{ r.scorecard.overall_label }}</span>
+      <span style="font-family:var(--mono);font-size:40px;font-weight:600;letter-spacing:.06em;background:var(--{{ r.scorecard.overall_tone }});color:#fff;padding:12px 26px;">{{ r.scorecard.overall }}</span>
+    </div>
+    <div style="border:1px solid var(--rule);background:var(--card);flex:1;display:flex;flex-direction:column;">
+      <div style="display:grid;grid-template-columns:420px 260px 1fr;font-family:var(--mono);font-size:24px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);background:var(--paper2);border-bottom:1px solid var(--rule);">
+        <div style="padding:20px 34px;">Domain</div><div style="padding:20px 0;">Status</div><div style="padding:20px 0;">Read</div>
+      </div>
+      {% for row in r.scorecard.rows %}
+      <div style="display:grid;grid-template-columns:420px 260px 1fr;align-items:center;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}flex:1;">
+        <div style="padding:0 34px;font-size:var(--t-sub);">{{ row.domain }}</div>
+        <div>{{ c.chip(row.status, tone=row.tone) }}</div>
+        <div style="font-size:var(--t-body);line-height:1.4;padding-right:40px;color:var(--ink2);">{{ row.read }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endcall %}
+
+{#- ============================================================ 06 · CROSS-DOMAIN ======== -#}
+{% call c.slide('Cross-domain read', '06', 'The interactions', r.meta.subject_date, r.cross.title, r.cross.lede, r.cross.footer) %}
+  {%- set ef = r.cross.ef -%}
+  {%- set band_left = (ef.target_low / ef.cap * 100) -%}
+  {%- set band_w = ((ef.target_high - ef.target_low) / ef.cap * 100) -%}
+  {%- set marker = (ef.months / ef.cap * 100) -%}
+  <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:60px;margin-top:48px;align-items:start;">
+    <div style="background:var(--card);border:1px solid var(--rule);padding:40px 44px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:26px;">
+        <span style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--ink3);">{{ ef.label }}</span>
+        <span style="font-family:var(--mono);font-size:52px;color:var(--warn);">{{ ef.months }}<span style="font-size:26px;color:var(--ink3);"> mo</span></span>
+      </div>
+      <div style="position:relative;height:34px;background:var(--paper2);border:1px solid var(--rule);">
+        <div style="position:absolute;top:0;bottom:0;left:{{ band_left }}%;width:{{ band_w }}%;background:var(--posT);border-left:1px solid var(--pos);border-right:1px solid var(--pos);"></div>
+        <div style="position:absolute;top:-10px;bottom:-10px;left:{{ marker }}%;width:4px;background:var(--ink);"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:24px;color:var(--ink3);margin-top:14px;">
+        <span>0 MO</span><span style="color:var(--pos);">3–6 MO TARGET</span><span>{{ ef.cap }} MO</span>
+      </div>
+      <div style="margin-top:30px;padding-top:26px;border-top:1px solid var(--rule);font-size:var(--t-body);line-height:1.5;color:var(--ink2);">{{ ef.note }}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:26px;">
+      {% for rd in r.cross.reads %}
+      <div style="border-left:3px solid var(--{{ rd.tone }});background:var(--{{ rd.tone }}T);padding:30px 34px;">
+        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.16em;color:var(--{{ rd.tone }});margin-bottom:14px;">{{ rd.label }}</div>
+        <div style="font-size:var(--t-body);line-height:1.5;">{{ rd.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endcall %}
+
+{#- ============================================================ 07 · ACTION PLAN ========= -#}
+{% call c.slide('The action plan', '07', 'Where the next rupee goes', r.meta.subject_date, r.plan.title, r.plan.lede, r.plan.footer) %}
+  <div style="margin-top:48px;border-top:2px solid var(--ink);flex:1;display:flex;flex-direction:column;">
+    {% for row in r.plan.rows %}
+    <div style="display:grid;grid-template-columns:70px 1fr 300px;align-items:center;gap:24px;padding:26px 0;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}flex:1;">
+      <div style="font-family:var(--mono);font-size:48px;color:var(--{{ row.tone }});">{{ row.n }}</div>
+      <div>
+        <div style="font-size:var(--t-sub);line-height:1.25;">{{ row.text }}</div>
+        <div style="font-size:var(--t-small);color:var(--ink2);margin-top:8px;">{{ row.step }}</div>
+      </div>
+      <div style="text-align:right;font-family:var(--mono);font-size:28px;color:var(--accent);letter-spacing:.04em;">{{ row.spoke }}</div>
+    </div>
+    {% endfor %}
+  </div>
+{% endcall %}
+
+{#- ============================================================ 08 · GAPS =============== -#}
+{% call c.slide('Gaps & sources', '08', 'Gaps, sources, papers', r.meta.subject_date, r.gaps.title, r.gaps.lede, none, bg='var(--paper2)', rule='var(--rule2)') %}
+  <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:60px;margin-top:48px;">
+    <div>
+      {% for g in r.gaps['items'] %}
+      <div style="border-left:3px solid var(--{{ 'rule2' if g.tone=='muted' else g.tone }});background:var(--{{ 'card' if g.tone=='muted' else g.tone~'T' }});padding:26px 34px;margin-bottom:20px;">
+        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.16em;color:var(--{{ 'ink3' if g.tone=='muted' else g.tone }});margin-bottom:12px;">{{ g.label }}</div>
+        <div style="font-size:var(--t-small);line-height:1.5;">{{ g.text }}</div>
+      </div>
+      {% endfor %}
+      <div style="margin-top:28px;font-size:var(--t-body);line-height:1.55;color:var(--ink2);">{{ r.gaps.weakest }}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;">
+      {{ c.eyebrow('Every source behind this review') }}
+      <div style="background:var(--card);border:1px solid var(--rule);">
+        {% for s in r.gaps.sources %}
+        <div style="display:grid;grid-template-columns:280px 1fr;padding:18px 26px;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}"><span style="font-family:var(--mono);font-size:24px;color:var(--ink3);">{{ s.name }}</span><span style="font-size:24px;">{{ s.detail }}</span></div>
+        {% endfor %}
+      </div>
+      <div style="margin-top:32px;">{{ c.eyebrow('Work papers') }}</div>
+      <div style="font-family:var(--mono);font-size:24px;line-height:1.8;color:var(--ink2);background:var(--card);border:1px solid var(--rule);padding:26px 30px;">{{ r.gaps.papers | replace('\n','<br>'|safe) }}</div>
+      <div style="margin-top:auto;padding-top:26px;border-top:1px solid var(--rule2);font-size:24px;line-height:1.6;color:var(--ink2);">{{ r.gaps.disclaimer | safe }}</div>
+    </div>
+  </div>
+{% endcall %}
+
+</deck-stage>
+<script>{{ deck_js | safe }}</script>
+</body>
+</html>

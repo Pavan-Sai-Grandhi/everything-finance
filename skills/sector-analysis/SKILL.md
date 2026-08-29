@@ -62,7 +62,16 @@ Write it to the output path you were given, or to `artifacts/sector-analysis/YYY
 
 1. **Rank the rotation** — only when no sector was named; with sectors named, go straight to step 2 and keep the grid as light context. Cheap first pass: `get_market_context` (mode `quick`) and its `sectors.leaders` / `sectors.laggards` (a 1-year ranking, already computed from one NSE fetch) decides which sectors are worth the full treatment. For those, pull the index series with `get_history` and compute RS over the reference's windows and classification. Then pick the **top three** by the reference's ranking rule.
 2. **Fan out — one `everything-finance:terminal-analyst` per sector, in parallel.** Each call names the skill `sector-analysis`, the mode `single-sector`, the sector, no focus stock, and the output path `artifacts/sector-analysis/YYYY-MM-DD/<sector>.md` (`paths.report_dir("sector-analysis", date)`). Each returns the `sector-block` digest plus its `path`; `Read` the files and synthesize from them — do not paste the digests back.
-3. **Output.** Render `assets/sector-analysis.html` — the RS grid colored by classification (the full grid when the ranking ran, the named sectors otherwise), plus a picks table built from the per-sector leaders — to `artifacts/sector-analysis/YYYY-MM-DD.html` (`paths.report_path("sector-analysis", date, "html")`). In chat: open with the 2–3 sentence rotation story (what leads, what is turning, what to avoid), then per analyzed sector its stance, the one tailwind and one headwind that matter, and its top pick with a one-line reason.
+3. **Output.** Emit the render projection `artifacts/sector-analysis/<date>.report.json` — a **render input with no consumer** (a missing field renders as a labelled gap, never a fabricated number), shaped like the worked example at `skills/_report/scripts/fixtures/sector-analysis.sample.json`: the cover rotation verdict, the RS **grid** colored by classification (the full grid when the ranking ran, the named sectors otherwise), a `deepdives` list (one slide per analyzed sector — RS windows, cycle, KPI table, tailwinds/headwinds, stance), a `picks` table built from the per-sector leaders, a `drivers` synthesis, and the gaps/sources slide. Then produce the deck:
+
+   ```
+   python3 skills/_report/scripts/render_report.py \
+     --report-json artifacts/sector-analysis/<date>.report.json \
+     --template sector-analysis \
+     --out artifacts/sector-analysis/<date>.html
+   ```
+
+   `render_report.py` is pure compute over that JSON (it fetches nothing); every RS number and KPI in it carries the source and window it came from, and a classification chip's tone (Leading→pos, Improving→accent, Weakening→warn, Lagging→neg) is the read. In chat: open with the 2–3 sentence rotation story (what leads, what is turning, what to avoid), then per analyzed sector its stance, the one tailwind and one headwind that matter, and its top pick with a one-line reason.
 
 ## Boundaries
 

@@ -76,7 +76,18 @@ You synthesize directly from the compact digests + the engine output — no sepa
 
 Net-worth values are sensitive: the **full net-worth detail lives in the artifact**; in **chat** give only the scorecard, the plan, and the headline net-worth figure.
 
-`snapshot` writes a compact spine-only note (net worth, allocation, emergency-fund + gross-protection flags) — no scorecard, no plan.
+**The deck.** Alongside the `.md`, emit the render projection `artifacts/wealth/<date>.report.json` — a **render input with no consumer** (a missing field renders as a labelled gap, never a fabricated number), shaped like the worked example at `skills/_report/scripts/fixtures/wealth-report.sample.json`: the cover verdict + headline stats (net worth, equity share, emergency-fund runway, term-cover gap), the net-worth spine (cards + asset-class allocation + the classes no spoke sees), each leg's one-line verdict, the five-domain scorecard, the cross-domain reads with the **emergency-fund runway gauge**, the prioritized plan, and the gaps/sources slide. Then produce the deck:
+
+```
+python3 skills/_report/scripts/render_report.py \
+  --report-json artifacts/wealth/<date>.report.json \
+  --template wealth-report \
+  --out artifacts/wealth/<date>.html
+```
+
+`render_report.py` is pure compute over that JSON (it fetches nothing); every figure in it traces to the `.md` it was built from, and a scorecard/verdict tone (pos / warn / neg) is the read. The deck is the shareable visual; the `.md` remains the detailed, sensitive artifact.
+
+`snapshot` writes a compact spine-only note (net worth, allocation, emergency-fund + gross-protection flags) — no scorecard, no plan, no deck.
 
 ## Section 5 — Degradation specifics
 

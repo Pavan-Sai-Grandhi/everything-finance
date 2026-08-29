@@ -1,0 +1,235 @@
+{
+  "meta": {
+    "title": "Sector Rotation",
+    "date": "2026-08-27",
+    "subject_date": "As of 2026-08-27",
+    "data_note": "Rotation from NSE sectoral indices (2026-08-27); per-sector reads from cached bodies, each dated inline"
+  },
+
+  "cover": {
+    "eyebrow_right": "NSE sectoral rotation",
+    "verdict": "RISK-ON, NARROW",
+    "verdict_tone": "warn",
+    "conviction": "3 of 8 leading",
+    "headline": "Money is in hard assets and value — Metal, PSU Banks and Pharma lead on the year, while the old defensives, FMCG and IT, are the deepest laggards. The actionable edge is where a sector is turning, not where it already led: IT services are rotating back before the ER&D sub-cohort has, and private banks lead on tape while their margins compress.",
+    "stats": [
+      { "label": "SECTORS RANKED", "value": "8", "size": 44 },
+      { "label": "TOP — NIFTY METAL", "value": "+45.9%", "size": 40, "color": "#7FBF9C" },
+      { "label": "WORST — NIFTY IT", "value": "−15.9%", "size": 40, "color": "#D98A76" },
+      { "label": "READS DEEP-DIVED", "value": "3", "size": 44 }
+    ]
+  },
+
+  "coverage": {
+    "lede": "Rotation first, names second. Sectors are ranked by relative strength — how each moves against the Nifty, not its absolute return — then classified Leading, Improving, Weakening or Lagging. A sector that is Improving is where fresh money is most actionable; a sector that already Led may be late.",
+    "contents": [
+      { "name": "The rotation grid", "num": "03" },
+      { "name": "Three reads", "num": "04" },
+      { "name": "Private banks · Leading", "num": "05" },
+      { "name": "IT ER&D · Improving", "num": "06" },
+      { "name": "Life insurance · Lagging", "num": "07" },
+      { "name": "Leaders & laggards", "num": "08" },
+      { "name": "What drives it", "num": "09" },
+      { "name": "Gaps & sources", "num": "10" }
+    ],
+    "brief_label": "The rotation in one line",
+    "brief": "Leaders: Metal, PSU Bank, Pharma.\nLaggards: Realty, Media, FMCG, IT.\nActionable turn: broad IT rotating\nback before the ER&D sub-cohort.\nPrivate banks lead on tape but\nmargins are compressing.",
+    "ran_label": "What ran",
+    "ran": [
+      { "name": "NSE sectoral RS ranking", "state": "8 IDX", "tone": "pos" },
+      { "name": "Private banks — full read", "state": "22-AUG", "tone": "pos" },
+      { "name": "IT ER&D — full read", "state": "13-AUG", "tone": "pos" },
+      { "name": "Life insurance — full read", "state": "15-AUG", "tone": "pos" },
+      { "name": "Dedicated NSE sub-indices", "state": "STALE", "tone": "warn" },
+      { "name": "Policy mechanism / quantum", "state": "GAP", "tone": "warn" }
+    ],
+    "gaps_label": "SOURCE NOTE",
+    "gaps_line": "Several dedicated NSE sub-indices (private bank, PSU bank, fin-service) carry a stale Yahoo series, so RS windows use a labelled proxy (^NSEBANK, equal-weight baskets). Policy is a headline feed — a duty or reform is named, its mechanism and effective date are a data gap unless a document supplies them.",
+    "papers": "Cached sector bodies\nstate/sectors/private-sector-banks.md\nstate/sectors/it-erd-services.md\nstate/sectors/life-insurance.md",
+    "footer": "everything-finance · sector-analysis · rotation read"
+  },
+
+  "grid": {
+    "title": "Hard assets and value lead; defensives lag",
+    "lede": "The NSE sectoral indices ranked by 1-year relative strength. Classification reads the shorter RS windows the per-sector bodies compute — the year-return column here is the coarse rank, not the classification itself.",
+    "footer": "NSE sectoral index levels, 2026-08-27 · classification from each sector's own RS windows",
+    "head": ["Sector index", "1Y", "P/E", "Class"],
+    "rows": [
+      { "name": "NIFTY METAL", "ret": "+45.9%", "ret_tone": "pos", "pe": "16.5", "klass": "LEADING", "klass_tone": "pos" },
+      { "name": "NIFTY PSU BANK", "ret": "+26.6%", "ret_tone": "pos", "pe": "7.8", "klass": "LEADING", "klass_tone": "pos" },
+      { "name": "NIFTY PHARMA", "ret": "+21.1%", "ret_tone": "pos", "pe": "41.2", "klass": "LEADING", "klass_tone": "pos" },
+      { "name": "NIFTY AUTO", "ret": "+14.5%", "ret_tone": "pos", "pe": "33.7", "klass": "IMPROVING", "klass_tone": "accent" },
+      { "name": "NIFTY REALTY", "ret": "+1.6%", "ret_tone": "ink", "pe": "38.7", "klass": "WEAKENING", "klass_tone": "warn" },
+      { "name": "NIFTY MEDIA", "ret": "−0.2%", "ret_tone": "neg", "pe": "42.8", "klass": "LAGGING", "klass_tone": "neg" },
+      { "name": "NIFTY FMCG", "ret": "−15.9%", "ret_tone": "neg", "pe": "32.8", "klass": "LAGGING", "klass_tone": "neg" },
+      { "name": "NIFTY IT", "ret": "−15.9%", "ret_tone": "neg", "pe": "19.3", "klass": "LAGGING", "klass_tone": "neg", "focus": true }
+    ],
+    "note": "NIFTY IT is the year's worst — yet the per-sector read finds broad IT services (^CNXIT) already rotating back to Leading on 1M/3M RS, ahead of the ER&D sub-cohort. A coarse annual rank hides an early turn; that is exactly what the deep-dives are for."
+  },
+
+  "glance": {
+    "title": "Three reads across the rotation spectrum",
+    "lede": "One sector from each live class — where it already leads, where it is turning, and where money is leaving — each a fully sourced read, not a headline.",
+    "footer": "Stance is for new longs · confidence reflects how much of the read is hard KPI vs qualitative news",
+    "lenses": [
+      { "name": "Private banks", "stance": "LEADING", "tone": "pos", "read": "Leading RS and multi-decadal-low GNPA, but a margin-compression quarter and visible rotation toward PSU banks cap the case.", "confidence": "MED" },
+      { "name": "IT ER&D / SDV", "stance": "IMPROVING", "tone": "accent", "read": "A trough forming after OEM engineering-spend cuts; broad IT already turned, the ER&D cohort playing catch-up. Actionable but unconfirmed.", "confidence": "MED", "highlight": true },
+      { "name": "Life insurance", "stance": "LAGGING", "tone": "neg", "read": "Negative RS on all three windows, lagging even its own parent financials. Money is rotating out; the deep volume KPIs could not be sourced.", "confidence": "MED" }
+    ]
+  },
+
+  "deepdives": [
+    {
+      "name": "Private Sector Banks",
+      "num": "05",
+      "section": "Deep-dive · Leading",
+      "klass": "LEADING",
+      "klass_tone": "pos",
+      "generated": "cached body generated 2026-08-22",
+      "title": "Leading on tape, compressing on margin",
+      "lede": "The classic early-cycle, rate-sensitive sleeve — running on credit-volume growth, not a rate tailwind. Leading RS and pristine asset quality set against a margin-squeeze quarter and a rotation of preference toward PSU banks.",
+      "footer": "Proxy ^NSEBANK vs ^NSEI, 21/63/126-day windows to 2026-08-21 · KPIs qualitative from news + Tickertape ratios",
+      "rs": [
+        { "label": "RS · 1M", "value": "+0.47pp", "tone": "pos" },
+        { "label": "RS · 3M", "value": "+4.61pp", "tone": "pos" },
+        { "label": "RS · 6M", "value": "+0.34pp", "tone": "pos" }
+      ],
+      "cycle": "NIFTY BANK closed 57,762 above its 50-EMA of 57,223 — price confirms the classification. RBI held the repo rate on 2026-08-06, so this leg runs on volume: system credit growth hit an 18.6% two-year high, industrial credit tripled to 19.2% in June.",
+      "kpis": {
+        "title": "Peer KPIs · ROE and P/B (TTM, Tickertape)",
+        "head": ["Bank", "ROE", "P/B", "3M px"],
+        "rows": [
+          { "cells": ["ICICI", "15.31%", "2.68", "+11.0%"], "tone": "pos" },
+          { "cells": ["HDFC", "13.26%", "1.84", "−6.7%"], "tone": "neg" },
+          { "cells": ["Axis", "13.07%", "1.80", "−4.1%"], "tone": "neg" },
+          { "cells": ["Kotak", "11.39%", "2.21", "+5.1%"], "tone": "pos" },
+          { "cells": ["Federal", "11.35%", "2.17", "+24.4%"], "tone": "pos" }
+        ]
+      },
+      "tailwinds": [
+        "Credit growth at a two-year high — 18.6% for the June-end fortnight, industrial credit +19.2% (Business Standard/RBI, 2026-07-10/31).",
+        "Asset quality at a multi-decadal best — system GNPA 1.8% (RBI Financial Stability Report, 2026-07-01)."
+      ],
+      "headwinds": [
+        "Margin compression across most of the peer set — HDFC NIM 'at record low', Axis and Kotak NIM slipping (2026-07-18).",
+        "Rotation toward PSU over private — NIFTY PSU BANK +21.8% 1Y vs PRIVATE +2.3% (NSE, 2026-08-22)."
+      ],
+      "stance": { "text": "Neutral for new longs — constructive tape and macro, but a margin quarter and PSU rotation cap fresh private-bank exposure.", "confidence": "MED" }
+    },
+    {
+      "name": "IT ER&D / Auto-SDV Services",
+      "num": "06",
+      "section": "Deep-dive · Improving",
+      "klass": "IMPROVING",
+      "klass_tone": "accent",
+      "generated": "cached body generated 2026-08-13",
+      "title": "A trough forming, cohort playing catch-up",
+      "lede": "The engineering-R&D and software-defined-vehicle services cohort, hit hard by OEMs deferring discretionary engineering spend, is stabilizing. Broad IT (^CNXIT) has already rotated to Leading; this sub-cohort is catching up, not leading — the Improving class the method flags as actionable but unconfirmed.",
+      "footer": "5-name equal-weight proxy (KPIT, Tata Elxsi, LTTS, Tata Tech, Cyient) vs ^NSEI · a thin basket, single-stock noise flagged",
+      "rs": [
+        { "label": "RS · 1M (median)", "value": "+6.0pp", "tone": "pos" },
+        { "label": "RS · 3M (median)", "value": "−2.6pp", "tone": "neg" },
+        { "label": "RS · 6M (median)", "value": "−12.1pp", "tone": "neg" }
+      ],
+      "cycle": "Two cycles intersect — late-cycle IT offshoring and early/mid-cycle auto-OEM engineering capex. Q1 FY27 prints came in 'less bad than feared' and all five names are positive over 1M, suggesting a trough. Broad ^CNXIT RS is already +8.9/+12.0 on 1M/3M — money returns to IT services faster than to this sub-cohort.",
+      "kpis": {
+        "title": "Cohort KPIs · valuation and margin trend (screener.in)",
+        "head": ["Name", "P/E", "ROCE", "OPM"],
+        "rows": [
+          { "cells": ["LTTS", "28.4", "26.7%", "19% ↑"], "tone": "pos" },
+          { "cells": ["KPIT", "27.1", "26.3%", "15% ↓"], "tone": "neg" },
+          { "cells": ["Tata Tech", "54.3", "20.9%", "14-16% ↓"], "tone": "warn" },
+          { "cells": ["Tata Elxsi", "230", "60.0%", "data gap"], "tone": "muted" },
+          { "cells": ["Cyient", "24.0", "12.3%", "12-13% ↓"], "tone": "neg" }
+        ]
+      },
+      "tailwinds": [
+        "Broad IT services already rotating positive — ^CNXIT RS +8.9/+12.0 on 1M/3M; the cohort is starting to catch the bid (all 5 names +2.8% to +14.4% over 1M).",
+        "LTTS the one clear positive margin trend — OPM 19% (Jun-26) up from 16% (Sep-25), P/E 28.4, ROCE 26.7%."
+      ],
+      "headwinds": [
+        "3M/6M RS still net negative for 3 of 5 names — the turn is early and unconfirmed on the medium windows.",
+        "Tata Technologies' +40% 3M rally carries an event/rumor component (management denied 'material events', Aug 6-7) — treat its RS contribution with caution."
+      ],
+      "stance": { "text": "Improving — actionable but unconfirmed; size for a forming trough, not a proven turn, and lean to margin-improvers (LTTS) over the deepest cutters.", "confidence": "MED" }
+    },
+    {
+      "name": "Life Insurance",
+      "num": "07",
+      "section": "Deep-dive · Lagging",
+      "klass": "LAGGING",
+      "klass_tone": "neg",
+      "generated": "cached body generated 2026-08-15",
+      "title": "Money is rotating out, and the volume KPIs are dark",
+      "lede": "The listed life insurers lag the Nifty on all three windows and lag even their own parent financials sector — a clear rotation out. The honest complication: the industry's real volume metrics (VNB margin, APE growth, persistency) could not be sourced, so this is a tape read, not a fundamentals all-clear.",
+      "footer": "Custom 5-insurer equal-weight basket vs ^NSEI · directional, not an official index · deep KPIs a labelled gap",
+      "rs": [
+        { "label": "RS · 1M", "value": "−4.32pp", "tone": "neg" },
+        { "label": "RS · 3M", "value": "−6.73pp", "tone": "neg" },
+        { "label": "RS · 6M", "value": "−9.00pp", "tone": "neg" }
+      ],
+      "cycle": "A hybrid sleeve — rate-sensitive on embedded value, sentiment-sensitive on ULIP flows, with a long-duration penetration-growth thesis underneath. The basket runs 1.7% below its 50-EMA; NIFTY_FIN_SERVICE returned +1.31/+6.41 on 1M/3M, so financials broadly outperform while life-insurance specifically lags its own parent.",
+      "kpis": {
+        "title": "Peer KPIs · valuation and returns (screener.in)",
+        "head": ["Insurer", "P/E", "ROE", "TTM top-line"],
+        "rows": [
+          { "cells": ["LIC", "8.7", "37.8%", "+10%"], "tone": "pos" },
+          { "cells": ["SBI Life", "69.2", "13.7%", "−1%"], "tone": "neg" },
+          { "cells": ["HDFC Life", "58.9", "11.3%", "+4%"], "tone": "pos" },
+          { "cells": ["ICICI Pru", "45.9", "12.6%", "−10%"], "tone": "neg" },
+          { "cells": ["Max Fin", "489", "1.5%", "+5%"], "tone": "warn" }
+        ]
+      },
+      "tailwinds": [
+        "LIC's scale — >66% new-business-premium share and 37.8% ROE (screener.in) — and a still-low insurance penetration underpin a long structural runway.",
+        "Not uniformly contracting — LIC +10%, Max Financial +5%, HDFC Life +4% still show positive TTM top-line (screener.in)."
+      ],
+      "headwinds": [
+        "Negative RS on all three windows and price below the 50-EMA — the tape says money is leaving now.",
+        "The real volume KPIs — VNB margin, APE growth, persistency — were not retrievable; absence of a bad print is not reassurance."
+      ],
+      "stance": { "text": "Unfavorable for new longs — the tape is against it and the fundamentals can't be independently confirmed; wait for either an RS turn or a sourced VNB/APE read.", "confidence": "MED" }
+    }
+  ],
+
+  "picks": {
+    "title": "The names the rotation surfaces",
+    "lede": "The leaders inside each read, and the weakest name — one KPI each. A sector stance is not a stock call; these are where to look, not what to buy.",
+    "footer": "Position-level calls belong to technical / financial / valuation analysis, not to a sector read",
+    "head": ["Sector", "Lead name", "Why it leads", "Watch"],
+    "rows": [
+      { "cells": ["Private banks", "Federal Bank", "+24.4% 3M — strongest, riding the asset-quality and credit-growth tailwind", "HDFC Bank −6.7% 3M, only name red on both windows"] },
+      { "cells": ["IT ER&D", "LTTS", "Only clear positive margin trend — OPM 19% up from 16%, ROCE 26.7%", "Cyient — strong top-line, ROCE 12.3%, margins down to 12-13%"] },
+      { "cells": ["Life insurance", "LIC", "P/E 8.7, ROE 37.8%, >66% NBP share — the value anchor", "Max Financial — P/E 489 on 1.5% ROE, richest and weakest"] }
+    ]
+  },
+
+  "drivers": {
+    "title": "What is actually moving the money",
+    "lede": "Three forces explain most of this rotation — a value-and-hard-asset bid, a rate cycle on hold, and a fundamentals-vs-tape gap where the tape is leading.",
+    "footer": "Each driver is sourced in the per-sector bodies · policy mechanism and quantum remain a labelled gap",
+    "tailwind": "A value and hard-asset bid — Metal +45.9%, PSU Bank +26.6% at a 7.8× P/E — is pulling money toward cyclicals and cheap balance sheets, and system credit growth at a two-year high supports the whole lending complex.",
+    "headwind": "The old defensives are being sold — FMCG −15.9% and IT −15.9% on the year — and a margin-compression quarter across private banks plus RBI on hold removes the near-term earnings tailwind that would justify chasing the leaders.",
+    "read": "Trade the turns, not the leaders. The cleanest edge is a sector that is Improving before the crowd confirms it — broad IT rotating back ahead of the ER&D cohort — while the year's biggest annual gains (Metal, PSU Bank) may already be late in their move."
+  },
+
+  "gaps": {
+    "title": "What this rotation read does not know",
+    "lede": "Every RS number cites its window and proxy; every KPI cites its source. A blocked series or an unpulled KPI is a labelled gap, never a guess.",
+    "items": [
+      { "label": "STALE SUB-INDICES", "tone": "warn", "text": "The dedicated NSE private-bank, PSU-bank and fin-service Yahoo series are stale (last bar ~2026-07-17), so RS windows use ^NSEBANK and equal-weight baskets as labelled proxies." },
+      { "label": "DEEP INSURANCE KPIs", "tone": "warn", "text": "VNB margin, APE growth and persistency — the industry's real volume metrics — were not retrievable from the allowed sources; the life-insurance read is a tape read, not a fundamentals all-clear." },
+      { "label": "POLICY MECHANISM", "tone": "muted", "text": "Google News RSS names that a duty or reform moved; the mechanism, quantum and effective date are a gap unless a primary document supplies them." },
+      { "label": "THIN PROXIES", "tone": "muted", "text": "The ER&D and life-insurance baskets are 5-name constructed proxies, not real indices — single-stock moves (Tata Tech +40%) can swing the mean; the median basis is used to classify." }
+    ],
+    "weakest": "The weakest link is the fundamentals-vs-tape gap in life insurance: the RS read is clear, but without VNB/APE the deck cannot say whether the selling is a value opportunity or a justified de-rating.",
+    "sources": [
+      { "name": "get_market_context", "detail": "NSE sectoral leaders/laggards, 1Y ranking, P/E" },
+      { "name": "get_history", "detail": "Index and stock OHLCV for RS windows and 50-EMA" },
+      { "name": "get_company_fundamentals", "detail": "Constituent KPIs — ROE, P/B, OPM, ROCE" },
+      { "name": "get_news", "detail": "Policy, duty and results headlines behind each factor" }
+    ],
+    "papers": "state/sectors/private-sector-banks.md (2026-08-22)\nstate/sectors/it-erd-services.md (2026-08-13)\nstate/sectors/life-insurance.md (2026-08-15)",
+    "disclaimer": "Every RS number and KPI cites its source and window; a blocked source is a labelled gap, never a guess. This reads the sector, not the stock. <strong>Not investment advice — personal research tool.</strong>"
+  }
+}

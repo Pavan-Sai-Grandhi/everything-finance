@@ -1,0 +1,58 @@
+{#- Shared slide primitives — the parts of the "Desk" system that repeat on every slide.
+    Structure and inline styles are copied from the design mock; only values are parameterised.
+    Charts are NOT here (they are data-driven Python partials in charts.py) — these are the
+    text/frame components: the slide frame, eyebrow, lede, footer, gap notice, metric card,
+    disclosure. -#}
+
+{%- macro slide(label, num, section, subject_date, title, lede, footer,
+                bg='var(--paper)', color='var(--ink)', rule='var(--rule)', ec='var(--ink3)',
+                lede_color=none) -%}
+<section data-label="{{ label }}" data-screen-label="{{ num }}" style="background:{{ bg }};color:{{ color }};font-family:var(--serif);padding:var(--pad-top) var(--pad-x) var(--pad-bottom);display:flex;flex-direction:column;">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:var(--t-label);letter-spacing:.16em;text-transform:uppercase;color:{{ ec }};border-bottom:1px solid {{ rule }};padding-bottom:20px;">
+    <span>{{ num }} · {{ section }}</span><span>{{ subject_date }}</span>
+  </div>
+  {% if title %}<div style="font-size:var(--t-title);letter-spacing:-.02em;margin-top:var(--gap-title);">{{ title }}</div>{% endif %}
+  {% if lede %}<div style="font-size:var(--t-lede);line-height:1.45;color:{{ lede_color or ('var(--ink2)' if color == 'var(--ink)' else '#C9C3B7') }};margin-top:18px;max-width:1550px;">{{ lede }}</div>{% endif %}
+  {{ caller() }}
+  {% if footer %}<div style="margin-top:auto;padding-top:22px;border-top:1px solid {{ rule }};font-family:var(--mono);font-size:24px;color:{{ ec }};">{{ footer }}</div>{% endif %}
+</section>
+{%- endmacro -%}
+
+{%- macro eyebrow(text, color='var(--ink3)') -%}
+<div style="font-family:var(--mono);font-size:var(--t-label);letter-spacing:.16em;text-transform:uppercase;color:{{ color }};margin-bottom:14px;">{{ text }}</div>
+{%- endmacro -%}
+
+{%- macro metric_card(label, value, sub=none, value_color='var(--ink)', value_size=52, pad='26px 28px', nowrap=false) -%}
+<div style="background:var(--card);border:1px solid var(--rule);padding:{{ pad }};">
+  <div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--ink3);{% if nowrap %}white-space:nowrap;{% endif %}">{{ label }}</div>
+  <div style="font-family:var(--mono);font-size:{{ value_size }}px;margin-top:{{ 8 if value_size >= 40 else 12 }}px;color:{{ value_color }};{% if nowrap %}white-space:nowrap;{% endif %}">{{ value }}</div>
+  {% if sub %}<div style="font-size:24px;color:var(--ink2);margin-top:6px;">{{ sub }}</div>{% endif %}
+</div>
+{%- endmacro -%}
+
+{%- macro gap_notice(label, text, tone='warn', pad='26px 30px', mb=none) -%}
+{%- set border = 'var(--rule2)' if tone == 'muted' else 'var(--' ~ tone ~ ')' -%}
+{%- set bg = 'var(--card)' if tone == 'muted' else 'var(--' ~ tone ~ 'T)' -%}
+{%- set lc = 'var(--ink3)' if tone == 'muted' else 'var(--' ~ tone ~ ')' -%}
+<div style="border-left:3px solid {{ border }};background:{{ bg }};padding:{{ pad }};{% if mb %}margin-bottom:{{ mb }};{% endif %}">
+  <div style="font-family:var(--mono);font-size:24px;letter-spacing:.16em;color:{{ lc }};margin-bottom:12px;">{{ label }}</div>
+  <div style="font-size:28px;line-height:1.5;">{{ text }}</div>
+</div>
+{%- endmacro -%}
+
+{%- macro details(summary, border='border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);', mt=none) -%}
+<details style="{{ border }}{% if mt %}margin-top:{{ mt }};{% endif %}">
+  <summary style="padding:22px 0;font-family:var(--mono);font-size:var(--t-label);letter-spacing:.1em;display:flex;justify-content:space-between;gap:24px;">
+    <span>{{ summary }}</span><span style="color:var(--accent);"><span class="om-open">OPEN +</span><span class="om-shut">CLOSE −</span></span>
+  </summary>
+  <div style="padding:0 0 26px;font-size:var(--t-small);line-height:1.55;color:var(--ink2);">{{ caller() }}</div>
+</details>
+{%- endmacro -%}
+
+{#- stance chip: coloured pill for a lens stance / verdict. -#}
+{%- macro chip(text, tone='pos', solid=false) -%}
+{%- set fg = '#fff' if solid else 'var(--' ~ tone ~ ')' -%}
+{%- set bg = 'var(--' ~ tone ~ ')' if solid else 'var(--' ~ tone ~ 'T)' -%}
+{%- if tone == 'muted' -%}{%- set fg = 'var(--ink3)' -%}{%- set bg = '#EFEDE7' -%}{%- endif -%}
+<span style="font-family:var(--mono);font-size:24px;font-weight:600;background:{{ bg }};color:{{ fg }};padding:8px 16px;">{{ text }}</span>
+{%- endmacro -%}

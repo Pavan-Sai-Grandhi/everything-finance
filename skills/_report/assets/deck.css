@@ -1,0 +1,39 @@
+/* everything-finance report deck — "Desk" design system.
+ * Tokens, base reset, and the disclosure/swap/gap primitives.
+ * Every slide carries its own inline styles (the mock is the pixel spec); this file
+ * holds only what the mock's <style> block held — the shared vocabulary the slides draw on.
+ * Values are copied verbatim from the design mocks — do not re-derive them. */
+:root{
+  --paper:#FCFAF6; --paper2:#F5F2EA; --card:#FFFFFF;
+  --ink:#1C1F23; --ink2:#4A4F56; --ink3:#837D74; --inkdark:#17191C;
+  --rule:#E4DFD4; --rule2:#CFC8B9;
+  --accent:#2C5B8F; --accentT:#E9EEF5;
+  --pos:#1B6E4F; --posT:#E6EFEA;
+  --neg:#A63C2C; --negT:#F7E9E5;
+  --warn:#8A6A1F; --warnT:#F6EFDF;
+  --serif:'Newsreader',Georgia,'Times New Roman',serif;
+  --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  --t-hero:96px; --t-title:64px; --t-sub:44px; --t-lede:36px;
+  --t-body:30px; --t-small:26px; --t-label:24px; --t-micro:22px;
+  --pad-x:96px; --pad-top:56px; --pad-bottom:48px; --gap-title:28px; --gap-item:26px;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:#17191C;font-family:var(--serif);}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid #B9C7D8;}
+a:hover{color:var(--ink);border-bottom-color:var(--ink);}
+
+/* Progressive disclosure — a <details> bounded by hairlines, with an OPEN+/CLOSE- affordance.
+ * The swap model: the block a disclosure explains yields its space while the panel is open,
+ * so on a fixed-height slide nothing is clipped and nothing is covered (handoff §3). */
+details{position:relative;}
+details > summary{list-style:none;cursor:pointer;}
+details > summary::-webkit-details-marker{display:none;}
+[data-swap]{position:relative;}
+[data-swap]:has(details[open]) [data-swap-main]{visibility:hidden;}
+[data-swap]:has(details[open]) > details > summary + div{
+  position:absolute; left:0; right:0; bottom:100%; margin-bottom:14px; z-index:20;
+  background:var(--card); border:1px solid var(--rule2); padding:30px 34px;
+}
+details[open] .om-open{display:none;}
+details .om-shut{display:none;}
+details[open] .om-shut{display:inline;}
