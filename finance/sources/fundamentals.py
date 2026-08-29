@@ -414,12 +414,17 @@ def _select(env, sections):
     return env
 
 
-def fetch(symbol, sections=None, fresh=False):
+def fetch(symbol, sections=None, fresh=False, sid=None):
     """Read one company's fundamentals into the typed envelope.
 
     `sections` narrows both the answer and the work: only the endpoints behind the sections
     asked for are called, which is what keeps `get_documents` to a single screener fetch.
     A narrowed read therefore does not populate the day cache — only a full one does.
+
+    `sid` is the escape hatch for when ticker->sid resolution is broken (a rename Tickertape
+    search cannot reach): pass the known Tickertape sid and the symbol->sid hop is skipped, so
+    the full Tickertape path — 10y statements, peers, shareholding — still works instead of
+    degrading to a hand-built read. The caller owns the sid's correctness.
     """
     sym = _norm(symbol)
     want = set(sections) & set(_SECTIONS) if sections else set(_SECTIONS)
@@ -437,7 +442,10 @@ def fetch(symbol, sections=None, fresh=False):
 
     tt_want = sorted(want - {"documents"})
     if tt_want:
-        rec, gap = tickertape.resolve_sid(sym, fresh=fresh)
+        if sid:
+            rec, gap = {"sid": str(sid).strip(), "name": None}, None
+        else:
+            rec, gap = tickertape.resolve_sid(sym, fresh=fresh)
         if gap:
             gaps.append(gap)
         else:

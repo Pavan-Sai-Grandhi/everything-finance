@@ -9,6 +9,8 @@ allowed-tools: Read, Write, Bash, Agent, mcp__indmoney__*, mcp__plugin_everythin
 
 Read `references/reference.md` — it owns how the six lenses combine into one verdict and the debate protocol. Resolve the argument to an NSE symbol first; `get_company_fundamentals` on the candidate symbol confirms the company name.
 
+**If the symbol will not resolve, do not brute-force it.** One clean symbol and at most one obvious alternative is the budget — never cycle through name fragments, old tickers, BSE codes and web searches (each failed call is envelope noise every later turn re-reads). A rename Tickertape search cannot reach still has a sid: read it from the Tickertape stock URL slug (…-SID), then pass `sid=` to `get_company_fundamentals` so the full path (10y statements, peers, shareholding) works, and hand that same sid to the legs. If you cannot get a trustworthy sid, `AskUserQuestion` at once — do not proceed on a near-match ticker's financials, and do not fall back to a hand-built read when the sid escape hatch is available.
+
 ## Run mode — resolve first
 
 **Resolve the mode before anything else**, then size the rest of the run to it.

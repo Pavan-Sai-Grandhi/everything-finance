@@ -203,6 +203,37 @@ def test_T1_empty_symbol():
     check("T1 an empty symbol is a gap, not a fetch", rec is None and bool(gap), gap)
 
 
+def test_T1_alias_bypasses_a_search_that_cannot_reach_the_company():
+    """A recent rename Tickertape search will not surface still has a sid; an alias returns
+    it straight, without a search, so every symbol-keyed tool works from one line."""
+    saved = dict(tt._SID_ALIASES)
+    tt._SID_ALIASES["FOO"] = "BARSID"
+    try:
+        rec, gap = tt.resolve_sid("FOO")  # never reaches the search
+    finally:
+        tt._SID_ALIASES.clear()
+        tt._SID_ALIASES.update(saved)
+    check("T1 an aliased symbol resolves straight to its sid",
+          rec and rec["sid"] == "BARSID", rec)
+    check("T1 the alias keeps the queried ticker", rec["ticker"] == "FOO")
+    check("T1 no gap when the alias hits", gap is None, gap)
+
+
+def test_T1_seeded_alias_covers_the_renamed_ticker():
+    """The shipped SETL->SGL seed (Standard Engineering Technology, renamed 2025-12) must
+    survive: deleting it silently reopens the resolution hole this closes."""
+    rec, gap = tt.resolve_sid("SETL")
+    check("T1 the seeded rename alias resolves to its Tickertape sid",
+          rec and rec["sid"] == "SGL" and gap is None, (rec, gap))
+
+
+def test_T1_unresolvable_gap_points_to_the_escape_hatch():
+    with _Offline():
+        rec, gap = tt.resolve_sid("NOTLISTED", fresh=True)
+    check("T1 the gap tells the caller how to recover (sid= / _SID_ALIASES)",
+          "sid" in (gap or "") and "_SID_ALIASES" in (gap or ""), gap)
+
+
 def _data():
     with _Offline():
         return fz.fetch("RELIANCE", fresh=True)["data"]
@@ -413,6 +444,18 @@ def test_T4_unresolvable_symbol_degrades():
           env["data"]["ratios"] == {} and env["data"]["pnl_10y"] == {"columns": [], "rows": {}})
 
 
+def test_T4_sid_escape_hatch_bypasses_resolution():
+    """When symbol->sid resolution is broken, a passed sid keeps the full Tickertape path
+    instead of degrading to a hand-built read."""
+    with _Offline():
+        env = fz.fetch("UNRESOLVABLE", sections=["ratios"], sid="RELI", fresh=True)
+    check("T4 a passed sid produces a real read despite an unresolvable symbol",
+          env["ok"] is True, env)
+    check("T4 the passed sid is the one used", env["data"]["sid"] == "RELI", env["data"])
+    check("T4 ratios come back through the hatch",
+          env["data"]["ratios"].get("Market Cap") == 1777092.98, env["data"]["ratios"])
+
+
 def test_T4_one_dead_endpoint_does_not_kill_the_rest():
     def half_dead(path, payload=None, timeout=30):
         if "/stocks/holdings/" in path:
@@ -559,6 +602,10 @@ def test_T5_advertised_common_fields_are_all_real():
 if __name__ == "__main__":
     run((test_T1_resolve_sid, test_T1_resolve_sid_miss_is_a_labelled_gap,
          test_T1_resolve_sid_rejects_a_near_miss, test_T1_empty_symbol,
+         test_T1_alias_bypasses_a_search_that_cannot_reach_the_company,
+         test_T1_seeded_alias_covers_the_renamed_ticker,
+         test_T1_unresolvable_gap_points_to_the_escape_hatch,
+         test_T4_sid_escape_hatch_bypasses_resolution,
          test_T2_ratios, test_T2_pnl_10y,
          test_T2_pnl_ttm_column_is_marked_not_a_fiscal_year,
          test_T2_balance_sheet_10y,

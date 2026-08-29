@@ -27,6 +27,15 @@ SITE = "https://www.tickertape.in/"
 # A sid is an identity, not a quote: a listed company keeps it for its whole life.
 _SID_MAX_AGE_DAYS = 90
 
+# NSE symbols Tickertape's search will not resolve — typically a recent corporate rename its
+# search index has not caught up to (querying the new ticker or name returns other companies,
+# or nothing). Mapped straight to the sid, verified from the Tickertape stock URL whose slug
+# ends in the sid (…/standard-glass-lining-technology-SGL). resolve_sid consults this before
+# the search, so one line restores every symbol-keyed tool for a company search cannot reach.
+_SID_ALIASES = {
+    "SETL": "SGL",  # Standard Engineering Technology (ex Standard Glass Lining), renamed 2025-12
+}
+
 
 def get_json(path, payload=None, timeout=30):
     """`(parsed, gap)` for a Tickertape path. POSTs `payload` as JSON when given."""
@@ -51,6 +60,11 @@ def resolve_sid(symbol, fresh=False):
     if not sym:
         return None, "no symbol given to resolve against Tickertape"
 
+    alias = _SID_ALIASES.get(sym)
+    if alias:
+        return {"sid": alias, "ticker": sym, "name": None,
+                "sector": None, "slug": None}, None
+
     cache = cache_path("sid", sym)
     cached = _read_cache(cache, fresh, max_age_days=_SID_MAX_AGE_DAYS)
     if cached is not None:
@@ -65,8 +79,11 @@ def resolve_sid(symbol, fresh=False):
     hit = next((s for s in stocks if _norm(s.get("ticker")) == sym and s.get("sid")), None)
     if not hit:
         offered = ", ".join(str(s.get("ticker")) for s in stocks[:5]) or "nothing"
-        return None, (f"no Tickertape security id for NSE symbol {sym} "
-                      f"(search offered {offered})")
+        return None, (f"no Tickertape security id for NSE symbol {sym} — search offered "
+                      f"{offered}. If the ticker was recently renamed, pass the sid directly "
+                      f"(the tail of the Tickertape stock URL, …-SID) or add {sym} to "
+                      f"_SID_ALIASES in sources/tickertape.py — do not substitute a "
+                      f"near-match ticker's financials.")
 
     rec = {"sid": hit["sid"], "ticker": _norm(hit.get("ticker")), "name": hit.get("name"),
            "sector": hit.get("sector"), "slug": hit.get("slug")}

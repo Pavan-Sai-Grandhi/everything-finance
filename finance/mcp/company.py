@@ -44,11 +44,15 @@ SERVER = create(
                 "cannot be split out of it. `cash_flow_10y` carries CFO, capex and a "
                 "published `Free Cash Flow` line — the P&L carries none of the three. "
                 "Pass `sections` to fetch and return only what you need (ratios|pnl_10y|"
-                "balance_sheet_10y|cash_flow_10y|quarters|shareholding|peers|documents)."
+                "balance_sheet_10y|cash_flow_10y|quarters|shareholding|peers|documents). "
+                "`sid` is the escape hatch when `symbol` will not resolve — usually a recent "
+                "rename Tickertape search cannot reach: pass the Tickertape security id (the "
+                "tail of the stock URL, …-SID) and the full path still works. Do not "
+                "substitute a near-match ticker's financials when a symbol fails to resolve."
 )
 def get_company_fundamentals(symbol: str, sections: list | None = None,
-                             fresh: bool = False) -> dict:
-    return _fundamentals.fetch(symbol, sections=sections, fresh=fresh)
+                             fresh: bool = False, sid: str | None = None) -> dict:
+    return _fundamentals.fetch(symbol, sections=sections, fresh=fresh, sid=sid)
 
 
 @SERVER.tool(
