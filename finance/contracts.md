@@ -197,6 +197,20 @@ holding and a per-quarter shareholder count are not published (current count is 
 reports itself rather than reading as a company that has filed nothing. Covered by
 `finance/tests/test_fundamentals.py` (offline parser fixtures).
 
+### `finance/sources/screener_screen.py` — screener.in saved-screen provider
+Consumers: `run_saved_screen`, read by `discover` / `strategy-manager` as the second `screening.fundamental`
+provider (`provider: screener_in`). The escape hatch from the Tickertape screener's point-in-time `>`/`<`:
+a **public** screener.in saved screen runs its author's full query language — cross-period comparisons
+(`ROCE > ROCE preceding year`), PEG, promoter-holding change, pledged %. Envelope:
+- `screen(screen_url, max_survivors=200)` → `data:{query, screen_url, count, candidates:[…]}`. `screen_url`
+  MUST be the `screener.in/screens/<id>/<slug>/` form (the bare `/screens/<id>/` 404s to a non-browser
+  client). `query` is the screen's own text, echoed back. Pages are walked to a 500-name ceiling.
+  A numeric `/company/<code>/` is a **BSE-only scrip code** with no NSE symbol → skipped + gap, never a
+  candidate. A **private/login-walled** screen returns `ok:false` + a labelled gap (the `/screen/raw/`
+  custom-query endpoint is login-walled and NOT used — author+save a public screen instead). Covered by
+  `finance/tests/test_screener_screen.py` (offline fixtures). Spec side: when `provider: screener_in`, the
+  spec carries `screen_url` in place of `query`; `discover` calls `run_saved_screen(screen_url)`.
+
 ### `finance/sources/documents.py` — primary documents as cached local text
 Consumer: `get_documents` (envelope, cache layout, reading legs in *Artifact: document cache*).
 `fetch(symbol, annual_reports=1, concalls=1, fresh=False)` → envelope. Takes the index from

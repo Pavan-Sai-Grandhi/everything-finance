@@ -1,0 +1,45 @@
+# Investment discovery spec — feeds `discover stocks --invest`.
+# CYCLE: risk-on / early-to-mid bull — quality compounders led by earnings, bought while the
+# tape supports them. This is the "own great businesses" screen; pair its shortlist with a
+# valuation read before entry (a compounder can still be expensive).
+
+name: soic-quality-compounder-invest
+version: 1
+created: 2026-08-30
+purpose: investment
+archetype: quality-compounder
+goal: "High, durable ROCE with low leverage and clean promoter behaviour — SOIC-style compounders"
+source_references:
+  # First-party SOIC blogs (soic.in/blogs) — the compounder qualities are their own words:
+  - "SOIC blog — 'India's Hospital Sector: A Multi-Decade Compounder' (soic.in/blog-page/indian-hospital-sector-a-multi-decade-compounder-in-the-making): RoCE > 20%, stable/expanding EBITDA margins, compounding cash flows without excess leverage, capital discipline & debt reduction. Directly backs the ROCE/RoE/DE gates below."
+  - "SOIC free resources (soic.in/free-resources) — the quality-compounder checklist (sustained high ROCE, low promoter pledge, earnings that compound). Thresholds mapped to the Tickertape catalogue (point-in-time > / < only)."
+
+status: draft                         # draft | active — active on the completeness gate (fields verified to resolve 2026-08-30, 122 matches)
+lifecycle:
+  generated_at: 2026-08-30
+  validated_at: null
+  activated_at: null
+
+regime_required:
+  market_trend: up
+  vix_max: 22
+
+universe:
+  source: nifty500                    # compounders live across large + mid caps
+
+# ROCE and RoE gate quality; D/E and pledge gate the balance sheet and promoter; the two growth
+# clauses demand the earnings/revenue actually compound. (SOIC's "ROCE 5yr median >20 / EPS up 8
+# straight quarters / D/E lower than 3yr ago / pledge <5%" — mapped to the Tickertape catalogue,
+# which carries only point-in-time > / < clauses, so the trend conditions become their level form.)
+screening:
+  fundamental:
+    provider: tickertape
+    query: >
+      Market Cap > 1000 AND ROCE > 20 AND Return on Equity > 18
+      AND Debt to Equity < 0.5 AND Promoter Pledge < 5
+      AND 1Y Historical EPS Growth > 10 AND 5Y Historical Revenue Growth > 12
+    max_survivors: 40
+
+ranking:
+  metric: return_12m                  # among quality names, favour 12-month price leadership
+  top_n: 5

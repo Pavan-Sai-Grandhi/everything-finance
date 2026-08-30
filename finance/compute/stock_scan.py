@@ -36,9 +36,15 @@ def completeness(spec):
     {ok, checks, gaps}."""
     checks, gaps = {}, []
     scr = ((spec.get("screening") or {}).get("fundamental") or {})
-    checks["has_query"] = bool(str(scr.get("query") or "").strip())
-    if not checks["has_query"]:
-        gaps.append("screening.fundamental.query is missing or empty")
+    provider = str(scr.get("provider") or "tickertape").strip().lower()
+    if provider == "screener_in":
+        checks["has_query"] = bool(str(scr.get("screen_url") or "").strip())
+        if not checks["has_query"]:
+            gaps.append("provider is 'screener_in' but screening.fundamental.screen_url is missing")
+    else:
+        checks["has_query"] = bool(str(scr.get("query") or "").strip())
+        if not checks["has_query"]:
+            gaps.append("screening.fundamental.query is missing or empty")
 
     metric = ((spec.get("ranking") or {}).get("metric"))
     checks["metric_known"] = metric in KNOWN_METRICS
@@ -46,7 +52,9 @@ def completeness(spec):
         gaps.append(f"ranking.metric {metric!r} is not one of {KNOWN_METRICS}")
 
     checks["has_universe"] = bool((spec.get("universe") or {}).get("source"))
-    if not checks["has_universe"]:
+    # A screener.in screen carries its own cap/quality bounds in the query, so a universe is
+    # OPTIONAL there (omit it to rank the raw screen); a bare Tickertape query still needs one.
+    if not checks["has_universe"] and provider != "screener_in":
         gaps.append("universe.source is missing")
 
     checks["purpose_investment"] = spec.get("purpose") == "investment"
@@ -80,26 +88,43 @@ def _context_row(closes, benchmark):
 
 
 def scan(spec, top=None, fresh=False, market_context=None,
-         screen_fn=None, closes_fn=None, workers=8):
-    """universe ∩ fundamental quality gate → rank by ranking.metric → top N."""
+         screen_fn=None, closes_fn=None, saved_screen_fn=None, workers=8):
+    """universe ∩ fundamental quality gate → rank by ranking.metric → top N.
+
+    The quality gate runs on either provider: `tickertape` (the spec's `query` via the Tickertape
+    screener) or `screener_in` (the spec's public `screen_url` via screener.in, for the cross-period
+    / PEG / promoter-delta cuts Tickertape cannot express). Both return the same candidate envelope,
+    so everything after the gate is provider-agnostic."""
     from finance.sources import fundamentals, universe
 
     screen_fn = screen_fn or (lambda q, limit: fundamentals.screen(q, limit=limit))
     closes_fn = closes_fn or _spine_closes
 
     scr = (spec.get("screening") or {}).get("fundamental") or {}
+    provider = str(scr.get("provider") or "tickertape").strip().lower()
     query = str(scr.get("query") or "").strip()
+    screen_url = str(scr.get("screen_url") or "").strip()
     max_survivors = int(scr.get("max_survivors") or 60)
     metric = (spec.get("ranking") or {}).get("metric")
     n = top or (spec.get("ranking") or {}).get("top_n") or 5
     source = (spec.get("universe") or {}).get("source")
+    limit = max(max_survivors, n) * 2
 
     gaps = []
-    if not query:
-        return _result(spec, [], {"screened": 0, "in_universe": 0, "ranked": 0}, source,
-                       metric, market_context, ["no fundamental query in the spec"])
-
-    env = screen_fn(query, max(max_survivors, n) * 2)
+    if provider == "screener_in":
+        if not screen_url:
+            return _result(spec, [], {"screened": 0, "in_universe": 0, "ranked": 0}, source,
+                           metric, market_context,
+                           ["provider is 'screener_in' but no screen_url in the spec"])
+        if saved_screen_fn is None:
+            from finance.sources import screener_screen
+            saved_screen_fn = lambda url, cap: screener_screen.screen(url, max_survivors=cap)
+        env = saved_screen_fn(screen_url, limit)
+    else:
+        if not query:
+            return _result(spec, [], {"screened": 0, "in_universe": 0, "ranked": 0}, source,
+                           metric, market_context, ["no fundamental query in the spec"])
+        env = screen_fn(query, limit)
     screened = list((env.get("data") or {}).get("candidates") or [])
     gaps += list(env.get("gaps") or [])
 
@@ -153,7 +178,11 @@ def _result(spec, shortlist, universe_counts, source, metric, market_context, ga
         "spec": spec.get("name"),
         "ranking_metric": metric,
         "universe": {"source": source, **universe_counts, "shortlisted": len(shortlist)},
-        "gates": {"query": ((spec.get("screening") or {}).get("fundamental") or {}).get("query"),
+        "gates": {"provider": (((spec.get("screening") or {}).get("fundamental") or {})
+                               .get("provider") or "tickertape"),
+                  "query": ((spec.get("screening") or {}).get("fundamental") or {}).get("query"),
+                  "screen_url": ((spec.get("screening") or {}).get("fundamental")
+                                 or {}).get("screen_url"),
                   "max_survivors": ((spec.get("screening") or {}).get("fundamental")
                                     or {}).get("max_survivors")},
         "market_context": market_context,

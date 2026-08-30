@@ -17,7 +17,8 @@ Screening is deterministic — ratios, prices, filters — and needs no LLM. Dis
 
 ```
 discover [stocks|funds|sectors]   # asset kind — default stocks
-         [--trade | --invest]     # purpose; infer from phrasing, else ask one question
+         [--trade | --invest | --special-situations]   # purpose; infer from phrasing, else ask one question
+                                  # --special-situations (stocks): corporate-action scan, see that mode below
          [--strategy <name>]      # force a spec, skip the regime pick
          [--universe <name>]      # override the spec's universe (nifty500|microcap|fno|largecap20|…)
          [--top N]                # shortlist size (default 5; deep-dive the top 3)
@@ -38,7 +39,7 @@ discover [stocks|funds|sectors]   # asset kind — default stocks
 
 The trade path's deliverable is an actionable signal, not a research report — so it screens and builds the signal, then stops.
 
-1. **Fundamental screen** (`screening.fundamental`) — `run_fundamental_screen(query=<the spec's query verbatim>)` if `provider: tickertape`, else skip. Cap at `max_survivors`; tighten per the spec's note if exceeded. Save survivors to `artifacts/cache/gate_survivors.json`. On an empty/refused screen, reuse a `gate_survivors.json` < 7 days old, else pre-rank the universe by 6-month momentum and flag the skip. A refused query is a spec defect — report it.
+1. **Fundamental screen** (`screening.fundamental`) — by `provider`: `tickertape` → `run_fundamental_screen(query=<the spec's query verbatim>)`; `screener_in` → `run_saved_screen(screen_url=<the spec's screen_url>, max_survivors=<cap>)` (the public screener.in screen, for the cross-period / PEG / promoter-delta cuts Tickertape can't express); `none` → skip. Cap at `max_survivors`; tighten per the spec's note if exceeded. Save survivors to `artifacts/cache/gate_survivors.json`. On an empty/refused screen, reuse a `gate_survivors.json` < 7 days old, else pre-rank the universe by 6-month momentum and flag the skip. A refused query, or a screener_in screen that comes back private/login-walled, is a spec defect — report it.
 2. **Technical screen** (`screening.technical`) — the coarse chart-state cut. `provider: tradingview` → `run_technical_screen` with the spec's filter rows; `provider: compute` (or TradingView down with `fallback_compute: true`) → the cut is reproduced from EOD OHLCV inside `run_strategy_screen`. Keep `NSE:` rows, strip the prefix, drop the BSE duplicate. Say so in data gaps when you fall back.
 3. **Signal construction** — `run_strategy_screen(spec=<path>, symbols=<survivors>, years=2, capital=<₹>, out="artifacts/discover/YYYY-MM-DD.json")`. It builds entry / stop / target / RRR / qty per survivor, drops anything below `exit.min_rrr` or with a malformed stop (with the reason), and flags a below-average-volume candidate "weak" and ranks it last. `market_posture` governs sizing only (`risk_off` halves risk-per-trade). For a `next_resistance` target it uses a min-RRR proxy — confirm the real overhead resistance and say so.
 4. **Present** the ranked candidate table via `assets/signal-report.html` (ticker, setup/strategy, entry/SL/target, RRR, volume, fundamental snapshot, indicator read, TradingView chart link), saved to `artifacts/discover/YYYY-MM-DD.html`, and summarise the top 3 in chat with a **Data gaps** section.
@@ -46,14 +47,29 @@ The trade path's deliverable is an actionable signal, not a research report — 
 
 ## stocks · invest
 
-1. **Scan** — `run_stock_scan(spec=<investment spec path>, top=<N>)`: the business-quality query, intersected with the spec's universe, ranked by `ranking.metric`, capped to the pool. No entry/exit/sizing.
+1. **Scan** — `run_stock_scan(spec=<investment spec path>, top=<N>)`: the business-quality gate (the spec's `query` via Tickertape, **or** its public `screen_url` via screener.in when `provider: screener_in` — run_stock_scan branches on the provider), intersected with the spec's universe, ranked by `ranking.metric`, capped to the pool. No entry/exit/sizing.
 2. **Quick triage (automatic)** — fan out `deep-analysis <TICKER> --quick` over the pool in one parallel wave (each is the 1-agent elimination screen: structured data only → keep/reject + score + one-line lean). This is the red-flag catch a ratio filter can't make.
 3. **Shortlist** — rank the keeps by their quick score; present them, and name the **top 3** for the deep-dive.
 4. **Deep (on confirmation)** — `deep-analysis <TICKER> --deep` on the confirmed names — the full multi-round debate and verdict. Present the verdicts with their invalidation levels. Raise `opportunity` alerts for BUYs.
 
+## stocks · special-situations
+
+Event-driven, not ratio-driven — a corporate-action scan, not a fundamental screen. Follow
+`assets/special-situations-checklist.md` (SOIC event taxonomy + per-event signal + discipline).
+
+1. **Candidate set** — the watchlist (`artifacts/state/watchlist.json`) plus any `--universe` named.
+   A full-universe per-name sweep is one filings call each — scope it and flag the cost.
+2. **Pull events per name** — `get_corporate_actions(symbol)` (split/bonus/special dividend) and
+   `get_filings(symbol, days=90)` (buyback/demerger/merger/delisting/open offer/rights/preferential
+   land as `act-on`). There is no market-wide event feed; the scan is this per-symbol loop.
+3. **Classify** into the checklist's eight event types; drop no-signal bonus/splits.
+4. **Judge the value creation, not the event** — hand survivors with a real case to
+   `deep-analysis <TICKER> --quick`, then `--deep` on confirmation. Raise `opportunity` alerts
+   (`dedup_key: specialsit-<SYMBOL>`) for those that clear.
+
 ## funds · invest
 
-1. **Scan** — `get_fund_scan(category=<user-named or regime-suggested SEBI sub-category>, market_context=<today's market-analysis artifact>)` → the gated, scored shortlist.
+1. **Scan** — `get_fund_scan(category=<user-named or regime-suggested SEBI sub-category>, market_context=<today's market-analysis artifact>)` → the gated, scored shortlist. When the user hasn't named a category, take `category` (and `window`/`min_aum`/`top`) from the **fund spec whose `regime_required` fits the live tape** — the cycle→category mapping lives in `strategy-manager/assets/seed-strategies/*-fund.yml` (`purpose: fund`): `flexicap-allweather-fund` (core, any regime), `midcap-growth-fund` (risk-on), `largecap-defensive-fund` (weak/volatile). The spec only chooses the scan arguments; get_fund_scan still owns every gate and score.
 2. **Quick triage (automatic)** — `mf-analysis <scheme> --quick` per shortlisted fund (tool calls only, no sub-agents) — the descriptive digest.
 3. **Shortlist** — present the ranked funds; name the **top 3** for the deep-dive.
 4. **Deep (on confirmation)** — `mf-analysis <scheme> --deep` on the confirmed funds — the full two-pillar verdict.

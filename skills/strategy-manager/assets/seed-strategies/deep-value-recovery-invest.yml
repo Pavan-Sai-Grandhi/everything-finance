@@ -1,0 +1,44 @@
+# Investment discovery spec — feeds `discover stocks --invest`.
+# CYCLE: bear bottom / early recovery — quality bought at distress prices. After a broad
+# de-rate, this screen looks for still-profitable, low-debt businesses trading on a low
+# price-to-book and low earnings multiple — the "buy quality when it's hated" screen. Highest-
+# risk of the four (a low multiple can be a value trap), so the shortlist earns a deep-dive, not
+# a reflex buy.
+
+name: deep-value-recovery-invest
+version: 1
+created: 2026-08-30
+purpose: investment
+archetype: deep-value
+goal: "Profitable, low-debt businesses on a depressed multiple — quality at a bottom"
+source_references:
+  - "Zerodha Varsity — Fundamental Analysis (P/B, earnings quality, balance-sheet safety as the value-trap guard). Deep-value overlay; Varsity is the official source, the thresholds are the plugin's bottom-fishing guard."
+
+status: draft                         # active on the completeness gate (fields verified to resolve 2026-08-30, 30 matches)
+lifecycle:
+  generated_at: 2026-08-30
+  validated_at: null
+  activated_at: null
+
+regime_required:
+  market_trend: down                  # deploy after a broad de-rate, not into a blow-off top
+  vix_max: 45                          # capitulation carries high vol — this is the screen for it
+
+universe:
+  source: nifty500                    # cast wide — bottoms throw up names across the cap curve
+
+# PB < 2 and PE < 15 demand the price is genuinely depressed; ROCE/RoE > 12 and D/E < 0.6 are the
+# value-trap guards — the business must still earn a return and carry a survivable balance sheet;
+# pledge < 10 keeps out the distressed-promoter names a bottom attracts.
+screening:
+  fundamental:
+    provider: tickertape
+    query: >
+      Market Cap > 2000 AND PB Ratio < 2 AND PE Ratio < 15
+      AND ROCE > 12 AND Return on Equity > 12
+      AND Debt to Equity < 0.6 AND Promoter Pledge < 10
+    max_survivors: 40
+
+ranking:
+  metric: return_6m                   # among the cheap survivors, favour those already turning up
+  top_n: 5

@@ -1,0 +1,42 @@
+# Investment discovery spec — feeds `discover stocks --invest`.
+# CYCLE: defensive / weak-or-falling tape — large, low-leverage cash compounders that pay a
+# dividend and can sit out a drawdown. The "coffee-can" end of the shelf: you hold these when
+# the market is volatile or heading down and you want businesses that survive, not sprint.
+
+name: defensive-dividend-quality-invest
+version: 1
+created: 2026-08-30
+purpose: investment
+archetype: defensive-quality
+goal: "Large, low-debt, dividend-paying compounders that hold up in a weak market"
+source_references:
+  - "Zerodha Varsity — Fundamental Analysis (balance-sheet strength, interest cover, dividend as a cash-generation tell). Coffee-can-style defensive overlay; Varsity is the official source, the thresholds are the plugin's defensive guard."
+
+status: draft                         # active on the completeness gate (fields verified to resolve 2026-08-30, 22 matches)
+lifecycle:
+  generated_at: 2026-08-30
+  validated_at: null
+  activated_at: null
+
+regime_required:
+  market_trend: down                  # the screen you reach for when the tape is weak/volatile
+  vix_max: 40                          # deliberately tolerant — defensives are what you own INTO high vol
+
+universe:
+  source: nifty100                    # large caps — depth and survivability
+
+# High ROCE + very low D/E + strong interest cover = a balance sheet that survives; a real
+# dividend yield + healthy net margin = cash actually reaching shareholders; steady revenue
+# growth keeps it from being a stagnant "bond proxy".
+screening:
+  fundamental:
+    provider: tickertape
+    query: >
+      Market Cap > 20000 AND ROCE > 18 AND Debt to Equity < 0.4
+      AND Interest Coverage Ratio > 5 AND Dividend Yield > 1
+      AND Net Profit Margin > 12 AND 5Y Historical Revenue Growth > 8
+    max_survivors: 40
+
+ranking:
+  metric: rs_vs_nifty                 # in a downtape, favour names holding up BEST vs the index
+  top_n: 5

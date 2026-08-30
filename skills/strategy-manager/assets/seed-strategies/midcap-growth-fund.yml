@@ -1,0 +1,33 @@
+# Fund discovery spec — feeds `discover funds`. See flexicap-allweather-fund.yml for the schema note.
+# CYCLE: risk-on / early-to-mid bull — the satellite that captures the up-move. Mid caps lead when
+# breadth is strong; you add here when the tape supports risk, and trim back to the core when it
+# doesn't. Higher drawdown than the core by design.
+
+name: midcap-growth-fund
+version: 1
+created: 2026-08-30
+purpose: fund
+archetype: satellite-growth
+goal: "Risk-on satellite — a mid-cap fund to capture the up-move while breadth is strong"
+source_references:
+  - "Zerodha Varsity — Mutual Funds (core-satellite; mid/small caps as the higher-beta satellite sized to risk appetite). Official source."
+  - "SOIC — mid-cap exposure earns its place in a supportive regime; discipline is trimming it when valuations stretch (see the smallcap note below)."
+
+status: draft
+lifecycle:
+  generated_at: 2026-08-30
+  validated_at: null
+  activated_at: null
+
+regime_required:
+  market_trend: up
+  vix_max: 22
+  # SMALLCAP DISCIPLINE (SOIC): to reach for `small cap fund` instead of mid, first check the
+  # NIFTY SMALLCAP 250 valuation percentile via market-analysis — only tilt to smallcap when it
+  # is NOT in the top decile of its own 10y history. Otherwise stay in mid cap.
+
+scan:
+  category: mid cap fund
+  window: 3y                          # the satellite is a nearer-horizon, regime-timed add
+  min_aum: 1000
+  top: 5

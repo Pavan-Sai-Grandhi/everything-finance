@@ -22,6 +22,8 @@ This skill owns a strategy's whole life. A strategy lives as a spec at `artifact
 
 **A spec has a `purpose`: `trading` or `investment`.** A **trading** spec (the default) carries the full universe/screening/entry/exit/sizing/regime and is validated by backtest — the whole lifecycle above. An **investment** spec (for `discover stocks --invest`) carries `universe` + `screening.fundamental` + `ranking` + `regime_required` only, omits the trading half, is validated by a **completeness check** (not a backtest), and has **no optimize loop** (there is no live trade to learn from). Each mode below notes where the two diverge.
 
+A third value, **`purpose: fund`**, is a thin seed consumed by `discover funds`, not by this skill: it carries `regime_required` + a `scan` block (`category`/`window`/`min_aum`/`top`) that maps a market cycle to `get_fund_scan` arguments — it re-implements no scoring (get_fund_scan owns every gate and weight), is not generated/validated/backtested here, and lives only as a seed (`assets/seed-strategies/*-fund.yml`). Schema note in `flexicap-allweather-fund.yml`.
+
 **The reference article the user provides is the one source outside the tool map** — a URL via `WebFetch`, or a local file via `Read`. It is REQUIRED for `generate`, and every trade rule in an emitted spec must be traceable to it.
 
 ## Route to a mode
@@ -57,7 +59,7 @@ This skill invents **no trade logic of its own** — it always comes from the ar
 
 Turn a draft into an active strategy *only if it earns it*. This mode validates **rules**, not stock picks — it answers "does this setup have an edge?", never "will this trade win?".
 
-**An investment spec is not backtested** — there is no entry/exit to test. Its "validation" is a **completeness check**: (1) `universe.source` resolves via `get_universe`, (2) every `screening.fundamental.query` field resolves against the Tickertape catalogue (a dry `run_fundamental_screen` returns `ok` or names the unresolvable field), and (3) `ranking.metric` is one of `return_12m | return_6m | rs_vs_nifty`. All three pass → set `status: active`, `lifecycle.validated_at`; any fail → stays `draft` with the gap named. No expectancy, no activation threshold. The rest of this mode is the trading (backtest) path.
+**An investment spec is not backtested** — there is no entry/exit to test. Its "validation" is a **completeness check**: (1) `universe.source` resolves via `get_universe` (OPTIONAL when `provider: screener_in` — the screen carries its own cap bounds); (2) the fundamental gate resolves — `provider: tickertape` → every `screening.fundamental.query` field resolves against the Tickertape catalogue (a dry `run_fundamental_screen` returns `ok` or names the unresolvable field); `provider: screener_in` → a dry `run_saved_screen(screen_url)` returns `ok` (public screen, matches ≥1 NSE symbol) rather than a private/login-walled or 404 gap; and (3) `ranking.metric` is one of `return_12m | return_6m | rs_vs_nifty`. All three pass → set `status: active`, `lifecycle.validated_at`; any fail → stays `draft` with the gap named. No expectancy, no activation threshold. The rest of this mode is the trading (backtest) path.
 
 1. **Run the engine.** `run_backtest` against the spec — arguments and mechanics in `references/backtesting.md`.
    - **Never pass market context into a historical run.** The market-analysis artifact describes *today*; feeding it in is lookahead — the strategy would "know" a regime that had not happened yet.

@@ -1,0 +1,42 @@
+# Investment discovery spec — feeds `discover stocks --invest`.
+# CYCLE: late-cycle / expensive market — growth at a reasonable price. When the broad tape is
+# richly valued, this screen refuses to overpay: it caps the multiple while still demanding
+# quality and real earnings growth, so the shortlist skews to what the market has NOT already
+# bid up.
+
+name: garp-value-invest
+version: 1
+created: 2026-08-30
+purpose: investment
+archetype: garp
+goal: "Quality growth still trading on a sane multiple — a shortlist for an expensive market"
+source_references:
+  - "Zerodha Varsity — Fundamental Analysis (quality + valuation discipline); GARP overlay (PE-capped growth). Varsity is the official source; the PE cap is the plugin's expensive-market guard, not a Varsity number."
+
+status: draft                         # active on the completeness gate (fields verified to resolve 2026-08-30, 46 matches)
+lifecycle:
+  generated_at: 2026-08-30
+  validated_at: null
+  activated_at: null
+
+regime_required:
+  market_trend: range                 # most useful when the index is stretched/rangebound, not blowing off
+  vix_max: 24
+
+universe:
+  source: nifty200                    # liquid large/mid — value with an exit
+
+# PE < 25 is the "reasonable price" cap; ROCE/RoE/DE gate quality; the two growth clauses ensure
+# the low multiple sits on a growing business, not a value trap.
+screening:
+  fundamental:
+    provider: tickertape
+    query: >
+      Market Cap > 3000 AND PE Ratio < 25 AND ROCE > 16
+      AND Return on Equity > 15 AND Debt to Equity < 0.75
+      AND 1Y Historical EPS Growth > 12 AND 5Y Historical Revenue Growth > 10
+    max_survivors: 40
+
+ranking:
+  metric: return_6m                   # nearer-term leadership among the reasonably-priced survivors
+  top_n: 5

@@ -59,13 +59,18 @@ universe:
 # from yfinance OHLCV via finance/compute/ta.py (the `compute_*` predicates), and flags the degrade.
 screening:
   fundamental:
-    provider: tickertape              # tickertape | none  (none = skip the quality gate)
-    # `FIELD OP VALUE` clauses joined by AND; fields are Tickertape catalogue names,
-    # and the only operators are > and <
+    provider: tickertape              # tickertape | screener_in | none  (none = skip the quality gate)
+    # provider: tickertape -> `query` below, run by run_fundamental_screen. `FIELD OP VALUE`
+    #   clauses joined by AND; Tickertape catalogue field names; ONLY > and < (point-in-time).
+    # provider: screener_in -> a `screen_url` (below) instead of `query`, run by run_saved_screen.
+    #   Use this when the cut needs what Tickertape cannot express — a CROSS-PERIOD comparison
+    #   ("ROCE > ROCE preceding year"), PEG, promoter-holding change, pledged %. Author/save the
+    #   screen on screener.in (free), make it PUBLIC, and paste the /screens/<id>/<slug>/ URL.
     query: >
       Market Cap > 1000 AND ROCE > 12
       AND Debt to Equity < 1 AND 1Y Historical EPS Growth > 0
       AND 5Y Historical Revenue Growth > 8
+    # screen_url: https://www.screener.in/screens/<id>/<slug>/   # ONLY when provider: screener_in
     max_survivors: 60                 # cap; tighten the query (e.g. ROCE > 15) if exceeded
   technical:
     provider: tradingview             # tradingview | compute  (compute = local yfinance + finance/compute/ta.py)

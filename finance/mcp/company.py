@@ -17,6 +17,7 @@ from finance.sources import filings as _filings
 from finance.sources import fundamentals as _fundamentals
 from finance.sources import funds as _funds
 from finance.sources import news as _news
+from finance.sources import screener_screen as _screener_screen
 
 from finance.mcp._server import create, safe_name, spill
 
@@ -92,6 +93,24 @@ def get_documents(symbol: str, annual_reports: int = 1, concalls: int = 1,
 )
 def run_fundamental_screen(query: str, limit: int = 1000, fresh: bool = False) -> dict:
     return _fundamentals.screen(query, limit=limit, fresh=fresh)
+
+
+@SERVER.tool(
+    description="Run a PUBLIC screener.in saved screen and return its matched NSE symbols. This "
+                "is the escape hatch from the Tickertape screener's limits: a saved screener.in "
+                "screen can use the full screener.in query language — cross-period comparisons "
+                "('ROCE > ROCE preceding year'), PEG, promoter-holding change, pledged % — that "
+                "`run_fundamental_screen` cannot express. `screen_url` MUST be the full "
+                "https://www.screener.in/screens/<id>/<slug>/ form (the bare /screens/<id>/ 404s "
+                "to a non-browser client). Anonymous/public only: a private or login-walled screen "
+                "returns a labelled gap, never partial results. The screen's own query text comes "
+                "back in `data.query`; numeric BSE-only scrip codes carry no NSE symbol and are "
+                "skipped with a gap. `max_survivors` caps how many are returned (pages walked to a "
+                "500-name ceiling). To author a NEW screen, build and save it on screener.in, then "
+                "pass its public URL here."
+)
+def run_saved_screen(screen_url: str, max_survivors: int = 200, fresh: bool = False) -> dict:
+    return _screener_screen.screen(screen_url, max_survivors=max_survivors, fresh=fresh)
 
 
 @SERVER.tool(

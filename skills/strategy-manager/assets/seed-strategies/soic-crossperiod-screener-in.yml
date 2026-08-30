@@ -1,0 +1,48 @@
+# Investment discovery spec — feeds `discover stocks --invest`.
+# Demonstrates provider: screener_in — the escape hatch from the Tickertape catalogue. The gate
+# is a PUBLIC screener.in saved screen, so it runs the full screener.in query language Tickertape
+# cannot: CROSS-PERIOD comparisons (ROCE > ROCE preceding year), ROA, pledged %, YoY quarterly
+# growth. run_saved_screen fetches it; the query text below is the screen's own, echoed for the
+# reader. To use YOUR OWN cut, author + save a screen on screener.in (free, make it public) and
+# swap `screen_url`.
+
+name: soic-crossperiod-screener-in
+version: 1
+created: 2026-08-30
+purpose: investment
+archetype: quality-crossperiod
+goal: "SOIC-style mid-cap quality with cross-period + quarterly-growth conditions Tickertape can't express"
+source_references:
+  # Screen author: a screener.in COMMUNITY screen titled 'SOIC fundamental stocks' — the criteria
+  # track SOIC's published fundamental checklist, but authorship is community, NOT verified SOIC.
+  # Labelled honestly (per the source-trust decision on 2026-08-30). Swap for your own authored URL.
+  - "screener.in community screen 916319 (soic-fundamental-stocks) — unverified authorship, criteria faithful to SOIC's fundamental checklist"
+  # The screen's own query (echoed back at runtime in data.query):
+  #   Market Cap 750-10000cr AND ROCE>17 AND ROE>17 AND ROA>17 AND Pledged=0
+  #   AND Promoter holding>45 AND PEG<1.1 AND YoY Qtr sales>15 AND YoY Qtr profit>20 AND 3Y profit>20
+
+status: draft                         # active on the completeness gate (provider screener_in + screen_url present; verified to resolve 2026-08-30, 21 NSE matches)
+lifecycle:
+  generated_at: 2026-08-30
+  validated_at: null
+  activated_at: null
+
+regime_required:
+  market_trend: up
+  vix_max: 22
+
+universe:
+  source: null                        # the screener.in screen carries its OWN cap/quality bounds —
+                                      # no plugin-universe intersection (that would drop the small/
+                                      # mid names the screen is built to surface). Set a source only
+                                      # to further restrict to e.g. nifty500 members.
+
+screening:
+  fundamental:
+    provider: screener_in
+    screen_url: https://www.screener.in/screens/916319/soic-fundamental-stocks/
+    max_survivors: 40
+
+ranking:
+  metric: return_12m
+  top_n: 5
