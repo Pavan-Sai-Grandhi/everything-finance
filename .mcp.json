@@ -1,43 +1,43 @@
 {
   "mcpServers": {
     "finance-market": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-mcp.sh",
+      "command": "${CLAUDE_PLUGIN_ROOT:-.}/bin/finance-mcp.sh",
       "args": ["market"],
       "env": {
         "PYTHONUNBUFFERED": "1"
       }
     },
     "finance-company": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-mcp.sh",
+      "command": "${CLAUDE_PLUGIN_ROOT:-.}/bin/finance-mcp.sh",
       "args": ["company"],
       "env": {
         "PYTHONUNBUFFERED": "1"
       }
     },
     "finance-funds": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-mcp.sh",
+      "command": "${CLAUDE_PLUGIN_ROOT:-.}/bin/finance-mcp.sh",
       "args": ["funds"],
       "env": {
         "PYTHONUNBUFFERED": "1"
       }
     },
     "finance-personal": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/finance-mcp.sh",
+      "command": "${CLAUDE_PLUGIN_ROOT:-.}/bin/finance-mcp.sh",
       "args": ["personal"],
       "env": {
         "PYTHONUNBUFFERED": "1"
       }
     },
     "kite": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
+      "command": "${CLAUDE_PLUGIN_ROOT:-.}/bin/mcp-bridge.sh",
       "args": ["https://mcp.kite.trade/mcp"]
     },
     "upstox": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
+      "command": "${CLAUDE_PLUGIN_ROOT:-.}/bin/mcp-bridge.sh",
       "args": ["https://mcp.upstox.com/mcp"]
     },
     "indmoney": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-bridge.sh",
+      "command": "${CLAUDE_PLUGIN_ROOT:-.}/bin/mcp-bridge.sh",
       "args": ["https://mcp.indmoney.com/mcp"]
     }
   }

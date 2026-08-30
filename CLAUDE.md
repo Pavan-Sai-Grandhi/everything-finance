@@ -47,7 +47,6 @@ A failed fetch never aborts a skill. Continue with the remaining sources and inc
 Credentials live in a `.env` located by `bin/load-env.sh` — first found of `$PLUGIN_ROOT/.env` (a `.env` next to the plugin) or `$PLUGIN_DATA/.env` (the client's persistent dir, for read-only installs). Never hardcode, never echo values into the transcript. In hook/automation scripts source the loader (`. "$PLUGIN_DIR/bin/load-env.sh"; ef_load_secrets "$PLUGIN_DIR" "$DATA_DIR"`) rather than hardcoding a path, so secrets resolve the same under every client. Template of the keys: `.env.example`. **If a secret is missing, skip the step that needs it and note the gap — never fail the whole skill.**
 
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram briefs.
-- `TRADINGVIEW_SESSIONID`, `TRADINGVIEW_SESSIONID_SIGN` — only for saved/personal screens; the public screener covers the built-in filters the seeds use. Copy from a logged-in browser (DevTools → Application → Cookies). They expire periodically.
 
 ## The `finance/` package
 

@@ -3,9 +3,19 @@
 #
 # Every Claude session points at ONE OAuth store, so there is a single client
 # registration and a single tokens.json per broker: log in from any session and
-# every session is logged in. Sharing the store is only safe from mcp-remote
-# 0.1.43 on, hence the version floor rather than a bare "latest".
+# every session is logged in.
+#
+# The version is PINNED EXACTLY, not floored (`@X` not `@^X`). mcp-remote stores
+# its client registration and tokens under a per-version subdir
+# (`$MCP_REMOTE_CONFIG_DIR/mcp-remote-<version>/`). A floating range (`^0.1.43`)
+# lets npx drift onto a newer patch across sessions, landing in a fresh empty
+# subdir every time it bumps — so a login that succeeded yesterday is invisible
+# today and you re-authenticate on every open. An exact pin keeps the token dir
+# stable, which is the whole point of a shared store. Only 0.1.43+ is safe to
+# share, so the pin must stay >= 0.1.43; bump it deliberately, never with `^`.
 set -eu
+
+MCP_REMOTE_VERSION=0.1.49   # exact pin — see note above; do not use a `^`/`~` range
 
 url="$1"
 shift
@@ -40,7 +50,10 @@ hash=$(
 claim="$MCP_REMOTE_CONFIG_DIR/.first-login-$hash"
 
 have_token() {
-  ls "$MCP_REMOTE_CONFIG_DIR"/mcp-remote-*/"${hash}_tokens.json" >/dev/null 2>&1
+  # Only the pinned version's dir counts: a token under some other version dir is
+  # one mcp-remote will not read, so treating it as "authed" would skip the login
+  # coordination and then re-auth anyway.
+  [ -f "$MCP_REMOTE_CONFIG_DIR/mcp-remote-$MCP_REMOTE_VERSION/${hash}_tokens.json" ]
 }
 
 take_claim() {
@@ -70,4 +83,4 @@ else
   fi
 fi
 
-exec npx -y 'mcp-remote@^0.1.43' "$url" "$@"
+exec npx -y "mcp-remote@$MCP_REMOTE_VERSION" "$url" "$@"

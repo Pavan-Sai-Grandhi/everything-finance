@@ -23,8 +23,16 @@ def test_bridge_script():
     check("config dir is one shared store",
           'MCP_REMOTE_CONFIG_DIR="${HOME}/.mcp-auth"' in src)
     check("config dir is not per-session", "$PPID" not in src)
-    check("pins an mcp-remote version floor", "mcp-remote@^0.1.43" in src,
+    check("pins an EXACT mcp-remote version, not a floating range",
+          'mcp-remote@$MCP_REMOTE_VERSION' in src
+          and "mcp-remote@^" not in src and "mcp-remote@~" not in src,
+          "a floating range drifts onto a fresh per-version token dir and re-auths every session")
+    check("pin stays at or above the 0.1.43 concurrency floor",
+          any(f"MCP_REMOTE_VERSION=0.1.{p}" in src for p in range(43, 100)),
           "the shared store needs 0.1.43's concurrency fixes")
+    check("token check is scoped to the pinned version dir",
+          "mcp-remote-$MCP_REMOTE_VERSION/" in src and "mcp-remote-*/" not in src,
+          "a token under another version dir is one mcp-remote will not read")
     check("gates the first login", ".first-login-" in src)
     check("token store is owner-only", "chmod 700" in src)
     check("reaps orphaned bridges", '[ "$ppid" = "1" ]' in src)
