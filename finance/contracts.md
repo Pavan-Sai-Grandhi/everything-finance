@@ -58,7 +58,7 @@ Cap"|"Small Cap"|None`. Network-free; `sources/funds.py` (fills `cap_rank` from 
 ### `finance/paths.py` — the artifact-path authority
 Callers ask this module where to read/write instead of hardcoding, so the layout cannot drift. Root is
 `$EVERYTHING_FINANCE_ARTIFACTS` or `./artifacts`. Three tiers: **dated output** (`stocks/<TICKER>/<date>/`,
-`funds/<SCHEME>/<date>/`, skill-first singletons like `daily-brief/<date>.md`), **durable state**
+`funds/<SCHEME>/<date>/`, skill-first singletons like `daily-brief/<date>.report.{json,html}`), **durable state**
 (`state/{strategies,trades,alerts,sectors}/`, `state/watchlist.json`), **disposable** (`cache/`, `tmp/`);
 helpers create dirs on demand. **`latest_prior(skill, subject, before=None)`** / **tool `get_prior_run`**
 (envelope `data:{skill, subject, before, path, date}`, the only reach for `valuation-analysis`/

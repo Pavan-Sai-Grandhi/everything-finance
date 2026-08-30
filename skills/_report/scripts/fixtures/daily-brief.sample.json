@@ -1,0 +1,106 @@
+{
+  "meta": { "title": "Market Brief", "date": "2026-08-28", "weekday_date": "Friday · 28 August 2026" },
+
+  "posture": { "tag": "Range · Neutral", "vix": "VIX 11.07 · low" },
+
+  "indices": [
+    { "name": "Nifty 50",  "level": "24,175", "chg": "+0.35%", "chg_tone": "pos",  "note": "Below 50-EMA & 200-EMA" },
+    { "name": "Bank Nifty", "level": "57,496", "chg": "-0.02%", "chg_tone": "flat", "note": "P/E 13.6" },
+    { "name": "Sensex",     "level": "—",      "muted": true,   "note": "data unavailable" }
+  ],
+
+  "flows": [
+    { "label": "FII net",       "value": "−₹5,040 Cr", "tone": "neg" },
+    { "label": "DII net",       "value": "+₹5,184 Cr", "tone": "pos" },
+    { "label": "Breadth (500)", "value": "53% >50D" }
+  ],
+
+  "market": {
+    "bullets": [
+      { "text": "IT stocks led the day's recovery; Nifty rose 0.35% with technology as the primary catalyst." },
+      { "text": "FII sold ₹5,040 Cr; DII stepped in with ₹5,184 Cr — net flows balanced, market absorbed the selling." },
+      { "html": "<strong>SEBI chief</strong> signaled NSE IPO clearance is close — meaningful if confirmed. <em style=\"font-size:11px; color:var(--text-3)\">ET</em>" },
+      { "html": "India equity outlook <strong>cut again</strong> by foreign funds seeking value elsewhere in Asia — structural FII headwind. <em style=\"font-size:11px; color:var(--text-3)\">FE</em>" }
+    ],
+    "net_read": "Broad participation without a confirmed index trend — be selective. Nifty is −8.5% from its 52-week high; market posture remains range/neutral."
+  },
+
+  "sector": {
+    "leading": ["IT (recovery)", "Financial Services"],
+    "lagging": ["Renewables", "FMCG / Insurance"],
+    "trend_note": "1Y leaders: METAL +46.9%, PSU BANK +26.9%, PHARMA +23.8% &nbsp;·&nbsp; 1Y laggards: IT −11.9%, FMCG −15.8%"
+  },
+
+  "alerts": [
+    { "sev": "act", "ticker": "DMART", "badge": "ACT",
+      "text": "Close ₹3,830 breached ₹3,866 thesis-invalidation level — alert fired on Friday's close. Position nearly at cost (avg ₹3,853). Stay-or-exit call needed before Monday open.",
+      "cmd": "/deep-analysis DMART" },
+    { "sev": "act", "ticker": "IRCTC", "badge": "ACT",
+      "text": "SL-HIT since 29 Jun (threshold ₹505). CMP ₹485 is 28.6% below avg ₹679. Thesis invalidated; position is stale and underwater — needs a hard exit decision, not more time.",
+      "cmd": "/deep-analysis IRCTC" },
+    { "sev": "act", "ticker": "KPITTECH", "badge": "ACT",
+      "text": "CMP ₹609, SL ₹593 — 2.7% buffer. Concurrent 🔴 regulatory filing: adjudication order from Office of Collector of Stamps (Reg 30, Aug 27). Two risk flags on same name.",
+      "cmd": "/trade-tracker KPITTECH" },
+    { "sev": "watch", "ticker": "Overdue reanalyses", "badge": "WATCH",
+      "sublist": [
+        { "ticker": "CLEAN",   "text": "overdue since Aug 8",  "cmd": "/deep-analysis CLEAN" },
+        { "ticker": "RRKABEL", "text": "overdue since Aug 12", "cmd": "/deep-analysis RRKABEL" },
+        { "ticker": "TENNIND", "text": "overdue since Aug 13", "cmd": "/deep-analysis TENNIND" },
+        { "ticker": "PRAJIND", "text": "invalidation triggered Aug 13 (close <320); recovered to ₹348 — monitor" }
+      ] },
+    { "sev": "info", "ticker": "Sector refreshes due",
+      "text_html": "bioenergy · auto-components · wires-cables &nbsp;→&nbsp; <code>/sector-analysis &lt;name&gt;</code>" }
+  ],
+
+  "opportunities": "No new opportunities — staying patient.",
+
+  "filings": [
+    { "mat": "act", "ticker": "KPITTECH", "emoji": "🔴",
+      "text": "Adjudication order from Office of Collector of Stamps — Reg 30 SEBI LODR disclosure. Nature and quantum of order not stated without reading attachment; potentially a stamp-duty levy.",
+      "source": "Filing · NSE · 27 Aug" },
+    { "mat": "act", "ticker": "CDSL", "emoji": "🔴",
+      "text": "Board outcome: Change in Management — appointment of Chief Regulatory Officer w.e.f. 27 Aug. Possible response to regulatory scrutiny; no financial impact disclosed.",
+      "source": "Filing · NSE · 27 Aug" },
+    { "mat": "mon", "ticker": "CDSL", "emoji": "🟡",
+      "text": "Appointment of Smt. Geetha Gangadharan as Non-Executive Non-Independent Director, SEBI-approved.",
+      "source": "Filing · NSE · 27 Aug" },
+    { "mat": "mon", "ticker": "DMART", "emoji": "🟡",
+      "text": "ESG Rating update by SES ESG Research — routine affirmation, not market-moving.",
+      "source": "Filing · NSE · 27 Aug" },
+    { "mat": "nil", "ticker": "DIXON",
+      "text": "No material filings. Unverified Marathi-language report of ₹62,500 Cr govt package for domestic smartphone brands — potentially positive for EMS thesis; no established-wire confirmation. Treat as noise until corroborated.",
+      "source": "News · aggregator only · 29 Aug" },
+    { "mat": "nil", "ticker": "Others", "muted": true,
+      "text": "PRAJIND · IRCTC · WONDERLA · SONACOMS · PIDILITIND · NYKAA · POLICYBZR · CAMS · BORORENEW · MEDPLUS · SAREGAMA — nothing material." }
+  ],
+
+  "positions": {
+    "rows": [
+      { "ticker": "IRCTC",     "qty": "24", "cmp": "₹485.65",  "vs_avg": "−28.6%",  "vs_avg_tone": "neg", "day": "−0.39%", "day_tone": "flat", "sl_dist": "SL 505 ✗",     "sl_tone": "red",   "state": "SL-HIT",   "state_pill": "slhit",  "flag": "red" },
+      { "ticker": "DMART",     "qty": "6",  "cmp": "₹3,830",   "vs_avg": "−0.6%",   "vs_avg_tone": "neg", "day": "−0.44%", "day_tone": "flat", "sl_dist": "Inv 3866 ✗",   "sl_tone": "red",   "state": "NEEDS-ATT","state_pill": "need",   "flag": "red" },
+      { "ticker": "KPITTECH",  "qty": "19", "cmp": "₹609.40",  "vs_avg": "−3.3%",   "vs_avg_tone": "neg", "day": "+3.64%", "day_tone": "pos",  "sl_dist": "2.7% to 593",  "sl_tone": "amber", "state": "NEAR-SL",  "state_pill": "nearsl", "flag": "amber" },
+      { "ticker": "CDSL",      "qty": "30", "cmp": "₹1,414.70","vs_avg": "+162.5%", "vs_avg_tone": "pos", "day": "+0.28%", "day_tone": "pos",  "state": "NEEDS-ATT","state_pill": "need",   "flag": "amber" },
+      { "ticker": "DIXON",     "qty": "3",  "cmp": "₹14,650",  "vs_avg": "+422.5%", "vs_avg_tone": "pos", "day": "−0.41%", "day_tone": "flat", "sl_dist": "34% buf",      "sl_tone": "green", "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "WONDERLA",  "qty": "30", "cmp": "₹537.10",  "vs_avg": "+112.3%", "vs_avg_tone": "pos", "day": "−0.95%", "day_tone": "flat", "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "SONACOMS",  "qty": "30", "cmp": "₹815.00",  "vs_avg": "+48.4%",  "vs_avg_tone": "pos", "day": "−0.49%", "day_tone": "flat", "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "SAREGAMA",  "qty": "72", "cmp": "₹492.80",  "vs_avg": "+88.9%",  "vs_avg_tone": "pos", "day": "+1.09%", "day_tone": "pos",  "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "NYKAA",     "qty": "30", "cmp": "₹335.65",  "vs_avg": "+79.0%",  "vs_avg_tone": "pos", "day": "−0.70%", "day_tone": "flat", "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "POLICYBZR", "qty": "5",  "cmp": "₹1,811.50","vs_avg": "+84.8%",  "vs_avg_tone": "pos", "day": "−1.44%", "day_tone": "flat", "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "CAMS",      "qty": "25", "cmp": "₹762.00",  "vs_avg": "+50.3%",  "vs_avg_tone": "pos", "day": "+2.85%", "day_tone": "pos",  "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "PIDILITIND","qty": "12", "cmp": "₹1,629.50","vs_avg": "+44.9%",  "vs_avg_tone": "pos", "day": "−1.60%", "day_tone": "flat", "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "PRAJIND",   "qty": "56", "cmp": "₹347.90",  "vs_avg": "−2.4%",   "vs_avg_tone": "neg", "day": "−1.83%", "day_tone": "flat", "sl_dist": "SL 320 (prev)", "sl_tone": "text-3", "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "BORORENEW", "qty": "43", "cmp": "₹502.25",  "vs_avg": "+0.1%",   "vs_avg_tone": "pos", "day": "−2.96%", "day_tone": "neg",  "state": "ON-TRACK", "state_pill": "ok" },
+      { "ticker": "MEDPLUS",   "qty": "5",  "cmp": "₹676.35",  "vs_avg": "−15.0%",  "vs_avg_tone": "neg", "day": "−1.74%", "day_tone": "flat", "state": "ON-TRACK", "state_pill": "ok" }
+    ],
+    "callouts": [
+      { "tone": "crit", "ico": "🔴", "html": "<strong>IRCTC</strong>: Thesis invalidated since 29 Jun; down 28.6% from avg ₹679. This is a stale, underwater loss — the discipline rule is exit, not hope. Decide before Monday." },
+      { "tone": "crit", "ico": "🔴", "html": "<strong>DMART</strong>: Friday close ₹3,830 is below the ₹3,866 invalidation. Act-level alert live. Run <code>/deep-analysis DMART</code> and make the call." },
+      { "tone": "warn", "ico": "⚠️", "html": "<strong>KPITTECH</strong>: Regulatory adjudication order (27 Aug) + 2.7% to SL ₹593 — two concurrent risk flags. Read the filing attachment before market open." },
+      { "tone": "warn", "ico": "⚠️", "html": "<strong>CDSL</strong>: Management change at Chief Regulatory Officer level (27 Aug). No P&amp;L impact disclosed, but worth reading the attachment given the ₹26k unrealised gain and the SEBI-context." }
+    ]
+  },
+
+  "one_thing": "DMART closed ₹3,830 on Friday, breaching its ₹3,866 thesis-invalidation level — the act-alert is live, and the stay-or-exit call needs to be made before Monday's open.",
+
+  "footer": "Sources: Upstox (holdings, avg prices) · IndMoney (position list) · NSE filings (KPITTECH, CDSL, DMART, PRAJIND, DIXON, IRCTC) · Google News RSS · NSE flows (28 Aug session) · market-analysis posture (as of 27 Aug). Sensex not returned by index fetch — gap. Sector day-data estimated from news; no per-sector OHLC fetched."
+}

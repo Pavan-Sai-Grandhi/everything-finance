@@ -27,7 +27,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
   `entry_date` (YYYY-MM-DD) enables the STALE check. Missing file + no broker → build the brief without those sections and suggest creating one once. Renamed/demerged tickers that 404: report "ticker not found — possibly renamed (corporate action?)", don't silently drop.
 - **Alert inbox** — `manage_alerts(action="list")` returns the open alerts, severity first; pass `subject` to narrow to one name. Take the held + watched names plus the portfolio-wide items; this feeds the Alerts & actions section and the vetted half of Opportunities.
 
-## Sections (in order, using `assets/daily-brief.md` (bundled with this skill))
+## Sections (in order; these become the fields of the `report.json` projection — see Output)
 
 1. **Indices**: Nifty 50, Sensex, Bank Nifty — level, day change, and whether Nifty holds above/below its 50-EMA (one structural sentence, not commentary).
 2. **Market analysis** (a market-level news digest, not stock-specific): the top **3–5 genuinely market-moving** items of the day — RBI/Fed, crude, FII/DII flows, global cues, major domestic policy or index-heavyweight results — one line each, then the **net read taken from market-analysis, not authored here** — call `get_market_context` (mode `quick`) and quote its `market_posture` + `rationale`, plus one breadth line (`breadth.pct_above_sma200` of `breadth.universe`) and the FII/DII nets from `flows`. **Never author a second verdict beside the computed one.** Sources: `get_news` (`India stock market`), preferring items whose `publisher_tier` is `established`. **Skip opinion, listicles, and target-price clickbait.** Cap at 5 items; if nothing genuinely moved the market, say so in one line.
@@ -58,4 +58,15 @@ The watchlist at `paths.watchlist_path()` is a managed, stamped list — keep it
 
 ## Output
 
-Fill `assets/daily-brief.md` (bundled with this skill), save to `paths.report_path("daily-brief")` (`artifacts/daily-brief/YYYY-MM-DD.md`, date = the day the run started), and print it in chat. If the user said "send" (or asks to), also send the Telegram-compressed version via `assets/telegram-brief.md` format using `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` from the plugin's `.env` (curl to the Bot API). Any section that fails to fetch becomes "— data unavailable" rather than blocking the rest.
+The brief is a single self-contained **HTML page** (a phone-scroll one-pager, not a slide deck) rendered through the shared `_report` pipeline — there is no `.md` artifact.
+
+1. Project the sections above into a `report.json` — the field shape is documented by the worked example `skills/_report/scripts/fixtures/daily-brief.sample.json` (its keys map 1:1 onto the sections). Every value must trace to what this run fetched; a section that failed to fetch becomes "— data unavailable" (or is dropped) rather than blocking the rest. Write it to `paths.report_path("daily-brief", ext="report.json")` (`artifacts/daily-brief/YYYY-MM-DD.report.json`, date = the day the run started).
+2. Render it:
+   ```bash
+   PYTHONPATH=<plugin> python3 skills/_report/scripts/render_report.py \
+     --report-json <…/YYYY-MM-DD.report.json> --template daily-brief \
+     --out <…/YYYY-MM-DD.report.html>
+   ```
+   (`paths.report_path("daily-brief", ext="report.html")`). The page is theme-aware and needs no network. Surface the `.report.html` to the user.
+
+If the user said "send" (or asks to), also send the Telegram-compressed **text** version via `assets/telegram-brief.md` format using `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` from the plugin's `.env` (curl to the Bot API) — that is a chat message, not a disk artifact.

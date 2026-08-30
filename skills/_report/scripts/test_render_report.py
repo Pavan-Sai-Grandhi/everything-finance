@@ -214,6 +214,32 @@ def test_wealth_render_is_complete_and_clean():
     check("₹ is preserved, not mojibake", "₹" in html and "â\x82¹" not in html)
 
 
+DAILY_BRIEF_FIXTURE = os.path.join(_HERE, "fixtures", "daily-brief.sample.json")
+
+
+def test_daily_brief_render_is_complete_and_clean():
+    # daily-brief is a single-page phone brief, not a deck: it brings its own styles and needs no
+    # deck runtime, so the deck-specific checks (deck-stage slides, inlined </script>) don't apply.
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "brief.html")
+        render_report.render(DAILY_BRIEF_FIXTURE, "daily-brief", out=out)
+        html = open(out, encoding="utf-8").read()
+    check("no unrendered jinja expressions", "{{" not in html and "{%" not in html)
+    check("no leaked python None", ">None<" not in html)
+    check("single-page brief, not a deck", "deck-stage" not in html and "<section" not in html)
+    # the visual language is the Desk system: warm-paper palette + Newsreader/IBM Plex Mono, not the artifact's blue/DM Sans
+    check("Desk paper palette in tokens", "--ground:#FCFAF6" in html and "--accent:#2C5B8F" in html)
+    check("Desk typefaces (Newsreader + IBM Plex Mono)", "Newsreader" in html and "IBM+Plex+Mono" in html and "DM+Sans" not in html)
+    # every section reached the page from its sourced values
+    check("index level reaches the page", "24,175" in html)
+    check("flows strip rendered", "−₹5,040 Cr" in html and "+₹5,184 Cr" in html)
+    check("act alert rendered with its command", "DMART" in html and "/deep-analysis DMART" in html)
+    check("authored emphasis passes through (not escaped)", "<strong>SEBI chief</strong>" in html)
+    check("position table state pill rendered", "SL-HIT" in html and "pill-slhit" in html)
+    check("one-thing rendered", "breaching its ₹3,866" in html)
+    check("₹ is preserved, not mojibake", "₹" in html and "â\x82¹" not in html)
+
+
 def test_render_prints_gaps_not_blanks():
     # the fixture's overview treemap, record 10Y series and sector RS series are all absent,
     # so the deck must show a labelled gap in each slot rather than a blank or a fabricated chart.
