@@ -4,7 +4,7 @@ Grounded in Zerodha Varsity — Sector Analysis (https://zerodha.com/varsity/mod
 
 ## The per-sector read — five steps, in this order
 
-1. **Relative strength.** Compute the sector index's 1M / 3M / 6M returns (**21 / 63 / 126 trading days** — fixed so reads are comparable) and Nifty 50's over the same windows; RS = sector return − Nifty return per window. Classify:
+1. **Relative strength.** RS is computed by `compute/sector_scan.py` (on the shared primitive `compute/relative_strength.py`) — the single definition, so a sector's RS and a stock's RS agree. Read it from **`run_sector_screen`**, which returns every sector's 1M / 3M / 6M RS vs Nifty (**21 / 63 / 126 trading days**) already classified. The classes:
    - **Leading** — RS positive on both 1M and 3M
    - **Improving** — 1M positive, 3M negative (early rotation, the actionable class)
    - **Weakening** — 1M negative, 3M positive
@@ -95,6 +95,7 @@ Stock-level: `<SYMBOL>.NS` for OHLCV and price-vs-50-EMA. Indicator math is shar
 ## Rotation method notes
 
 - Sector rotation follows the economic cycle: early recovery favors financials/auto/realty (rate-sensitive), mid-cycle favors capex (industrials, cement), late cycle favors defensives (FMCG, pharma, IT as a USD hedge).
-- The actionable class is **Improving** — entering a Leading sector after both RS windows have turned positive is often chasing.
-- Ranking for the top three: prioritize **Improving**, then **Leading**; tie-break on higher 1M RS, then 3M. Thin indices stay in the grid but are excluded from the top three, with the reason stated.
+- The actionable class is **Improving** — entering a Leading sector after both RS windows have turned positive is often chasing. A thin/narrow index (Media, under ~10 constituents) classifies on noise — flag that rather than reading it as a signal.
 - Varsity's diversification caution applies: top-pick concentration in one sector ≤ 2 positions for a swing book.
+
+(The cross-sector ranking that surfaces which sectors to read — Improving before Leading, tie-broken on 1M then 3M RS — is `run_sector_screen`'s job, consumed by `discover sectors`, not re-derived here.)

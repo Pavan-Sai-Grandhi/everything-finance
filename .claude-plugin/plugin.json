@@ -9,7 +9,7 @@
     "finance",
     "india",
     "swing-trading",
-    "find-trade",
+    "discover",
     "nifty500",
     "mutual-funds",
     "budgeting",
@@ -25,7 +25,7 @@
   ],
   "skills": [
     "./skills/market-analysis",
-    "./skills/find-trade",
+    "./skills/discover",
     "./skills/deep-analysis",
     "./skills/sector-analysis",
     "./skills/mf-analysis",

@@ -1,0 +1,43 @@
+# Investment discovery spec — feeds `discover stocks --invest`.
+# An investment spec is a trading spec MINUS the trading half: it carries universe +
+# screening.fundamental + ranking + regime_required + purpose, and OMITS entry/exit/sizing/
+# expectancy_assumptions. It is not backtested — there is no entry/exit to test; it goes
+# draft->active on a completeness check (universe resolvable, query fields resolve against the
+# Tickertape catalogue, ranking.metric known). It picks WHAT to deep-dive, not WHEN to enter.
+
+name: quality-momentum-invest
+version: 1
+created: 2026-08-30
+purpose: investment
+archetype: quality-momentum
+goal: "Quality businesses with 12-month price leadership — a shortlist to deep-dive"
+source_references:
+  - "Varsity — Fundamental Analysis (quality checklist); momentum overlay"
+
+status: draft                         # draft | active | inactive (active on the completeness gate)
+lifecycle:
+  generated_at: 2026-08-30
+  validated_at: null                  # set when the completeness check passes
+  activated_at: null
+
+regime_required:
+  market_trend: up                    # checked against the live market context at pick time
+  vix_max: 22
+
+universe:
+  source: nifty500                    # nifty50|nifty100|nifty200|nifty500|microcap|fno|largecap20|[tickers]
+
+# The business-quality gate — the SAME Tickertape screener run_fundamental_screen uses.
+# `FIELD OP VALUE` clauses joined by AND; catalogue field names; only > and <.
+screening:
+  fundamental:
+    provider: tickertape
+    query: >
+      Market Cap > 5000 AND ROCE > 18
+      AND Debt to Equity < 0.75 AND 5Y Historical Revenue Growth > 12
+      AND Return on Equity > 15
+    max_survivors: 40                 # cap the pool the ranking runs over
+
+ranking:
+  metric: return_12m                  # return_12m | return_6m | rs_vs_nifty
+  top_n: 5                            # shortlist size (discover --top overrides)

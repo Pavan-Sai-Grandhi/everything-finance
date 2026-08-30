@@ -13,10 +13,14 @@ from finance.compute import alerts as _alerts
 from finance.compute import backtest as _backtest
 from finance.compute import context as _context
 from finance.compute import screen as _screen
+from finance.compute import sector_scan as _sector_scan
+from finance.compute import stock_scan as _stock_scan
 from finance.compute import trade_check as _trade_check
+from finance.deps import load_yaml as _load_yaml
 from finance import paths as _paths
 from finance.sources import market as _market
 from finance.sources import prices as _prices
+from finance.sources import universe as _universe
 
 from finance.mcp._server import create, safe_name, spill
 
@@ -125,16 +129,57 @@ def get_market_context(mode: str = "quick", years: int = 10,
 
 
 @SERVER.tool(
+    description="Resolve a named universe to its NSE symbols: nifty50|nifty100|nifty200|"
+                "nifty500|microcap|fno|largecap20, or a list / comma-string / file path. "
+                "The symbol list is written to a dated file and NOT returned inline — the "
+                "response carries `symbols_count` and `universe_path`; read the file for the "
+                "symbols. Named universes come from NSE's published constituent CSVs; a "
+                "failed fetch falls back to the newest cached copy as a labelled gap."
+)
+def get_universe(name: str, fresh: bool = False) -> dict:
+    return _universe.resolve(name, fresh=fresh)
+
+
+@SERVER.tool(
     description="Run a strategy spec's screening and signal rules over a universe today: "
                 "each survivor comes back with entry, stoploss, target, reward:risk and "
                 "risk-sized quantity. `spec` is the path to a strategy YAML — the rules "
                 "always come from a spec, never from the caller. `symbols` is a list, a "
-                "comma-separated string, or a path to a file with one NSE symbol per "
-                "line. Every rejection and its reason is in the written report."
+                "comma-separated string, a named universe, or a path to a symbols file; "
+                "omit it to use the spec's own universe.source. Every rejection and its "
+                "reason is in the written report."
 )
-def run_strategy_screen(spec: str, symbols: list | str, years: int = 2,
+def run_strategy_screen(spec: str, symbols: list | str | None = None, years: int = 2,
                         capital: float = 500000, out: str | None = None) -> dict:
     return _screen.run(spec, symbols, years=years, capital=capital, out=out)
+
+
+@SERVER.tool(
+    description="Investment stock discovery scan: run the spec's business-quality query "
+                "through the Tickertape screener, intersect the survivors with the spec's "
+                "named universe, rank by ranking.metric (return_12m | return_6m | "
+                "rs_vs_nifty) and cap to the top N. NO entry/stop/target/size and no "
+                "backtest — this picks what to deep-dive, not when to enter. `spec` is the "
+                "path to an investment strategy YAML; the ranked shortlist is written to "
+                "file and the response carries the summary."
+)
+def run_stock_scan(spec: str, top: int = 5, fresh: bool = False,
+                   out: str | None = None) -> dict:
+    return _stock_scan.report(_load_yaml(spec), top=top, fresh=fresh, out=out)
+
+
+@SERVER.tool(
+    description="Sector discovery scan: rank the NSE sectoral indices by the spec's metric "
+                "(rs_vs_nifty — RS vs Nifty over 1M/3M/6M, classified "
+                "Improving/Leading/Weakening/Lagging — by default; or "
+                "index_valuation_percentile, cheapest first) and take the top N. `spec` is "
+                "the path to a sector YAML, or omit it for the built-in RS spec. The ranked "
+                "shortlist is written to file and the response carries the summary."
+)
+def run_sector_screen(spec: str | None = None, top: int = 3, fresh: bool = False,
+                      out: str | None = None) -> dict:
+    return _sector_scan.report(_load_yaml(spec) if spec else None, top=top,
+                               fresh=fresh, out=out)
 
 
 @SERVER.tool(

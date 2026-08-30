@@ -19,7 +19,7 @@
 
 ## Opportunities
 <!-- Strictly capped. Vetted (<=2) from `opportunity` alerts: source + one-line basis + command. Unvetted (<=1) news-flagged, LABELLED unvetted, with /deep-analysis suggestion. Dedup vs holdings/watchlist/yesterday. "No new opportunities — staying patient." when nothing clears the bar. -->
-- **Vetted:** {{OPP_VETTED}}  <!-- e.g. "CDSL — find-trade candidate off nifty500-momentum-swing → /find-trade" -->
+- **Vetted:** {{OPP_VETTED}}  <!-- e.g. "CDSL — discover candidate off nifty500-momentum-swing → /discover" -->
 - **Unvetted (news):** {{OPP_UNVETTED}}  <!-- e.g. "KAYNES — large defence order in the news; confirm via /deep-analysis KAYNES" -->
 
 ## Watchlist & holdings — filings & news

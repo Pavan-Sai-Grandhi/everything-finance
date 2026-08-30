@@ -1,6 +1,13 @@
-# find-trade method — screening + candidate grading (strategy-agnostic)
+# discover method — screening + candidate grading
 
-Distilled from Zerodha Varsity — *Technical Analysis* (22 chapters) and *Trading Systems* (16 chapters), fetched 2026-06-10. This file is the **method find-trade applies to whatever strategy it runs** — it is deliberately strategy-neutral. The *what to trade* (the screening filters, the entry trigger, the exits) comes from the **active strategy spec** chosen by `strategy-manager`; find-trade only supplies the disciplined *how* of executing and grading it. The single source of truth for the indicator math is `<plugin>/finance/compute/ta.py` (shared with the backtester).
+Distilled from Zerodha Varsity — *Technical Analysis* (22 chapters) and *Trading Systems* (16 chapters), fetched 2026-06-10. This file owns the **trade-candidate grading** discover applies on the `stocks --trade` path; the invest, fund and sector methods live with their per-item skills (`deep-analysis`, `mf-analysis`, `sector-analysis`). The *what to trade* (the screening filters, the entry trigger, the exits) comes from the **active strategy spec** chosen by `strategy-manager`; discover supplies the disciplined *how* of executing and grading it. The indicator-math authority is `<plugin>/finance/compute/ta.py` (shared with the backtester).
+
+## Why trade and invest screen differently for the same stocks
+
+- **Trade** makes the **technical cut central**: a coarse fundamental gate keeps swing longs out of broken companies, then the technical screen and `run_strategy_screen` build entry/stop/target/RRR/qty. It is backtest-validated because entry/exit rules have a testable edge.
+- **Invest** (`run_stock_scan`) makes the **fundamental cut central** and drops timing entirely: the business-quality query, intersected with the universe, ranked by momentum, capped to a shortlist. No entry/stop/target/size, no RRR, no backtest — you are choosing *what to deep-dive*, not *when to enter*. The elimination criteria (bad business / fake earnings / overpriced / crooked management) are what `deep-analysis quick` then applies to the survivors.
+
+An investment spec is a trading spec **minus the trading half**: `universe` + `screening.fundamental` + `ranking` + `regime_required`, omitting `entry`/`exit`/`sizing`.
 
 ## Two-stage screening — coarse cut, then fine trigger
 
@@ -31,7 +38,7 @@ Run every shortlisted candidate through this order before emitting a signal — 
 - **Stop** at structure — the recent swing low or breakout pivot, **not** the full consolidation low. (Anchoring the stop at the consolidation low inflates risk to ≈ the measured-move height, pinning RRR near 1.0 so nothing passes. The measured move sizes the *target*; the swing low sizes the *stop*.)
 - **Target** at the next resistance; for a blue-sky stock at/above its 52-week high (no overhead resistance), use the measured move of the prior consolidation and label it "measured-move".
 - **Position size from risk, never conviction**: `qty = (capital × risk%) / (entry − stop)`, default 1%. Conviction changes nothing; only the stop distance does. Never widen a stop to "give it room".
-- **Expectancy mindset**: any single signal can fail; the edge is statistical, and it lives in the strategy's validated backtest — which is why find-trade refuses to run an unvalidated (`draft`) or retired (`inactive`) strategy.
+- **Expectancy mindset**: any single signal can fail; the edge is statistical, and it lives in the strategy's validated backtest — which is why discover refuses to run an unvalidated (`draft`) or retired (`inactive`) strategy.
 
 ## Why there is no built-in default strategy
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""find-trade screening + signal engine.
+"""discover screening + signal engine.
 
-find-trade is strategy-AGNOSTIC: it runs whatever active, regime-fitting spec it is handed
+discover is strategy-AGNOSTIC: it runs whatever active, regime-fitting spec it is handed
 (chosen by `strategy-manager pick`). This module is the deterministic core of that run — it
 does NOT decide what to trade, it executes a spec's screening and signal rules on price
 data.
@@ -88,32 +88,32 @@ def load_spec(path):
 
 
 def resolve_symbols(symbols):
-    """The universe as callers express it: a list, a comma-separated string, or a path to a
-    file with one NSE symbol per line."""
-    if isinstance(symbols, str):
-        rows = (open(symbols).read().splitlines() if os.path.exists(symbols)
-                else symbols.split(","))
-    else:
-        rows = list(symbols or [])
-    return [str(s).strip().upper() for s in rows if str(s).strip()]
+    """The universe as callers express it — a list, comma-string, file path or named
+    universe — resolved by the one authority in `sources/universe.py`."""
+    from finance.sources import universe
+    return universe.resolve_symbols(symbols)[0]
 
 
-def run(spec, symbols, years=2, capital=500000, out=None):
+def run(spec, symbols=None, years=2, capital=500000, out=None):
     """The whole live screen in the shared data-spine envelope.
 
     `spec` is a path to a strategy YAML — the rules always come from a spec, never from
-    here. The complete result, every rejection and its reason included, is written to `out`
-    (default `artifacts/find-trade/<date>.json`); the envelope returns the config, the
-    ranked candidates and the rejection tally, so a caller reads the file only when it
-    wants to know why a name was dropped.
+    here. `symbols` is the universe to screen; when omitted it falls back to the spec's own
+    `universe.source`, so `universe: {source: nifty500}` resolves without a caller. The
+    complete result, every rejection and its reason included, is written to `out` (default
+    `artifacts/discover/<date>.json`); the envelope returns the config, the ranked
+    candidates and the rejection tally.
     """
+    from finance.sources import universe
     doc = load_spec(spec)
-    syms = resolve_symbols(symbols)
+    if not symbols:
+        symbols = (doc.get("universe") or {}).get("source")
+    syms, uni_gaps = universe.resolve_symbols(symbols)
     res = screen_compute(syms, doc, years, capital, paths.cache_dir("ohlcv"))
     res["config"] = {"spec": doc.get("name"), "spec_path": spec, "symbols": len(syms),
                      "capital": capital, "years": years, "as_of": str(date.today())}
-    path = out or paths.report_path("find-trade", ext="json")
-    gaps = list(res["data_gaps"])
+    path = out or paths.report_path("discover", ext="json")
+    gaps = list(res["data_gaps"]) + uni_gaps
     try:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w") as fh:

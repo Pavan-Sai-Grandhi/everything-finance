@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check("report_path path", rp == os.path.join(root, "daily-brief", "2026-05-01.md"), rp)
     check("report_path parent created", os.path.isdir(os.path.dirname(rp)))
 
-    rp2 = paths.report_path("find-trade", "2026-05-01", ".json")
+    rp2 = paths.report_path("discover", "2026-05-01", ".json")
     check("report_path strips leading dot in ext", rp2.endswith("2026-05-01.json"), rp2)
 
     ip = paths.insurance_report_path("Term", "2026-05-01")

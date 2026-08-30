@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Pick the active strategy that fits the current market regime (everything-finance).
 
-Responsibility 3 of strategy-manager. Reads every strategy spec in a directory, keeps the
-ones with status==active, tests each one's `regime_required` against the market-context
-artifact from the market-analysis skill, and ranks the fitting ones by validated edge (live
-expectancy if available, else backtest expectancy). Selection is a RUNTIME decision — an
-active spec is simply not selected while the tape doesn't fit it; its status is unchanged.
+Responsibility 3 of strategy-manager, and the `pick(purpose, regime)` discover calls.
+Reads every strategy spec in a directory, keeps the ones with status==active (optionally
+of a requested `--purpose`), tests each one's `regime_required` against the market-context
+artifact, and ranks the fitting ones by edge — validated expectancy for a trading spec
+(live if available, else backtest), recency for an investment spec (it has no backtest).
+Selection is a RUNTIME decision — an active spec is simply not selected while the tape
+doesn't fit it; its status is unchanged.
 
 Usage:
-  python3 select_strategy.py
+  python3 select_strategy.py [--purpose trading|investment]
   # --regime     defaults to today's artifacts/market-analysis/<date>.json
   # --strategies defaults to artifacts/state/strategies
 Exit: 0 = a strategy selected, 11 = none fit, 12 = no active specs, 2 = error.
@@ -50,8 +52,19 @@ def regime_fit(req, regime):
     return (len(fails) == 0), fails
 
 
+def spec_purpose(spec):
+    return spec.get("purpose") or "trading"
+
+
 def edge_score(spec):
-    """Prefer realized (live) expectancy, fall back to backtest expectancy. None -> -inf."""
+    """Rank a spec by edge. Trading: realized (live) expectancy, else backtest, else -inf.
+    Investment (no backtest): a recency score from its lifecycle dates. Returns
+    (score, tiebreak, source)."""
+    if spec_purpose(spec) == "investment":
+        lc = spec.get("lifecycle") or {}
+        stamp = (lc.get("validated_at") or lc.get("activated_at")
+                 or lc.get("generated_at") or spec.get("created") or "")
+        return (str(stamp), "", "recency")   # yaml may parse a date; rank as an ISO string
     lp = spec.get("live_performance") or {}
     ea = spec.get("expectancy_assumptions") or {}
     live = lp.get("expectancy_R")
@@ -70,6 +83,8 @@ def main():
     p.add_argument("--regime", default=None,
                    help="market-context JSON "
                         "(default: today's artifacts/market-analysis/<date>.json)")
+    p.add_argument("--purpose", choices=("trading", "investment"), default=None,
+                   help="keep only active specs of this purpose (default: all)")
     p.add_argument("--out")
     args = p.parse_args()
     if args.strategies is None:
@@ -95,19 +110,27 @@ def main():
             continue
         if not isinstance(spec, dict) or spec.get("status") != "active":
             continue
+        if args.purpose and spec_purpose(spec) != args.purpose:
+            continue
         actives += 1
         fits, fails = regime_fit(spec.get("regime_required"), regime)
-        score, pf, src = edge_score(spec)
+        score, _tie, src = edge_score(spec)
+        is_trade = spec_purpose(spec) == "trading"
         candidates.append({
             "name": spec.get("name", os.path.basename(f)),
             "file": f, "fits_regime": fits, "fails": fails,
-            "expectancy_R": (None if score == float("-inf") else score),
+            "purpose": spec_purpose(spec),
+            "rank_score": (None if score == float("-inf") else score),
+            "expectancy_R": (score if is_trade and score != float("-inf") else None),
             "edge_source": src,
             "archetype": spec.get("archetype"),
         })
 
+    # purpose sits before the score so a mixed (no --purpose) run never compares a trading
+    # spec's float expectancy against an investment spec's date-string recency.
     fitting = [c for c in candidates if c["fits_regime"]]
-    fitting.sort(key=lambda c: (c["expectancy_R"] is not None, c["expectancy_R"] or 0),
+    fitting.sort(key=lambda c: (c["rank_score"] is not None, c["purpose"],
+                                c["rank_score"] if c["rank_score"] is not None else ""),
                  reverse=True)
 
     selected = fitting[0] if fitting else None

@@ -11,8 +11,8 @@ Starter strategy specs distilled from common Indian swing-trading methods
 mkdir -p artifacts/state/strategies && cp ema-pullback-swing.yml artifacts/state/strategies/
 # 2. do the mandatory numeric indicator study (ta.py read) + backtest, then validate
 /strategy-manager validate ema-pullback-swing
-# 3. once active, find-trade can run it (or pick it for the regime)
-/find-trade strategy:ema-pullback-swing      # or just /find-trade -> pick
+# 3. once active, discover can run it (or pick it for the regime)
+/discover stocks --trade --strategy ema-pullback-swing   # or just /discover -> pick
 ```
 
 Validation is not a formality: the **mechanical EMA-pullback backtested to *negative*
@@ -45,5 +45,5 @@ intraday, per CLAUDE.md, so the 4-hour leg becomes "confirm on the daily close".
 Each seed populates the `screening` block: a **tickertape**
 fundamental cut and a **technical** cut that is either `provider: tradingview` (server-side
 filters) or `provider: compute` (local `finance/compute/ta.py`) where TradingView can't express the
-filter (NR-bars, fib zones). `fallback_compute: true` everywhere means find-trade reproduces
-the cut locally from yfinance if a provider is unreachable. See `find-trade` for how these run.
+filter (NR-bars, fib zones). `fallback_compute: true` everywhere means discover reproduces
+the cut locally from yfinance if a provider is unreachable. See `discover` for how these run.

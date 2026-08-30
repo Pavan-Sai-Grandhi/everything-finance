@@ -1,13 +1,15 @@
 ---
 name: mf-analysis
-description: The plugin's mutual-fund authority — research or compare any Indian fund, scan a whole SEBI category down to a shortlist, AND review the funds the user holds, across two pillars: past performance (rolling returns and drawdown computed from NAV history, risk measures from the category screen) and forward-looking quality (full look-through portfolio valuation, style + drift, AMC & manager trust), read against live market context. Runs `quick` (a fast descriptive digest other skills consume) or `deep` (the full two-pillar verdict). Use whenever the user asks about a mutual fund, SIP choice, comparing funds, "is X fund good", which index/flexicap/smallcap fund to pick, whether to switch or replace a fund, or wants to review their MF portfolio — even casual phrasings like "where should my SIP go".
-argument-hint: "FUND NAME(s) / category / 'review my funds' [--quick] (e.g. 'best smallcap fund', 'Parag Parikh vs UTI Nifty 50')"
+description: The plugin's mutual-fund authority — research or compare any named Indian fund, AND review the funds the user holds, across two pillars: past performance (rolling returns and drawdown computed from NAV history, risk measures from the category screen) and forward-looking quality (full look-through portfolio valuation, style + drift, AMC & manager trust), read against live market context. Runs `quick` (a fast descriptive digest other skills consume) or `deep` (the full two-pillar verdict). Use whenever the user asks about a named mutual fund, SIP choice for a specific fund, comparing funds, "is X fund good", whether to switch or replace a fund, or wants to review their MF portfolio. Finding WHICH fund in a category to pick ("best smallcap fund", "where should my SIP go") is `discover funds` — this skill judges named funds.
+argument-hint: "FUND NAME(s) / 'review my funds' [--quick] (e.g. 'Parag Parikh vs UTI Nifty 50', 'is Quant Small Cap good')"
 allowed-tools: WebFetch, WebSearch, Read, Write, Bash, Skill, mcp__indmoney__*, mcp__plugin_everything-finance_indmoney__*, mcp__kite__*, mcp__plugin_everything-finance_kite__*, mcp__upstox__*, mcp__plugin_everything-finance_upstox__*, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*, mcp__finance-funds__*, mcp__plugin_everything-finance_finance-funds__*
 ---
 
 # Mutual Fund Analysis
 
-The single fund authority: research/compare any fund, **scan a category down to a shortlist**, and review the funds the user holds. Two pillars — **past performance** (NAV-derived) and **forward-looking quality** (look-through valuation, style, AMC/manager trust) — so a verdict reflects *potential*, not just trailing returns. `portfolio-review` defers all fund-level depth here.
+The single fund authority: research/compare any **named** fund and review the funds the user holds. Two pillars — **past performance** (NAV-derived) and **forward-looking quality** (look-through valuation, style, AMC/manager trust) — so a verdict reflects *potential*, not just trailing returns. `portfolio-review` defers all fund-level depth here.
+
+**"Which fund in a category?" is discovery, not this skill.** A category ask ("best flexicap fund", "where should my SIP go") — including an empty `/mf-analysis` — hands off to `discover funds`, which scans the category, triages, and surfaces candidates; the user's pick flows back here for the deep read. This skill runs when a fund is **named**.
 
 Read `references/reference.md` for the grounding: the Varsity performance hierarchy, the forward-looking framework, and the analytics that decide close calls (P/B ÷ ROE, earnings-distress dispersion, coverage as a gate).
 
@@ -32,22 +34,15 @@ Read `references/reference.md` for the grounding: the Varsity performance hierar
 - **`deep`** (default on direct user invocation) — the full analysis below.
 - **`quick`** (another skill requested it, or the user passed `--quick`) — descriptive only: NAV, AUM, expense vs category, returns 1/3/5Y, AUM-stability flag, and held XIRR when applicable. **No look-through fetch, no AMC research, and never a category-rank percentile.** Return the compact digest `{scheme, grade_lite, key_numbers, path}` and skip straight to Output.
 
+`discover funds` calls these two modes: `--quick` on every scanned fund to triage, `--deep` on the three it surfaces. So this skill needs no discovery logic of its own — it judges one named fund at whichever depth it is asked for.
+
 ## Workflow (`deep`)
 
-1. **Read the market first.** Call `get_market_context` (mode `quick`). Take `valuation["NIFTY SMALLCAP 250" | "NIFTY MIDCAP 150" | "NIFTY 50"]` for the tier the fund lives in, plus `relative.percentile_spread` and `market_posture`. **"Is this category worth adding to now?" and "which fund inside it is best?" are different questions** — answer them separately and say so.
+1. **Read the market first.** Call `get_market_context` (mode `quick`). Take `valuation["NIFTY SMALLCAP 250" | "NIFTY MIDCAP 150" | "NIFTY 50"]` for the tier the fund lives in, plus `relative.percentile_spread` and `market_posture`. **"Is this category worth adding to now?" and "is this specific fund good?" are different questions** — answer them separately and say so.
 
-2. **Resolve or scan.**
-   - Named funds → `resolve_fund` (prefers Direct-Growth; says so if only Regular matched).
-   - **A category question** ("best smallcap fund") → run the scan:
+2. **Resolve the fund(s).** `resolve_fund` on each named fund (prefers Direct-Growth; says so if only Regular matched) → AMFI scheme code + ISIN + Tickertape id.
 
-     ```
-     get_fund_scan(category="Small Cap Fund", top=5,
-                   market_context="artifacts/market-analysis/<date>.json")
-     ```
-
-     It applies the Varsity checklist as **hard gates** (Direct-Growth only, AUM viability floor, fund age ≥ the window being credited, TER ceiling that catches a Regular-plan figure mislabelled Direct), then scores the survivors on rolling return, worst-window return, max drawdown, Sortino, cost and cap purity — **rolling returns and drawdown computed from NAV history, never taken from a vendor field**. It returns the ranked shortlist and a tally of what was gated out; the shortlist JSON at `report_path` carries the components behind each score. `market_context` carries the cap tier's valuation stance through verbatim, so the "which fund" and "is this category worth adding to now" answers stay separate.
-
-3. **Pillar 1 — past performance.** The scan's per-fund `metrics` block *is* the record, recomputed from NAV history: daily-rolled rolling returns (mean / median / **min**) with the count of windows behind them, max drawdown, NAV span and the confidence that span earns. For a **named** fund, scan its own SEBI sub-category with `top` raised until the fund has its own row — that also gives its standing among peers. One window per call, so repeat with `window="1y" | "3y" | "5y"`. Sortino/Sharpe/alpha ride along from the category screen — compare them **within the category only**. Trailing 1/3/5Y arrive as `trailing_unscored` because their endpoints decide them. A fund whose *minimum* 5Y rolling return is positive has never lost money for any 5-year holder — that is the kind of statement to produce.
+3. **Pillar 1 — past performance.** Run `get_fund_scan` on the fund's own SEBI sub-category with `top` raised until the fund has its own row — the per-fund `metrics` block *is* the record, recomputed from NAV history: daily-rolled rolling returns (mean / median / **min**) with the count of windows behind them, max drawdown, NAV span and the confidence that span earns, plus the fund's standing among gated peers. **Rolling returns and drawdown are computed from NAV history, never a vendor field.** One window per call, so repeat with `window="1y" | "3y" | "5y"`. Sortino/Sharpe/alpha ride along from the category screen — compare them **within the category only**. Trailing 1/3/5Y arrive as `trailing_unscored` because their endpoints decide them. A fund whose *minimum* 5Y rolling return is positive has never lost money for any 5-year holder — that is the kind of statement to produce.
 
 4. **Pillar 2 — forward-looking quality.**
    - **Look-through** — `get_fund_lookthrough(mf_id=<MF_ID>)`. Returns weighted portfolio P/E, P/B, ROE, **P/B ÷ ROE**, cap-tilt by **SEBI market-cap rank**, top-5/top-10 and Herfindahl concentration, sector mix, **earnings-distress dispersion** (share of book at ROE < 8%) and coverage. **Coverage gates the numbers**: below the threshold the ratios are withheld rather than printed as fact.
@@ -76,7 +71,7 @@ Each row carries invested / current / XIRR. Cap-split comes from the look-throug
 
 ## Output
 
-Write to `artifacts/funds/<SCHEME>/YYYY-MM-DD/` (`paths.fund_dir`; for a comparison use the slug `<a>-vs-<b>`, for a category scan `<category>-scan`):
+Write to `artifacts/funds/<SCHEME>/YYYY-MM-DD/` (`paths.fund_dir`; for a comparison use the slug `<a>-vs-<b>`):
 - `mf-analysis.md` — the verdict + both-pillar metrics (the durable record `get_prior_run` finds on a re-run).
 - `<SCHEME>.report.json` beside it — the deck's render input, a **render input with no consumer**: nothing reads it back into a decision, so a missing field renders as a labelled gap, never a fabricated number. Its shape is the worked example at `skills/_report/scripts/fixtures/mf-analysis.sample.json` (12 slides: cover · coverage · identity · at-a-glance · pillar-1 record · pillar-1 vs-peers · pillar-2 look-through · pillar-2 style · AMC & manager · cost & category · verdict · gaps). Coverage gates every look-through ratio; a withheld ratio is a gap slot, not a printed number.
 - `mf-analysis.html` — the one self-contained deck, produced from that JSON:

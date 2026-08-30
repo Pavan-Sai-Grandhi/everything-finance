@@ -19,7 +19,7 @@ Distilled from Zerodha Varsity — Technical Analysis module (https://zerodha.co
 ## Working the data
 
 - **Check the live quote against the latest EOD close before you trust a level** — a divergence beyond ~1% means one of the two is stale, and a level read off a stale close is not tradeable.
-- **Indicator math is shared, not hand-rolled.** EMA/SMA/RSI/MACD/ATR/Bollinger and the candlestick patterns are defined once in `<plugin>/finance/compute/ta.py` — the same module the backtest and find-trade use, so a divergent RSI here would make the verdict inconsistent with the screen that surfaced the stock. Run it over the candles file:
+- **Indicator math is shared, not hand-rolled.** EMA/SMA/RSI/MACD/ATR/Bollinger and the candlestick patterns are defined once in `<plugin>/finance/compute/ta.py` — the same module the backtest and discover use, so a divergent RSI here would make the verdict inconsistent with the screen that surfaced the stock. Run it over the candles file:
   ```bash
   python3 - <<'PY'
   import json, sys, pandas as pd

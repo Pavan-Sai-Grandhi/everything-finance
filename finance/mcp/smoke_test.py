@@ -40,6 +40,9 @@ CASES = {
         ("get_flows", {}, ["flows"]),
         ("get_macro", {}, ["macro"]),
         ("get_market_context", {"mode": "quick"}, ["digest", "market_trend"]),
+        ("get_universe", {"name": "largecap20"}, ["symbols_count"]),
+        ("run_stock_scan", {"spec": "SPEC", "top": 3}, ["shortlist"]),
+        ("run_sector_screen", {"top": 3}, ["shortlist"]),
         ("run_strategy_screen",
          {"spec": "SPEC", "symbols": ["RELIANCE", "TCS"], "years": 2}, ["candidates"]),
         ("run_backtest",
@@ -89,12 +92,13 @@ RUNTIME_ARG = {"get_fund_holdings": "mf_id", "get_fund_lookthrough": "mf_id"}
 
 # tool -> the argument that must be a real file on disk; skipped when it is missing.
 FILE_ARG = {"run_strategy_screen": ("spec", "SPEC"), "run_backtest": ("spec", "SPEC"),
-            "check_trade": ("trade", "TRADE")}
+            "run_stock_scan": ("spec", "SPEC"), "check_trade": ("trade", "TRADE")}
 
 # The slow rungs: valuation sampling, the daily context, the spec engines, and the
 # multi-megabyte annual-report download.
 SLOW = {"get_index_valuation_history", "get_market_context", "run_strategy_screen",
-        "run_backtest", "get_fund_scan", "get_fund_lookthrough", "get_documents"}
+        "run_backtest", "run_stock_scan", "run_sector_screen", "get_fund_scan",
+        "get_fund_lookthrough", "get_documents"}
 
 
 class Client:

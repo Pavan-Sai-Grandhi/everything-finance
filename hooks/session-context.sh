@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SessionStart hook: one line of market context so date-sensitive skills
-# (find-trade, daily-brief, filings-watch) know whether NSE/BSE are trading today.
+# (discover, daily-brief, filings-watch) know whether NSE/BSE are trading today.
 # Weekday check only — exchange holidays are noted as "verify if holiday".
 
 set -u

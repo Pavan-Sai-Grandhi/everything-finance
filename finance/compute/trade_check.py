@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Re-validate an open trade against its original rationale.
 
-Given a trade-idea artifact (the YAML find-trade / strategy-manager persist) and current
+Given a trade-idea artifact (the YAML discover / strategy-manager persist) and current
 price data, this decides — deterministically — whether the trade should be HELD or EXITED
 early, and why. It is the mechanical core of the trade-tracker skill: the skill pulls live
 positions from the broker MCP, then calls this per position so the hold/exit call is

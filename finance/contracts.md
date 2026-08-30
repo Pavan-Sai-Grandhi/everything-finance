@@ -9,14 +9,14 @@ named producer and consumer. Two dependency kinds: **artifacts** (files one skil
 
 ## The data layer: one door, one transport
 
-**`finance/mcp/{market,company,funds,personal}.py` — the four servers.** The only door to decision data: 30
+**`finance/mcp/{market,company,funds,personal}.py` — the four servers.** The only door to decision data: 33
 tools over the seven finalized sources (CLAUDE.md's source table) plus their compute engines, each delegating
 to the matching `sources/` or `compute/` module and returning the shared **envelope** `{ok, source, fetched_at,
 data, gaps}`. No name appears on two servers.
 
 | server | tools |
 |---|---|
-| `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `run_strategy_screen` `run_backtest` `check_trade` `manage_alerts` `get_prior_run` |
+| `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `get_universe` `run_strategy_screen` `run_stock_scan` `run_sector_screen` `run_backtest` `check_trade` `manage_alerts` `get_prior_run` |
 | `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `run_dcf` |
 | `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
 | `finance-personal` | `run_insurance_math` |
@@ -100,8 +100,11 @@ never re-implemented in a skill:
 | module | tool | produces |
 |---|---|---|
 | `context.py` | `get_market_context` | the market-of-record digest (see *Artifact: market-context*) |
-| `screen.py` | `run_strategy_screen` | spec → shortlist with entry/stop/target/qty per candidate |
-| `backtest.py` | `run_backtest` | spec → historical expectancy, profit factor, drawdown vs buy-and-hold |
+| `screen.py` | `run_strategy_screen` | trading spec → shortlist with entry/stop/target/qty per candidate |
+| `stock_scan.py` | `run_stock_scan` | investment spec: universe ∩ quality gate → rank by momentum → top-N shortlist (no entry/exit; see *Artifact: stock-scan shortlist*) |
+| `sector_scan.py` | `run_sector_screen` | sectoral indices → RS-vs-Nifty ranked + classified → top-N (see *Artifact: sector-scan shortlist*) |
+| `relative_strength.py` | *(internal to `stock_scan`/`sector_scan`)* | windowed returns + Leading/Improving/Weakening/Lagging classification — the one RS definition |
+| `backtest.py` | `run_backtest` | trading spec → historical expectancy, profit factor, drawdown vs buy-and-hold |
 | `trade_check.py` | `check_trade` | a trade-idea artifact + live price → verdict, `unrealized_R`, exit numbers |
 | `fund_scan.py` | `get_fund_scan` | a whole SEBI sub-category → gated, scored shortlist (rolling-return math from `rolling.py`) |
 | `lookthrough.py` | `get_fund_lookthrough` | complete holdings + per-stock ratios → weighted portfolio valuation, cap tilt, concentration |
@@ -110,7 +113,7 @@ never re-implemented in a skill:
 | `alerts.py` | `manage_alerts` | the alert inbox: list / add / dismiss / snooze / sweep (see *Artifact: alert*) |
 | `insurance_math.py` | `run_insurance_math` | user-supplied figures → term cover need, health sum insured, IDV/NCB sanity, marginal IRR of continuing a policy |
 
-`test_{context,screen,backtest,trade_check,fund_scan,lookthrough,rolling,dcf,relval,insurance_math,alerts}.py`;
+`test_{context,screen,stock_scan,sector_scan,backtest,trade_check,fund_scan,lookthrough,rolling,dcf,relval,insurance_math,alerts}.py`;
 `backtest.py` from both sides — spec interpretation via `compute/strategy.py` in `test_screen.py`, and the
 Backtesting.py wiring (fill timing, cost, stop/target precedence, time-stop) in `test_backtest.py`.
 
@@ -138,6 +141,15 @@ is live/screening truth; **yfinance** is EOD-history truth. Envelope forms:
 **No indicators computed here** — callers pass `candles` to `ta.add_indicators`, so a screen and its backtest
 share one indicator-of-record; no TV indicator ingestion or library. `test_prices.py` (offline parser + reconcile fixtures).
 
+### `finance/sources/universe.py` — the universe authority
+Consumers: `get_universe`, plus `compute/{screen,stock_scan,sector_scan,backtest}.py` (every screener resolves
+its universe here — the one resolver). `resolve_symbols(name, fresh=False)` → `(symbols, gaps)` is the pure list
+resolver; `resolve(name, fresh=False)` → the envelope (`data:{name, symbols_count, universe_path, as_of}`; see
+*Artifact: universe*). Named universes (`nifty50|nifty100|nifty200|nifty500`, `microcap`, `fno`, `largecap20`)
+come from NSE's published constituent CSVs via `transport.py`, cached dated with a stale-cache fallback; a list,
+comma-string or file path is resolved locally. Holds `LARGECAP20_BASKET` and `SYMBOL_ALIASES` (the one home).
+`test_universe.py` (stubbed transport).
+
 ### `finance/sources/news.py` — company news (Google News RSS)
 Consumer: `get_news`, read by `news-scan`, `deep-analysis` (news leg), `daily-brief`. `fetch(company, ticker,
 days=60)` reads Google News RSS (the single source) → envelope `data:{company, ticker, days, count,
@@ -156,7 +168,7 @@ misattributes financials). Cached 90 days.
 
 ### `finance/sources/fundamentals.py` — Tickertape financials + the screener.in document index
 Consumers: `get_company_fundamentals` / `run_fundamental_screen`, read by `financial-analysis`,
-`valuation-analysis`, and `find-trade` / `strategy-manager` (fundamental cut). Envelope forms:
+`valuation-analysis`, and `discover` / `strategy-manager` (fundamental cut). Envelope forms:
 - `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,period_kinds,rows}, balance_sheet_10y:{…}, cash_flow_10y:{…}, quarters:{…}, shareholding:{columns,rows}, peers:[{symbol,name,sid,ttm_pe,pb}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `period_kinds` parallels `columns` (`FY`/`TTM`/`interim`). Each peer row carries its own **trailing** multiples from the same response, so the relative read needs no per-peer call; an unpublished multiple is `None`. `sections` narrows both answer and **work** (only those endpoints are called — what keeps `get_documents` to one screener fetch); a narrowed read does not populate the day cache, only a full one does.
 - `screen(query, limit=1000)` → `data:{query, count, candidates:[…]}`, biggest market cap first. `query` is `FIELD >/< VALUE` clauses joined by `AND` over Tickertape's screener field names; `>=`/`<=` and an unresolvable name **refuse the whole query** (a half-resolved query returns companies that never passed the cut).
 
@@ -242,25 +254,58 @@ under a fixed precedence.
 ---
 
 ## Artifact: strategy spec
-**Producer:** `strategy-manager` (owns the lifecycle). **Consumers:** `find-trade` via `run_strategy_screen`,
-`run_backtest` (writes back `expectancy_assumptions`), `trade-tracker` (`regime_required`). **Location:**
+**Producer:** `strategy-manager` (owns the lifecycle). **Consumers:** `discover` via
+`run_strategy_screen` (trading) or `run_stock_scan` (investment), `run_backtest` (writes back
+`expectancy_assumptions`, trading only), `trade-tracker` (`regime_required`). **Location:**
 `artifacts/state/strategies/<name>.yml` (`paths.state_dir("strategies")`). **Schema:**
 `strategy-manager/assets/strategy-spec.example.yml` (commented); seed drafts in `assets/seed-strategies/`.
+
+**`purpose`: `trading` (default) | `investment`.** A **trading** spec carries every block below and is
+validated by backtest. An **investment** spec (feeds `discover stocks --invest`) carries `universe`,
+`screening.fundamental` (a richer business-quality query), `ranking` (`metric` ∈ `return_12m | return_6m |
+rs_vs_nifty`, `top_n`) and `regime_required` **only** — it OMITS `entry`/`exit`/`sizing`/
+`expectancy_assumptions`. It is not backtested: `status` goes `draft → active` on a **completeness check**
+(universe resolvable, query fields resolve, ranking metric known), and there is no optimize loop.
+`select_strategy.py --purpose` filters by it and ranks investment specs by recency (they have no expectancy).
 
 Key blocks and who reads them:
 
 | Block | Written by | Read by | Meaning |
 |---|---|---|---|
-| `status` | strategy-manager validate/optimize | find-trade, select | `draft`→not tradeable; `active`→eligible; `inactive`→retired |
+| `status` | strategy-manager validate/optimize | discover, select | `draft`→not tradeable; `active`→eligible; `inactive`→retired |
 | `regime_required` | generate | select_strategy.py, trade-tracker | conditions checked against the live **market-context** artifact at PICK time |
-| `screening.fundamental` | generate | find-trade Stage 1 | `provider: tickertape` + `query` (Tickertape catalogue field names, `>`/`<` only) + `max_survivors` |
-| `screening.technical` | generate | find-trade Stage 2 | `provider: tradingview` (+`tradingview_filters`) or `compute` (+`compute_filters` naming `ta` features) |
+| `screening.fundamental` | generate | discover Stage 1 | `provider: tickertape` + `query` (Tickertape catalogue field names, `>`/`<` only) + `max_survivors` |
+| `screening.technical` | generate | discover Stage 2 | `provider: tradingview` (+`tradingview_filters`) or `compute` (+`compute_filters` naming `ta` features) |
 | `entry`/`exit`/`sizing` | generate | `run_strategy_screen`, `run_backtest` (both via `compute/strategy.py`) | `entry.signal` (machine trigger; else `compute_filters`); `exit`: stop (auto-floored at max(0.5·ATR, 1% price)) / target (`measured_move`\|`next_resistance`\|`none`) / min_rrr / time_stop / **`trail_atr`** (ATR trailing stop) / **`exit_signal`** (close-on-condition, entry grammar); %-risk |
 | `expectancy_assumptions` | **`run_backtest`** results, written back by strategy-manager | strategy-manager validate, select_strategy.py | `{win_rate, expectancy_R, profit_factor, n_trades, validated_by}`. strategy-manager applies the activation gate — `active` only on `expectancy_R > 0.2` over ≥~30 trades; select_strategy.py uses `expectancy_R` to rank |
 | `live_performance` | trade-tracker → optimize | select_strategy.py | realized edge; `expectancy_R` here is preferred over the backtest's when present |
 
-**Invariant:** find-trade runs a spec **only** when `status: active` AND its
+**Invariant:** discover runs a spec **only** when `status: active` AND its
 `regime_required` fits the live regime. It has no default — no fitting active spec ⇒ no trade.
+
+## Artifact: universe
+**Producer:** `get_universe` (on `sources/universe.py`). **Consumers:** `compute/{screen,stock_scan,sector_scan,
+backtest}.py` (via `resolve_symbols`). **Location:** `paths.cache_dir("universe")/<name>-<date>.txt`, one NSE
+symbol per line. The symbol list is **only ever a file** — the envelope carries `symbols_count` and
+`universe_path`, never the list inline (the holdings/NAV/candles rule). Named universes come from NSE's
+published constituent CSVs, cached dated; a failed fetch falls back to the newest cached copy as a labelled gap,
+never a fabricated list.
+
+## Artifact: stock-scan shortlist
+**Producer:** `run_stock_scan` (on `compute/stock_scan.py`). **Consumer:** `discover` (`stocks --invest`).
+**Location:** `paths.report_dir("discover")/stock-scan.json` (or `out`). **Shape:** `{as_of, purpose:
+investment, spec, ranking_metric, universe:{source, screened, in_universe, ranked, shortlisted}, gates:{query,
+max_survivors}, market_context, shortlist:[{rank, symbol, metric_value, returns, rs_vs_nifty}], report_path}`.
+The screen ∩ universe is ranked by `ranking.metric` (`return_12m|return_6m|rs_vs_nifty`) and capped to top N;
+**no entry/exit/sizing** — this chooses what to deep-dive, and `deep-analysis quick` judges the survivors.
+
+## Artifact: sector-scan shortlist
+**Producer:** `run_sector_screen` (on `compute/sector_scan.py`). **Consumer:** `discover` (`sectors --invest`),
+`sector-analysis` (reads a sector's classified RS row instead of re-deriving it). **Location:**
+`paths.report_dir("discover")/sector-scan.json` (or `out`). **Shape:** `{as_of, metric, ranking_rule,
+shortlist:[{rank, sector, ticker, rs_vs_nifty:{1m,3m,6m}, rs_class, returns}], report_path}` for `rs_vs_nifty`
+(the default), or `[{rank, sector, pe, pe_percentile}]` for `index_valuation_percentile`. RS is the shared
+`compute/relative_strength.py` primitive, so a sector's RS and a stock's RS agree.
 
 ## Artifact: market-context
 **Producer:** `market-analysis` — calls `get_market_context` (`finance/compute/context.py`) and persists the
@@ -275,15 +320,15 @@ transition history read, so the day's artifact is the shared market-of-record.
 
 | Field | Meaning | Read by |
 |---|---|---|
-| `market_trend` | `up`\|`range`\|`down` (Nifty vs 50/200-EMA + slope) | select_strategy.py, trade-tracker, find-trade, daily-brief |
-| `market_posture` | `risk_on`\|`neutral`\|`risk_off` — the sizing gate | find-trade (size), deep-analysis (portfolio-manager sizing), daily-brief, trade-tracker |
+| `market_trend` | `up`\|`range`\|`down` (Nifty vs 50/200-EMA + slope) | select_strategy.py, trade-tracker, discover, daily-brief |
+| `market_posture` | `risk_on`\|`neutral`\|`risk_off` — the sizing gate | discover (size), deep-analysis (portfolio-manager sizing), daily-brief, trade-tracker |
 | `rationale` | one line explaining the posture | daily-brief (the net read) |
 | `trend_detail.above_ema200` | Nifty vs 200-EMA | select_strategy.py (`nifty_above: ema200`) |
-| `trend_detail.{close,ema50,ema200,ema50_rising,pct_from_52w_high}` | trend context | daily-brief, find-trade |
-| `volatility.vix` | India VIX level | select_strategy.py (`vix_max`), find-trade sizing |
+| `trend_detail.{close,ema50,ema200,ema50_rising,pct_from_52w_high}` | trend context | daily-brief, discover |
+| `volatility.vix` | India VIX level | select_strategy.py (`vix_max`), discover sizing |
 | `volatility.{percentile_1y,percentile_5y,band}` | where that VIX sits historically | deep-analysis sizing, daily-brief |
 | `breadth.pct_sectors_above_ema50` | coarse 10-sector count | select_strategy.py (`breadth_min_pct`) — **name frozen** |
-| `breadth.{pct_above_sma50,pct_above_sma200,pct_near_52w_high,pct_near_52w_low,universe}` | real stock-level participation over the top 500 | find-trade, daily-brief, sector-analysis |
+| `breadth.{pct_above_sma50,pct_above_sma200,pct_near_52w_high,pct_near_52w_low,universe}` | real stock-level participation over the top 500 | discover, daily-brief, sector-analysis |
 | `valuation.<index>.{pe,pe_pctile,pb,pb_pctile,dy,dy_pctile,stance,blended_pctile}` | cap-tier valuation vs that index's own 10y history, for `NIFTY 50` / `NIFTY MIDCAP 150` / `NIFTY SMALLCAP 250` | **mf-analysis** (is the category worth adding to), portfolio-review (smallcap-sleeve flag), deep-analysis (valuation leg context) |
 | `relative.{smallcap_vs_largecap_pb_ratio,percentile_spread,read}` | cap-tier richness against each other | mf-analysis, portfolio-review |
 | `flows.{FII,DII}.{buy_cr,sell_cr,net_cr}`, `flows_session` | institutional flow, ₹ Cr | daily-brief |
@@ -298,7 +343,7 @@ renaming one silently breaks every spec's `regime_required`. And the posture is 
 the moment wealth-manager reads market context).
 
 ## Artifact: trade-idea
-**Producers:** `find-trade` (on confirmation), `trade-tracker` (capturing a position with no rationale).
+**Producers:** `discover` (on confirmation), `trade-tracker` (capturing a position with no rationale).
 **Consumers:** `trade-tracker` + `check_trade` (re-validate); `strategy-manager optimize`
 (`aggregate_performance.py`) reads closed ideas' `result` block. **Location:**
 `artifacts/state/trades/<SYMBOL>-<YYYY-MM-DD>.yml` (`paths.state_dir("trades")`; SYMBOL is the NSE symbol, no
@@ -307,8 +352,8 @@ the moment wealth-manager reads market context).
 ```yaml
 symbol: TESTCO                 # NSE trading symbol
 exchange: NSE
-source_skill: find-trade       # find-trade | trade-tracker
-strategy: nifty500-momentum-swing   # link back to the spec — never null from find-trade
+source_skill: discover       # discover | trade-tracker
+strategy: nifty500-momentum-swing   # link back to the spec — never null from discover
 created: 2026-01-01
 status: idea                   # idea | open | closed
 setup: range-breakout
@@ -360,7 +405,7 @@ here summarises, scores or judges; every verdict belongs to the leg reading the 
 ## Convention: leg digest (deep-analysis IO hygiene)
 Every forked leg **writes its full report to its file** and **returns only a compact digest** — its
 machine-readable top block plus the file `path`, never the body. Downstream agents receive **paths** and Read
-what they need, so the orchestrator never re-carries six full reports. A lens leg is a **skill run inside a
+what they need, so the orchestrator never re-carries the full reports. A lens leg is a **skill run inside a
 profile agent** (`terminal-analyst`, `field-analyst`, `desk-analyst`): the profile carries no method — the
 skill owns the block below, the profile returns it unchanged plus `path`. Debate roles are named agents owning
 their own blocks.
@@ -373,6 +418,7 @@ their own blocks.
 | `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, **`pe_basis`**, **`eps_adjustments`**, `peg`, `peer_median_pe`, **`peers_priced`**, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
 | `news-scan` | `news-block` | `sentiment_score` (−2…+2), `confidence`, `recurring_theme`, `next_event`, `axis: growth_durability` |
 | `sector-analysis` | `sector-block` | `sector`, `rs_class`, `stance`, `confidence`, `focus_position` |
+| `deep-analysis` (`quick` mode) | `quick-block` | `verdict ∈ {keep, reject}`, `score` (0–100), `lean` (one line), `flags`, `reasons` — the elimination screen, from structured data only (no documents). Discovery's Stage B reads this. |
 | `contest-researcher` | `contest-block` | `lean ∈ {bull, bear, genuinely split}`, `axis`, one-line `bull`, one-line `bear` |
 | `bull-researcher` / `bear-researcher` | `debate-block` | `axis`, `claim`, `conceded`, `new_evidence` |
 | `portfolio-manager` | `verdict-block` | `call`, `conviction`, **`value_stance`**, **`action_driver`**, `invalidation`, `review`, `integrity_gate`, `integrity_partial`, **`evidence`**, **`weakest_load_bearing_input`** |
@@ -411,10 +457,16 @@ overwrite each other, so each mode builds on its own history. `get_prior_run(ski
 `_STOCK_ARTIFACT` is the authority on the names. **Consumer:** `trade-tracker` (reads the `.report.json` as a
 rationale source when no trade-idea artifact exists).
 
-Work papers present depend on **mode**: `quick` → `technical, financials, contest, verdict`; `standard`/`deep`
-→ `technical, financials, news, sector, bull-r1…N, bear-r1…N, verdict`; `fundamentals` → `financials` only.
-The Stop hook archives the `artifacts/tmp/staging/<TICKER>/` tree plus the staged deck + render input (`.report.html`
-+ `.report.json`, or the `.fundamentals.` pair) and sends the brief from `coverage.brief`.
+The modes differ by **amount of judgment**: `quick` is one consolidated agent (the elimination screen, structured
+data only) → one `quick.md` under the run-day folder, **no deck**; `standard` → four legs (financials,
+management, valuation, news) + one contest pass → verdict; `deep` → all six legs + multi-round bull/bear →
+verdict; `fundamentals` → financials, management, valuation, no debate. Staged work papers (`artifacts/tmp/
+staging/<TICKER>/agents/`) by mode: `standard` → `financials, news, contest, verdict`; `deep` → `technical,
+financials, news, sector, bull-r1…N, bear-r1…N, verdict`; `fundamentals` → `financials` (management and
+valuation write to the run-day folder as `management.md` / `dcf.md`). The Stop hook archives the
+`artifacts/tmp/staging/<TICKER>/` tree plus the staged deck + render input (`.report.html` + `.report.json`, or
+the `.fundamentals.` pair) and sends the brief from `coverage.brief`; **`quick` stages no deck, so it triggers
+no archive or Telegram send.**
 
 The valuation and management legs write **into the run-day folder**, not staging: `dcf.md` + `dcf.json` and
 `management.md`. The valuation report is the **multi-method** read — intrinsic DCF range with a DCF-confidence
@@ -447,14 +499,15 @@ browser-gated 1620px overflow).
 **Consumer:** `deep-analysis`'s sector leg. **Location:** `state/sectors/<slug>.md` (`paths.sector_cache_path`)
 — durable, not dated, overwritten on refresh. **Fields:** frontmatter `generated: YYYY-MM-DD` + `rs_class:`;
 body = the sector-level read (RS vs Nifty, cycle, KPI snapshot, tailwinds/headwinds, leaders/laggards, stance),
-**not** the focus-stock overlay (computed fresh). **Freshness:** `paths.sector_cache_age_days(sector)` `>30` or
+**not** the focus-stock overlay (computed fresh). The **RS numbers come from `run_sector_screen`**
+(`compute/sector_scan.py`), not re-derived in the skill. **Freshness:** `paths.sector_cache_age_days(sector)` `>30` or
 `None` ⇒ stale ⇒ refresh + a `sector_refresh_due` alert (`dedup_key: sector-refresh-<sector>`, due +30d). Dated
 trail under `sector-analysis/<date>/`.
 
 ## Artifact: alert
 **Producers:** `trade-tracker` (`price_cross`/`time_stop`/`regime_change`), `filings-watch` (`filing_act_on`),
 `strategy-manager` (`revalidate_due`), `deep-analysis` (`reanalyze_due` + `price_cross` + `opportunity`),
-`find-trade` (`price_cross` + `opportunity`), `market-analysis` (`regime_change`), `portfolio-review`
+`discover` (`price_cross` + `opportunity`), `market-analysis` (`regime_change`), `portfolio-review`
 (`rebalance_due`), `mf-analysis` (`sip_due`), `sector-analysis`/`deep-analysis` (`sector_refresh_due`),
 `alert-manager` (manual). **Consumer:** `daily-brief` (surfaces, recommends — never auto-runs); `alert-manager`
 curates. **Schema/logic:** `finance/compute/alerts.py`. **Location:** one file per alert at

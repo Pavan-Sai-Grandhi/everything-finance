@@ -3,7 +3,7 @@
 
 Validates any STRATEGY SPEC, not a hardcoded archetype: entry, stop, target, time-stop and
 sizing all come from the spec via `finance/compute/strategy.py` — the same module the live
-find-trade screen uses, so a new strategy is backtestable with no per-archetype code here.
+discover screen uses, so a new strategy is backtestable with no per-archetype code here.
 
 Engine: Backtesting.py (MIT). Its defaults give the discipline a real-money test needs: no
 lookahead (signal on bar t -> fill at t+1 open) and pessimistic intrabar exits (both stop
@@ -32,29 +32,18 @@ CAVEATS = [
     "or discretionary S/R reads",
 ]
 
-# 20 liquid large-caps — NOT the full Nifty 50; reports must call it a 20-stock basket
-LARGECAP20_BASKET = [
-    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "BHARTIARTL", "SBIN",
-    "LT", "ITC", "HINDUNILVR", "MARUTI", "M&M", "SUNPHARMA", "TITAN",
-    "BAJFINANCE", "AXISBANK", "KOTAKBANK", "ASIANPAINT", "TATASTEEL", "NTPC",
-]
-
-# Tickers whose yfinance symbol changed (demergers/renames); extend as discovered.
-SYMBOL_ALIASES = {
-    "TATAMOTORS": "TATAMOTORS",  # post-2025 demerger: verify CV/PV split symbol on yfinance
-}
-
 # Per-side commission; ~0.00125/side ≈ 0.25% round trip (all-in charges + slippage).
 COMMISSION_PER_SIDE = 0.00125
 
 
 def load_ohlcv(symbol, years, cache_dir):
     """Daily OHLCV via the shared loader, resolving demerger/rename aliases."""
-    return ta.load_ohlcv(SYMBOL_ALIASES.get(symbol, symbol), years, cache_dir)
+    from finance.sources import universe
+    return ta.load_ohlcv(universe.SYMBOL_ALIASES.get(symbol, symbol), years, cache_dir)
 
 
 def strategy_load(path):
-    """Load a strategy spec YAML (shares find-trade's loader convention)."""
+    """Load a strategy spec YAML (shares discover's loader convention)."""
     yaml = ta._need("yaml", "pyyaml")
     with open(path) as f:
         return yaml.safe_load(f)
@@ -150,12 +139,10 @@ def summarize(trades, capital):
 
 
 def resolve_universe(symbols):
-    """The test universe: a list, a comma-separated string, or `largecap20`."""
-    if isinstance(symbols, str):
-        if symbols.strip().lower() == "largecap20":
-            return list(LARGECAP20_BASKET)
-        symbols = symbols.split(",")
-    return [str(s).strip().upper() for s in (symbols or []) if str(s).strip()]
+    """The test universe — list, comma-string, file path or named universe (including
+    `largecap20`) — resolved by the one authority in `sources/universe.py`."""
+    from finance.sources import universe
+    return universe.resolve_symbols(symbols)[0]
 
 
 def run(spec, symbols, years=5, capital=500000, risk_pct=None, out=None):

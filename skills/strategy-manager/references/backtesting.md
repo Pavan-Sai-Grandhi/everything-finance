@@ -27,7 +27,7 @@ Sources (fetched 2026-06-10): Varsity *Trading Systems*; QuantInsti backtesting 
 
 The engine is **strategy-agnostic**: entry, stop, target, time-stop and sizing all come from the
 spec. **Backtesting.py** runs the simulation, `finance/compute/strategy.py` turns the spec into
-entry/stop/target/size — the *same* module find-trade's live screen uses, so a stock cannot pass
+entry/stop/target/size — the *same* module discover's live screen uses, so a stock cannot pass
 the live screen on logic the backtest computes differently — and **TA-Lib** (via
 `finance/compute/ta.py`) computes the indicators (EMA is SMA-seeded, ATR is Wilder).
 

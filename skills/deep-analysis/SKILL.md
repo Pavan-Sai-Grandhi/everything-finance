@@ -2,10 +2,12 @@
 name: deep-analysis
 description: Full multi-agent investment debate on a single Indian stock — six lenses (technical; the numbers, with the annual report and concall read directly; management integrity & skill; valuation triangulating a story-driven DCF with relative multiples; news sentiment; sector context), then bull vs bear researchers debate, and a portfolio-manager issues the verdict, synthesized into one readable report deck. Use whenever the user asks to analyze, research, deep-dive, evaluate, or form a view on a specific ticker or company name ("should I buy X?", "what do you think of Tata Motors?"), even if they don't say "deep analysis". Its fundamentals-only mode is also the home of the fundamental read without the debate — "are the fundamentals good?", "is X fundamentally sound?", "fundamental analysis of Y".
 argument-hint: "TICKER (NSE symbol or company name) [--quick | --deep | --fundamentals]"
-allowed-tools: Read, Write, Bash, Agent, mcp__indmoney__*, mcp__plugin_everything-finance_indmoney__*, mcp__kite__*, mcp__plugin_everything-finance_kite__*, mcp__upstox__*, mcp__plugin_everything-finance_upstox__*, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
+allowed-tools: Read, Write, Bash, Agent, Skill, mcp__indmoney__*, mcp__plugin_everything-finance_indmoney__*, mcp__kite__*, mcp__plugin_everything-finance_kite__*, mcp__upstox__*, mcp__plugin_everything-finance_upstox__*, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
 # Deep Stock Analysis — multi-agent debate
+
+**No ticker given?** Deep-analysis reads one named stock. If the user invoked it with no company or ticker ("analyze a good stock", "find me something to research"), hand off to `discover stocks --invest` — it screens, triages, and surfaces candidates, then the user's pick flows back here for the full read. Do not guess a stock.
 
 Read `references/reference.md` — it owns how the six lenses combine into one verdict and the debate protocol. Resolve the argument to an NSE symbol first; `get_company_fundamentals` on the candidate symbol confirms the company name.
 
@@ -15,12 +17,16 @@ Read `references/reference.md` — it owns how the six lenses combine into one v
 
 **Resolve the mode before anything else**, then size the rest of the run to it.
 
+The tiers differ by **amount of judgment** — how much of the argument is worth building for the question being asked.
+
 | Mode | Primary documents | Legs | Debate | ~Agents |
 |---|---|---|---|---|
-| `quick` | not fetched — ratios and CMP only | technical, financials, valuation | 1 `everything-finance:contest-researcher` (single pass) | ~4 |
-| `standard` *(default)* | warmed by you in phase 0 | all 6 | up to 2 rounds, the helper decides | ~7–8 |
-| `deep` | warmed by you in phase 0 | all 6 | up to 3 rounds, the helper decides | ~12 |
+| `quick` | none — structured data only | **1 consolidated agent** (the elimination screen) | none | 1 |
+| `standard` *(default)* | warmed by you in phase 0 | financials, management, valuation, news | 1 `everything-finance:contest-researcher` (single pass) | ~5–6 |
+| `deep` | warmed by you in phase 0 | all 6 (adds technical, sector) | up to 3 rounds, the helper decides | ~11 |
 | `fundamentals` | warmed by you in phase 0 | financials, management, valuation | none | 3 |
+
+`quick` is the **elimination screen** — one agent reading structured data only, applying the reject checklist (bad business / fake earnings / overpriced / crooked management) and returning keep/reject + a rank score + a one-line balance lean. It is discovery's per-name Stage B and a fast standalone take; it fetches no documents and renders no deck. `standard` is the full **investment** judgment — business, management, value and red-flag news, since timing (technical) and context (sector) do not *eliminate* a stock. `deep` is where the chart, the sector and the iterative bull/bear debate re-enter, for the finalists that earned the conviction.
 
 Resolution — the two reads the helper can't make, then the helper itself, which decides first-match-wins:
 
@@ -37,7 +43,7 @@ Record `{mode, reason, gaps}` — the synthesis reports the first two and folds 
 
 ## Orchestration
 
-Four phases. Phase 0 is two calls you make yourself; phase 1 is all six legs in **one** parallel wave; phase 2 is the debate; phase 3 decides. **The fan-out scales to the mode** — see the per-mode column.
+Four phases. Phase 0 is two calls you make yourself; phase 1 is the legs in **one** parallel wave; phase 2 is the debate; phase 3 decides. **The fan-out scales to the mode** — see the per-mode column. `quick` skips phases 0–2's fan-out entirely and runs a single agent (*Debate — by mode*).
 
 **Your context is the run's largest single cost**, because every turn re-reads all of it. Two rules keep it small. The phase table below **is** the plan — do not mirror it into a task list. And **a wave is launched in one message that ends the turn**: issue the `Agent` calls, say in one line what is running, and stop there. The harness re-invokes you when an agent completes, so there is nothing to wait for and nothing to poll — a filler command, a no-op shell call and a scheduled wakeup each buy a full context re-read and no information. An arriving notification is likewise not a cue to write: summarise nothing until the wave is complete, then move straight to the next phase.
 
@@ -51,20 +57,22 @@ Four phases. Phase 0 is two calls you make yourself; phase 1 is all six legs in 
 
 Fetch-once is a **cache guarantee, not an ordering rule**: `get_documents` caches a converted document permanently and `get_company_fundamentals` caches for the day, so every leg that calls them lands on the same bytes whatever order it ran in. That is why phase 1 is a single wave.
 
-In `quick`, skip the document warm-up and tell each leg `documents: none (quick — ratios and CMP only)`; it labels every check that needed a primary document as a gap. The valuation leg is the one exception — the annual report's tax note is its only acceptable source for `tax_rate`, so it pulls that one document rather than working from an unsourced rate.
+In `quick` there is no phase-0 warm-up and no leg fan-out at all — the single consolidated agent (below) reads structured data only. Skip phase 0's document and peer calls; still fetch `get_market_context(mode="quick")` for the cap-tier stance the agent weighs.
 
-### Phase 1 — six legs, one parallel wave
+### Phase 1 — the legs, one parallel wave
 
 Each leg is a **skill run inside a generic profile agent** — issue every `Agent` call in one message. The dispatch names the skill, its mode where the skill has one, the output path, the ticker, and the leg's inputs.
 
+`quick` runs no legs — its one consolidated agent is in *Debate — by mode*. This wave is `standard` (4 legs), `deep` (6) or `fundamentals` (3).
+
 | Leg skill | Profile | Inputs beyond the ticker | Modes |
 |---|---|---|---|
-| `technical-analysis` | `everything-finance:terminal-analyst` | — (it pulls its own candles) | quick, standard, deep |
-| `financial-analysis` | `everything-finance:terminal-analyst` | company name + the document `text_path`s and `outline`s | all |
-| `valuation-analysis` | `everything-finance:terminal-analyst` | the document `text_path`s and `outline`s, the peer list, + the cap-tier `valuation.stance` as context | all |
-| `sector-analysis` (mode `single-sector`) | `everything-finance:terminal-analyst` | the sector, the ticker **as focus stock**, the peer list, the cached sector body when fresh (see *Sector leg*) | standard, deep |
+| `financial-analysis` | `everything-finance:terminal-analyst` | company name + the document `text_path`s and `outline`s | standard, deep, fundamentals |
+| `valuation-analysis` | `everything-finance:terminal-analyst` | the document `text_path`s and `outline`s, the peer list, + the cap-tier `valuation.stance` as context | standard, deep, fundamentals |
 | `management-analysis` | `everything-finance:field-analyst` | company name + the document `text_path`s and `outline`s | standard, deep, fundamentals |
 | `news-scan` | `everything-finance:field-analyst` | company name | standard, deep |
+| `technical-analysis` | `everything-finance:terminal-analyst` | — (it pulls its own candles) | deep |
+| `sector-analysis` | `everything-finance:terminal-analyst` | the sector, the ticker **as focus stock**, the peer list, the cached sector body when fresh (see *Sector leg*) | deep |
 
 The financials leg reports the earnings base (`clean_eps`, `eps_adjustments`) and the valuation leg strikes its multiples on it. They run in the same wave, so the valuation leg derives its own adjustment from the same published rows; where the two disagree, the synthesis names both and says which the verdict used.
 
@@ -78,21 +86,24 @@ If phase 0 or any leg fails, state the gap and continue; the portfolio-manager w
 
 | Phase | Agent | Input | Modes |
 |---|---|---|---|
-| 2 | `everything-finance:contest-researcher` | the leg report **paths** (technical, financials, valuation) | quick |
-| 2 | `everything-finance:bull-researcher` / `everything-finance:bear-researcher` | the phase-1 report **paths** (round 1); the opposing side's previous-round report, its own, the round number and the helper's `directive` (round r>1) | standard, deep |
-| 3 | `everything-finance:portfolio-manager` | its **output path** (`verdict.md`), the leg report **paths**, the full debate transcript paths, `position` (from step 2's broker check: `{held, qty, avg_cost, unrealised_pct}`), `debate` (`{rounds_run, stopped_because, engaged}`) and the market context — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level | quick, standard, deep |
+| 1+2 | `everything-finance:terminal-analyst` (one agent, the elimination screen) | the ticker; the cap-tier `valuation.stance` from phase 0 | quick |
+| 2 | `everything-finance:contest-researcher` | the leg report **paths** (financials, management, valuation, news) | standard |
+| 2 | `everything-finance:bull-researcher` / `everything-finance:bear-researcher` | the phase-1 report **paths** (round 1); the opposing side's previous-round report, its own, the round number and the helper's `directive` (round r>1) | deep |
+| 3 | `everything-finance:portfolio-manager` | its **output path** (`verdict.md`), the leg report **paths**, the debate transcript paths, `position` (from step 2's broker check: `{held, qty, avg_cost, unrealised_pct}`), `debate` (`{rounds_run, stopped_because, engaged}`) and the market context — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level | standard, deep |
 
 ## Debate — by mode
 
 Phase 2's shape depends on the resolved mode.
 
-**`quick` — single-pass contest.** Fork one `everything-finance:contest-researcher` with the three leg paths. It reads them, writes `contest.md` (strongest bull case, strongest bear case, balance-of-evidence lean), and returns the digest. No bull/bear loop. If its lean is **`genuinely split`**, the synthesis appends a one-line suggestion to re-run `standard`/`deep` — it does **not** auto-escalate (the user chose quick).
+**`quick` — one consolidated agent, no debate.** Fork a single `everything-finance:terminal-analyst` running `deep-analysis` in a structured-data-only pass: it reads `get_company_fundamentals` (cash quality — CFO vs PAT, accruals, debt/interest cover), `get_stock_ratios` (multiples) and `get_shareholding` (pledge, holding trend, remuneration), **fetches no documents**, applies the reject checklist (bad business / fake earnings / overpriced / crooked management), and returns **keep/reject + a rank score (0–100) + a one-line balance lean**. No leg fan-out, no contest, no portfolio-manager, no deck. This is discovery's Stage B and the fast standalone take. Its report is written to `artifacts/stocks/<TICKER>/YYYY-MM-DD/quick.md`; you return the digest and the path.
 
-**`standard` and `deep` — round 1, then the helper decides.** Fork `everything-finance:bull-researcher` and `everything-finance:bear-researcher` in parallel (round 1) from the phase-1 paths. After every round, write each side's `debate-block` fields to a small JSON and run:
+**`standard` — single contest pass → verdict.** After the four legs (financials, management, valuation, news), fork one `everything-finance:contest-researcher` with those four paths. It writes `contest.md` (strongest bull case, strongest bear case, balance-of-evidence lean) and returns the digest — one pass, no bull/bear loop. Then the `portfolio-manager` issues the verdict. If the contest lean is **`genuinely split`**, the synthesis appends a one-line suggestion to re-run `deep` — it does not auto-escalate.
 
-`python3 <plugin>/skills/deep-analysis/scripts/escalation.py --bull <bull-rN.json> --bear <bear-rN.json> --mode <standard|deep> --round <N>` → `{escalate, reason, directive, gaps}`
+**`deep` — round 1, then the helper decides.** Fork `everything-finance:bull-researcher` and `everything-finance:bear-researcher` in parallel (round 1) from the six phase-1 paths. After every round, write each side's `debate-block` fields to a small JSON and run:
 
-It is the source of truth for both modes and it caps the rounds itself (standard 2, deep 3); the reference's § "Debate protocol" owns when a further round is worth running. **Put `directive` in both round prompts verbatim** — it names what that round is for, and the researchers act on it.
+`python3 <plugin>/skills/deep-analysis/scripts/escalation.py --bull <bull-rN.json> --bear <bear-rN.json> --mode deep --round <N>` → `{escalate, reason, directive, gaps}`
+
+It caps the rounds itself (deep 3); the reference's § "Debate protocol" owns when a further round is worth running. **Put `directive` in both round prompts verbatim** — it names what that round is for, and the researchers act on it.
 
 **Round r > 1:** re-fork each side with its own round r-1 report, the *other* side's round r-1 report, the directive, and its round number. Each must add new load-bearing evidence, explicitly concede, or report `new_evidence: false` — **which is a valid, debate-ending turn**. A side with nothing new says so; it does not manufacture a point to keep the loop alive.
 
@@ -117,11 +128,13 @@ The sector body (RS, KPIs, tailwinds/headwinds, leaders/laggards, stance) is cac
 
 ## Synthesize — one forked `report-writer`
 
+**`quick` skips synthesis entirely** — its one agent already wrote `quick.md`, and there is no deck. Return the keep/reject verdict, the rank score and the one-line lean in chat, plus the `quick.md` path. Everything below is `standard` / `deep` / `fundamentals`.
+
 The deck is the deliverable; **there is no markdown report.** The work papers are the legs' own output; you do **not** write them, and you do **not** read them to build the deck. Fork one `everything-finance:report-writer` with the fixture path (the worked shape example), the output path, the work-paper paths, and the run facts only you hold:
 
 `ticker`, company, date, CMP · `mode` + `MODE_REASON` · `debate` (`rounds_run`, `stopped_because`, `engaged`) · `agent_count` · the prior-run path when `get_prior_run` found one · the gaps you recorded yourself (the broker check, a failed leg, a skipped phase-0 call).
 
-It reads the papers in its own context, authors the deck's **render projection** — a single `.report.json` — and returns the path. Six leg reports, a multi-round transcript and a verdict never enter your context at once — that is the point of the fork, so do not read them "to check" and do not ask it for the body.
+It reads the papers in its own context, authors the deck's **render projection** — a single `.report.json` — and returns the path. The leg reports, the debate transcript and the verdict never enter your context at once — that is the point of the fork, so do not read them "to check" and do not ask it for the body.
 
 Output path: `artifacts/tmp/staging/<TICKER>.report.json` — in `fundamentals`, `artifacts/tmp/staging/<TICKER>.fundamentals.report.json` (`paths.tmp_dir("staging")`). Fixture: `skills/_report/scripts/fixtures/deep-analysis.sample.json`, the worked example whose shape the projection mirrors slide-for-slide; its `finance/contracts.md` → *Artifact: report projection* entry owns the field list.
 
@@ -150,6 +163,6 @@ On a completed analysis, write watch-items for `daily-brief` (set `dedup_key` so
 
 - **`reanalyze_due`** — a date reminder to revisit the thesis (`trigger: {due: <today + N days>}`, N from the verdict's review cadence; `subject: {type: stock, id: <TICKER>}`, `created_by: deep-analysis`, `severity: watch`, `action.suggest: "/deep-analysis <TICKER>"`, `dedup_key: reanalyze-<TICKER>`).
 - **`price_cross` invalidation** — the PM's invalidation level as a cheap trigger (`trigger: {metric: close, op: "<", level: <invalidation>}` for a long thesis; `severity: act`, `action.text` = "thesis invalidation level", `dedup_key: invalidate-<TICKER>`).
-- On a **BUY** verdict, also raise an **`opportunity`** alert (the vetted feed daily-brief reads): `severity: watch`, `action.text` = the one-line thesis, `action.suggest: "/find-trade"` or `/trade-tracker <TICKER>`, `dedup_key: opp-<TICKER>`.
+- On a **BUY** verdict, also raise an **`opportunity`** alert (the vetted feed daily-brief reads): `severity: watch`, `action.text` = the one-line thesis, `action.suggest: "/discover"` or `/trade-tracker <TICKER>`, `dedup_key: opp-<TICKER>`.
 
 In `fundamentals` only `reanalyze_due` applies — the other two need the portfolio-manager's verdict.

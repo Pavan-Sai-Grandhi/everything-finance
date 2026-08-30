@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the find-trade screen engine. No network."""
+"""Offline tests for the discover screen engine. No network."""
 import os
 import sys
 
@@ -193,6 +193,25 @@ def test_run_envelope_and_report_file():
         written = json.load(fh)
     check("the written report keeps every rejection and its reason",
           written["rejected"][0]["why"] == ["Close > ema50"], written["rejected"])
+
+
+def test_run_falls_back_to_spec_universe_source():
+    """With no symbols passed, run resolves the spec's own universe.source."""
+    import tempfile
+    seen = {}
+    orig_load, orig_compute = screen.load_spec, screen.screen_compute
+    screen.load_spec = lambda path: {"name": "s", "universe": {"source": "AAA,BBB"}}
+
+    def _capture(syms, *a, **k):
+        seen["syms"] = syms
+        return {"candidates": [], "rejected": [], "data_gaps": []}
+    screen.screen_compute = _capture
+    try:
+        screen.run("spec.yml", out=os.path.join(tempfile.mkdtemp(), "s.json"))
+    finally:
+        screen.load_spec, screen.screen_compute = orig_load, orig_compute
+    check("run resolves the spec's universe when no symbols are passed",
+          seen["syms"] == ["AAA", "BBB"], str(seen))
 
 
 def test_run_with_no_candidates_is_a_labelled_gap():

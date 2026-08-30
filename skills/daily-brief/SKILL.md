@@ -21,7 +21,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
   (pass only the files for sources that are connected; add `--portfolio <watchlist.json>` to fold the hand-maintained positions in as the last fallback). The envelope's `data.positions` give symbol / qty / avg / ltp / pnl for the position-health section — **XIRR is available but not surfaced here** (depth belongs to wealth-manager / portfolio-review). `source` and `gaps` tell you which source won and what was absent. If no source is connected, build the brief without the position sections and suggest connecting one.
 - **Watchlist + open positions (fallback / supplement)** — the managed list at `paths.watchlist_path()` (`artifacts/state/watchlist.json`); its `positions` block is also the `--portfolio` fallback the resolver folds in when no live source is connected. Shape:
   ```json
-  {"watchlist": [{"ticker": "TICKER", "added": "YYYY-MM-DD", "source": "find-trade", "note": "..."}],
+  {"watchlist": [{"ticker": "TICKER", "added": "YYYY-MM-DD", "source": "discover", "note": "..."}],
    "positions": [{"ticker","entry","sl","target","qty","entry_date"}]}
   ```
   `entry_date` (YYYY-MM-DD) enables the STALE check. Missing file + no broker → build the brief without those sections and suggest creating one once. Renamed/demerged tickers that 404: report "ticker not found — possibly renamed (corporate action?)", don't silently drop.
@@ -39,7 +39,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
    4. For `{check: …}` alerts, print the exact `action.suggest` command for the user — **never auto-run it.**
    5. Lead with anything at `severity: act`. Curating these (dismiss/snooze) is the `alert-manager` skill's job; here you only surface.
 5. **Opportunities** — high-conviction *new* ideas (not already held or on the watchlist), **strictly capped to avoid noise**:
-   - **Vetted** (≤ 2) — from the alert inbox: `opportunity` alerts (`find-trade` candidate off an active strategy, a `deep-analysis` BUY verdict, a sector leader). Show source + one-line basis + the command to act.
+   - **Vetted** (≤ 2) — from the alert inbox: `opportunity` alerts (`discover` candidate off an active strategy, a `deep-analysis` BUY verdict, a sector leader). Show source + one-line basis + the command to act.
    - **News-flagged, unvetted** (≤ 1) — at most one stock the morning's news strongly flags, **labelled "unvetted"** with a `/deep-analysis <T>` suggestion to confirm. Never present it as a signal.
    - Dedup against holdings, the watchlist, and yesterday's brief. If nothing clears the bar, print "no new opportunities — staying patient" (this is the correct, common case).
 6. **Watchlist & holdings — filings & news**: for each watchlist ticker **and each resolved holding** (the equity slice from `holdings.py`), surface what's material from two sources:

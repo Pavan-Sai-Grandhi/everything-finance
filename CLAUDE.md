@@ -23,12 +23,12 @@ India-focused personal financial intelligence. These rules bind every skill and 
 | **TradingView** scanner | live quote, technical screen, breadth | `get_quote`, `run_technical_screen`, `get_breadth` |
 | **Yahoo** (yfinance) | EOD OHLCV, sector history, macro | `get_history`, `get_macro` |
 | **screener.in** | annual-report and concall document index | `get_documents`, `get_company_fundamentals` (`documents` section only) |
-| **NSE** | index valuation (live + historical), FII/DII flows, announcements, corporate actions | `get_indices`, `get_index_valuation_history`, `get_flows`, `get_filings`, `get_shareholding`, `get_corporate_actions` |
+| **NSE** | index valuation (live + historical), FII/DII flows, announcements, corporate actions, index-constituent universes | `get_indices`, `get_index_valuation_history`, `get_flows`, `get_filings`, `get_shareholding`, `get_corporate_actions`, `get_universe` |
 | **Tickertape** | company financials, fundamental screen, fund category screen, **complete** fund holdings, per-stock ratios | `get_company_fundamentals`, `run_fundamental_screen`, `screen_funds`, `get_fund_holdings`, `get_stock_ratios` |
 | **AMFI** (registry + mfapi.in NAV mirror) | fund identity, NAV history, SEBI market-cap rank | `resolve_fund`, `get_nav_history`, `get_stock_ratios` |
 | **Google News RSS** | company and market news | `get_news` |
 
-Four servers, split by domain — `finance-market` (prices, index and market state, plus `run_strategy_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `run_dcf` / `run_governance_checks`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
+Four servers, split by domain — `finance-market` (prices, index and market state, the universe authority and the discovery screeners: `get_universe` / `run_strategy_screen` / `run_stock_scan` / `run_sector_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `run_dcf` / `run_governance_checks`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
 
 `get_market_context` is the interpreted market-of-record, shared by every skill so reads cannot drift — prefer it over assembling a market view from raw tools.
 

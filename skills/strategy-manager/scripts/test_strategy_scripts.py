@@ -99,6 +99,34 @@ out, rc = run([sys.executable, SELECT, "--strategies", sdir, "--regime", rpath])
 a = next(c for c in (out["ranked_fitting"] + out["rejected_unfit"]) if c["name"] == "A")
 check("vix_max gate rejects A", a in out["rejected_unfit"], a)
 
+# --purpose filter: an active investment spec sits beside the trading ones
+inv = textwrap.dedent("""\
+    name: INV
+    status: active
+    purpose: investment
+    regime_required:
+      market_trend: up
+    universe:
+      source: nifty500
+    screening:
+      fundamental:
+        query: "ROCE > 15"
+    ranking:
+      metric: return_12m
+    lifecycle:
+      generated_at: 2026-08-01
+    """)
+w(os.path.join(sdir, "A.yml"), spec("A", "active", "up", 0.35))   # restore A as trading
+w(os.path.join(sdir, "INV.yml"), inv)
+out, _ = run([sys.executable, SELECT, "--strategies", sdir, "--regime", rpath,
+              "--purpose", "investment"])
+check("--purpose investment keeps only the investment spec",
+      out["active_specs"] == 1 and out["selected"]["name"] == "INV", out)
+out, _ = run([sys.executable, SELECT, "--strategies", sdir, "--regime", rpath,
+              "--purpose", "trading"])
+check("--purpose trading excludes the investment spec",
+      all(c["name"] != "INV" for c in out["ranked_fitting"] + out["rejected_unfit"]), out)
+
 # ===================== aggregate_performance.py =====================
 print("== aggregate_performance ==")
 D2 = tempfile.mkdtemp()

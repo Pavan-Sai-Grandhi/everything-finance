@@ -213,7 +213,7 @@ def history(symbol, period="1y", fresh=False, adjusted=False):
 def history_df(symbol, period="1y", adjusted=True, fresh=False):
     """`history()` as the pandas OHLCV frame `ta.add_indicators` consumes.
 
-    Lets warmup callers (find-trade screen, trade re-validation, the regime gate) fetch
+    Lets warmup callers (discover screen, trade re-validation, the regime gate) fetch
     through the spine yet keep the indicator-of-record in `ta.py`. `adjusted=True` keeps
     them on the backtest's series so live≡backtest holds. Returns (frame_or_None, gaps)."""
     import pandas as pd

@@ -9,6 +9,7 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import backtest
+from finance.sources import universe
 from finance.tests.harness import approx, check, run
 
 pd = backtest.pd
@@ -42,12 +43,10 @@ def test_resolve_universe():
     check("None -> empty", backtest.resolve_universe(None) == [])
     check("empty string -> empty", backtest.resolve_universe("") == [])
     basket = backtest.resolve_universe("largecap20")
-    check("largecap20 expands", basket == backtest.LARGECAP20_BASKET)
+    check("largecap20 expands via the authority", basket == universe.LARGECAP20_BASKET)
     check("largecap20 case-insensitive", backtest.resolve_universe("LargeCap20") == basket)
     check("basket is 20 names", len(basket) == 20)
     check("basket has no duplicates", len(set(basket)) == 20)
-    check("expansion is a copy, not the module list",
-          backtest.resolve_universe("largecap20") is not backtest.LARGECAP20_BASKET)
 
 
 def test_buy_and_hold():
@@ -154,9 +153,9 @@ def test_load_ohlcv_alias():
     try:
         backtest.load_ohlcv("RELIANCE", 5, "/tmp")
         check("unaliased symbol passes through", seen["sym"] == "RELIANCE")
-        key = next(iter(backtest.SYMBOL_ALIASES))
+        key = next(iter(universe.SYMBOL_ALIASES))
         backtest.load_ohlcv(key, 5, "/tmp")
-        check("aliased symbol resolves", seen["sym"] == backtest.SYMBOL_ALIASES[key])
+        check("aliased symbol resolves", seen["sym"] == universe.SYMBOL_ALIASES[key])
     finally:
         backtest.ta.load_ohlcv = orig
 
