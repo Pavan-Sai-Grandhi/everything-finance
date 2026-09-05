@@ -48,6 +48,7 @@ check("undervalued -> MoS>0 when intrinsic>price",
 g = dcf.resolve_growth({"growth_glide": {"initial": 0.15, "fade_to": 0.04, "years_high": 3}}, 10)
 check("glide len 10", len(g) == 10, len(g))
 check("glide high years = 0.15", g[0] == 0.15 and g[1] == 0.15 and g[2] == 0.15, g[:3])
+check("glide fades immediately after exactly years_high years", g[3] < 0.15, g[:5])
 check("glide ends at 0.04", rel_approx(g[-1], 0.04), g[-1])
 check("glide monotone non-increasing after high", all(g[i] >= g[i + 1] - 1e-9 for i in range(2, 9)), g)
 
@@ -72,14 +73,19 @@ hi_g = dcf.value(dict(spec1, terminal_growth=0.05))["intrinsic_value_per_share"]
 check("higher WACC -> lower value", hi_wacc < base, (hi_wacc, base))
 check("higher terminal g -> higher value", hi_g > base, (hi_g, base))
 
-fr = dcf.value({
+fr_spec = {
     "years": 5, "base_revenue": 1000.0, "revenue_growth": 0.35, "operating_margin": 0.45,
     "tax_rate": 0.25, "sales_to_capital": 2.0, "wacc": 0.11,
     "terminal_growth": 0.08, "terminal_roic": 0.10, "risk_free": 0.07,
     "shares_outstanding": 10.0,
-})
+}
+try:
+    dcf.value(fr_spec)
+    check("terminal growth > risk free raises", False)
+except ValueError as e:
+    check("terminal growth > risk free raises", "risk-free" in str(e).lower(), str(e))
+fr = dcf.value(dict(fr_spec, terminal_growth=0.07))
 flags = " ".join(fr["flags"])
-check("flag: terminal growth > risk free", "TERMINAL_GROWTH_ABOVE_RISKFREE" in flags)
 check("flag: high margin", "HIGH_MARGIN_ASSUMPTION" in flags)
 check("flag: high growth", "HIGH_GROWTH_ASSUMPTION" in flags)
 
@@ -120,6 +126,8 @@ sens = dcf.sensitivity(spec1)
 center = sens["cells"][2][2]
 check("sensitivity center == base", rel_approx(center, round(base, 2), 1e-2), (center, base))
 check("sensitivity grid 5x5", len(sens["cells"]) == 5 and all(len(r) == 5 for r in sens["cells"]))
+check("sensitivity is explicitly labelled terminal-only",
+      sens["scope"] == "terminal_only" and sens["wacc_axis_label"] == "terminal WACC", sens)
 
 try:
     dcf.value(dict(spec1, shares_outstanding=0))
@@ -142,8 +150,53 @@ try:
 except ValueError as e:
     check("missing discount rate raises and names wacc", "wacc" in str(e).lower(), str(e))
 check("wacc_buildup alone satisfies the discount-rate requirement",
-      dcf.value(dict(nowacc, wacc_buildup={"risk_free": 0.07, "mature_erp": 0.05,
+      dcf.value(dict(nowacc, wacc_buildup={"risk_free": 0.07,
+                                           "risk_free_is_default_free": True,
+                                           "mature_erp": 0.05,
                                            "tax_rate": 0.25}))["intrinsic_value_per_share"] > 0)
+
+india_buildup = {
+    "government_bond_yield": 0.068,
+    "sovereign_default_spread": 0.0195,
+    "beta": 1.05,
+    "mature_erp": 0.0508,
+    "country_risk_premium": 0.0219,
+    "cost_of_debt_pretax": 0.09,
+    "equity_weight": 0.96,
+    "tax_rate": 0.25,
+}
+india = dcf.value(dict(spec1, wacc=None, wacc_buildup=india_buildup,
+                       lifecycle_stage="high_growth", years=5,
+                       revenue_growth=[0.10] * 5, operating_margin=[0.20] * 5,
+                       terminal_growth=0.04, terminal_wacc=0.105))
+india_detail = india["assumptions"]["wacc_buildup"]
+check("sovereign spread is removed from the local government yield",
+      rel_approx(india_detail["default_free_risk_free"], 0.0485, 1e-9), india_detail)
+check("country risk is then added exactly once in cost of equity",
+      rel_approx(india_detail["cost_of_equity"], 0.0485 + 1.05 * 0.0508 + 0.0219, 1e-9),
+      india_detail)
+check("high-growth WACC converges toward the terminal discount rate",
+      india["assumptions"]["wacc_path"][0] > india["assumptions"]["wacc_path"][-1] and
+      rel_approx(india["assumptions"]["wacc_path"][-1], 0.105, 1e-9),
+      india["assumptions"]["wacc_path"])
+
+try:
+    dcf.value(dict(spec1, wacc=None, wacc_buildup={
+        "risk_free": 0.068, "mature_erp": 0.0508,
+        "country_risk_premium": 0.0219, "tax_rate": 0.25,
+    }))
+    check("country-risk buildup rejects an unconfirmed risk-free basis", False)
+except ValueError as e:
+    check("country-risk buildup rejects an unconfirmed risk-free basis",
+          "default-free" in str(e).lower(), str(e))
+
+try:
+    dcf.value(dict(spec1, wacc=None, wacc_buildup=india_buildup,
+                   terminal_growth=0.05))
+    check("terminal growth above default-free rupee rate is rejected", False)
+except ValueError as e:
+    check("terminal growth above default-free rupee rate is rejected",
+          "terminal growth" in str(e).lower() and "risk-free" in str(e).lower(), str(e))
 
 try:
     dcf.value(dict(nowacc, tax_rate=[0.25] * spec1["years"],
@@ -218,7 +271,8 @@ try:
 except ValueError:
     check("failure_probability>1 raises", True)
 
-wb = {"risk_free": 0.07, "beta": 1.1, "mature_erp": 0.045, "country_risk_premium": 0.03,
+wb = {"risk_free": 0.07, "risk_free_is_default_free": True,
+      "beta": 1.1, "mature_erp": 0.045, "country_risk_premium": 0.03,
       "cost_of_debt_pretax": 0.09, "equity_weight": 0.95, "tax_rate": 0.25}
 rwb = dcf.value(dict(spec1, wacc=None, wacc_buildup=wb))
 det = rwb["assumptions"]["wacc_buildup"]
@@ -391,5 +445,23 @@ check("an unknown model_shape falls back to fcff, never silently skips checks",
       "MARGIN_BASIS_UNCHECKED" in _codes({"model_shape": "nonsense"}), _codes({"model_shape": "nonsense"}))
 check("model_shape is case- and space-insensitive",
       "EQUITY_MODEL_SHAPE" in _codes({"model_shape": " Equity "}), _codes({"model_shape": " Equity "}))
+
+try:
+    dcf.value(dict(spec1, model_shape="nonsense"))
+    check("value rejects an unknown model shape", False)
+except ValueError as e:
+    check("value rejects an unknown model shape", "model_shape" in str(e), str(e))
+
+try:
+    dcf.value(dict(spec1, operating_margin=1.0, tax_rate=0.0))
+    check("fcff run rejects inputs that are visibly equity-shaped", False)
+except ValueError as e:
+    check("fcff run rejects inputs that are visibly equity-shaped",
+          "model_shape: equity" in str(e), str(e))
+
+equity_spec = dict(spec1, model_shape="equity", operating_margin=1.0, tax_rate=0.0,
+                   wacc=0.12, terminal_wacc=0.12, terminal_roic=0.14)
+check("declared equity-shaped model remains valid",
+      dcf.value(equity_spec)["assumptions"]["model_shape"] == "equity")
 
 summary()

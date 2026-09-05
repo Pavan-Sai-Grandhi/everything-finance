@@ -56,13 +56,13 @@ Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags.
 
 | Lever | Source it from | Sanity rule |
 |---|---|---|
-| Base revenue | `pnl_10y` **`Total Revenue`** (latest FY or TTM column) | it *includes* other income, which is not separable — say so where the margin story depends on it |
-| Revenue growth path | TAM studies + company guidance (concall) + the `Total Revenue` history; fade to ≈ GDP+inflation by year N | peak growth > 30% must be defended against TAM and reinvestment |
-| Operating margin path | the company's own trend + peer steady-state margins | `EBITDA` is struck **after** other income and before depreciation, so it is not EBIT — derive the operating margin as `PBIT ÷ Total Revenue`, or from the annual report's segment note. Above-peer margins need a stated moat; peak > 40% is rare |
+| Base revenue | annual-report **Revenue from Operations** (latest FY or TTM) | exclude interest, investment and other non-operating income; if the feed only exposes `Total Revenue`, derive the operating figure from the annual report rather than double-counting non-operating assets |
+| Revenue growth path | TAM studies + company guidance (concall) + Revenue from Operations history; fade to ≈ GDP+inflation by year N | peak growth > 30% must be defended against TAM and reinvestment |
+| Operating margin path | the company's own trend + peer steady-state margins | use operating EBIT ÷ Revenue from Operations. The published `OPM %` is EBITDA-like, not EBIT; above-peer margins need a stated moat and peak > 40% is rare |
 | Tax rate | **the annual report's tax note**, via `get_documents` | the published `Taxes & Other Items` row is tax **plus** the non-controlling interest — deriving a rate from it overstates the effective rate by ~9 points for any group with minorities. Never derive it. India ≈ 25% statutory for most |
 | Sales-to-capital | historical **ΔRevenue ÷ reinvestment**, reinvestment sourced per § below; peer benchmark | asset-light (software) high (3–5+); capital-heavy (utilities, autos) low (0.5–1.5) |
-| WACC | cost of equity (risk-free + β×mature-ERP + λ×country-risk premium) and after-tax cost of debt, weighted | β is a **bottom-up/sector** beta (business risk), never the stock's raw regression β; country risk scales with operating exposure λ, not incorporation — see § Diagnose first. For the cost of debt prefer a **rating spread** over `Interest & Other Items ÷ average Total Debt`: that numerator bundles items other than interest, so the implied rate runs high |
-| Terminal growth | ≤ risk-free rate, **in the currency of the cash flows** | ~6.5–7% rupee G-sec for a ₹ domestic firm — see § Country risk |
+| WACC | cost of equity (default-free risk-free + β×mature-ERP + λ×country-risk premium) and after-tax cost of debt, weighted | for INR, default-free risk-free = Indian government-bond yield − sovereign default spread; then add India CRP once. β is a **bottom-up/sector** beta, never raw regression β; see § Country risk |
+| Terminal growth | ≤ default-free risk-free rate, **in the currency of the cash flows** | use the adjusted rupee rate, not the unadjusted G-sec yield — see § Country risk |
 | Terminal ROIC | the return the mature firm earns on new capital | the excess return (ROIC−WACC), not g_T, is what moves terminal value; default to convergence (= WACC), set > WACC only if a durable moat persists — see § Terminal value |
 | Net debt | `balance_sheet_10y` **`Total Debt`** − **`Cash and Equivalent`** | consolidated; add capitalised lease debt (see § Capitalisation adjustments) |
 | Shares, minority | **`Common Shares Outstanding`**, **`Minority Interest`** | share count in ₹ Cr units so per-share lands in ₹; confirm dilution against the annual report |
@@ -112,11 +112,14 @@ The default 10-year fade-to-GDP assumes a company decelerates on a fixed schedul
 This is the clearest "think, don't hardcode" rule. India's equity risk premium = a mature-market ERP + an India country-risk premium (CRP, from Damodaran's country tables / sovereign spread — a number that *moves yearly*, look it up, don't memorise it). But that CRP applies to the company in proportion to **λ, its operating exposure to India**, not to where it is listed:
 
 ```
-cost_of_equity = risk_free + beta·mature_erp + lambda_country·CRP
+default_free_risk_free = local_government_bond_yield − sovereign_default_spread
+cost_of_equity = default_free_risk_free + beta·mature_erp + lambda_country·CRP
 lambda_country ≈ (company's % of revenue/operations in India) / (average firm's % in India)
 ```
 
-A domestic FMCG, lender, or infra play has λ ≈ 1 and carries the full CRP; an IT exporter earning mostly abroad (TCS λ ≈ 0.09, Tata Motors ≈ 1.14 because JLR is global yet it was India-heavy then) barely carries it. Setting `lambda_country` from the revenue mix is what stops you over-discounting an Indian *exporter* and under-discounting a purely domestic firm. Building WACC up this way (rather than hand-typing one number) also prevents the double-count where risk is loaded into both a high discount rate *and* a timid growth path. Terminal growth is then bounded by the risk-free **in the currency of the cash flows** — for a ₹ model of a domestic firm that is the ~6.5–7% rupee G-sec (not a 4% US habit; 4% would imply the mature firm shrinks in real terms), but for a low-λ exporter you may be modelling in a blend where a lower number is right. The point is the *bound and the currency*, not a fixed figure.
+A domestic FMCG, lender, or infra play has λ ≈ 1 and carries the full CRP; an exporter carries less according to its operating exposure. Setting `lambda_country` from the revenue mix stops you over-discounting an Indian exporter and under-discounting a domestic firm. The local government bond is not default-free: subtract the sovereign default spread before treating its yield as the rupee risk-free rate, then add country equity risk once through CRP. Feeding the full G-sec yield into `risk_free` and adding CRP again double-counts sovereign risk. Source the bond yield, sovereign spread, mature-market ERP and CRP from a current, internally consistent vintage and date each one. Terminal growth is bounded by that **adjusted default-free rupee rate**, not by the headline G-sec yield.
+
+For a young/high-growth company, risk should converge as the business matures: the explicit cost of capital fades toward a defensible mature `terminal_wacc`. A flat high-growth WACC for every forecast year while abruptly switching to a lower terminal WACC is internally inconsistent. Mature/stable firms may justifiably have a flat path.
 
 **Beta is the business's risk, not the share price's wobble.** Use a **bottom-up/sector beta** — the unlevered beta of the company's business(es), relevered for its own debt — never the stock's raw *regression* beta. A volatile, momentum-driven share price throws up a regression beta of 1.3–1.6 that says nothing about how risky the *operations* are; feeding it in inflates WACC by 1–2% and quietly depresses value for no business reason (a hidden conservatism that masquerades as rigour). Most Indian operating businesses sit at a bottom-up beta of ~0.8–1.2; reach for higher only when the *business* (not the tape) is genuinely more cyclical or operationally levered. The engine raises `BETA_LOOKS_LIKE_REGRESSION` above 1.3 as a prompt to check this.
 
@@ -141,7 +144,7 @@ If you cannot make these adjustments precisely, **say so in the report as a data
 
 ## The flags the engine raises (read them as Damodaran's reality checks)
 
-- `TERMINAL_GROWTH_ABOVE_RISKFREE` — cap g_T at the risk-free rate (in the cash-flow currency). Always.
+- `TERMINAL_GROWTH_ABOVE_RISKFREE` — cap g_T at the **default-free** rate in the cash-flow currency. The engine rejects this inconsistency rather than merely warning.
 - `TERMINAL_VALUE_HEAVY` — value concentrated in the terminal year. **Stage-aware** (set `lifecycle_stage`): for a young/high-growth firm this is *expected* and only fires above ~90%; for a mature firm it fires above ~75% (read it per § Terminal value); for a declining firm it is a red flag pointing you to liquidation/break-up value.
 - `BETA_LOOKS_LIKE_REGRESSION` — the input beta is above ~1.3, the tell-tale of a raw regression beta on a volatile stock rather than a bottom-up/sector (business-risk) beta. Confirm it's the unlevered-relevered industry beta; a regression beta over-discounts and depresses value for no business reason.
 - `DECLINE_POSITIVE_TERMINAL_GROWTH` — a positive perpetual growth on a firm you classified as declining; a shrinking business usually warrants g_T ≤ 0 and a liquidation cross-check.
@@ -182,7 +185,7 @@ Multiples are **DCF in shorthand**: every one of them traces to the same drivers
 
 Two structural cases **override to low** whatever the grid says: **banks / NBFCs / insurers**, and **violently cyclical / commodity** firms. Both are in SKILL.md § Boundaries.
 
-For a lender or insurer, run the DCF as an **equity-shaped** model rather than bending the firm-side levers silently: pass `model_shape: equity` alongside `base_revenue` = net income, `operating_margin` = 1.0, `tax_rate` = 0 (the stream is already post-tax), `sales_to_capital` = marginal return on reinvested equity, `terminal_roic` = the sustainable ROE, `net_debt` = 0, and a discount rate that is a **cost of equity, not WACC**. The engine then suppresses the margin checks, which have no meaning on that shape, and states the shape in its flags so a reader knows which model produced the number. The stance still leads on P/B×RoE and peer multiples — the equity DCF is the sanity band.
+For a lender or insurer, run the DCF as an **equity-shaped** model rather than bending the firm-side levers silently: pass `model_shape: equity` alongside `base_revenue` = net income, `operating_margin` = 1.0, `tax_rate` = 0 (the stream is already post-tax), `sales_to_capital` = marginal return on reinvested equity/regulatory capital, `terminal_roic` = sustainable ROE, `net_debt` = 0, and a discount rate that is a **cost of equity, not WACC**. The engine rejects a visibly equity-shaped stream left under the default FCFF label. The stance still leads on P/B×RoE and peer multiples — the equity DCF is the sanity band.
 
 **Combine into one stance, weighted by that grade:**
 
@@ -198,7 +201,7 @@ Emit a single **Undervalued / Fair / Overvalued** with a margin-of-safety range 
 
 ## Final discipline (the devil's-advocate pass)
 
-1. **Show a range, not a point — on the levers that matter.** Lead with the `story_sensitivity` grid (growth × steady-state margin) and its `duration` read; the single per-share number is the midpoint of an honest band, never a precise target. The WACC×g grid is a secondary check — for a growth company it perturbs the two *lowest*-leverage levers, so leading with it understates the true range and hides a premature-fade problem.
+1. **Show a range, not a point — on the levers that matter.** Lead with the `story_sensitivity` grid (growth × steady-state margin) and its separate `duration` read; the single per-share number is the midpoint of an honest band, never a precise target. The terminal-WACC×terminal-growth grid is a secondary mechanical check: it leaves explicit WACC and operations unchanged, so it is not a coherent whole-company risk scenario and must not be labelled as one.
 2. **Margin of safety, not fair value = buy.** Damodaran/Graham: require a discount (commonly ≥ 25–30% below intrinsic) before acting, sized to how terminal-heavy and assumption-laden the model is.
 3. **Break your own story.** If a competitor launched a cheaper product tomorrow, which input collapses? If the whole thesis hangs on one heroic assumption, say that out loud.
 4. **Say which view you trust.** The combined stance names whether the DCF or the multiples led it, and the confidence grade that decided.

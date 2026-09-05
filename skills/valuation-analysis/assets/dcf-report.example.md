@@ -29,13 +29,13 @@ axis: valuation
 <Where the engine returned a non-empty `revisions` ledger, add a `was → now` line per changed lever with the reason it moved. A lever that changed after a flag was raised is stated, never quietly replaced.>
 | Lever | Value / path | Source / justification |
 |---|---|---|
-| Base revenue | ₹<…> Cr | `Total Revenue` FY<…> (consolidated) |
+| Base revenue | ₹<…> Cr | Revenue from Operations FY<…> (consolidated; non-operating income excluded) |
 | Revenue growth | <…>% → fade to <…>% by Y<N> | TAM×share×take-rate / guidance / history |
 | Operating margin | <…>% → <…>% by Y<…> | current margin; peer steady-state (normalised through-cycle if cyclical) |
 | Tax rate | <…>% | annual report FY<…> tax note (effective → statutory) |
 | Sales-to-capital | <…> | historical ΔRev/ΔInvCapital; peer benchmark |
-| WACC | <…>% | CoE (rf <…>% + β<…> bottom-up/sector ×mature-ERP <…>% + λ<…>×CRP <…>%) + after-tax CoD |
-| Terminal growth | <…>% | ≤ risk-free <…>% in the cash-flow currency |
+| WACC | <…>% → <…>% | CoE (default-free rf = G-sec <…>% − sovereign spread <…>%; + β<…>×mature-ERP <…>% + λ<…>×CRP <…>%) + after-tax CoD; source dates <…> |
+| Terminal growth | <…>% | ≤ default-free risk-free <…>% in the cash-flow currency |
 | Terminal ROIC | <…>% | excess return ROIC−WACC = <…>pp (the terminal driver); >0 only for a named durable moat, else convergence |
 | Net debt / cash / shares | ₹<…> Cr / ₹<…> Cr / <…> Cr | `Total Debt` − `Cash and Equivalent`; `Common Shares Outstanding` |
 | Post-operating adjustments | failure prob <…>% / complexity discount <…>% | <only if warranted — distress signals / governance-complexity; else "none">|
@@ -53,7 +53,7 @@ Lease / R&D capitalisation: <applied | not material | data gap — explain>.
 
 Lead with this **range** (and the `duration` read: does extending the *demonstrated* growth a couple of years close the gap to price?).
 
-<details><summary>WACC × terminal-growth (secondary check — for a growth firm it perturbs the lowest-leverage levers)</summary>
+<details><summary>Terminal WACC × terminal growth (secondary mechanical check; explicit WACC and operations stay fixed)</summary>
 
 <paste `sensitivity_md` from the engine verbatim>
 

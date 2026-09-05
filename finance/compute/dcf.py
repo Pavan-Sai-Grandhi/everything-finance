@@ -91,7 +91,12 @@ def resolve_growth(spec, n):
         yh = int(g.get("years_high", 1))
         yh = max(0, min(yh, n))
         head = [hi] * yh
-        tail = _ramp(hi, lo, n - yh) if n - yh > 0 else []
+        # `_ramp` includes its start.  Drop that duplicate after the explicit
+        # high-growth block so `years_high: 3` means exactly three years, not four.
+        if yh == 0:
+            tail = _ramp(hi, lo, n)
+        else:
+            tail = _ramp(hi, lo, n - yh + 1)[1:] if n - yh > 0 else []
         return (head + tail)[:n]
     raise ValueError("inputs need either `revenue_growth` or `growth_glide`")
 
@@ -130,15 +135,37 @@ def resolve_wacc(spec, n):
     Building this up here (not hand-typing one wacc) also stops the double-count where risk is
     loaded into BOTH a high discount rate AND a deliberately timid growth path."""
     if spec.get("wacc") is not None:
-        return _as_path(spec["wacc"], n, 0.11), None
+        raw = spec["wacc"]
+        path = _as_path(raw, n, 0.11)
+        if isinstance(raw, (int, float)) and lifecycle_stage(spec) in YOUNG_STAGES \
+                and spec.get("terminal_wacc") is not None:
+            path = _ramp(path[0], float(spec["terminal_wacc"]), n)
+        return path, None
     b = spec.get("wacc_buildup")
     if not b:
         raise ValueError("inputs need a discount rate — either an explicit `wacc` (scalar/list) "
                          "or a `wacc_buildup` block; WACC must be sourced, never defaulted")
-    rf = float(b["risk_free"])
     beta = float(b.get("beta", 1.0))
     mature_erp = float(b["mature_erp"])
     crp = float(b.get("country_risk_premium", 0.0))
+    bond_yield = b.get("government_bond_yield")
+    default_spread = b.get("sovereign_default_spread")
+    if bond_yield is not None:
+        if default_spread is None:
+            raise ValueError("wacc_buildup with `government_bond_yield` also needs "
+                             "`sovereign_default_spread` to derive a default-free risk-free rate")
+        rf = float(bond_yield) - float(default_spread)
+        if rf <= 0:
+            raise ValueError("government_bond_yield minus sovereign_default_spread must be > 0")
+    elif b.get("risk_free") is not None:
+        rf = float(b["risk_free"])
+        if crp > 0 and not bool(b.get("risk_free_is_default_free")):
+            raise ValueError("country risk is being added, so `risk_free` must be explicitly confirmed "
+                             "as default-free with `risk_free_is_default_free: true`, or derived from "
+                             "`government_bond_yield - sovereign_default_spread`")
+    else:
+        raise ValueError("wacc_buildup needs either a default-free `risk_free` or "
+                         "`government_bond_yield` plus `sovereign_default_spread`")
     lam = float(b.get("lambda_country", 1.0))
     coe = rf + beta * mature_erp + lam * crp
     erp_total = mature_erp + lam * crp
@@ -157,10 +184,16 @@ def resolve_wacc(spec, n):
     wd = float(b.get("debt_weight", 1.0 - we))
     wacc = we * coe + wd * cod * (1.0 - tax)
     detail = {"cost_of_equity": round(coe, 6), "after_tax_cost_of_debt": round(cod * (1 - tax), 6),
+              "default_free_risk_free": round(rf, 6),
+              "government_bond_yield": round(float(bond_yield), 6) if bond_yield is not None else None,
+              "sovereign_default_spread": round(float(default_spread), 6) if default_spread is not None else None,
               "beta": round(beta, 6), "lambda_country": round(lam, 6),
               "country_risk_loaded": round(lam * crp, 6),
               "equity_risk_premium": round(erp_total, 6), "wacc": round(wacc, 6)}
-    return _as_path(wacc, n, wacc), detail
+    path = _as_path(wacc, n, wacc)
+    if lifecycle_stage(spec) in YOUNG_STAGES and spec.get("terminal_wacc") is not None:
+        path = _ramp(wacc, float(spec["terminal_wacc"]), n)
+    return path, detail
 
 
 YOUNG_STAGES = {"idea", "start_up", "startup", "young", "young_growth", "high_growth"}
@@ -196,6 +229,13 @@ def value(spec):
         raise ValueError("inputs need `tax_rate` — the effective tax rate must be sourced "
                          "(annual-report tax note), never defaulted")
     tax = _as_path(spec["tax_rate"], n, 0.0)
+    shape = str(spec.get("model_shape") or "fcff").strip().lower()
+    if shape not in _MODEL_SHAPES:
+        raise ValueError(f"model_shape must be one of {', '.join(_MODEL_SHAPES)}")
+    if shape == "fcff" and margin and min(margin) >= 0.95 and max(abs(x) for x in tax) <= 1e-12:
+        raise ValueError("inputs look like an equity-shaped bank/NBFC/insurer model "
+                         "(after-tax earnings stream with 100% margin); set `model_shape: equity` "
+                         "and use cost of equity, not WACC")
     if spec.get("sales_to_capital") is None:
         raise ValueError("inputs need `sales_to_capital` — the reinvestment efficiency ratio "
                          "must be sourced (historical ΔRevenue ÷ reinvestment, or peer benchmark), "
@@ -214,11 +254,20 @@ def value(spec):
     # ROIC -> cost of capital (competition erodes excess returns); set terminal_roic > WACC only when a
     # durable moat earns it. The excess return (ROIC - WACC), not g_T, is what actually moves terminal value.
     roic_T = float(spec.get("terminal_roic", wacc_T))
-    risk_free = spec.get("risk_free")  # optional, for the g<=rf sanity flag
+    risk_free = spec.get("risk_free")
+    if wacc_detail:
+        derived_rf = wacc_detail["default_free_risk_free"]
+        if risk_free is not None and abs(float(risk_free) - derived_rf) > 1e-9:
+            raise ValueError("top-level `risk_free` disagrees with the default-free rate derived "
+                             "inside `wacc_buildup`; use one consistent rate")
+        risk_free = derived_rf
 
     if wacc_T <= g_T:
         raise ValueError(f"terminal WACC ({wacc_T}) must exceed terminal growth ({g_T}) "
                          "— Gordon terminal value is undefined/negative otherwise")
+    if risk_free is not None and g_T > float(risk_free) + 1e-9:
+        raise ValueError(f"terminal growth ({g_T}) must not exceed the default-free risk-free "
+                         f"rate ({float(risk_free)}) in the cash-flow currency")
     if roic_T <= 0:
         raise ValueError("terminal_roic must be > 0")
 
@@ -312,6 +361,7 @@ def value(spec):
             "risk_free": risk_free,
             "wacc_buildup": wacc_detail,
             "lifecycle_stage": lifecycle_stage(spec),
+            "model_shape": shape,
         },
         "yearly": rows,
         "terminal_value": round(tv, 4),
@@ -361,8 +411,8 @@ def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, 
     declining = "declin" in stage
     if risk_free is not None and g_T > float(risk_free) + 1e-9:
         flags.append(f"TERMINAL_GROWTH_ABOVE_RISKFREE: g_T={g_T:.3%} > risk_free={float(risk_free):.3%} "
-                     "— no mature firm outgrows the economy forever; cap g_T at the risk-free rate. "
-                     "(In a ₹ model the binding number is the ~6.5–7% rupee G-sec, not 4%.)")
+                     "— no mature firm outgrows the economy forever; cap g_T at the default-free "
+                     "rate in the cash-flow currency.")
     if ev <= 0:
         flags.append(f"NEGATIVE_ENTERPRISE_VALUE: EV={ev:.1f} — the explicit-period cash flows are deeply "
                      "negative (reinvestment too heavy / margins too thin for the growth assumed). The model "
@@ -447,13 +497,20 @@ def _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_explicit, pv_tv, risk_free, 
 
 def sensitivity(spec, wacc_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01),
                 g_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01)):
-    """Per-share intrinsic value across a WACC x terminal-growth grid (Damodaran's
-    'show the range, not a false-precision point estimate')."""
+    """Per-share value across a *terminal* WACC x terminal-growth grid.
+
+    This is a mechanical terminal-value check, not a coherent whole-company risk
+    scenario: explicit-period discount rates and operating assumptions stay fixed.
+    """
     base_wacc_T = float(spec.get("terminal_wacc", _as_path(spec.get("wacc", 0.11),
                         int(spec.get("years", 10)), 0.11)[-1]))
     base_g_T = float(spec.get("terminal_growth", 0.04))
     grid = {"wacc_axis": [round(base_wacc_T + d, 6) for d in wacc_deltas],
-            "growth_axis": [round(base_g_T + d, 6) for d in g_deltas], "cells": []}
+            "growth_axis": [round(base_g_T + d, 6) for d in g_deltas],
+            "wacc_axis_label": "terminal WACC",
+            "scope": "terminal_only",
+            "note": "Mechanical terminal-value check; explicit WACC and operating paths are unchanged.",
+            "cells": []}
     for wd in wacc_deltas:
         row = []
         for gd in g_deltas:
@@ -472,8 +529,8 @@ def sensitivity(spec, wacc_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01),
 def story_sensitivity(spec, growth_shifts=(-0.04, -0.02, 0.0, 0.02, 0.04),
                       margin_shifts=(-0.03, 0.0, 0.03)):
     """Per-share value across the levers that actually move a growth company: the whole
-    revenue-growth path shifted by Δ (rate AND, because the shape is preserved, how long
-    growth lasts) × the steady-state operating margin shifted by Δ.
+    revenue-growth path shifted by Δ (the rate path; duration is tested separately below)
+    × the steady-state operating margin shifted by Δ.
 
     This is the headline range for a young/growth firm. The WACC×terminal-growth grid
     (`sensitivity`) perturbs the two LOWEST-leverage levers — in a rupee model a full ±1%
@@ -821,10 +878,11 @@ def main():
                     help="YAML/JSON input file "
                          "(see skills/valuation-analysis/assets/dcf-inputs.example.yml)")
     ap.add_argument("--out", help="write result JSON here")
-    ap.add_argument("--sensitivity", action="store_true", help="also emit a WACC x g grid")
+    ap.add_argument("--sensitivity", action="store_true",
+                    help="also emit a terminal-WACC x terminal-growth check")
     ap.add_argument("--story", action="store_true",
                     help="also emit the story-driver grid (growth x steady-state margin) — the "
-                         "headline range for a growth company; far higher leverage than WACC x g")
+                         "headline range for a growth company; far higher leverage than the terminal check")
     ap.add_argument("--reverse", action="store_true",
                     help="also solve the DCF backwards: what assumption does current_price imply?")
     ap.add_argument("--reverse-solve", choices=["growth", "margin"], default="growth",
