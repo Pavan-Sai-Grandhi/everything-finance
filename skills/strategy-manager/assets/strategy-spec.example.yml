@@ -55,14 +55,13 @@ universe:
 # top-to-bottom, each narrowing the survivors of the last:
 #   fundamental -> tickertape    (business-quality cut: market cap, ROCE, D/E, growth)
 #   technical   -> tradingview   (chart-state cut: trend/RSI/volume, screened server-side)
-# Provider unreachable + fallback_compute:true -> discover reproduces the cut locally
+# Provider unreachable + fallback_compute:true -> discover uses the declared local rules
 # from yfinance OHLCV via finance/compute/ta.py (the `compute_*` predicates), and flags the degrade.
 screening:
   fundamental:
-    provider: tickertape              # tickertape | screener_in | none  (none = skip the quality gate)
+    provider: tickertape              # tickertape | none  (none = skip the quality gate)
     # provider: tickertape -> `query` below, run by run_fundamental_screen. `FIELD OP VALUE`
     #   clauses joined by AND; Tickertape catalogue field names; ONLY > and < (point-in-time).
-    # provider: screener_in -> a `screen_url` (below) instead of `query`, run by run_saved_screen.
     #   Use this when the cut needs what Tickertape cannot express — a CROSS-PERIOD comparison
     #   ("ROCE > ROCE preceding year"), PEG, promoter-holding change, pledged %. Author/save the
     #   screen on screener.in (free), make it PUBLIC, and paste the /screens/<id>/<slug>/ URL.
@@ -70,7 +69,6 @@ screening:
       Market Cap > 1000 AND ROCE > 12
       AND Debt to Equity < 1 AND 1Y Historical EPS Growth > 0
       AND 5Y Historical Revenue Growth > 8
-    # screen_url: https://www.screener.in/screens/<id>/<slug>/   # ONLY when provider: screener_in
     max_survivors: 60                 # cap; tighten the query (e.g. ROCE > 15) if exceeded
   technical:
     provider: tradingview             # tradingview | compute  (compute = local yfinance + finance/compute/ta.py)
@@ -87,7 +85,7 @@ screening:
       - "ema50_rising"
       - "Close > ema50"
       - "rsi14 between 40 and 60"
-  fallback_compute: true              # provider down -> screen locally with finance/compute/ta.py instead of aborting
+  fallback_compute: true              # provider down -> use declared local rules; label any difference from provider filters
 
 ranking:                              # used by basket/ranked methods (else null)
   metric: return_12m                  # return_12m | return_6m | rs_vs_nifty
@@ -105,9 +103,8 @@ entry:
   #   - registered patterns/signals: inside_bar, outside_bar, engulfing, hammer, doji,
   #     coil_breakout, golden_cross, macd_bullish_cross, rsi_oversold, bb_squeeze,
   #     volume_surge, gap_up, new_high_20, new_high_52w, ...  (see finance/compute/ta.py FEATURES)
-  # This is the FINE per-bar trigger; compute_filters above is the COARSE universe cut. If omitted, the
-  # backtest falls back to compute_filters (fine for pullback/reversal setups whose state IS
-  # the entry); breakout/coil setups need it (e.g. coil_breakout) to fire on the real trigger.
+  # Required explicit per-bar trigger; compute_filters above is only the coarse
+  # universe cut. Missing/empty entry.signal is refused in live and backtest paths.
   signal:
     - "Close > hh20"
     - "Volume > 1.5 * vol10"
@@ -119,14 +116,15 @@ exit:
   stop: recent_swing_low              # recent_swing_low | ema50_minus_2atr | range_low
                                       # (auto-floored at max(0.5*ATR, 1% of price) so a
                                       #  squeeze candle's low can't collapse the risk denominator)
-  target: "next_resistance; for blue-sky use measured_move"
+  target: min_rrr  # Fixed risk-multiple objective; choose measured_move explicitly to use the range height.
                                       # measured_move | next_resistance | none/trailing/signal
                                       #   -> use none/trailing when trail_atr or exit_signal
                                       #      governs the close (no fixed take-profit)
   min_rrr: 1.5
-  time_stop_sessions: 20
+  time_stop_sessions: 20             # positive integer; 0 does not disable it
   # Optional — match these to the source's ACTUAL exit instead of approximating it:
-  # trail_atr: 2.5                    # ATR trailing stop — let momentum/trend winners run
+  # trail_atr: 2.5                    # finite nonnegative multiplier; 0 disables trailing
+  #                                   # ATR trailing stop — let momentum/trend winners run
   #                                   #   (don't fake it with a long time-stop)
   # exit_signal: "Close > sma5"       # close on a condition (same grammar as entry.signal):
   #                                   #   mean-reversion exit (Connors: revert above 5-SMA),
@@ -156,7 +154,10 @@ expectancy_assumptions:               # BACKTEST results — null until validate
   n_trades: null
   validated_by: null                  # path to the backtest summary artifact
 
-live_performance:                     # REALIZED from trade-tracker closed trades — null until trades exist
+live_performance:                     # written by aggregate_performance.py after execution validation
+  eligible_for_selection: false       # true only for complete samples with >=10 verified closes
+  excluded_closed: 0                  # unverified outcomes prevent lifecycle actions
+  profit_factor_basis: "R multiples"  # differs from rupee profit factor when risk sizes vary
   trades_closed: 0
   win_rate: null
   expectancy_R: null                  # compare to expectancy_assumptions.expectancy_R for drift

@@ -83,5 +83,35 @@ def test_safe_name_strips_path_separators():
           "Small_Cap__3y")
 
 
+def test_spill_keeps_previous_call_snapshot():
+    first = _server.spill(_env([{"close": 10}]), "positions", "same-request")
+    second = _server.spill(_env([{"close": 20}]), "positions", "same-request")
+    check("different results have independent spill paths",
+          first["data"]["positions_path"] != second["data"]["positions_path"])
+    with open(first["data"]["positions_path"]) as fh:
+        check("a later request cannot overwrite earlier evidence", json.load(fh) == [{"close": 10}])
+
+
+def test_spill_directory_failure_is_a_gap():
+    orig = _server.paths.cache_dir
+    def denied(_):
+        raise PermissionError("fixture")
+    _server.paths.cache_dir = denied
+    try:
+        try:
+            result = _server.spill(_env(), "positions", "unwritable")
+        except PermissionError:
+            result = None
+    finally:
+        _server.paths.cache_dir = orig
+    check("directory creation errors stay inside the envelope",
+          result is not None and result["data"]["positions_path"] is None and result["gaps"])
+
+
+def test_spill_negative_keep_does_not_return_unbounded_rows():
+    result = _server.spill(_env(), "positions", "negative-limit", keep=-1)
+    check("negative inline limit keeps no rows", result["data"]["positions"] == [])
+
+
 if __name__ == "__main__":
     run(globals())

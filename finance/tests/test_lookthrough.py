@@ -35,11 +35,6 @@ hpe, hw = L.weighted_harmonic((h["weight"], h["pe"]) for h in EY)
 check("harmonic P/E hides the loss-maker (20 on half the book) — the yield does not",
       approx(hpe, 20.0) and hw == 50)
 
-check("cagr one period 100→121 = 21%", approx(L.cagr([100, 121]), 21.0))
-check("cagr two periods 100→110→121 = 10%", approx(L.cagr([100, 110, 121]), 10.0))
-check("cagr <2 points → None", L.cagr([100]) is None)
-check("cagr non-positive endpoint → None", L.cagr([-5, 121]) is None)
-
 check("rank 1 → large", caps.cap_bucket(cap_rank=1) == ("large", "rank"))
 check("rank 100 → large (boundary inclusive)", caps.cap_bucket(cap_rank=100) == ("large", "rank"))
 check("rank 101 → mid", caps.cap_bucket(cap_rank=101) == ("mid", "rank"))
@@ -87,17 +82,17 @@ check("no source at all grades 'unavailable', distinct from 'unusable'",
 g = L.gated(12.0, 50.0, 0.0)
 check("zero total weight cannot divide-by-zero", g["value"] is None)
 
-r = L.pb_over_roe(2.28, 12.89, 100.0, 100.0, 100.0)
+r = L.pb_over_roe([{"weight":100,"pb":2.28,"roe":12.89}],100)
 check("pb_over_roe 2.28/12.89 = 0.1769 at 4dp", approx(r["value"], 0.1769, 0.0001))
-r = L.pb_over_roe(3.06, 11.14, 100.0, 100.0, 100.0)
+r = L.pb_over_roe([{"weight":100,"pb":3.06,"roe":11.14}],100)
 check("pb_over_roe ranks a demanding book higher", approx(r["value"], 0.2747, 0.0001))
-r = L.pb_over_roe(3.0, -4.0, 100.0, 100.0, 100.0)
+r = L.pb_over_roe([{"weight":100,"pb":3,"roe":-4}],100)
 check("pb_over_roe undefined at non-positive ROE, and says so",
       r["value"] is None and r["withheld"] and "non-positive" in (r.get("note") or ""))
-r = L.pb_over_roe(None, 12.0, 100.0, 100.0, 100.0)
+r = L.pb_over_roe([{"weight":100,"pb":None,"roe":12}],100)
 check("pb_over_roe needs both inputs", r["value"] is None)
-r = L.pb_over_roe(2.28, 12.89, 30.0, 100.0, 100.0)
-check("pb_over_roe inherits the WORSE of the two coverages and is gated on it",
+r = L.pb_over_roe([{"weight":30,"pb":2.28,"roe":12.89},{"weight":70,"roe":12.89}],100)
+check("pb_over_roe uses the jointly covered holdings and gates on their weight",
       r["value"] is None and r["confidence"] == "unusable")
 
 c = L.concentration([{"weight": 40}, {"weight": 35}, {"weight": 15}, {"weight": 10}])
@@ -263,4 +258,76 @@ check("report below the publishable coverage floor is ok:false — a gap, not a 
       env_thin["ok"] is False and env_thin["data"]["confidence"] == "unusable",
       env_thin["data"]["confidence"])
 
+for invalid_rank in (0.5, 100.5, 250.5, "100%", True, float("inf")):
+    check("invalid ordinal rank remains unclassified", caps.cap_bucket(cap_rank=invalid_rank)==(None,None), invalid_rank)
+for ambiguous in ("large and mid cap", "midcap fund", "smallish", "microfinance", "large-cap blend"):
+    check("ambiguous cap label remains unclassified", caps.cap_bucket(cap_label=ambiguous)==(None,None), ambiguous)
+check("integer-valued provider rank accepted", caps.cap_bucket(cap_rank="101.0")==("mid","rank"))
+
+for weight in (-10,True,float("nan"),101,None):
+    try:
+        L.portfolio_metrics([{"weight":weight,"pe":10,"pb":2}],equity_weight=100)
+        check("invalid holding weight rejects portfolio metrics",False,weight)
+    except ValueError:
+        check("invalid holding weight rejects portfolio metrics",True)
+try:
+    L.portfolio_metrics([{"weight":60},{"weight":60}],equity_weight=100)
+    check("overfull holdings cannot inflate coverage",False)
+except ValueError:
+    check("overfull holdings cannot inflate coverage",True)
+
+from unittest import mock
+for allocation in (0,50,101,float("nan"),True):
+    with mock.patch.object(L,"load_fund",return_value=([{"weight":60,"pe":10,"pb":2}],allocation,["fixture source gap"],{"mf_id":"fixture"})):
+        invalid=L.report("fixture")
+    check("inconsistent equity allocation returns unusable report",not invalid["ok"] and invalid["data"]["ratios_publishable"] is False and invalid["data"]["metrics"]=={},allocation)
+    check("invalid allocation report preserves source and validation gaps", "fixture source gap" in invalid["gaps"] and any("invalid holdings coverage" in gap for gap in invalid["gaps"]),invalid)
+
+split_book=[{"weight":40,"pb":2},{"weight":40,"roe":10},{"weight":20,"pb":4,"roe":20}]
+combined=L.portfolio_metrics(split_book,100)["pb_over_roe"]
+check("combined valuation coverage is the shared holding set",combined["coverage"]==0.2,combined)
+check("separate 60-percent ratios cannot publish a 20-percent joint ratio",combined["withheld"] and combined["value"] is None,combined)
+shared_book=[{"weight":60,"pb":2,"roe":10},{"weight":20,"pb":20},{"weight":20,"roe":40}]
+combined=L.portfolio_metrics(shared_book,100)["pb_over_roe"]
+check("joint metric excludes unmatched ratios from its value",approx(combined["value"],0.2) and combined["coverage"]==0.6,combined)
+
+negative=L.portfolio_metrics([{"weight":100,"pb":2,"roe":-5}],100)
+check("undefined joint ratio retains actual coverage",negative["pb_over_roe"]["coverage"]==1)
+check("undefined ratio gap explains profitability rather than missing coverage",any("pb_over_roe" in gap and "non-positive ROE" in gap for gap in L.metric_gaps(negative)))
+
+with mock.patch.object(L,"load_fund",return_value=([{"weight":20,"pe":10,"pb":2}],None,[],{})):
+    missing=L.report("fixture")
+check("missing equity allocation cannot make a partial book fully covered",not missing["ok"] and not missing["data"]["ratios_publishable"] and any("equity" in gap for gap in missing["gaps"]),missing)
+
+from finance.sources import funds as source_funds
+with mock.patch.object(source_funds, "holdings", return_value={
+    "ok": True, "data": {"positions": [{"sid": "FIX", "type": "equity", "weight": 20}],
+                          "equity_weight": None}, "gaps": ["incomplete allocation"]
+}), mock.patch.object(source_funds, "enrich", return_value=([], [])) as enrich_call:
+    invalid = L.report("fixture")
+check("unknown coverage skips per-stock enrichment", enrich_call.call_count == 0, enrich_call.call_count)
+check("unknown coverage retains position count and source gap",
+      not invalid["ok"] and invalid["data"]["n_holdings"] == 1
+      and "incomplete allocation" in invalid["gaps"], invalid)
+
+# Finite inputs must not publish nonfinite aggregates through intermediate overflow.
+large_mean, covered = L.weighted_mean([(50, 1e308), (50, 1e308)])
+check('large finite weighted mean remains representable', large_mean == 1e308 and covered == 100)
+tiny_harmonic, covered = L.weighted_harmonic([(50, 1e-308), (50, 1e-308)])
+check('tiny positive multiples do not collapse to zero through yield overflow',
+      tiny_harmonic == 1e-308 and covered == 100)
+for invalid in (None, float('nan'), float('inf')):
+    invalid_metric = L.gated(invalid, 100, 100)
+    check('coverage cannot make an invalid calculated metric publishable',
+          invalid_metric['value'] is None and invalid_metric['withheld'], invalid)
+_calls = []
+try:
+    L.load_fund = lambda mf_id, fresh=False, workers=10: _calls.append(workers) or ([], 0.0, [], {})
+    for bad in (0, -1, 2.5, True, "4", None):
+        env_bad = L.report("M_TEST", workers=bad)
+        check(f"invalid workers {bad!r} is a labelled gap, not an exception",
+              env_bad["ok"] is False and any("workers" in g for g in env_bad["gaps"]), env_bad)
+finally:
+    L.load_fund = _orig_load_fund
+check("invalid workers never reach the fetch path", _calls == [], _calls)
 summary()

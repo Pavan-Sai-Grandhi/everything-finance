@@ -178,6 +178,142 @@ def test_num_coercion():
     check("num: percent string", holdings._num("18.4%") == 18.4)
     check("num: NA -> None", holdings._num("NA") is None)
     check("num: bool -> None", holdings._num(True) is None)
+    for invalid in (float("nan"), float("inf"), "-inf"):
+        check("nonfinite personal amount is unavailable", holdings._num(invalid) is None)
+
+
+def test_value_only_assets_survive_normalization():
+    from finance.compute import allocation, wealth
+    env = holdings.resolve(payloads={"indmoney": {"holdings": [
+        {"name": "Deposit", "asset_class": "Fixed Deposit", "current_value": 50000},
+        {"name": "Spent account", "asset_class": "Cash", "current_value": 0},
+    ]}})
+    pos = env["data"]["positions"]
+    check("reported current value is retained", pos[0].get("value") == 50000)
+    check("reported zero value is retained", pos[1].get("value") == 0)
+    check("allocation values the same personal book", allocation.review(pos)["total"] == 50000)
+    check("wealth values the same personal book",
+          wealth.build_spine(positions_env=env)["total_networth"] == 50000)
+
+
+def test_kite_t1_purchase_is_not_dropped():
+    payload = {"holdings": [
+        {"tradingsymbol": "NEWBUY", "quantity": 0, "t1_quantity": 5, "average_price": 100.0,
+         "last_price": 110.0, "pnl": 50.0},
+        {"tradingsymbol": "MIXED", "quantity": 10, "t1_quantity": 2, "average_price": 50.0,
+         "last_price": 55.0, "pnl": 60.0},
+        {"tradingsymbol": "SOLD", "quantity": 0, "t1_quantity": 0, "average_price": 10.0,
+         "last_price": 11.0}]}
+    pos = {p["ticker"]: p for p in holdings.normalize(payload, "kite")}
+    check("kite: a T+1 purchase with zero settled quantity is still held",
+          "NEWBUY" in pos and pos["NEWBUY"]["qty"] == 5, pos)
+    check("kite: held quantity adds settled and T+1 shares", pos.get("MIXED", {}).get("qty") == 12, pos)
+    check("kite: the unsettled part is labelled", pos.get("MIXED", {}).get("unsettled_qty") == 2, pos)
+    check("kite: a fully closed line is still dropped", "SOLD" not in pos, pos)
+
+
+def test_upstox_total_quantity_is_not_double_counted():
+    payload = {"data": [
+        {"trading_symbol": "MIXED", "quantity": 12, "t1_quantity": 2, "average_price": 50.0,
+         "last_price": 55.0, "pnl": 60.0},
+        {"trading_symbol": "NEWBUY", "quantity": 0, "t1_quantity": 5, "average_price": 100.0,
+         "last_price": 110.0}]}
+    pos = {p["ticker"]: p for p in holdings.normalize(payload, "upstox")}
+    check("upstox: documented total quantity is not increased by T+1", pos.get("MIXED", {}).get("qty") == 12, pos)
+    check("upstox: the T+1 part is still labelled", pos.get("MIXED", {}).get("unsettled_qty") == 2, pos)
+    check("upstox: quantity below T+1 shows it was excluded, so both count",
+          pos.get("NEWBUY", {}).get("qty") == 5, pos)
+
+
+def _indmoney_live_shape(rows):
+    """The live networth_holdings envelope: a JSON string under `result` (dummy values)."""
+    import json as _json
+    return {"result": _json.dumps({"positions": None, "open_orders": [], "holdings": rows,
+                                   "asset_summary": {"total_value": 1}, "source_status": {"holdings": "success"}})}
+
+
+def _ind_row(**kw):
+    row = {"investment_code": "INDS00001", "investment": "Alpha Ltd", "asset_type": "STOCK",
+           "assetclass_l2": "equity", "invested_amount": 300, "market_value": 330,
+           "holding_percent": 50.0, "total_pnl": 30, "pnl_per": 10.0, "total_units": 3,
+           "unit_price": 110.0, "broker": "INDmoney", "market_cap": "mid",
+           "one_day_change": 1, "one_day_change_percentage": 0.1}
+    row.update(kw)
+    return row
+
+
+def test_indmoney_live_envelope_and_field_names():
+    pos = holdings.normalize(_indmoney_live_shape([_ind_row()]), "indmoney")
+    check("indmoney: the JSON-string `result` envelope is decoded", len(pos) == 1, pos)
+    p = pos[0] if pos else {}
+    check("indmoney: total_units / unit_price / total_pnl map to qty / ltp / pnl",
+          (p.get("qty"), p.get("ltp"), p.get("pnl")) == (3.0, 110.0, 30.0), p)
+    check("indmoney: the internal investment_code is never used as a ticker",
+          p.get("ticker") == "Alpha Ltd" and p.get("instrument_code") == "INDS00001", p)
+    check("indmoney: invested and current value carried", (p.get("invested"), p.get("value")) == (300.0, 330.0), p)
+
+
+def test_indmoney_linked_broker_cost_is_not_trusted():
+    row = _ind_row(broker="Upstox", invested_amount=330, market_value=330, total_pnl=0, pnl_per=0)
+    p = holdings.normalize(_indmoney_live_shape([row]), "indmoney")[0]
+    check("indmoney: a linked-broker row reporting cost == value and zero P&L has unknown cost",
+          p.get("invested") is None and p.get("pnl") is None and p.get("avg") is None, p)
+    check("indmoney: its current value is still carried", p.get("value") == 330.0, p)
+    check("indmoney: the unknown cost is flagged on the row", p.get("cost_basis") == "unreported_by_linked_broker", p)
+    genuine = holdings.normalize(_indmoney_live_shape([_ind_row(broker="Upstox")]), "indmoney")[0]
+    check("indmoney: a linked-broker row with a real gain keeps its cost", genuine.get("invested") == 300.0, genuine)
+
+
+def test_resolver_points_to_broker_cost_when_indmoney_lacks_it():
+    row = _ind_row(broker="Upstox", invested_amount=330, market_value=330, total_pnl=0, pnl_per=0)
+    env = holdings.resolve(payloads={"indmoney": _indmoney_live_shape([row]),
+                                     "upstox": {"data": [{"trading_symbol": "ALPHA", "quantity": 3,
+                                                          "average_price": 90.0, "last_price": 110.0}]}})
+    check("resolver: IndMoney still wins precedence", env["source"] == "indmoney", env)
+    check("resolver: a gap names the uncosted rows and the broker that carries cost",
+          any("no cost basis" in g and "upstox" in g for g in env["gaps"]), env["gaps"])
+
+
+def test_cli_combines_one_indmoney_payload_per_asset_type():
+    import json as _json, subprocess, sys as _sys, tempfile as _tf, os as _os
+    d = _tf.mkdtemp()
+    stock = _os.path.join(d, "stock.json"); fund = _os.path.join(d, "mf.json")
+    _json.dump(_indmoney_live_shape([_ind_row()]), open(stock, "w"))
+    _json.dump(_indmoney_live_shape([_ind_row(investment_code="3229", investment="Fund A Direct Growth",
+                                              asset_type="MF", broker=None, market_cap=None)]), open(fund, "w"))
+    root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    out = subprocess.run([_sys.executable, "-m", "finance.compute.holdings", "--indmoney", stock,
+                          "--indmoney", fund, "--mf-only"], capture_output=True, text=True,
+                         cwd=root, env=dict(_os.environ, PYTHONPATH=root))
+    env = _json.loads(out.stdout)
+    check("cli: repeated --indmoney payloads combine; the MF slice finds the fund",
+          [p["ticker"] for p in env["data"]["positions"]] == ["Fund A Direct Growth"], out.stdout[-300:] + out.stderr[-300:])
+
+
+def _kite_live_row(sym, exch="NSE", isin="INE000000001"):
+    """Live Kite holdings row shape (bare list element), dummy values."""
+    return {"tradingsymbol": sym, "exchange": exch, "instrument_token": 1, "isin": isin,
+            "product": "CNC", "quantity": 10, "t1_quantity": 0, "realised_quantity": 10,
+            "average_price": 100.0, "last_price": 110.0, "close_price": 109.0, "pnl": 100.0}
+
+
+def test_kite_live_symbols_and_instrument_types():
+    rows = [_kite_live_row("ALPHA"), _kite_live_row("TTOT-BE"), _kite_live_row("REIT-RR"),
+            _kite_live_row("ITBEES", isin="INF204KB15V2"),
+            _kite_live_row("SGBMR29XII", exch="BSE", isin="IN0020200427")]
+    pos = {p["broker_symbol"]: p for p in holdings.normalize(rows, "kite")}
+    check("kite: an NSE series suffix is stripped to the base symbol",
+          pos["TTOT-BE"]["ticker"] == "TTOT" and pos["REIT-RR"]["ticker"] == "REIT", pos)
+    check("kite: exchange and ISIN are carried", pos["SGBMR29XII"]["exchange"] == "BSE"
+          and pos["ALPHA"]["isin"] == "INE000000001", pos["SGBMR29XII"])
+    check("kite: an INF ISIN is exchange-traded fund units, not a stock",
+          pos["ITBEES"]["asset_class"] == "etf", pos["ITBEES"])
+    check("kite: an RR-series line is a REIT", pos["REIT-RR"]["asset_class"] == "reit", pos["REIT-RR"])
+    check("kite: an IN0 SGB line is a sovereign gold bond",
+          pos["SGBMR29XII"]["asset_class"] == "sovereign gold bond", pos["SGBMR29XII"])
+    eq = {p["broker_symbol"] for p in holdings.equity_only(list(pos.values()))}
+    check("kite: the equity slice keeps stocks and drops ETF/REIT/SGB units",
+          eq == {"ALPHA", "TTOT-BE"}, eq)
 
 
 if __name__ == "__main__":

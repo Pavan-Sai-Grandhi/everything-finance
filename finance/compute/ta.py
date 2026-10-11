@@ -19,14 +19,7 @@ import subprocess
 import sys
 
 
-def _need(mod, pip_name=None):
-    """Import `mod`, pip-installing it (PEP 668 override) on first miss."""
-    try:
-        return __import__(mod)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet",
-                               "--break-system-packages", pip_name or mod])
-        return __import__(mod)
+from finance.deps import need as _need, installation_lock
 
 
 def _need_talib():
@@ -36,8 +29,21 @@ def _need_talib():
     try:
         import talib
         return talib
-    except ImportError:
-        pass
+    except ModuleNotFoundError as exc:
+        if exc.name != "talib":
+            raise
+    with installation_lock() as lock_fd:
+        return _install_talib(lock_fd)
+
+
+def _install_talib(lock_fd):
+    # Another server may have installed it while this process waited.
+    try:
+        import talib
+        return talib
+    except ModuleNotFoundError as exc:
+        if exc.name != "talib":
+            raise
     import shutil
     env = os.environ.copy()
     if shutil.which("brew"):
@@ -45,14 +51,14 @@ def _need_talib():
             prefix = subprocess.check_output(["brew", "--prefix", "ta-lib"],
                                              text=True).strip()
         except subprocess.CalledProcessError:
-            subprocess.check_call(["brew", "install", "ta-lib"])
+            subprocess.check_call(["brew", "install", "ta-lib"], stdout=sys.stderr, pass_fds=(lock_fd,))
             prefix = subprocess.check_output(["brew", "--prefix", "ta-lib"],
                                              text=True).strip()
         env["TA_INCLUDE_PATH"] = f"{prefix}/include"
         env["TA_LIBRARY_PATH"] = f"{prefix}/lib"
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet",
-                               "--break-system-packages", "TA-Lib"], env=env)
+                               "--break-system-packages", "TA-Lib"], env=env, stdout=sys.stderr, pass_fds=(lock_fd,))
         import talib
         return talib
     except Exception as exc:  # noqa: BLE001
@@ -95,12 +101,8 @@ def slope_up(series, lookback=5):
 
 
 def rsi(close, period=14):
-    """Wilder's RSI (TA-Lib). TA-Lib returns 0 for a perfectly flat window; we map
-    only that degenerate no-change case to a neutral 50 (a real downtrend also
-    reads near 0 and is left untouched)."""
-    out = _ser(talib.RSI(_np(close), timeperiod=period), close.index)
-    flat = close.diff().abs().rolling(period).sum() == 0
-    return out.mask(flat, 50.0)
+    """Wilder's RSI, preserving TA-Lib's smoothing and degenerate-case convention."""
+    return _ser(talib.RSI(_np(close), timeperiod=period), close.index)
 
 
 def macd(close, fast=12, slow=26, signal=9):
@@ -494,27 +496,4 @@ def add_indicators(df):
     df["atr14"] = atr(df, 14)
     df["hh20"] = rolling_high(df["High"], 20)
     df["ll20"] = rolling_low(df["Low"], 20)
-    return df
-
-
-def load_ohlcv(symbol, years, cache_dir):
-    """Daily OHLCV via yfinance (`<SYMBOL>.NS`), cached as CSV per symbol+span, so
-    the backtester and live screen share prices. Raises on an empty result."""
-    os.makedirs(cache_dir, exist_ok=True)
-    cache = os.path.join(cache_dir, f"{symbol}_{years}y.csv")
-    if os.path.exists(cache):
-        df = pd.read_csv(cache, index_col=0, parse_dates=True)
-        if len(df) > 200:
-            return df
-    yf = _need("yfinance")
-    df = yf.download(f"{symbol}.NS", period=f"{years}y", interval="1d",
-                     auto_adjust=True, progress=False)
-    if df is None or df.empty:
-        raise RuntimeError(
-            f"no data for {symbol} ({symbol}.NS) — likely delisted/renamed "
-            f"(demerger?); verify the current yfinance symbol")
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
-    df.to_csv(cache)
     return df

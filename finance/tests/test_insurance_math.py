@@ -8,8 +8,15 @@ from finance.compute import insurance_math as im  # noqa: E402
 from finance.tests.harness import approx, check, run  # noqa: E402
 
 
+def term_inputs(**overrides):
+    """Complete synthetic household; explicit zeros mean confirmed absence in this fixture."""
+    return dict(dict(annual_income=100, income_multiple=12, outstanding_loans=0,
+                     education_corpus=0, annual_expenses=0, years_to_independence=0,
+                     existing_corpus=0, existing_cover=0), **overrides)
+
+
 def test_term_income_replacement_wins():
-    r = im.term_cover_need(20_00_000, income_multiple=12)
+    r = im.term_cover_need(**term_inputs(annual_income=20_00_000, income_multiple=12))
     check("income_replacement = 12x", approx(r.income_replacement, 2_40_00_000, tol=1.0))
     check("need takes the larger", r.need == r.income_replacement)
     check("method is income_replacement", r.method == "income_replacement")
@@ -20,41 +27,30 @@ def test_term_liability_goals_wins():
         10_00_000, income_multiple=10,
         outstanding_loans=80_00_000, education_corpus=1_00_00_000,
         annual_expenses=5_00_000, years_to_independence=15,
-        existing_corpus=20_00_000,
+        existing_corpus=20_00_000, existing_cover=0,
     )
     check("liability_goals computed", approx(r.liability_goals, 2_35_00_000, tol=1.0))
     check("need takes liability_goals", r.need == r.liability_goals)
     check("method is liability_goals", r.method == "liability_goals")
 
 
-def test_term_gap_and_defaults():
-    r = im.term_cover_need(10_00_000, income_multiple=15, existing_cover=50_00_000)
+def test_term_gap_and_explicit_amounts():
+    r = im.term_cover_need(**term_inputs(annual_income=10_00_000, income_multiple=15, existing_cover=50_00_000))
     check("need = 1.5Cr", approx(r.need, 1_50_00_000, tol=1.0))
     check("gap nets existing cover", approx(r.gap, 1_00_00_000, tol=1.0))
-    r2 = im.term_cover_need(10_00_000, income_multiple=1, years_to_independence=10)
-    check("annual_expenses defaults to 45%",
+    r2 = im.term_cover_need(**term_inputs(annual_income=10_00_000, income_multiple=1, years_to_independence=10,
+                            annual_expenses=4_50_000))
+    check("annual_expenses preserves the supplied figure",
           approx(r2.breakdown["annual_expenses"], 4_50_000, tol=1.0))
-    check("gap never negative", im.term_cover_need(0).gap == 0)
+    check("gap never negative", im.term_cover_need(**term_inputs(annual_income=0)).gap == 0)
 
 
-def test_health_single_metro():
-    r = im.health_sum_insured(adults=1, eldest_age=30, city_tier=1)
-    check("single metro base = 10L", approx(r.base_recommended, 10_00_000, tol=1.0))
-
-
-def test_health_family_floater_and_employer_weight():
-    r = im.health_sum_insured(
-        adults=2, children=2, eldest_age=40, city_tier=1,
-        personal_cover=5_00_000, employer_cover=10_00_000,
-    )
-    check("floater base lifted", approx(r.base_recommended, 15_00_000, tol=1.0))
-    check("employer weighted at half", approx(r.effective_existing, 10_00_000, tol=1.0))
-    check("gap = base - effective", approx(r.gap, 5_00_000, tol=1.0))
-
-
-def test_health_older_and_seniors():
-    r = im.health_sum_insured(adults=2, eldest_age=50, city_tier=1, has_senior_parents=True)
-    check("older + seniors lift base to 25L", approx(r.base_recommended, 25_00_000, tol=1.0))
+def test_health_gaps_floor_at_zero():
+    r = im.health_sum_insured(base_target=1000000, total_target=5000000,
+                             deductible=1000000, personal_cover=1500000, employer_cover=0)
+    check("excess personal cover cannot produce negative gaps",
+          r.base_gap == r.deductible_gap == r.planned_deductible_gap == 0)
+    check("personal and employer amounts remain separate", r.personal_cover == 1500000 and r.employer_cover == 0)
 
 
 def test_idv_in_band():
@@ -119,7 +115,7 @@ def test_marginal_irr_validates_inputs():
 
 
 def test_run_envelope_shape():
-    env = im.run("term_cover_need", {"annual_income": 20_00_000, "income_multiple": 12})
+    env = im.run("term_cover_need", term_inputs(annual_income=20_00_000, income_multiple=12))
     check("envelope carries the contract keys",
           {"ok", "source", "fetched_at", "data", "gaps"} <= set(env), sorted(env))
     check("run reports ok with no gaps", env["ok"] and env["gaps"] == [], env["gaps"])
@@ -143,23 +139,25 @@ def test_run_unknown_calculation_is_a_gap():
 
 
 def test_run_bad_inputs_are_a_gap_not_an_exception():
-    tier = im.run("health_sum_insured", {"adults": 1, "eldest_age": 30, "city_tier": 9})
+    tier = im.run("health_sum_insured", {"base_target": -1, "total_target": 100,
+                  "deductible": 10, "personal_cover": 0, "employer_cover": 0})
     check("a rejected value is not ok", tier["ok"] is False)
-    check("a rejected value is labelled", any("city_tier" in g for g in tier["gaps"]),
+    check("a rejected value is labelled", any("base_target" in g for g in tier["gaps"]),
           tier["gaps"])
     missing = im.run("idv_ncb_sanity", {"ex_showroom": 10_00_000})
     check("a missing keyword is a gap, not a TypeError", missing["ok"] is False, missing)
 
 
-def test_health_sum_insured_needs_the_household_inputs():
+def test_health_sum_insured_requires_explicit_scenario():
     env = im.run("health_sum_insured", {})
-    check("all-defaults health call is not ok", env["ok"] is False, env)
-    check("the gap names a missing required input",
-          any("adults" in g or "city_tier" in g or "eldest_age" in g for g in env["gaps"]),
-          env["gaps"])
-    check("no result is fabricated from defaults", env["data"].get("result") is None, env["data"])
-    ok = im.run("health_sum_insured", {"adults": 1, "eldest_age": 30, "city_tier": 1})
-    check("supplying the household inputs solves it", ok["ok"] is True, ok["gaps"])
+    check("health sizing without targets is a labelled gap", not env["ok"] and bool(env["gaps"]), env)
+    for invalid in ({"total_target": 1}, {"deductible": 6000000}, {"personal_cover": None},
+                    {"base_target": True}, {"employer_cover": float("inf")}):
+        inputs = dict(base_target=1000000, total_target=5000000, deductible=1000000,
+                      personal_cover=0, employer_cover=0)
+        env = im.run("health_sum_insured", dict(inputs, **invalid))
+        check("invalid or unknown health scenario inputs cannot produce a result",
+              not env["ok"] and bool(env["gaps"]), env)
 
 
 def test_run_unsolvable_result_is_not_ok():
@@ -167,6 +165,174 @@ def test_run_unsolvable_result_is_not_ok():
     check("an unbracketed IRR returns no result", env["data"]["result"] is None, env["data"])
     check("no result is ok:false with a gap", env["ok"] is False and bool(env["gaps"]),
           env["gaps"])
+
+
+
+def test_irr_requires_meaningful_finite_cashflows():
+    for cashflows in ([], [0], [0, 0], [100], [-100]):
+        env = im.run("irr", {"cashflows": cashflows})
+        check("degenerate cashflows cannot produce an IRR", not env["ok"] and bool(env["gaps"]), env)
+    for inputs in ({"cashflows": [-100, float("nan")]},
+                   {"cashflows": [-100, float("inf")]},
+                   {"cashflows": [False, 100]},
+                   {"cashflows": [-100, 110], "lo": -1},
+                   {"cashflows": [-100, 110], "lo": 1, "hi": 0},
+                   {"cashflows": [-100, 110], "tol": 0}):
+        try:
+            env = im.run("irr", inputs)
+            check("invalid IRR inputs return a labelled gap", not env["ok"] and bool(env["gaps"]), env)
+        except Exception as exc:
+            check("invalid IRR inputs return a labelled gap", False, str(exc))
+
+
+
+def test_irr_is_stable_across_scale_and_long_horizons():
+    for flows, expected in (([0, -100, 90, 0], -0.1),
+                            ([100, -110], 0.1),
+                            ([-1e-15, 1.1e-15], 0.1),
+                            ([-1e300, 1.1e300], 0.1),
+                            ([-100] + [0] * 399 + [200], 2 ** (1 / 400) - 1)):
+        env = im.run("irr", {"cashflows": flows})
+        actual = env.get("data", {}).get("result")
+        check("IRR is independent of currency scale and survives long horizons",
+              env["ok"] and approx(actual, expected, tol=1e-6), env)
+
+
+def test_irr_does_not_choose_between_multiple_roots():
+    # This polynomial has IRRs at 10% and 20%; a narrow bracket must not conceal that.
+    result = im.run("irr", {"cashflows": [-100, 230, -132], "lo": 0.09, "hi": 0.15})
+    check("nonconventional cashflows cannot yield an arbitrary single IRR",
+          not result["ok"] and bool(result["gaps"]), result)
+
+
+
+def test_insurance_inputs_cannot_be_silently_repaired():
+    cases = [
+        ("term_cover_need", term_inputs(), {"existing_cover": -1}),
+        ("term_cover_need", term_inputs(), {"annual_expenses": float("nan")}),
+        ("term_cover_need", term_inputs(), {"years_to_independence": True}),
+        ("idv_ncb_sanity", {"ex_showroom": 100, "age_years": 1, "quoted_idv": 85}, {"quoted_ncb": -0.1}),
+        ("idv_ncb_sanity", {"ex_showroom": 100, "age_years": 1, "quoted_idv": 85}, {"age_years": -1}),
+        ("idv_ncb_sanity", {"ex_showroom": 100, "age_years": 1, "quoted_idv": 85}, {"idv_tolerance": 2}),
+        ("expected_ncb", {}, {"claim_free_years": 1.5}),
+        ("expected_ncb", {}, {"claim_free_years": True}),
+        ("marginal_irr_continue", {"surrender_value": 100, "annual_premium": 10,
+          "remaining_premiums": 1, "years_to_maturity": 2, "maturity_value": 121}, {"surrender_value": -1}),
+        ("marginal_irr_continue", {"surrender_value": 100, "annual_premium": 10,
+          "remaining_premiums": 1, "years_to_maturity": 2, "maturity_value": 121}, {"hurdle_rate": float("nan")}),
+    ]
+    for name, base, invalid in cases:
+        env = im.run(name, dict(base, **invalid))
+        check("invalid insurance input produces a gap instead of a recommendation",
+              not env["ok"] and bool(env["gaps"]), (name, invalid, env))
+
+
+def test_insurance_output_must_be_finite():
+    env = im.run("term_cover_need", term_inputs(annual_income=1e308))
+    check("overflow cannot publish an infinite cover recommendation",
+          not env["ok"] and bool(env["gaps"]), env)
+
+
+
+def test_continuation_without_irr_reports_gap():
+    env = im.run("marginal_irr_continue", {"surrender_value": 0, "annual_premium": 0,
+                  "remaining_premiums": 0, "years_to_maturity": 0, "maturity_value": 0})
+    check("unsolved continuation calculation is not reported as successful",
+          not env["ok"] and env["data"]["result"]["marginal_irr"] is None and bool(env["gaps"]), env)
+
+
+
+def test_term_runway_requires_explicit_expenses():
+    env = im.run("term_cover_need", term_inputs(years_to_independence=10, annual_expenses=None))
+    check("missing family expenses cannot become an invented runway",
+          not env["ok"] and any("annual_expenses" in gap for gap in env["gaps"]), env)
+    zero = im.run("term_cover_need", term_inputs(years_to_independence=10, annual_expenses=0))
+    check("explicit zero expenses remain a valid input", zero["ok"]
+          and zero["data"]["result"]["breakdown"]["expense_runway"] == 0, zero)
+
+
+
+def test_vehicle_idv_beyond_schedule_is_unknown():
+    for extra in ({"age_years": 6}, {"age_years": 3, "model_discontinued": True}):
+        env = im.run("idv_ncb_sanity", dict(ex_showroom=1000000, quoted_idv=500000,
+                         claim_free_years=3, quoted_ncb=0.35, **extra))
+        result = env["data"].get("result", {})
+        check("out-of-schedule IDV is unknown while NCB remains available",
+              env["ok"] and result.get("idv_ok") is None
+              and result.get("expected_idv_low") is None and result.get("expected_idv_high") is None
+              and result.get("ncb_ok") is True and bool(env["gaps"]), env)
+    edge = im.idv_ncb_sanity(ex_showroom=1000000, age_years=5, quoted_idv=500000)
+    check("exactly five years remains inside published age schedule", edge.idv_ok is True)
+
+
+
+def test_health_uses_explicit_targets_and_deductible():
+    inputs = dict(base_target=1000000, total_target=5000000, deductible=1500000,
+                  personal_cover=500000, employer_cover=2000000)
+    env = im.run("health_sum_insured", inputs)
+    r = env["data"].get("result", {})
+    check("health sizing uses explicit targets, not demographics", env["ok"] and r.get("base_target") == 1000000, env)
+    check("employer cover cannot silently close the personal base gap", r.get("base_gap") == 500000, r)
+    check("top-up target starts above the policy deductible", r.get("top_up_target") == 3500000, r)
+    check("deductible gaps distinguish existing cover from proposed base",
+          r.get("deductible_gap") == 1000000 and r.get("planned_deductible_gap") == 500000, r)
+    legacy = im.run("health_sum_insured", {"adults": 2, "eldest_age": 40, "city_tier": 1})
+    check("legacy demographics alone cannot manufacture a health target", not legacy["ok"], legacy)
+
+
+
+def test_term_requires_all_household_and_scenario_inputs():
+    for key in term_inputs():
+        inputs = term_inputs()
+        del inputs[key]
+        env = im.run("term_cover_need", inputs)
+        check("missing term input cannot become an implicit assumption",
+              not env["ok"] and any(key in gap for gap in env["gaps"]), (key, env))
+
+
+
+def test_insurance_cli_rejects_malformed_or_ambiguous_json():
+    import subprocess
+    from pathlib import Path
+    cli = Path(__file__).resolve().parents[2] / "skills/insurance-advisor/scripts/insurance_math.py"
+    for payload in ('{"claim_free_years":', '[]', 'null',
+                    '{"claim_free_years": 1, "claim_free_years": 5}',
+                    '{"claim_free_years": NaN}', '{"claim_free_years": 1e999}'):
+        result = subprocess.run([sys.executable, str(cli), "expected_ncb", payload],
+                                capture_output=True, text=True, timeout=10)
+        check("bad CLI input reports usage error without traceback or result",
+              result.returncode == 2 and "error:" in result.stderr
+              and "Traceback" not in result.stderr and not result.stdout, result)
+    result = subprocess.run([sys.executable, str(cli), "expected_ncb", '{"claim_free_years": 3}'],
+                            capture_output=True, text=True, timeout=10)
+    import json
+    check("valid CLI input still delegates to the shared calculator",
+          result.returncode == 0 and json.loads(result.stdout)["data"]["result"] == 0.35, result)
+
+
+
+def test_continuation_without_hurdle_keeps_irr_without_verdict():
+    env = im.run("marginal_irr_continue", dict(surrender_value=100, annual_premium=0,
+                 remaining_premiums=0, years_to_maturity=2, maturity_value=121))
+    result = env["data"].get("result", {})
+    check("missing hurdle preserves computed IRR without inventing a benchmark",
+          env["ok"] and approx(result.get("marginal_irr"), 0.1, tol=1e-6)
+          and result.get("hurdle_rate") is None and result.get("beats_hurdle") is None
+          and any("hurdle" in gap for gap in env["gaps"]), env)
+
+
+
+def test_missing_ncb_inputs_remain_unknown():
+    for inputs in ({}, {"claim_free_years": 3}, {"quoted_ncb": 0}):
+        env = im.run("idv_ncb_sanity", dict(ex_showroom=1000000, age_years=3,
+                    quoted_idv=700000, **inputs))
+        result = env["data"].get("result", {})
+        check("missing NCB evidence cannot become a passing check",
+              env["ok"] and result.get("idv_ok") is True and result.get("ncb_ok") is None
+              and any("NCB" in gap for gap in env["gaps"]), env)
+    explicit = im.idv_ncb_sanity(ex_showroom=1000000, age_years=3, quoted_idv=700000,
+                                claim_free_years=0, quoted_ncb=0)
+    check("explicit zero NCB and history remain checkable", explicit.ncb_ok is True)
 
 
 if __name__ == "__main__":

@@ -23,10 +23,15 @@ def main(argv=None):
     p.add_argument("--snapshot", action="store_true",
                    help="spine + emergency/protection flags only, no legs")
     args = p.parse_args(argv)
-    with open(args.input) as f:
-        picture = json.load(f)
-    print(json.dumps(wealth.run(picture, snapshot_mode=args.snapshot),
-                     indent=2, ensure_ascii=False))
+    try:
+        with open(args.input) as f:
+            picture = json.load(f)
+        output = json.dumps(wealth.run(picture, snapshot_mode=args.snapshot),
+                            indent=2, ensure_ascii=False, allow_nan=False)
+    except (OSError, ValueError, TypeError) as exc:
+        print(json.dumps({"ok": False, "gaps": [str(exc)]}), file=sys.stderr)
+        return 1
+    print(output)
     return 0
 
 

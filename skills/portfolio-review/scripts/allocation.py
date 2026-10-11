@@ -20,9 +20,17 @@ def main(argv=None):
     p.add_argument("--book", required=True,
                    help="JSON: {holdings:[...], targets?:{}, breakdowns?:{}, thresholds?:{}}")
     args = p.parse_args(argv)
-    with open(args.book) as f:
-        book = json.load(f)
-    json.dump(allocation.review_book(book), sys.stdout, indent=2, ensure_ascii=False)
+    try:
+        with open(args.book) as f:
+            book = json.load(f)
+        if not isinstance(book, dict) or not isinstance(book.get("holdings"), list):
+            raise ValueError("book must contain a holdings list")
+        result = allocation.review_book(book)
+        output = json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False)
+    except (OSError, ValueError, TypeError) as exc:
+        print(json.dumps({"ok": False, "gaps": [str(exc)]}), file=sys.stderr)
+        return 1
+    print(output, end="")
     print()
     return 0
 

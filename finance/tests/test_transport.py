@@ -2,6 +2,8 @@
 """Offline tests for finance/transport.py — the single HTTP transport."""
 import os
 import sys
+from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance import transport
@@ -30,8 +32,10 @@ def test_retry_classification():
 
 
 def test_unresolvable_host_returns_gap():
-    body, gap = transport.request(
-        "https://nonexistent-host-for-tests.invalid/x", timeout=5, retries=0)
+    with patch.object(transport.subprocess, "run", return_value=SimpleNamespace(
+            returncode=6, stdout="000", stderr="fixture DNS failure")):
+        body, gap = transport.request(
+            "https://nonexistent-host-for-tests.invalid/x", timeout=5, retries=0)
     check("a dead host returns no body", body is None)
     check("a dead host returns a labelled gap", isinstance(gap, str) and bool(gap), gap)
     check("the gap names the host", "nonexistent-host-for-tests.invalid" in (gap or ""), gap)
@@ -89,8 +93,10 @@ def test_dest_writes_nothing_when_the_fetch_fails():
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         target = os.path.join(tmp, "annual-report.src")
-        body, gap = transport.request("https://nonexistent-host-for-tests.invalid/x",
-                                      timeout=5, retries=0, dest=target)
+        with patch.object(transport.subprocess, "run", return_value=SimpleNamespace(
+                returncode=6, stdout="000", stderr="fixture DNS failure")):
+            body, gap = transport.request("https://nonexistent-host-for-tests.invalid/x",
+                                          timeout=5, retries=0, dest=target)
         check("a failed download returns a gap, not the path", body is None and bool(gap),
               gap)
         check("a failed download leaves no file where a caller expects a document",
@@ -115,8 +121,98 @@ def test_single_user_agent():
         check(f"{mod}.py declares no UA of its own", "_UA = (" not in src)
 
 
+
+def test_transport_boundary_failures():
+    def attempt(**kw):
+        try:
+            body, gap = transport.request("https://example.com/data", **kw)
+            return body is None and bool(gap)
+        except Exception:
+            return False
+    with patch.object(transport.subprocess, "run") as invoke:
+        for kw in ({"timeout": None}, {"timeout": float("nan")}, {"timeout": 0},
+                   {"retries": -1}, {"retries": 1.5}, {"payload": {1, 2}},
+                   {"payload": {"x": float("nan")}}, {"headers": ["bad"]},
+                   {"headers": {"X-Test": "bad\r\nInjected: yes"}}):
+            check(f"invalid request options degrade: {kw!r}", attempt(**kw))
+        check("invalid options never dispatch curl", invoke.call_count == 0)
+    with patch.object(transport.tempfile, "mkstemp", side_effect=OSError("fixture disk full")):
+        check("temporary-file setup failure becomes a gap", attempt())
+
+
+def test_http_status_protocol_and_retry():
+    calls = []
+    statuses = []
+    def fake(cmd, **kw):
+        calls.append(cmd)
+        with open(cmd[cmd.index("-o") + 1], "wb") as out:
+            out.write(b"fixture body")
+        status = statuses.pop(0)
+        return SimpleNamespace(returncode=0, stdout=status, stderr="")
+    with patch.object(transport.subprocess, "run", side_effect=fake), \
+            patch.object(transport.time, "sleep"):
+        for status in ("", "000", "garbage", "junk200", "600"):
+            statuses[:] = [status]
+            body, gap = transport.request("https://example.com/data", retries=0)
+            check(f"invalid HTTP status {status!r} is a gap", body is None and bool(gap))
+        statuses[:] = ["503", "200"]
+        calls.clear()
+        body, gap = transport.request("https://example.com/data", retries=1)
+        check("transient HTTP failure retries and returns the successful body",
+              body == "fixture body" and gap is None and len(calls) == 2)
+        cmd = calls[-1]
+        check("curl restricts initial and redirected protocols to HTTP(S)",
+              "--proto" in cmd and cmd[cmd.index("--proto") + 1] == "=http,https"
+              and "--proto-redir" in cmd
+              and cmd[cmd.index("--proto-redir") + 1] == "=http,https")
+        statuses[:] = ["403"]
+        calls.clear()
+        body, gap = transport.request("https://example.com/data", retries=2)
+        check("HTTP refusal is not retried", body is None and "403" in gap and len(calls) == 1)
+        for url in ("file:///etc/hosts", "https://user:secret@example.com/data"):
+            calls.clear()
+            try:
+                body, gap = transport.request(url, retries=0)
+                valid = body is None and bool(gap) and not calls and "secret" not in gap
+            except Exception:
+                valid = False
+            check("unsafe URL is rejected before dispatch without echoing credentials", valid)
+
+
+def test_binary_publication_preserves_previous_evidence():
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = os.path.join(tmp, "report.pdf")
+        with open(dest, "wb") as out:
+            out.write(b"old report")
+        def fake(cmd, **kw):
+            with open(cmd[cmd.index("-o") + 1], "wb") as out:
+                out.write(b"new report\x00\xff")
+            return SimpleNamespace(returncode=0, stdout="200", stderr="")
+        with patch.object(transport.subprocess, "run", side_effect=fake):
+            with patch.object(transport.os, "replace", side_effect=OSError("fixture write failure")):
+                body, gap = transport.request("https://example.com/report", dest=dest)
+            check("failed publication returns a gap", body is None and bool(gap))
+            with open(dest, "rb") as inp:
+                check("failed publication preserves previous complete document", inp.read() == b"old report")
+            body, gap = transport.request("https://example.com/report", dest=dest)
+            with open(dest, "rb") as inp:
+                check("successful publication preserves exact binary bytes",
+                      body == dest and gap is None and inp.read() == b"new report\x00\xff")
+            check("publication leaves no temporary fragments", os.listdir(tmp) == ["report.pdf"])
+
+
+def test_redirects_can_be_refused_at_source_boundary():
+    with patch.object(transport.subprocess, "run", return_value=SimpleNamespace(
+            returncode=0, stdout="302", stderr="")) as run_curl:
+        body, gap = transport.request("https://www.amfiindia.com/data", follow_redirects=False)
+    check("source can refuse unchecked redirects", "-L" not in run_curl.call_args.args[0])
+    check("refused redirect is a labelled gap", body is None and "302" in gap, gap)
+
+
 if __name__ == "__main__":
-    run((test_host_extraction, test_retry_classification,
+    run((test_redirects_can_be_refused_at_source_boundary, test_transport_boundary_failures, test_http_status_protocol_and_retry,
+         test_binary_publication_preserves_previous_evidence, test_host_extraction, test_retry_classification,
             test_unresolvable_host_returns_gap, test_request_never_raises_on_bad_input,
             test_json_request_labels_non_json,
             test_json_request_passes_through_upstream_gap,

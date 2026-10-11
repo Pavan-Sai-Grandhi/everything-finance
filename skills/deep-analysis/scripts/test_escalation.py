@@ -84,8 +84,8 @@ check("unrecognised-axis reason does not claim convergence",
 
 # --- round caps ---------------------------------------------------------------
 clash = (dig("valuation", "cheap"), dig("valuation", "dear"))
-check("standard: round 1 escalates",
-      escalation.should_escalate(*clash, mode="standard", round_no=1)["escalate"] is True)
+check("standard uses a single contest and never starts another debate round",
+      escalation.should_escalate(*clash, mode="standard", round_no=1)["escalate"] is False)
 check("standard: round 2 is the cap",
       escalation.should_escalate(*clash, mode="standard", round_no=2)["escalate"] is False)
 check("deep: round 2 still escalates",
@@ -95,7 +95,7 @@ check("deep: round 3 is the cap",
 r = escalation.should_escalate(*clash, mode="deep", round_no=3)
 check("cap reason names the mode", "deep mode" in r["reason"], r)
 check("MAX_ROUNDS is declared per mode",
-      escalation.MAX_ROUNDS == {"standard": 2, "deep": 3}, escalation.MAX_ROUNDS)
+      escalation.MAX_ROUNDS == {"standard": 1, "deep": 3}, escalation.MAX_ROUNDS)
 
 # --- exhaustion: new_evidence false on both sides ends deep mode --------------
 stale = (dig("valuation", "cheap", new_evidence=False),
@@ -111,7 +111,7 @@ r = escalation.should_escalate(dig("valuation", "cheap", new_evidence=True),
 check("deep r2, one side still new → escalate", r["escalate"] is True, r)
 
 # exhaustion is not consulted in round 1 — every side is new there by definition
-r = escalation.should_escalate(*stale, mode="standard", round_no=1)
+r = escalation.should_escalate(*stale, mode="deep", round_no=1)
 check("round 1 ignores new_evidence", r["escalate"] is True, r)
 
 # --- shape --------------------------------------------------------------------
@@ -123,5 +123,28 @@ check("no directive when not escalating",
       escalation.should_escalate(*clash, mode="standard", round_no=2)["directive"] is None)
 
 check("selftest passes", escalation._selftest() == 0)
+
+
+for bad in (None, [], {"axis": "valuation", "claim": "x", "conceded": "false", "new_evidence": True},
+            {"axis": [], "claim": "x", "conceded": False, "new_evidence": True},
+            {"axis": "valuation", "claim": 123, "conceded": False, "new_evidence": True},
+            {"axis": "valuation", "claim": "x", "conceded": False, "new_evidence": "false"}):
+    try:
+        r=escalation.should_escalate(bad,dig("valuation","other"),mode="deep",round_no=3)
+        valid=not r["escalate"] and bool(r["gaps"]) and "converged" not in r["reason"]
+    except Exception:
+        valid=False
+    check("malformed digest is diagnosed even at the round cap", valid,bad)
+for kwargs in ({"mode":"typo"},{"round_no":0},{"round_no":True}):
+    try:
+        r=escalation.should_escalate(*clash,**kwargs)
+        valid=not r["escalate"] and bool(r["gaps"])
+    except Exception:
+        valid=False
+    check("invalid debate controls cannot schedule another round",valid,kwargs)
+for bull,bear in (("EPS growth > 10%","EPS growth < 10%"), ("Cash flow is -10","Cash flow is 10")):
+    r=escalation.should_escalate(dig("valuation",bull),dig("valuation",bear),mode="deep")
+    check("opposite numeric claims are not normalized into agreement",r["escalate"],r)
+
 
 summary()

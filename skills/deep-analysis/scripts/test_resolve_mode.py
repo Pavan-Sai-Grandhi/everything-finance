@@ -6,10 +6,13 @@ touches the trade store runs inside a temp artifacts root. Run:
 import os
 import sys
 import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
+_sandbox = tempfile.TemporaryDirectory()
+os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = _sandbox.name
 import resolve_mode  # noqa: E402
 from finance.tests.harness import check, summary  # noqa: E402
 
@@ -54,9 +57,9 @@ check("--fundamentals beats --quick", r["mode"] == "fundamentals", r)
 r = resolve_mode.resolve("RRKABEL --fundamentals", symbol="RRKABEL", holding="yes")
 check("--fundamentals beats broker holding", r["mode"] == "fundamentals", r)
 
-with tempfile.TemporaryDirectory() as root:
+with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS": root}):
     write_trade(root, "RRKABEL", "2026-06-01", "open")
-    r = resolve_mode.resolve("RRKABEL --fundamentals", symbol="RRKABEL", holding="no", root=root)
+    r = resolve_mode.resolve("RRKABEL --fundamentals", symbol="RRKABEL", holding="no")
     check("--fundamentals beats an open trade artifact", r["mode"] == "fundamentals", r)
 
 # no flag never selects it — a fundamentals-only read is always asked for
@@ -73,19 +76,19 @@ r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="yes")
 check("broker holding → deep", r["mode"] == "deep", r)
 check("holding reason note", "override with --quick" in r["reason"], r)
 
-with tempfile.TemporaryDirectory() as root:
+with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS": root}):
     write_trade(root, "RRKABEL", "2026-06-01", "open")
-    r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="no", root=root)
+    r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="no")
     check("open trade artifact → deep", r["mode"] == "deep", r)
 
-with tempfile.TemporaryDirectory() as root:
+with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS": root}):
     write_trade(root, "RRKABEL", "2026-06-01", "closed")
-    r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="no", root=root)
+    r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="no")
     check("closed trade artifact → standard", r["mode"] == "standard", r)
 
-with tempfile.TemporaryDirectory() as root:
+with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS": root}):
     write_trade(root, "OTHERCO", "2026-06-01", "open")
-    r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="no", root=root)
+    r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="no")
     check("open trade for a different symbol is ignored", r["mode"] == "standard", r)
 
 for args in ("RRKABEL", "RRKABEL --quick", "RRKABEL --deep", "RRKABEL --fundamentals"):
@@ -110,9 +113,9 @@ check("'yes' raises no gap", r["gaps"] == [], r)
 
 # unknown must not suppress the open-trade half — that is a local file read that
 # always works, and it escalates on its own
-with tempfile.TemporaryDirectory() as root:
+with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS": root}):
     write_trade(root, "RRKABEL", "2026-06-01", "open")
-    r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="unknown", root=root)
+    r = resolve_mode.resolve("RRKABEL", symbol="RRKABEL", holding="unknown")
     check("unknown broker + open trade artifact → deep", r["mode"] == "deep", r)
     check("open-trade escalation raises no gap", r["gaps"] == [], r)
 
@@ -129,5 +132,28 @@ except ValueError as e:
     check("bad holding state raises ValueError", "maybe" in str(e), e)
 
 check("selftest passes", resolve_mode._selftest() == 0)
+
+
+# A YAML record is not a bag of lines; nested rationale/example statuses do not count.
+for status_text, expected in (("status: 'open' # filled", "deep"),
+                               ("status: closed\nnotes: |\n  status: open", "standard"),
+                               ("status: closed\nhistory:\n  status: open", "standard")):
+    with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS":root}):
+        d=os.path.join(root,"state","trades");os.makedirs(d)
+        with open(os.path.join(d,"RRKABEL-fixture.yml"),"w") as out:
+            out.write("symbol: RRKABEL\n"+status_text+"\n")
+        result=resolve_mode.resolve("RRKABEL",symbol="RRKABEL",holding="no")
+        check("mode uses the parsed top-level trade status",result["mode"]==expected,result)
+with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS":root}):
+    d=os.path.join(root,"state","trades");os.makedirs(d)
+    with open(os.path.join(d,"RRKABEL-bad.yml"),"w") as out:out.write("status: [broken")
+    result=resolve_mode.resolve("RRKABEL",symbol="RRKABEL",holding="no")
+    check("unreadable matching record cannot prove no open position",bool(result["gaps"]) and "not a held" not in result["reason"],result)
+with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside, patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS":root}):
+    write_trade(outside,"RRKABEL","2026-06-01","open")
+    os.symlink(os.path.join(outside,"state"),os.path.join(root,"state"))
+    result=resolve_mode.resolve("RRKABEL",symbol="RRKABEL",holding="no")
+    check("trade-store symlink escape is refused with a gap",result["mode"]=="standard" and bool(result["gaps"]),result)
+
 
 summary()

@@ -39,8 +39,8 @@ check("agility decays monotonically past the ceiling",
       S.aum_agility(30000, 500, 20000) > S.aum_agility(60000, 500, 20000))
 
 check("85% in-mandate maps to 0.85", abs(S.cap_purity(85) - 0.85) < 1e-9)
-check("purity is clamped to 1.0", S.cap_purity(120) == 1.0)
-check("negative purity clamps to 0", S.cap_purity(-5) == 0.0)
+check("purity over 100 is unknown, not a perfect score", S.cap_purity(120) is None)
+check("negative purity is unknown, not a zero allocation", S.cap_purity(-5) is None)
 check("missing purity is None", S.cap_purity(None) is None)
 
 score, cov, used = S.composite({k: 1.0 for k in S.WEIGHTS})
@@ -110,13 +110,17 @@ check("max drawdown is computed from the NAV series, not bought from a vendor",
 check("the worst peak-to-trough is found (120 -> 90 = 25%)",
       abs(m["max_drawdown_pct"] - 25.0) < 0.01, m["max_drawdown_pct"])
 check("the NAV as-of date is the newest bar", m["nav_as_of"] == "2020-01-10", m)
-check("a span under 3 years is flagged low confidence", m["confidence"] == "low")
+check("ten days cannot establish confidence in one-year rolling returns", m["confidence"] == "unknown")
 empty = S.nav_metrics([], 1)
 check("an empty NAV series degrades to None, never raises",
       empty["max_drawdown_pct"] is None and empty["n_windows"] == 0)
 check("a one-point series is still safe", S.nav_metrics([navs[0]], 1)["confidence"] == "unknown")
-check("unparseable rows are skipped, not crashed on",
-      S.nav_metrics([{"date": "bad", "nav": "x"}] + navs, 1)["nav_as_of"] == "2020-01-10")
+for bad in ({"date":"bad","nav":"x"}, {"date":"2010-01-01","nav":"bad"}, {"date":"2010-01-01","nav":True}):
+    try:
+        S.nav_metrics([bad] + navs, 1)
+        check("malformed NAV cannot misalign dates and values",False)
+    except ValueError:
+        check("malformed NAV cannot misalign dates and values",True)
 
 check("a missing market-context path is None, not a fabricated market read",
       S.load_market_context("/nonexistent/path.json", "Small Cap Fund") is None)
@@ -176,8 +180,8 @@ with tempfile.TemporaryDirectory() as tmp:
           env["gaps"] == ["AMFI scheme list unavailable"] and "gaps" not in env["data"],
           env["gaps"])
     check("report writes the shortlist JSON and names the path",
-          env["data"]["report_path"] == out and os.path.isfile(out))
-    with open(out) as fh:
+          env["data"]["report_path"] != out and os.path.isfile(env["data"]["report_path"]))
+    with open(env["data"]["report_path"]) as fh:
         check("the written shortlist keeps its own gaps list",
               json.load(fh)["gaps"] == ["AMFI scheme list unavailable"])
 
@@ -190,4 +194,73 @@ with tempfile.TemporaryDirectory() as tmp:
     check("report with an empty shortlist carries the reason",
           env_empty["gaps"] == ["no fund cleared"], env_empty["gaps"])
 
+from unittest import mock
+from finance.sources import funds as fund_source
+with mock.patch.object(S,"match_amfi_scheme",return_value={"code":"fixture"}), mock.patch.object(fund_source,"nav_history",return_value={"ok":True,"data":{"navs":[{"date":"2020-01-01","nav":0}]},"gaps":[]}):
+    hit, metrics, errors = S._resolve_and_nav({"name":"fixture"},[],1,False)
+check("invalid NAV excludes only affected fund with a gap",metrics is None and any("invalid NAV" in gap for gap in errors))
+
+for invalid in ({"window":"4y"},{"top":0},{"top":True},{"workers":0},
+                {"min_aum_cr":float("nan")},{"ter_ceiling":-1},
+                {"agility_ceiling_cr":0},{"min_age_months":-1},{"category":""}):
+    with mock.patch.object(fund_source,"screen") as fetch, mock.patch.object(fund_source,"amfi_index",return_value={"data":{"schemes":[]}}):
+        try:
+            S.scan(**invalid)
+            check("invalid fund scan rejected before fetching",False,invalid)
+        except ValueError:
+            check("invalid fund scan rejected before fetching",not fetch.called,invalid)
+    with mock.patch.object(fund_source,"screen") as fetch, mock.patch.object(fund_source,"amfi_index",return_value={"data":{"schemes":[]}}):
+        env=S.report(**invalid)
+    check("invalid public scan returns a gap envelope",not fetch.called and not env["ok"] and bool(env["gaps"]),invalid)
+
+ambiguous=[{"code":"10","name":"Fixture Equity Fund Direct Growth"},
+           {"code":"20","name":"Fixture Equity Fund Direct Plan Growth"}]
+check("two matching AMFI identities are not resolved by shortest name",S.match_amfi_scheme("Fixture Equity Fund",ambiguous) is None)
+check("partial name cannot pick a more specific scheme",S.match_amfi_scheme("Fixture Equity Fund",[{"code":"10","name":"Fixture Equity Opportunities Fund Direct Growth"}]) is None)
+check("duplicate rows for one scheme do not create ambiguity",S.match_amfi_scheme("Fixture Equity Fund",[ambiguous[0],dict(ambiguous[0])])["code"]=="10")
+check("malformed registry neighbors do not block valid identity",S.match_amfi_scheme("Fixture Equity Fund",[None,{"name":5},ambiguous[0]])["code"]=="10")
+
+with tempfile.TemporaryDirectory() as directory:
+    hint=os.path.join(directory,"scan.json")
+    with mock.patch.object(S,"scan",return_value=dict(SCAN_RESULT)):
+        first=S.report(out=hint)
+        identical=S.report(out=hint)
+    with mock.patch.object(S,"scan",return_value=dict(SCAN_RESULT,shortlist=[])):
+        second=S.report(out=hint)
+    check("changed fund scan gets distinct evidence path",first["data"]["report_path"] != second["data"]["report_path"])
+    check("identical fund scan reuses content address",first["data"]["report_path"] == identical["data"]["report_path"])
+    with open(first["data"]["report_path"]) as stream:
+        check("earlier shortlist survives later empty scan",bool(json.load(stream)["shortlist"]))
+
+with tempfile.TemporaryDirectory() as directory, mock.patch.object(S,"scan",return_value=dict(SCAN_RESULT)), mock.patch.object(S.spine,"publish_evidence",side_effect=OSError("fixture unavailable")):
+    failed=S.report(out=os.path.join(directory,"scan.json"))
+check("snapshot failure preserves computed shortlist with gap",failed["ok"] and failed["data"]["report_path"] is None and bool(failed["data"]["shortlist"]) and any("could not write" in gap for gap in failed["gaps"]))
+
+for category, expected in (("Large Cap Fund","80%"),("Mid Cap Fund","15%"),("Small Cap Fund","0%"),("Flexi Cap Fund","—")):
+    metrics={"cap_mix":{"small":0,"mid":15,"large":80},"rolling":{"mean":10,"min":5},
+             "max_drawdown_pct":20,"expense_ratio_pct":0.5,"aum_cr":1000,"sharpe":1}
+    fixture=dict(SCAN_RESULT,category=category,shortlist=[{"rank":1,"name":"PurityFixture","score":0.5,"flags":[],"metrics":metrics}])
+    line=next(line for line in S.render_table(fixture).splitlines() if "PurityFixture" in line)
+    check("table purity corresponds to the category mandate including zero",line.split()[-1]==expected,(category,line))
+
+fixture_row={"name":"Fixture","option":"Growth","expRatio":0.5,"aum":1000,"ageInMon":60,
+             "sharpe":1,"sortino":1,"alpha":1,"stdDevAnn":10,"percSmallcap":120}
+fixture_nav={"roll_mean":10,"roll_min":5,"roll_median":8,"n_windows":100,"max_drawdown_pct":20,
+             "span_years":5,"confidence":"ok","nav_as_of":"2020-01-01"}
+with mock.patch.object(fund_source,"screen",return_value={"data":{"funds":[fixture_row]},"gaps":[]}), mock.patch.object(fund_source,"amfi_index",return_value={"data":{"schemes":[{"code":"fixture"}]}}), mock.patch.object(S,"_resolve_and_nav",return_value=({"code":"fixture"},fixture_nav,[])):
+    result=S.scan()
+check("invalid provider purity reaches the report gaps",any("invalid percSmallcap" in gap for gap in result["gaps"]))
+check("invalid purity contributes no score or coverage",result["shortlist"] and "cap_purity" not in result["shortlist"][0]["scored_on"] and result["shortlist"][0]["components"]["cap_purity"] is None)
+
+# Age metadata cannot substitute for usable returns over the requested window.
+missing_windows = dict(fixture_nav, roll_mean=None, roll_min=None, roll_median=None,
+                       n_windows=0, confidence='unknown')
+with mock.patch.object(fund_source, 'screen', return_value={'data': {'funds': [dict(fixture_row, percSmallcap=80)]}, 'gaps': []}), mock.patch.object(fund_source, 'amfi_index', return_value={'data': {'schemes': [{'code': 'fixture'}]}}), mock.patch.object(S, '_resolve_and_nav', return_value=({'code': 'fixture'}, missing_windows, [])):
+    missing_result = S.scan()
+check('fund with no requested rolling windows cannot enter ranking', not missing_result['shortlist'])
+check('NAV-stage rejection preserves the earlier funnel count',
+      missing_result['universe']['passed_gates'] == 1 and missing_result['universe']['scored'] == 0)
+check('missing rolling coverage explains rejection without recommending weaker gates',
+      any('rolling' in gap for gap in missing_result['gaps'])
+      and not any('loosen' in gap for gap in missing_result['gaps']))
 summary()

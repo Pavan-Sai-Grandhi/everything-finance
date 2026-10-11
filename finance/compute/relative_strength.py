@@ -10,17 +10,25 @@ Windows are fixed trading-day counts (21/63/126 ≈ 1M/3M/6M) so reads are compa
 """
 from __future__ import annotations
 
+import math
+
+
+def _finite(value):
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+
+
 WINDOWS = {"1m": 21, "3m": 63, "6m": 126}
 
 
 def pct_return(closes, lookback):
     """% return over the last `lookback` bars, or None if the series is too short."""
-    if not closes or len(closes) <= lookback:
+    if type(lookback) is not int or lookback < 1 or not closes or len(closes) <= lookback:
         return None
     start = closes[-1 - lookback]
-    if not start:
+    if not _finite(start) or not _finite(closes[-1]) or start <= 0 or closes[-1] <= 0:
         return None
-    return round(100.0 * (closes[-1] / start - 1.0), 2)
+    result = 100.0 * (closes[-1] / start - 1.0)
+    return round(result, 2) if math.isfinite(result) else None
 
 
 def window_returns(closes, windows=None):
@@ -42,7 +50,7 @@ def classify(rs_1m, rs_3m):
     Improving (1M positive, 3M negative) is early rotation — the actionable class.
     Either window missing yields 'unclassified' rather than a guessed label.
     """
-    if rs_1m is None or rs_3m is None:
+    if not _finite(rs_1m) or not _finite(rs_3m):
         return "unclassified"
     if rs_1m >= 0 and rs_3m >= 0:
         return "Leading"
@@ -51,3 +59,16 @@ def classify(rs_1m, rs_3m):
     if rs_1m < 0 <= rs_3m:
         return "Weakening"
     return "Lagging"
+
+
+def load_history(closes_fn, symbol, fresh=False):
+    try:
+        loaded = closes_fn(symbol, fresh)
+        # Bare arrays are the existing pure-compute test injection contract.
+        history = loaded if isinstance(loaded, dict) else {"closes": loaded, "dates": [], "gaps": []}
+        closes = history["closes"]
+        if not isinstance(closes, list) or any(isinstance(v, bool) or not isinstance(v, (int,float)) or not math.isfinite(v) or v <= 0 for v in closes):
+            raise ValueError("invalid close series")
+        return history
+    except Exception as exc:
+        return {"closes": [], "dates": [], "gaps": [f"price history unavailable ({type(exc).__name__})"]}

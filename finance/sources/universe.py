@@ -20,6 +20,7 @@ import csv
 import glob
 import io
 import os
+import hashlib
 from datetime import date
 
 from finance import paths
@@ -49,11 +50,6 @@ LARGECAP20_BASKET = [
     "LT", "ITC", "HINDUNILVR", "MARUTI", "M&M", "SUNPHARMA", "TITAN",
     "BAJFINANCE", "AXISBANK", "KOTAKBANK", "ASIANPAINT", "TATASTEEL", "NTPC",
 ]
-
-# Tickers whose yfinance symbol changed (demergers/renames); extend as discovered.
-SYMBOL_ALIASES = {
-    "TATAMOTORS": "TATAMOTORS",  # post-2025 demerger: verify CV/PV split symbol on yfinance
-}
 
 NAMED = tuple(_INDEX_FILES) + ("fno", "largecap20")
 
@@ -171,11 +167,17 @@ def resolve(name, fresh=False):
     """
     symbols, gaps = resolve_symbols(name, fresh=fresh)
     key = _key_for(name)
-    path = _cache_path(key)
-    if symbols and (key == "custom" or not os.path.exists(path)):
+    if key == "custom":
+        digest = hashlib.sha256("\n".join(symbols).encode()).hexdigest()[:16]
+        path = _cache_path(f"custom-{digest}")
+    else:
+        # A failed refresh returns the original snapshot. Never write those old
+        # constituents under today's name, which would erase their provenance.
+        path = _newest_cached(key) if gaps else _cache_path(key)
+    if symbols and key == "custom":
         _write_list(path, symbols)
     data = {"name": key, "symbols_count": len(symbols),
             "universe_path": path if symbols else None,
-            "as_of": date.today().isoformat()}
+            "as_of": os.path.basename(path)[-14:-4] if symbols and path else None}
     return _envelope(bool(symbols), "NSE", data,
                      gaps + ([] if symbols else [f"universe {key!r} resolved to no symbols"]))

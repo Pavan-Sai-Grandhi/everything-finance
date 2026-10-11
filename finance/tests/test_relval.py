@@ -137,6 +137,8 @@ _MALFORMED = {
                                   {"symbol": "STANLEY", "pe": 166.5}]},
     "peer_pe as a symbol map":
         {"pe": 83.31, "peer_pe": {"VMART": 48.5, "STANLEY": 166.5, "TRENT": 24.0}},
+    "peer_pe as a scalar":
+        {"pe": 20.0, "peer_pe": 25.0, "growth": 7.5},
     "growth as a bare number":
         {"pe": 83.31, "peer_pe": [48.5, 166.5, 24.0], "growth": 7.5},
     "pe as a formatted string":
@@ -169,5 +171,16 @@ check("a growth fraction withholds PEG rather than printing 1110",
 
 r = relval.relative_read({"pe": 83.31, "peer_pe": [48.5, 166.5, 24.0], "growth": 7.5})
 check("a bare growth percent is read as the value", r["peg"] == 11.11, r)
+
+for pe in (None, 0, -5, float("nan"), float("inf")):
+    r = relval.relative_read({"pe": pe, "peer_pe": [10, 20, 30],
+                              "own_pe_history": [10, 20, 30], "growth": 5})
+    check("unusable company earnings cannot imply cheapness or fair value",
+          r["relative_stance"] == "not computable", r)
+    check("unusable earnings cannot yield PEG", r["peg"] is None, r)
+r = relval.relative_read({"pe": 20, "peer_pe": [10, 20, 30],
+                          "pe_basis": "unchecked", "peer_pe_basis": "unchecked"})
+check("two matching invalid P/E bases do not validate a comparison",
+      not r["peer_read_counts"], r)
 
 summary()

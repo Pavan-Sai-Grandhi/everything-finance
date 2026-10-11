@@ -223,4 +223,43 @@ with tempfile.TemporaryDirectory() as tmp:
                           before="2026-06-01")["data"]["path"] ==
           os.path.join(fund_day, "mf-analysis.md"))
 
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    _clean_env()
+    for create in (lambda: paths.stock_dir("../ESCAPE"),
+                   lambda: paths.stock_dir("TCS", "../elsewhere"),
+                   lambda: paths.backtest_dir("../ESCAPE"),
+                   lambda: paths.report_path(os.path.join(tmp, "absolute")),
+                   lambda: paths.cache_dir("../outside"),
+                   lambda: paths.fund_dir("---")):
+        try:
+            create()
+            rejected = False
+        except ValueError:
+            rejected = True
+        check("invalid artifact component is refused before writing", rejected)
+    check("nested internal cache namespaces still work",
+          paths.cache_dir("tickertape/ratios").endswith("tickertape/ratios"))
+    check("monthly budget paths still work",
+          paths.report_path("budget", "2026-05", "html").endswith("2026-05.html"))
+    invalid = paths.prior_run("dcf", "../ESCAPE")
+    check("invalid prior-run subject degrades in its envelope", not invalid["ok"] and invalid["gaps"])
+    p = paths.sector_cache_path("bad-date")
+    with open(p, "w") as fh:
+        fh.write("generated: 2026-99-99\n")
+    try:
+        age = paths.sector_cache_age_days("bad-date")
+    except ValueError:
+        age = "crashed"
+    check("invalid sector cache date is an unavailable age", age is None)
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    _clean_env()
+    p = paths.state_dir("trades", create=False)
+    check("read-only state lookup returns the authoritative path without creating it",
+          p == os.path.join(os.getcwd(), "artifacts", "state", "trades") and not os.path.exists(p))
+
+
 summary()

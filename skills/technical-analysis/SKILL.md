@@ -1,6 +1,7 @@
 ---
 name: technical-analysis
-description: Read the chart for one NSE stock — Dow trend stage, the support/resistance map with touch-count evidence, the active candlestick or structural pattern in its location context, the volume signature, RSI/MACD as confirmation only, and the two price levels that invalidate a bull or a bear thesis. Use whenever the user wants the chart view on a ticker — "what do the charts say on X", "is X in an uptrend", "where is support / resistance", "is this a breakout or a fakeout", "what is the RSI/MACD saying", "where would my stop go on X", "is it overbought" — even when they never say "technical analysis". This is the chart read on one stock: scanning the whole market against a strategy is discover, testing a strategy on history is strategy-manager, and the full bull/bear debate is deep-analysis.
+description: >-
+  Read the chart for one NSE stock — Dow trend stage, the support/resistance map with touch-count evidence, the active candlestick or structural pattern in its location context, the volume signature, RSI/MACD as confirmation only, and the two price levels that invalidate a bull or a bear thesis. Use whenever the user wants the chart view on a ticker — "what do the charts say on X", "is X in an uptrend", "where is support / resistance", "is this a breakout or a fakeout", "what is the RSI/MACD saying", "where would my stop go on X", "is it overbought" — even when they never say "technical analysis". This is the chart read on one stock: scanning the whole market against a strategy is discover, testing a strategy on history is strategy-manager, and the full bull/bear debate is deep-analysis.
 argument-hint: "TICKER [optional: a candles file already fetched]"
 allowed-tools: Read, Write, Bash, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*
 ---
@@ -9,7 +10,7 @@ allowed-tools: Read, Write, Bash, mcp__finance-market__*, mcp__plugin_everything
 
 Read `references/reference.md` first — it owns the method: the six-step Varsity checklist and the order it runs in, the moving-average rules, the stale-quote cross-check, and the `ta.py` recipe that produces every indicator value. This SKILL is the workflow.
 
-**Sources for this skill only:** `finance-market` — `get_history(symbol, period="1y")` for EOD candles (the full series is written to `candles_path`; the summary alone is not enough to derive levels) and `get_quote(symbol)` for the live bar.
+**Sources for this skill only:** `finance-market` — `get_history(symbol, period="1y", adjusted=True)` for EOD candles (the full series is written to `candles_path`; the summary alone is not enough to derive levels). Use the adjusted series: a split or bonus inside the window otherwise breaks every average, RSI reading and pre-event level, and discover/backtest compute on adjusted bars too. Adjusted levels are in today's price terms, so they compare directly with the live quote and `get_quote(symbol)` for the live bar.
 
 ## Workflow
 
@@ -40,7 +41,7 @@ axis: technical_structure
 
 **Trend (Dow stage)**: primary trend up/down/range; phase (accumulation/markup/distribution/markdown); HH-HL or LH-LL evidence
 **Key levels**: S1, S2 / R1, R2 with the touch-count evidence for each
-**Price vs MAs**: position vs 50-EMA and 200-EMA, slope of each
+**Price vs MAs**: position vs 50-EMA and 200-EMA (`ta.ema(close, 200)`; `add_indicators` carries `sma200`, not an EMA), slope of each
 **Pattern**: active candlestick/structural pattern if any, with location context (at support? mid-air?)
 **Volume**: recent moves vs 10-day average — accumulation or distribution signature
 **Indicators (confirmation only)**: RSI value + zone; MACD state; note agreement/divergence with price

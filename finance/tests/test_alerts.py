@@ -165,4 +165,81 @@ check("manage snooze: no until date is a gap",
 check("manage dismiss: a missing alert is a gap, not a raise",
       alerts.manage("dismiss", alert_id="nope")["ok"] is False)
 
+_isolated()
+args=dict(created_by='fixture',subject={'type':'stock','id':'ABC'},kind='custom',trigger={'due':'2030-01-01'},action={'text':'fixture'})
+first=alerts.create(**args)
+second=alerts.create(**args)
+check('distinct alerts without a dedup key cannot overwrite',first['id']!=second['id'] and len(alerts.load_all())==2)
+sleeping=alerts.create(**args,dedup_key='sleeping',snooze_until='2099-01-01')
+refreshed=alerts.create(**args,dedup_key='sleeping')
+check('refresh preserves a snoozed alert and its identity',refreshed['id']==sleeping['id'] and refreshed['status']=='snoozed')
+try:
+    alerts._path('../outside')
+    check('alert ids cannot escape their directory',False)
+except ValueError:
+    check('alert ids cannot escape their directory',True)
+from unittest import mock
+before=open(alerts._path(first['id']),'rb').read()
+with mock.patch.object(alerts.os,'replace',side_effect=OSError('fixture disk failure')):
+    try:
+        alerts.set_status(first['id'],'done')
+    except OSError:
+        pass
+check('failed status publication preserves previous alert',open(alerts._path(first['id']),'rb').read()==before)
+
+_isolated()
+prior=alerts.create(**args,dedup_key='dismissed')
+alerts.set_status(prior['id'],'done')
+check('stale snapshot cannot resurrect a dismissed alert',alerts.evaluate_cheap([prior],{'date':'2099-01-01'})==[])
+reopened=alerts.create(**args,dedup_key='dismissed')
+check('new alert preserves completed history',reopened['id']!=prior['id'] and len(alerts.load_all())==2)
+
+_isolated()
+import subprocess
+script="""from finance.compute import alerts
+for i in range(3):
+ alerts.create(created_by='fixture',subject={'type':'stock','id':'ABC'},kind='custom',trigger={'due':'2030-01-01'},action={'text':'fixture'},dedup_key='concurrent')
+"""
+children=[subprocess.Popen([sys.executable,'-c',script],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True) for _ in range(3)]
+try:
+    outputs=[child.communicate(timeout=10) for child in children]
+    stored=alerts.load_all()
+    check('concurrent dedup creates one alert without losing refreshes',all(child.returncode==0 for child in children) and len(stored)==1 and len(stored[0]['log'])==9,outputs)
+finally:
+    for child in children:
+        if child.poll() is None:child.kill()
+        child.wait()
+
+for bad_date in ('2026-02-30','tomorrow','2026-13-01'):
+    invalid=alerts.manage('add',subject_id='ABC',due=bad_date,text='fixture')
+    check('invalid alert date is a labelled refusal',not invalid['ok'] and bool(invalid['gaps']),invalid)
+
+_isolated()
+valid=alerts.create(**args)
+store=os.path.dirname(alerts._path(valid['id']))
+for name, content in (('broken','invalid: ['),('scalar','42'),('wrong-id','id: another\nstatus: open\n')):
+    with open(os.path.join(store,name+'.yml'),'w') as fh:fh.write(content)
+inbox=alerts.manage('list')
+check('one bad legacy record cannot hide valid alerts',inbox['ok'] and inbox['data']['count']==1 and inbox['data']['alerts'][0]['id']==valid['id'],inbox)
+check('each skipped record is named in gaps',len(inbox['gaps'])==3 and all('preserved' in g for g in inbox['gaps']),inbox['gaps'])
+check('corrupt originals are never deleted',all(os.path.isfile(os.path.join(store,n+'.yml')) for n in ('broken','scalar','wrong-id')))
+ambiguous=alerts.manage('add',subject_id='ABC',text='fixture',due='2030-01-01',metric='close',op='<',level=100)
+check('ambiguous trigger does not silently choose a branch',not ambiguous['ok'])
+
+_isolated()
+expired=alerts.create(**args,dedup_key='expiry',expires_at='2020-01-01')
+fresh=alerts.create(**args,dedup_key='expiry')
+check('expired unswept alert cannot absorb a new reminder',fresh['id']!=expired['id'] and len(alerts.load_all())==2)
+for trigger in ({}, {'due':None}, {'due':'2030-01-01','check':'review'}, {'metric':'close','op':'bad','level':1}):
+    try:
+        alerts.create(**dict(args,trigger=trigger))
+        check('malformed direct trigger is rejected before saving',False,trigger)
+    except ValueError:
+        check('malformed direct trigger is rejected before saving',True)
+
+first = alerts.manage("add", subject_id="DEDUPA", due="2030-09-01", text="one", dedup_key="explain-me")
+clash = alerts.manage("add", subject_id="DEDUPB", due="2030-09-01", text="two", dedup_key="explain-me")
+check("a rejected alert operation explains why, not just the exception type",
+      first["ok"] and not clash["ok"] and any("dedup key" in g for g in clash["gaps"]), clash)
+
 summary()

@@ -1,5 +1,7 @@
 # Runtime outputs — skills write these to the session cwd, never commit them
 artifacts/
+# Local launcher environment and bootstrap state
+.data/
 *.log
 
 # Local source material distilled into skills (kept for provenance, not shipped)

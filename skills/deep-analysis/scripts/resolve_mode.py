@@ -14,7 +14,7 @@ This is the deterministic half of the selection. Resolution order, first match w
   3. Default — `standard`.
 
 The broker half is **tri-state**: `yes` / `no` / `unknown`. `unknown` — no broker
-connected, or every connected one errored — resolves to the same depth as `no` but
+connected, or connected-account coverage was incomplete — resolves to the same depth as `no` but
 must never read as `no`: it returns a gap and a reason that does not claim the ticker
 is unheld, because a missed holding costs the run its `deep` escalation.
 
@@ -27,10 +27,15 @@ CLI:
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
+import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+from finance import paths
+from finance.deps import load_yaml
+from finance.spine import norm_symbol
 
 VALID_MODES = ("quick", "standard", "deep", "fundamentals")
 FLAG_PRECEDENCE = ("--fundamentals", "--deep", "--quick")
@@ -38,12 +43,6 @@ HOLDING_STATES = ("yes", "no", "unknown")
 HOLDING_REASON = "Held position → running deep analysis (override with --quick)."
 UNKNOWN_GAP = ("broker holding check unavailable — depth resolved as if not held; "
                "a live holding would have escalated to deep")
-
-
-def _artifacts_root(root=None):
-    if root:
-        return root
-    return os.environ.get("EVERYTHING_FINANCE_ARTIFACTS", "artifacts")
 
 
 def _explicit_flag(args):
@@ -58,25 +57,39 @@ def _explicit_flag(args):
     return None
 
 
-def _has_open_trade(symbol, root):
-    """True if any artifacts/state/trades/<SYMBOL>-*.yml has status: open. Pure
-    file read — a missing dir or unparseable file is simply 'no open trade'."""
+def _has_open_trade(symbol):
+    """Read matching trade records through the path authority; return (found, gaps)."""
     if not symbol:
-        return False
-    trades = os.path.join(_artifacts_root(root), "state", "trades")
-    for path in glob.glob(os.path.join(trades, f"{symbol}-*.yml")):
-        try:
-            with open(path) as f:
-                for line in f:
-                    s = line.strip().lower()
-                    if s.startswith("status:") and s.split(":", 1)[1].strip() == "open":
-                        return True
-        except OSError:
+        return False, []
+    sym = norm_symbol(symbol)
+    if not isinstance(symbol, str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9&_.-]*", sym):
+        return False, ["open-trade lookup: invalid NSE symbol"]
+    try:
+        trades = paths.state_dir("trades", create=False)
+        names = sorted(os.listdir(trades))
+    except FileNotFoundError:
+        return False, []
+    except (OSError, ValueError) as exc:
+        return False, [f"open-trade store unavailable ({type(exc).__name__})"]
+    found, gaps = False, []
+    for name in names:
+        if not name.startswith(sym + "-") or not name.endswith((".yml", ".yaml")):
             continue
-    return False
+        try:
+            path = paths._contained(os.path.join(trades, name))
+            trade = load_yaml(path)
+            if not isinstance(trade, dict) or norm_symbol(trade.get("symbol")) != sym:
+                raise ValueError("trade identity does not match its filename")
+            status = trade.get("status")
+            if status not in ("idea", "open", "closed"):
+                raise ValueError("invalid trade status")
+            found |= status == "open"
+        except Exception as exc:
+            gaps.append(f"open-trade record {name} unreadable ({type(exc).__name__}); status unknown")
+    return found, gaps
 
 
-def resolve(args, symbol=None, holding="unknown", root=None):
+def resolve(args, symbol=None, holding="unknown"):
     """Resolve the depth mode. `args` is the raw argument string; `holding` is the
     orchestrator's broker-MCP result, one of yes/no/unknown. Returns
     {mode, reason, gaps}."""
@@ -85,14 +98,16 @@ def resolve(args, symbol=None, holding="unknown", root=None):
     flag = _explicit_flag(args)
     if flag:
         return {"mode": flag, "reason": f"explicit --{flag} flag", "gaps": []}
-    open_trade = _has_open_trade(symbol, root)
+    open_trade, gaps = _has_open_trade(symbol)
     if holding == "yes" or open_trade:
-        return {"mode": "deep", "reason": HOLDING_REASON, "gaps": []}
+        return {"mode": "deep", "reason": HOLDING_REASON, "gaps": gaps}
     if holding == "unknown":
-        # Same depth as "no", but the run does not know the ticker is unheld.
+        gaps.append(UNKNOWN_GAP)
+    if gaps:
+        # An incomplete broker or local record check cannot establish an unheld position.
         return {"mode": "standard",
-                "reason": "default (no flag; broker holding status unknown)",
-                "gaps": [UNKNOWN_GAP]}
+                "reason": "default (no flag; holding/open-trade status incomplete)",
+                "gaps": gaps}
     return {"mode": "standard", "reason": "default (no flag, not a held position)",
             "gaps": []}
 
@@ -116,7 +131,7 @@ def main():
     ap.add_argument("--holding", choices=HOLDING_STATES, default="unknown",
                     help="the orchestrator's broker-MCP result: yes (a holding or open "
                          "position), no (checked, not held), unknown (no broker connected, "
-                         "or every connected broker errored). Default unknown — never "
+                         "or connected-account coverage was incomplete). Default unknown — never "
                          "silently 'no'.")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()

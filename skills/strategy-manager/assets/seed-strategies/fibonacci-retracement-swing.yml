@@ -7,7 +7,7 @@ goal: "Buy 38.2-61.8% Fibonacci retracements of a strong impulse leg, confirmed 
 source_references:
   - ".refs/swing-strategies.txt §3 Strategy 5 — Fibonacci Swing Trading"
 
-status: draft
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-06-12
   validated_at: null
@@ -58,7 +58,7 @@ entry:
 
 exit:
   stop: recent_swing_low                                  # below the 61.8% level / swing low
-  target: "prior swing high, then 1.272/1.618 extension; min 2R"
+  target: min_rrr  # Approximation: does not compute the referenced prior high or Fibonacci extensions.
   min_rrr: 2.0
   time_stop_sessions: 15
 

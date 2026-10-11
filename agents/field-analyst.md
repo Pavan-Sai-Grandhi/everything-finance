@@ -1,7 +1,8 @@
 ---
 name: field-analyst
-description: Generic tool profile that goes out to the open web — `WebSearch` and `WebFetch` on top of on-disk reach, plus the `finance-company` server for one company's disclosures and news. It has no price, index or fund-data reach. Pick it for legs whose evidence lives in primary documents and public coverage rather than in a data feed: `management-analysis` and `news-scan`. It runs the skill named in its input and returns only that skill's digest.
-tools: Read, Write, Bash, Skill, WebSearch, WebFetch, mcp__plugin_everything-finance_finance-company__*, mcp__finance-company__*
+description: >-
+  Generic tool profile that goes out to the open web — `WebSearch` and `WebFetch` on top of on-disk reach, plus the `finance-company` server for one company's disclosures and news, and `get_prior_run` so a leg can build on its previous report. It has no price, index or fund-data reach. Pick it for legs whose evidence lives in primary documents and public coverage rather than in a data feed: `management-analysis` and `news-scan`. It runs the skill named in its input and returns only that skill's digest.
+tools: Read, Write, Bash, Skill, WebSearch, WebFetch, mcp__plugin_everything-finance_finance-company__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-market__get_prior_run, mcp__finance-market__get_prior_run
 ---
 
 # Field Analyst (profile)

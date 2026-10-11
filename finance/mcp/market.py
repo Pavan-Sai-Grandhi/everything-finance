@@ -65,7 +65,7 @@ def get_history(symbol: str, period: str = "1y", adjusted: bool = False,
                 "price_earnings_ttm), so a cross-section of a peer set is one call, not "
                 "one call per name."
 )
-def run_technical_screen(filters: list, columns: list | None = None,
+def run_technical_screen(filters: list | dict, columns: list | None = None,
                          limit: int = 50) -> dict:
     return _prices.screen(filters, columns=columns, limit=limit)
 
@@ -185,9 +185,10 @@ def run_sector_screen(spec: str | None = None, top: int = 3, fresh: bool = False
 @SERVER.tool(
     description="Backtest a strategy spec on historical NSE daily data (Backtesting.py: "
                 "no lookahead, stop wins a bar that touches both stop and target). "
-                "Returns win rate, expectancy, profit factor and max drawdown against "
-                "buy-and-hold, with the caveats that qualify them; the per-trade log is "
-                "written to CSV. `symbols` accepts 'largecap20' for the 20-stock liquid "
+                "Returns win rate, expectancy, profit factor and worst per-symbol marked "
+                "drawdown. Return uses all independently funded test accounts, including "
+                "idle ones; this is not a portfolio simulation. Trade/equity CSVs and "
+                "summary JSON use immutable returned paths. `symbols` accepts 'largecap20' for the 20-stock liquid "
                 "large-cap basket. Historical validation only — never a live signal."
 )
 def run_backtest(spec: str, symbols: list | str, years: int = 5,
@@ -201,8 +202,10 @@ def run_backtest(spec: str, symbols: list | str, years: int = 5,
     description="Re-validate one open trade against the plan that opened it and return "
                 "HOLD or an EXIT_* verdict with its reason: stop breached, thesis "
                 "invalidation fired, target reached, or time stop. `trade` is the path to "
-                "a trade-idea YAML. Pass the broker's own `entry`, `qty` and `ltp` so the "
-                "verdict describes the position actually held. Invalidations this cannot "
+                "a trade-idea YAML. `entry` uses actual broker fills (else recorded fill_avg); "
+                "qty is remaining quantity. Personal ltp only marks unrealized P&L/R; "
+                "decisions use the approved OHLCV series. Sessions count after entry_date. "
+                "This recommends an exit; it never confirms execution. Invalidations this cannot "
                 "check mechanically come back under `manual_review` for you to judge."
 )
 def check_trade(trade: str, ohlcv: str | None = None, ltp: float | None = None,

@@ -7,6 +7,8 @@ flip the premium/discount read on its own.
 """
 from __future__ import annotations
 
+from finance.spine import f
+
 PEG_CAVEAT = ("PEG assumes equal risk across the peer set and a linear growth↔P/E "
               "relationship — a cross-check, not a standalone verdict.")
 
@@ -18,10 +20,7 @@ MIN_GROWTH_PCT = 1.0                 # below this, growth is a fraction passed a
 def _num(value):
     if value is None or isinstance(value, bool):
         return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return f(value)
 
 
 def _num_list(value):
@@ -73,8 +72,9 @@ def relative_read(figures):
     anything else becomes a gap, never an exception."""
     gaps = []
     pe = _num(figures.get("pe"))
-    if pe is None and figures.get("pe") is not None:
-        gaps.append("pe is not a number — the company multiple is void")
+    if pe is None or pe <= 0:
+        pe = None
+        gaps.append("pe is missing or not a positive finite number — the company multiple is void")
 
     peer_nums, rejected = _num_list(figures.get("peer_pe"))
     peer_pe = [p for p in peer_nums if p > 0]
@@ -83,6 +83,7 @@ def relative_read(figures):
                     f"and were dropped — pass a flat list of P/E values")
 
     own_hist, hist_rejected = _num_list(figures.get("own_pe_history"))
+    own_hist = [p for p in own_hist if p > 0]
     if hist_rejected:
         gaps.append("own_pe_history is not a list of numbers — the own-band read is void")
 
@@ -105,7 +106,8 @@ def relative_read(figures):
     peer_med = median(peer_pe)
     pct = band_percentile(pe, own_hist) if pe is not None else None
     peer_score, peer_label = _peer_signal(pe, peer_med)
-    peer_counts = len(peer_pe) >= MIN_PEERS and basis == peer_basis
+    peer_counts = (pe is not None and len(peer_pe) >= MIN_PEERS
+                   and basis in PE_BASES and basis == peer_basis)
     if len(peer_pe) < MIN_PEERS:
         gaps.append(f"peer set too thin ({len(peer_pe)} priced, {MIN_PEERS} needed) — the peer "
                     f"comparison is void; this is an own-band read only")

@@ -7,7 +7,7 @@ goal: "Trade the expansion after a volatility squeeze (inside bar / NR4 / NR7) i
 source_references:
   - ".refs/swing-strategies.txt §3 Strategy 4 — Inside Candle (NR4/NR7) Breakout"
 
-status: draft
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-06-12
   validated_at: null
@@ -63,7 +63,7 @@ entry:
 
 exit:
   stop: range_low                                         # below the NR/inside candle low
-  target: "measured_move (the squeeze typically expands ~1-2x the prior range)"
+  target: measured_move  # 20-bar range height; not a detected individual squeeze height.
   min_rrr: 1.8
   time_stop_sessions: 10                                  # squeezes resolve fast; short leash
 

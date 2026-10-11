@@ -30,6 +30,7 @@ import hashlib
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote
 
 from finance import paths
 from finance import transport
@@ -115,10 +116,11 @@ def _parse_documents(html):
 def _documents(sym):
     """`({annual_reports, concalls}, gaps)` from screener's public company page."""
     empty = {"annual_reports": [], "concalls": []}
-    html, gap = transport.request(f"{SCREENER}/company/{sym}/consolidated/",
+    encoded = quote(sym, safe="")
+    html, gap = transport.request(f"{SCREENER}/company/{encoded}/consolidated/",
                                   timeout=25, referer=SCREENER + "/")
     if gap or not html:
-        html, gap2 = transport.request(f"{SCREENER}/company/{sym}/", timeout=25,
+        html, gap2 = transport.request(f"{SCREENER}/company/{encoded}/", timeout=25,
                                        referer=SCREENER + "/")
         if gap2 or not html:
             return empty, [f"screener.in document index for {sym}: {gap or gap2 or 'empty'}"]
@@ -399,6 +401,29 @@ def _blank(section):
     return copy.deepcopy(_EMPTY[section])
 
 
+def _has_data(section, value):
+    if section == "documents":
+        return isinstance(value, dict) and any(value.get(k) for k in ("annual_reports", "concalls"))
+    if section in {"pnl_10y", "balance_sheet_10y", "cash_flow_10y", "quarters", "shareholding"}:
+        return (isinstance(value, dict) and bool(value.get("columns"))
+                and isinstance(value.get("rows"), dict)
+                and any(isinstance(series, list) and any(v is not None for v in series)
+                        for series in value["rows"].values()))
+    return bool(value)
+
+
+def _fetch_section(section, identity):
+    """Isolate a malformed provider response to its own typed section."""
+    try:
+        value, gaps = (_documents(identity) if section == "documents"
+                       else _TT_SECTIONS[section](identity))
+        if not _has_data(section, value):
+            return _blank(section), gaps or [f"{section}: no usable data returned for {identity}"]
+        return value, gaps
+    except Exception as exc:
+        return _blank(section), [f"{section} for {identity}: response could not be read ({type(exc).__name__})"]
+
+
 def _select(env, sections):
     """Narrow a company envelope to `sections` (None keeps all), always keeping the
     identity fields and listing which sections this narrowed response carries. That set is
@@ -410,7 +435,8 @@ def _select(env, sections):
     data = env.get("data") or {}
     keep = set(sections) | set(_IDENTITY)
     env["data"] = {k: v for k, v in data.items() if k in keep}
-    env["data"]["sections_returned"] = sorted(k for k in data if k in _SECTIONS)
+    env["data"]["sections_returned"] = sorted(k for k in env["data"] if k in _SECTIONS)
+    env["ok"] = any(_has_data(k, env["data"].get(k)) for k in sections)
     return env
 
 
@@ -427,18 +453,31 @@ def fetch(symbol, sections=None, fresh=False, sid=None):
     degrading to a hand-built read. The caller owns the sid's correctness.
     """
     sym = _norm(symbol)
-    want = set(sections) & set(_SECTIONS) if sections else set(_SECTIONS)
-    if not want:
-        want = set(_SECTIONS)
-
-    cache_file = os.path.join(paths.cache_dir("fundamentals"), f"{sym}.json")
-    cached = _read_cache(cache_file, fresh)
-    if cached is not None and want <= set(cached.get("data") or {}):
+    identity = {"symbol": sym, "name": None, "sid": None}
+    if (not isinstance(symbol, str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9&_.-]*", sym)
+            or sid is not None and (not isinstance(sid, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9&_.-]*", sid.strip()))):
+        return _envelope(False, None, identity, ["invalid NSE symbol or Tickertape security id"])
+    if sections is not None and (not isinstance(sections, (list, tuple))
+            or any(not isinstance(s, str) or s not in _SECTIONS for s in sections)):
+        return _envelope(False, None, identity, [f"sections must be a list drawn from {', '.join(_SECTIONS)}"])
+    want = set(sections or _SECTIONS)
+    sid = sid.strip() if sid is not None else None
+    cache_file, cached, gaps = None, None, []
+    try:
+        key = hashlib.sha256(repr((sym, sid)).encode()).hexdigest()
+        cache_file = os.path.join(paths.cache_dir("fundamentals"), f"company-v2-{key}.json")
+        cached = _read_cache(cache_file, fresh)
+    except OSError:
+        gaps.append("fundamentals cache unavailable; fetched without cache")
+    if (cached is not None and cached["data"].get("symbol") == sym
+            and (sid is None or cached["data"].get("sid") == sid)
+            and want <= set(cached["data"])):
         return _select(cached, sections)
 
-    data = {"symbol": sym, "name": None, "sid": None}
+    data = identity
     data.update({k: _blank(k) for k in want})
-    gaps, sources = [], []
+    sources = []
 
     tt_want = sorted(want - {"documents"})
     if tt_want:
@@ -452,19 +491,19 @@ def fetch(symbol, sections=None, fresh=False, sid=None):
             data["sid"], data["name"] = rec["sid"], rec.get("name")
             sources.append("Tickertape")
             with ThreadPoolExecutor(max_workers=len(tt_want)) as pool:
-                results = pool.map(lambda s: _TT_SECTIONS[s](rec["sid"]), tt_want)
+                results = pool.map(lambda s: _fetch_section(s, rec["sid"]), tt_want)
                 for section, (value, section_gaps) in zip(tt_want, results):
                     data[section] = value
                     gaps += section_gaps
 
     if "documents" in want:
-        data["documents"], doc_gaps = _documents(sym)
+        data["documents"], doc_gaps = _fetch_section("documents", sym)
         gaps += doc_gaps
         sources.append("screener.in (document index)")
 
-    ok = any(data[s] != _EMPTY[s] for s in want)
+    ok = any(_has_data(s, data[s]) for s in want)
     env = _envelope(ok, " + ".join(sources) or "Tickertape + screener.in", data, gaps)
-    if ok and want == set(_SECTIONS):
+    if ok and want == set(_SECTIONS) and cache_file:
         _write_cache(cache_file, {**env, "data": dict(env["data"])})
     return _select(env, sections)
 
@@ -525,19 +564,18 @@ def _catalogue(fresh=False):
 def _resolve_field(name, names):
     """`(label, gap)` for one query field name, matched against the published catalogue.
 
-    An exact fold match wins; failing that a unique prefix relationship in either direction
-    resolves ("Market Cap" for "Market Capitalization"). Ambiguity is refused with the
-    candidates named — guessing between two ratios is how a quality gate silently loosens.
+    Only published aliases and the documented Market Capitalization spelling resolve.
+    Prefixes suggest corrections; they cannot turn an unknown period/metric into another.
     """
     key = _norm_name(name)
+    if key == "market capitalization" and key not in names:
+        key = "market cap"
     if key in names:
         return names[key], None
     hits = sorted({label for alias, label in names.items()
                    if alias.startswith(key) or key.startswith(alias)})
-    if len(hits) == 1:
-        return hits[0], None
     if hits:
-        return None, f"{name!r} is ambiguous — it matches {', '.join(hits[:6])}"
+        return None, f"{name!r} is not a published field alias — possible fields: {', '.join(hits[:6])}"
     return None, (f"{name!r} is not a Tickertape screener field. The names a quality cut "
                   f"usually wants: {', '.join(COMMON_FIELDS)}. "
                   f"GET {tickertape.BASE}/screener/filters lists every one.")
@@ -545,8 +583,8 @@ def _resolve_field(name, names):
 
 def _parse_query(query, names, premium):
     """`(match, gaps)` for a whole query string. `match` is None when anything is refused."""
-    clauses = [c for c in re.split(r"\s+AND\s+", str(query or ""), flags=re.I) if c.strip()]
-    if not clauses:
+    clauses = re.split(r"\s+AND\s+", str(query or ""), flags=re.I)
+    if not any(c.strip() for c in clauses):
         return None, ["empty screen query"]
 
     match, gaps = {}, []
@@ -569,7 +607,15 @@ def _parse_query(query, names, premium):
             gaps.append(f"{m.group('field').strip()!r} ({label}) is a paywalled Tickertape "
                         f"field — the endpoint refuses the whole query for it")
             continue
-        match.setdefault(label, {})[op] = float(m.group("value"))
+        value = _f(m.group("value"))
+        if value is None:
+            gaps.append(f"{clause.strip()!r} requires a finite numeric threshold")
+            continue
+        bounds = match.setdefault(label, {})
+        bounds[op] = (max if op == "g" else min)(bounds.get(op, value), value)
+    for label, bounds in match.items():
+        if "g" in bounds and "l" in bounds and bounds["g"] >= bounds["l"]:
+            gaps.append(f"{label}: contradictory strict lower and upper bounds")
     return (None if gaps else match), gaps
 
 
@@ -581,7 +627,10 @@ def screen(query, limit=1000, fresh=False):
     that did.
     """
     empty = {"query": query, "count": 0, "candidates": []}
-    key = hashlib.sha256(f"{query}|{limit}".encode("utf-8")).hexdigest()[:20]
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        return _envelope(False, "Tickertape", empty, ["screen limit must be a positive integer"])
+    # Old caches contain candidates accepted without validating the returned projection.
+    key = hashlib.sha256(f"validated-v2|{query}|{limit}".encode("utf-8")).hexdigest()[:20]
     cache = tickertape.cache_path("screen", key)
     cached = _read_cache(cache, fresh)
     if cached is not None:
@@ -604,21 +653,46 @@ def screen(query, limit=1000, fresh=False):
     if gap:
         return _envelope(False, "Tickertape", empty, [f"screen fetch: {gap}"])
 
-    candidates, seen = [], set()
-    for row in ((blob or {}).get("data") or {}).get("results") or []:
-        sym = _norm(((row.get("stock") or {}).get("info") or {}).get("ticker"))
+    response = blob.get("data") if isinstance(blob, dict) else None
+    rows = response.get("results") if isinstance(response, dict) else None
+    if not isinstance(rows, list):
+        return _envelope(False, "Tickertape", empty, ["screen response has no valid results list"])
+    candidates, seen, rejected = [], set(), 0
+    for row in rows:
+        stock = row.get("stock") if isinstance(row, dict) else None
+        info = stock.get("info") if isinstance(stock, dict) else None
+        projected = stock.get("advancedRatios") if isinstance(stock, dict) else None
+        ticker = info.get("ticker") if isinstance(info, dict) else None
+        sym = _norm(ticker) if isinstance(ticker, str) else ""
+        valid = bool(sym) and isinstance(projected, dict)
+        if valid:
+            for field, bounds in match.items():
+                value = _f(projected.get(field))
+                if (value is None or ("g" in bounds and value <= bounds["g"])
+                        or ("l" in bounds and value >= bounds["l"])):
+                    valid = False
+                    break
+        if not valid:
+            rejected += 1
+            continue
         if sym and sym not in seen:
             seen.add(sym)
             candidates.append(sym)
 
-    total = (((blob or {}).get("data") or {}).get("stats") or {}).get("count")
+    candidates = candidates[:limit]
+    if rejected:
+        gaps.append(f"screen: excluded {rejected} rows with missing identity, unavailable "
+                    "projected values or values that fail the requested bounds")
+    stats = response.get("stats")
+    total = _f(stats.get("count")) if isinstance(stats, dict) else None
     data = {"query": query, "count": len(candidates), "candidates": candidates}
-    if total and total > len(candidates):
-        gaps.append(f"{total} companies matched; the first {len(candidates)} by market cap "
-                    f"are returned (raise `limit` for the rest)")
+    if total is not None and total > len(rows):
+        gaps.append(f"source reports {total:g} matches; only {len(rows)} rows were supplied "
+                    "for verification (raise `limit` for broader coverage)")
+    if len(seen) > limit:
+        gaps.append(f"screen: returned the first {limit} verified candidates in source order")
     if not candidates:
-        gaps.append("screen matched no companies — every filter resolved, so this is a "
-                    "genuinely empty result (query too tight)")
+        gaps.append("screen returned no verifiable candidates")
     env = _envelope(bool(candidates), "Tickertape", data, gaps)
     if candidates:
         _write_cache(cache, {**env, "data": dict(data)})

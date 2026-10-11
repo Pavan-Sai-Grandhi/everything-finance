@@ -8,10 +8,10 @@ The default is the last ~60 days — recent enough that the market still cares, 
 
 ## Fact vs narrative — the separation that carries the whole read
 
-- **FACT** — an event with a date and a named source that either already happened or is contractually committed: an order win, a results beat or miss, a regulatory action, a capacity commissioning, a resignation, a fundraise. `get_news` pre-tags items, but the tag is a first pass; a "fact" that no filing and no primary source supports is a claim, and you say so.
+- **FACT** — an event with a date and a named source that either already happened or is contractually committed: an order win, a results beat or miss, a regulatory action, a capacity commissioning, a resignation, a fundraise. `get_news` only pre-tags `reported` or `narrative` from the headline. A `reported` item is an unverified claim; promote it to FACT only with primary-source support. Keep allegations labelled as allegations.
 - **NARRATIVE** — broker price targets, upgrades and downgrades, "buzz", anchor opinion, sector think-pieces, anonymous "sources say". Narrative is worth reporting because it moves price, never worth reporting as evidence about the business.
 
-**Publisher tier weighs the claim.** Each item carries `publisher_tier` — `established` | `aggregator` | `unknown`. A single-sourced claim from an aggregator or an unknown publisher is one publisher's assertion, not a fact; label it that way rather than dropping it or promoting it.
+**Publisher tier weighs the claim.** It comes from the RSS display label; it does not authenticate the outlet or verify the story. Each item carries `publisher_tier` — `established` | `aggregator` | `unknown`. A single-sourced claim from an aggregator or an unknown publisher is one publisher's assertion, not a fact; label it that way rather than dropping it or promoting it.
 
 **Cross-check against the exchange.** A material development a company has not announced to the exchange is **rumor-grade** — report it, mark it rumor-grade, and name what filing would confirm it. The reverse case is more valuable: a filing coverage has not picked up is the one edge a news scan can genuinely produce.
 

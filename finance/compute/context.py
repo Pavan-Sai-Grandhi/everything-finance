@@ -27,8 +27,11 @@ Reached through: get_market_context.
 from __future__ import annotations
 
 import json
+import fcntl
+import tempfile
+import threading
+import math
 import os
-import statistics
 from datetime import date
 
 from finance import paths
@@ -37,6 +40,11 @@ from finance.sources import market
 from finance.sources import prices
 
 NIFTY = "^NSEI"
+_CONTEXT_VERSION = 3
+_CONTEXT_LOCK = threading.RLock()
+
+# One P/E ranking method for every index-valuation reader, owned by the source layer.
+robust_pe_percentile = market.robust_pe_percentile
 
 # Percentile cut-points for a valuation stance. Deliberately asymmetric at the top: the
 # distribution of index multiples is right-skewed, so "rich" starts before the midpoint of
@@ -44,9 +52,31 @@ NIFTY = "^NSEI"
 STANCE_BANDS = [(25, "cheap"), (45, "below average"), (65, "fair"), (85, "rich")]
 
 
+def _finite(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _percentage(value):
+    return _finite(value) and 0 <= value <= 100
+
+
+def _closes(df, minimum, label, gaps):
+    """Require intact positive closes; dropping rows changes indicator time periods."""
+    if df is None or "Close" not in df or len(df) < minimum:
+        gaps.append(f"{label}: insufficient price history")
+        return None
+    close = df["Close"]
+    if not all(_finite(v) and v > 0 for v in close):
+        gaps.append(f"{label}: invalid or missing close prices")
+        return None
+    return close
+
+
 def classify_trend(above50, above200, slope_up):
     """up / range / down — the taxonomy every strategy spec's `regime_required.
     market_trend` is written against, so the labels are part of the contract."""
+    if any(type(v) is not bool for v in (above50, above200, slope_up)):
+        return "unknown"
     if above50 and above200 and slope_up:
         return "up"
     if (not above50) and (not above200) and not slope_up:
@@ -56,27 +86,9 @@ def classify_trend(above50, above200, slope_up):
 
 def classify_vol_band(vix):
     """low / normal / high on the 13/20 India-VIX cut-points."""
-    if vix is None:
+    if not _finite(vix) or vix <= 0:
         return "unknown"
     return "low" if vix < 13 else ("high" if vix > 20 else "normal")
-
-
-def robust_pe_percentile(pe_series, current_pe):
-    """P/E percentile with the earnings-collapse distortion handled explicitly.
-
-    An index P/E explodes when aggregate earnings collapse — the Smallcap 250's history
-    contains months at a P/E of 44,692 (mid-2020), which are real prints but describe
-    vanished earnings, not an expensive market. Left in, they make today look cheap by
-    comparison. Samples above 3x the median are dropped and COUNTED, so the caller can say
-    how many were excluded instead of quietly ranking against nonsense.
-    Returns (percentile, n_used, n_dropped).
-    """
-    pool = [p for p in (pe_series or []) if p is not None]
-    if not pool or current_pe is None:
-        return None, 0, 0
-    med = statistics.median(pool)
-    clean = [p for p in pool if p < 3 * med]
-    return market.percentile(clean, current_pe), len(clean), len(pool) - len(clean)
 
 
 def classify_stance(pe_pct, pb_pct, dy_pct):
@@ -87,8 +99,9 @@ def classify_stance(pe_pct, pb_pct, dy_pct):
     being. A cheap dividend yield is an EXPENSIVE market, hence the inversion.
     Returns (stance, blended_percentile).
     """
-    parts = [p for p in (pe_pct, pb_pct, (100 - dy_pct) if dy_pct is not None else None)
-             if p is not None]
+    parts = [p for p in (pe_pct, pb_pct) if _percentage(p)]
+    if _percentage(dy_pct):
+        parts.append(100 - dy_pct)
     if not parts:
         return "unknown", None
     blended = round(sum(parts) / len(parts), 1)
@@ -100,14 +113,17 @@ def classify_stance(pe_pct, pb_pct, dy_pct):
 
 def classify_posture(trend, vol_band, breadth_pct):
     """risk_on / neutral / risk_off + the one-line reason."""
-    strong = breadth_pct is not None and breadth_pct >= 60
-    weak = breadth_pct is not None and breadth_pct < 40
-    if trend == "up" and vol_band != "high" and not weak:
+    valid_breadth = _percentage(breadth_pct)
+    strong = valid_breadth and breadth_pct >= 60
+    weak = valid_breadth and breadth_pct < 40
+    if trend == "up" and vol_band in ("low", "normal") and valid_breadth and not weak:
         return "risk_on", ("Uptrend, acceptable volatility and participation — "
                            "directional long systems have a tailwind.")
     if vol_band == "high" or trend == "down" or weak:
         return "risk_off", ("Downtrend, high volatility or narrow participation — "
                             "size down or stand aside; trend-following will whipsaw.")
+    if trend not in ("up", "range", "down") or vol_band not in ("low", "normal", "high") or not valid_breadth:
+        return "neutral", "Market evidence incomplete — no risk-on authorization."
     return "neutral", ("No clear trend or mixed participation — "
                        "confirmation-heavy entries, modest size." if not strong else
                        "Broad participation without a confirmed index trend — selective.")
@@ -115,7 +131,11 @@ def classify_posture(trend, vol_band, breadth_pct):
 
 def _pct(count_of):
     """{'count': c, 'of': n} -> percentage, or None when nothing was priced."""
-    if not count_of or not count_of.get("of"):
+    if not isinstance(count_of, dict):
+        return None
+    count, total = count_of.get("count"), count_of.get("of")
+    if (type(count) is not int or type(total) is not int
+            or total <= 0 or not 0 <= count <= total):
         return None
     return round(100.0 * count_of["count"] / count_of["of"], 1)
 
@@ -124,16 +144,18 @@ def _trend(gaps):
     """Nifty 50 trend via the canonical TA-Lib EMA — not a hand-rolled pandas ewm."""
     df, g = prices.history_df(NIFTY, period="2y", adjusted=True)
     gaps.extend(g or [])
-    if df is None or len(df) < 200:
+    close = _closes(df, 200, "Nifty", gaps)
+    if close is None:
         gaps.append("Nifty history unavailable — trend gate could not be computed")
         return "unknown", {}, None
 
-    close = df["Close"].dropna()
     e50, e200 = ta.ema(close, 50), ta.ema(close, 200)
     px = float(close.iloc[-1])
     above50, above200 = px > float(e50.iloc[-1]), px > float(e200.iloc[-1])
     slope_up = float(e50.iloc[-1]) > float(e50.iloc[-20])
-    high_52w = float(close.tail(252).max())
+    high_52w = float(close.tail(252).max()) if len(close) >= 252 else None
+    if high_52w is None:
+        gaps.append("Nifty: fewer than 252 observations for the 52-week high")
     detail = {
         "index": "NIFTY 50",
         "close": round(px, 1),
@@ -142,19 +164,28 @@ def _trend(gaps):
         "above_ema50": above50,
         "above_ema200": above200,      # consumed by select_strategy.py — keep this name
         "ema50_rising": slope_up,
-        "pct_from_52w_high": round(100.0 * (px - high_52w) / high_52w, 1),
+        "pct_from_52w_high": round(100.0 * (px - high_52w) / high_52w, 1) if high_52w else None,
     }
     return classify_trend(above50, above200, slope_up), detail, str(close.index[-1].date())
 
 
-def _volatility(gaps):
+def _volatility(gaps, expected_as_of=None):
     df, g = prices.history_df("^INDIAVIX", period="5y", adjusted=True)
-    if df is None or len(df) < 30:
-        gaps.append("India VIX unavailable — volatility band defaulted to 'normal'")
-        return {"vix": None, "percentile_1y": None, "percentile_5y": None, "band": "normal"}
-    s = [float(v) for v in df["Close"].dropna()]
+    gaps.extend(g or [])
+    close = _closes(df, 30, "India VIX", gaps)
+    if close is None:
+        return {"vix": None, "percentile_1y": None, "percentile_5y": None, "band": "unknown"}
+    s = [float(v) for v in close]
     lvl = s[-1]
+    observed = str(close.index[-1].date())
+    if expected_as_of is not None and observed != expected_as_of:
+        gaps.append(f"India VIX session {observed} differs from Nifty {expected_as_of}; gate withheld")
+        return {"vix": None, "observed_vix": round(lvl, 2), "as_of": observed,
+                "percentile_1y": None, "percentile_5y": None, "band": "unknown"}
     return {
+        "as_of": observed,
+        "observations": len(s),
+        "first_observation": str(close.index[0].date()),
         "vix": round(lvl, 2),                       # consumed by select_strategy.py
         "percentile_1y": market.percentile(s[-252:], lvl),
         "percentile_5y": market.percentile(s, lvl),
@@ -162,7 +193,7 @@ def _volatility(gaps):
     }
 
 
-def _breadth(gaps):
+def _breadth(gaps, expected_as_of=None):
     """Two breadth reads: stock-level participation, plus the sector count.
 
     `pct_sectors_above_ema50` keeps its exact name because strategy specs gate on it; the
@@ -174,6 +205,8 @@ def _breadth(gaps):
     counts = (env.get("data") or {}).get("counts") or {}
     out = {
         "universe": (env.get("data") or {}).get("universe"),
+        "requested_universe": (env.get("data") or {}).get("requested_universe"),
+        "counts": counts,
         "pct_above_sma50": _pct(counts.get("above_sma50")),
         "pct_above_sma200": _pct(counts.get("above_sma200")),
         "pct_advancing": _pct(counts.get("advancing")),
@@ -182,37 +215,53 @@ def _breadth(gaps):
     }
 
     above, total, detail = 0, 0, {}
+    observation_dates = {}
     for name, tk in market.SECTOR_YF.items():
         df, _g = prices.history_df(tk, period="6mo", adjusted=True)
-        if df is None or len(df) < 50:
+        gaps.extend(_g or [])
+        close = _closes(df, 50, name, gaps)
+        if close is None:
             detail[name] = None
             continue
-        close = df["Close"].dropna()
+        observed = str(close.index[-1].date())
+        observation_dates[name] = observed
+        if expected_as_of is not None and observed != expected_as_of:
+            detail[name] = None
+            gaps.append(f"{name} session {observed} differs from Nifty {expected_as_of}; gate withheld")
+            continue
         ok = float(close.iloc[-1]) > float(ta.ema(close, 50).iloc[-1])
         detail[name] = ok
         above += int(ok)
         total += 1
-    out["pct_sectors_above_ema50"] = round(100.0 * above / total, 0) if total else None
+    out["pct_sectors_above_ema50"] = round(100.0 * above / total, 0) if total and total == len(market.SECTOR_YF) else None
+    if len(set(observation_dates.values())) > 1:
+        out["pct_sectors_above_ema50"] = None
+        gaps.append("sector history sessions differ; breadth gate withheld")
+    out["sector_observation_dates"] = observation_dates
     out["sectors_above_ema50_detail"] = detail
-    if not total:
-        gaps.append("sectoral breadth unavailable")
+    out["sectors_available"] = total
+    out["sectors_expected"] = len(market.SECTOR_YF)
+    if total < len(market.SECTOR_YF):
+        gaps.append(f"sectoral breadth incomplete: {total}/{len(market.SECTOR_YF)} sectors available; gate withheld")
     return out
 
 
-def _valuation(gaps, years=10):
+def _valuation(gaps, years=10, live=None):
     """Cap-tier valuation: level + own-history percentile for P/E, P/B and dividend yield.
 
     Decides whether a CATEGORY is worth adding money to — a separate question from which
     fund inside it is best.
     """
-    live = market.indices()
-    gaps.extend(live.get("gaps") or [])
+    if live is None:
+        live = market.indices()
+        gaps.extend(live.get("gaps") or [])
     snapshot = (live.get("data") or {}).get("indices") or {}
 
     out = {}
     for ix in market.CAP_TIER_INDICES:
         cur = snapshot.get(ix) or {}
         hist = market.valuation_history(ix, years=years)
+        gaps.extend(hist.get("gaps") or [])
         series = (hist.get("data") or {}).get("series") or []
         if not series:
             gaps.append(f"no valuation history for {ix}")
@@ -225,17 +274,21 @@ def _valuation(gaps, years=10):
         dy_pct = market.percentile(dys, cur.get("dy"))
         stance, blended = classify_stance(pe_pct, pb_pct, dy_pct)
         rec = {
+            "source_timestamp": (live.get("data") or {}).get("source_timestamp"),
             "pe": cur.get("pe"), "pe_pctile": pe_pct,
             "pb": cur.get("pb"), "pb_pctile": pb_pct,
             "dy": cur.get("dy"), "dy_pctile": dy_pct,
             "stance": stance, "blended_pctile": blended,
             "history_years": years, "samples": len(series),
+            "requested_samples": (hist.get("data") or {}).get("requested_samples"),
+            "first_observation": (hist.get("data") or {}).get("first_observation"),
+            "last_observation": (hist.get("data") or {}).get("last_observation"),
             "chg_1y_pct": cur.get("pct_change_1y"),
         }
         if n_dropped:
             rec["pe_pctile_note"] = (
                 f"{n_dropped} of {n_used + n_dropped} monthly samples excluded as "
-                f"earnings-collapse distortions (P/E > 3x median)")
+                f"statistical outliers (P/E >= 3x median; heuristic, cause unverified)")
         out[ix] = rec
     return out
 
@@ -247,15 +300,16 @@ def _relative(valuation):
     """
     small = valuation.get("NIFTY SMALLCAP 250") or {}
     large = valuation.get("NIFTY 50") or {}
-    if not (small.get("pb") and large.get("pb")):
+    if not all(_finite(v) and v > 0 for v in (small.get("pb"), large.get("pb"))):
         return {}
     pb_ratio = round(small["pb"] / large["pb"], 2)
     pe_ratio = (round(small["pe"] / large["pe"], 2)
-                if small.get("pe") and large.get("pe") else None)
+                if all(_finite(v) and v > 0 for v in (small.get("pe"), large.get("pe"))) else None)
     spread = None
-    if small.get("blended_pctile") is not None and large.get("blended_pctile") is not None:
+    if all(_percentage(v) for v in (small.get("blended_pctile"), large.get("blended_pctile"))):
         spread = round(small["blended_pctile"] - large["blended_pctile"], 1)
-    read = "smallcaps and largecaps are priced similarly versus their own histories"
+    read = ("relative historical valuation unavailable" if spread is None else
+            "smallcaps and largecaps have similar blended historical valuation percentiles")
     if spread is not None and spread >= 25:
         read = ("smallcaps are expensive relative to their own history while largecaps are "
                 "not — the cap tier, not the fund, is the bigger risk right now")
@@ -267,9 +321,11 @@ def _relative(valuation):
             "percentile_spread": spread, "read": read}
 
 
-def _sectors(gaps):
+def _sectors(gaps, live=None):
     """Sector leaders/laggards by 1-year change, from the single allIndices fetch."""
-    live = market.indices()
+    if live is None:
+        live = market.indices()
+        gaps.extend(live.get("gaps") or [])
     snap = (live.get("data") or {}).get("indices") or {}
     rows = [{"index": ix, "chg_1y_pct": snap[ix].get("pct_change_1y"),
              "pe": snap[ix].get("pe")}
@@ -288,15 +344,26 @@ def _transitions(limit=6):
     d = paths.report_dir("market-analysis")
     if not os.path.isdir(d):
         return out
-    for fn in sorted(os.listdir(d), reverse=True)[:limit]:
+    for fn in sorted(os.listdir(d), reverse=True):
         if not fn.endswith(".json"):
             continue
         try:
-            with open(os.path.join(d, fn)) as fh:
+            stamp = date.fromisoformat(fn[:-5])
+            if stamp >= date.today():
+                continue
+            with open(os.path.join(d, fn), encoding="utf-8") as fh:
                 blob = json.load(fh)
-            out.append({"date": blob.get("as_of"), "trend": blob.get("market_trend"),
-                        "posture": blob.get("market_posture")})
-        except Exception:  # noqa: BLE001
+            if not isinstance(blob, dict) or blob.get("market_trend") not in ("up", "range", "down", "unknown"):
+                continue
+            if blob.get("market_posture") not in ("risk_on", "neutral", "risk_off"):
+                continue
+            if blob.get("as_of") is None or date.fromisoformat(blob["as_of"]) > stamp:
+                continue
+            out.append({"date": blob["as_of"], "trend": blob["market_trend"],
+                        "posture": blob["market_posture"]})
+            if len(out) >= limit:
+                break
+        except (OSError, ValueError, TypeError):
             continue
     return out
 
@@ -304,9 +371,11 @@ def _transitions(limit=6):
 def compute(mode="standard", years=10):
     gaps = []
     trend, trend_detail, as_of = _trend(gaps)
-    vol = _volatility(gaps)
-    br = _breadth(gaps)
-    val = _valuation(gaps, years=years)
+    vol = _volatility(gaps, expected_as_of=as_of)
+    br = _breadth(gaps, expected_as_of=as_of)
+    live = market.indices()
+    gaps.extend(live.get("gaps") or [])
+    val = _valuation(gaps, years=years, live=live)
     posture, why = classify_posture(trend, vol.get("band"), br.get("pct_sectors_above_ema50"))
 
     flows_env = market.flows()
@@ -315,9 +384,11 @@ def compute(mode="standard", years=10):
     gaps.extend(macro_env.get("gaps") or [])
 
     ctx = {
-        "as_of": as_of or str(date.today()),
+        "as_of": as_of,
         "generated": str(date.today()),
         "mode": mode,
+        "history_years": years,
+        "context_version": _CONTEXT_VERSION,
         "market_trend": trend,               # consumed by select_strategy.py
         "market_posture": posture,
         "rationale": why,
@@ -329,7 +400,7 @@ def compute(mode="standard", years=10):
         "flows": (flows_env.get("data") or {}).get("flows") or {},
         "flows_session": (flows_env.get("data") or {}).get("session"),
         "macro": (macro_env.get("data") or {}).get("macro") or {},
-        "sectors": _sectors(gaps),
+        "sectors": _sectors(gaps, live=live),
         "gaps": gaps,
     }
     if mode == "deep":
@@ -351,7 +422,7 @@ def digest(ctx):
                  f"| >200EMA {td.get('above_ema200')} | {td.get('pct_from_52w_high')}% from 52w high")
     L.append(f"VIX {vol.get('vix')} ({vol.get('band')}, {vol.get('percentile_1y')}th pctile of 1y)")
     L.append(f"breadth: {br.get('pct_above_sma50')}% >50DMA, {br.get('pct_above_sma200')}% "
-             f">200DMA of {br.get('universe')} | sectors >50EMA {br.get('pct_sectors_above_ema50')}%"
+             f">200DMA (metric denominators: {br.get('counts')}) | sectors >50EMA {br.get('pct_sectors_above_ema50')}%"
              f" | near 52w high {br.get('pct_near_52w_high')}% vs low {br.get('pct_near_52w_low')}%")
     L.append("valuation (level, own-history percentile over "
              f"{(ctx.get('valuation') or {}).get('NIFTY 50', {}).get('history_years', 10)}y):")
@@ -360,6 +431,9 @@ def digest(ctx):
                  f"P/B {v.get('pb')} ({v.get('pb_pctile')}p) | "
                  f"DY {v.get('dy')} ({v.get('dy_pctile')}p) -> {v.get('stance')}"
                  f" [{v.get('blended_pctile')}p blended]")
+        L.append(f"    history: {v.get('samples')} unique observations / "
+                 f"{v.get('requested_samples')} requested, "
+                 f"{v.get('first_observation')} to {v.get('last_observation')}")
         if v.get("pe_pctile_note"):
             L.append(f"    note: {v['pe_pctile_note']}")
     rel = ctx.get("relative") or {}
@@ -415,38 +489,96 @@ def artifact_path(day=None):
     return paths.report_path("market-analysis", date=day, ext="json")
 
 
-def load_today():
-    p = artifact_path()
-    if not os.path.exists(p):
-        return None
+def load_today(years=10):
+    """Reuse only a complete artifact produced by this implementation and request."""
     try:
-        with open(p) as fh:
-            return json.load(fh)
-    except Exception:  # noqa: BLE001
+        with open(artifact_path(), encoding="utf-8") as fh:
+            ctx = json.load(fh)
+        if not isinstance(ctx, dict):
+            return None
+        if (ctx.get("context_version") != _CONTEXT_VERSION
+                or ctx.get("generated") != str(date.today())
+                or ctx.get("history_years") != years
+                or ctx.get("mode") not in ("quick", "standard", "deep")
+                or ctx.get("market_trend") not in ("up", "range", "down", "unknown")
+                or ctx.get("market_posture") not in ("risk_on", "neutral", "risk_off")
+                or not isinstance(ctx.get("rationale"), str)):
+            return None
+        if ctx.get("as_of") is not None:
+            if date.fromisoformat(ctx["as_of"]) > date.today():
+                return None
+        if not all(isinstance(ctx.get(key), dict) for key in
+                   ("trend_detail", "volatility", "breadth", "valuation", "relative",
+                    "flows", "macro", "sectors")):
+            return None
+        if not isinstance(ctx.get("gaps"), list) or not all(isinstance(g, str) for g in ctx["gaps"]):
+            return None
+        json.dumps(ctx, allow_nan=False)
+        return ctx
+    except (OSError, ValueError, TypeError):
         return None
 
 
 def persist(ctx, out=None):
-    """Write the day's context to the artifact every other caller reads."""
+    """Replace the daily snapshot atomically; a failed write preserves the prior file."""
     out = out or artifact_path()
-    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-    with open(out, "w") as fh:
-        json.dump(ctx, fh, indent=2, ensure_ascii=False)
+    body = json.dumps(ctx, indent=2, ensure_ascii=False, allow_nan=False)
+    directory = os.path.dirname(os.path.abspath(out))
+    os.makedirs(directory, exist_ok=True)
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8",
+                                         delete=False) as fh:
+            pending = fh.name
+            fh.write(body)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(pending, out)
+    finally:
+        if pending and os.path.exists(pending):
+            os.unlink(pending)
     return out
 
 
-def resolve(mode="standard", years=10, fresh=False, out=None):
-    """Today's context, computed once a day and shared.
-
-    `quick` returns the day's artifact when it exists — that reuse is what lets every
-    skill read the same market without N recomputations, so it has to live here rather
-    than in a CLI, or a caller that never touches the CLI silently refetches and the
-    reads drift apart. Any other mode, or `fresh`, recomputes and rewrites the artifact.
-    """
+def _resolve_locked(mode, years, fresh, out):
     if mode == "quick" and not fresh:
-        ctx = load_today()
+        ctx = load_today(years=years)
         if ctx is not None:
+            if out:
+                try:
+                    persist(ctx, out)
+                except OSError as exc:
+                    ctx["gaps"].append(f"market-context output unavailable: {exc}")
             return ctx
     ctx = compute(mode=mode, years=years)
-    persist(ctx, out)
+    # Always publish the shared record, even when an additional output was requested.
+    for target in dict.fromkeys([artifact_path(), out] if out else [artifact_path()]):
+        try:
+            persist(ctx, target)
+        except OSError as exc:
+            ctx["gaps"].append(f"market-context persistence unavailable: {exc}")
     return ctx
+
+
+def resolve(mode="standard", years=10, fresh=False, out=None):
+    """Serialize daily reuse/computation so simultaneous readers share one snapshot."""
+    if mode not in ("quick", "standard", "deep"):
+        raise ValueError("mode must be quick, standard or deep")
+    if type(years) is not int or years <= 0:
+        raise ValueError("years must be a positive integer")
+    if type(fresh) is not bool:
+        raise ValueError("fresh must be a boolean")
+    with _CONTEXT_LOCK:
+        try:
+            lock = open(artifact_path() + ".lock", "a")
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            except OSError:
+                lock.close()
+                raise
+        except OSError as exc:
+            ctx = _resolve_locked(mode, years, fresh, out)
+            ctx["gaps"].append(f"market-context cache lock unavailable: {exc}")
+            return ctx
+        with lock:
+            return _resolve_locked(mode, years, fresh, out)

@@ -2,6 +2,8 @@
 """Offline unit tests for finance/sources/news.py (the data-spine news fetcher)."""
 import os
 import sys
+import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.sources import news
@@ -85,8 +87,8 @@ def test_B2_items_classified():
 
 
 def test_B2_items_tagged():
-    check("B2 reported event -> fact",
-          news._tag("Reliance bags large order from defence ministry") == "fact")
+    check("B2 reported event is an unverified report",
+          news._tag("Reliance bags large order from defence ministry") == "reported")
     check("B2 broker target -> narrative",
           news._tag("Brokerage raises Reliance target price to 3200, maintains Buy")
           == "narrative")
@@ -188,8 +190,53 @@ def test_envelope_shape():
           set(env) == {"ok", "source", "fetched_at", "data", "gaps"})
 
 
+
+def test_cached_feed_preserves_request_views():
+    raw = news._parse_rss(RSS_FIXTURE, "Google News RSS")
+    raw.append({"title": "XYZ banking announcement", "date": "2026-06-19", "source": "X"})
+    with tempfile.TemporaryDirectory() as tmp, patch.object(news.paths, "cache_dir", return_value=tmp), \
+            patch.object(news, "_fetch_google_rss", return_value=(raw, None)) as fetch:
+        default = news.fetch("Reliance Industries", ticker="RELIANCE", today=TODAY)
+        noisy = news.fetch("Reliance Industries", ticker="RELIANCE", today=TODAY, include_noise=True)
+        alternate = news.fetch("Reliance Industries", ticker="XYZ", today=TODAY)
+        older = news.fetch("Reliance Industries", ticker="RELIANCE", today=news.date(2026, 6, 18))
+        check("cache does not hide explicitly requested noise",
+              noisy["data"]["count"] > default["data"]["count"])
+        check("noise_filtered counts only items actually removed", noisy["data"]["noise_filtered"] == 0)
+        check("cached feed is reclassified for the requested ticker",
+              alternate["data"]["ticker"] == "XYZ" and next(it for it in alternate["data"]["items"]
+              if it["title"] == "XYZ banking announcement")["kind"] == "company")
+        check("cached feed applies the requested reference date",
+              all(it["date"] <= "2026-06-18" for it in older["data"]["items"]))
+        check("local view changes do not refetch the same daily RSS feed", fetch.call_count == 1)
+        news.fetch("Reliance Industries", today=TODAY, fresh=True)
+        check("fresh explicitly bypasses the raw cache", fetch.call_count == 2)
+
+
+def test_news_dates_and_publisher_names():
+    raw = [{"title": "Company announcement", "date": "2026-02-30", "source": "Mint"}]
+    items = news._process(raw, "Company", "XYZ", 60, today=TODAY)
+    check("impossible dates are unknown rather than fabricated calendar evidence",
+          len(items) == 1 and items[0]["date"] is None)
+    for publisher in ("Peppermint investing blog", "Fake Reuters News", "Mint Scam", "reuters.example.org"):
+        check("publisher substrings never certify an unknown label",
+              news._publisher_tier(publisher) == "unknown", publisher)
+    with patch.object(news, "_fetch_google_rss") as fetch:
+        for kw in ({"company": ""}, {"company": "X", "days": -1},
+                   {"company": "X", "days": 0}, {"company": "X", "days": float("nan")},
+                   {"company": "X", "today": "bad-date"}):
+            try:
+                result = news.fetch(**kw)
+                valid = not result["ok"] and bool(result["gaps"])
+            except Exception:
+                valid = False
+            check("invalid news query degrades without fetching", valid, kw)
+        check("invalid news inputs never dispatch source", fetch.call_count == 0)
+
+
 if __name__ == "__main__":
-    run((test_B1_fetch_returns_envelope_with_items, test_B2_items_dated,
+    run((test_cached_feed_preserves_request_views, test_news_dates_and_publisher_names,
+         test_B1_fetch_returns_envelope_with_items, test_B2_items_dated,
          test_B2_items_classified, test_B2_items_tagged, test_B2_items_deduped,
          test_B2_each_item_has_source, test_B2_noise_filtered_from_default_view,
          test_B2_recency_window_drops_stale, test_B2_publisher_tier_ranks_the_wire,

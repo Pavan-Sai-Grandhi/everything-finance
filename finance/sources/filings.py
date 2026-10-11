@@ -15,9 +15,10 @@ Reached through: get_filings, get_shareholding, get_corporate_actions.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
-import re
 from datetime import date, timedelta
+from urllib.parse import urlencode, urlsplit
 
 from finance import paths
 from finance import spine
@@ -143,6 +144,20 @@ def _nse_json(url, referer):
     return _rows(payload), None
 
 
+def _symbol_url(endpoint, symbol, **params):
+    return endpoint + "?" + urlencode({"index": "equities", "symbol": symbol, **params})
+
+
+def _scope_rows(rows, symbol, label):
+    """An ignored server-side filter must never attribute another issuer's filings."""
+    scoped = [row for row in rows if isinstance(row, dict)
+              and _norm_symbol(_first(row, "symbol", "sym")) == symbol]
+    dropped = len(rows) - len(scoped)
+    gap = (f"{label}: dropped {dropped} foreign, unidentified or malformed rows"
+           if dropped else None)
+    return scoped, gap
+
+
 def fetch_nse_announcements(symbol, days=30):
     """NSE corporate announcements for one equity symbol over the last `days`.
 
@@ -152,24 +167,13 @@ def fetch_nse_announcements(symbol, days=30):
         return {"items": [], "gap": "no NSE symbol given for announcements"}
     to_d = date.today()
     from_d = to_d - timedelta(days=days)
-    url = (f"{_ANN_URL}?index=equities&symbol={symbol}"
-           f"&from_date={from_d:%d-%m-%Y}&to_date={to_d:%d-%m-%Y}")
+    url = _symbol_url(_ANN_URL, symbol, from_date=from_d.strftime("%d-%m-%Y"),
+                      to_date=to_d.strftime("%d-%m-%Y"))
     rows, gap = _nse_json(url, _ANN_REFERER)
     if gap:
         return {"items": [], "gap": f"NSE announcements: {gap}"}
 
-    # Guard: the endpoint has been observed returning the WHOLE market when its symbol
-    # filter is not honoured (~3,300 rows for a one-symbol query). Silently classifying
-    # another company's filings as this one's is the worst failure this module has, so
-    # the symbol is re-checked client-side — the same defence the fund screener needs
-    # against Tickertape's silently-ignored string filters.
-    scoped, foreign = [], 0
-    for r in rows:
-        row_sym = _norm_symbol(_first(r, "symbol", "sym"))
-        if row_sym and row_sym != symbol:
-            foreign += 1
-            continue
-        scoped.append(r)
+    scoped, scope_gap = _scope_rows(rows, symbol, "NSE announcements")
 
     out = []
     for r in scoped:
@@ -181,18 +185,13 @@ def fetch_nse_announcements(symbol, days=30):
         tier, emoji, reason = classify_materiality(head)
         out.append({
             "date": spine.iso_date(_first(r, "an_dt", "sort_date")),
-            "headline": head[:240],
+            "headline": head,
             "category": category,
             "tier": tier, "emoji": emoji, "why": reason,
             "attachment": _first(r, "attchmntFile"),
             "exchange": "NSE",
         })
-    gap = None
-    if foreign:
-        gap = (f"NSE announcements: server ignored the symbol filter — dropped {foreign} "
-               f"rows belonging to other companies client-side")
-    elif not out:
-        gap = "NSE announcements: none in window for this symbol"
+    gap = scope_gap or ("NSE announcements: none in window for this symbol" if not out else None)
     return {"items": out, "gap": gap}
 
 
@@ -203,13 +202,12 @@ def fetch_nse_corp_actions(symbol):
     symbol = _norm_symbol(symbol)
     if not symbol:
         return {"items": [], "gap": "no NSE symbol given for corporate actions"}
-    rows, gap = _nse_json(f"{_CA_URL}?index=equities&symbol={symbol}", _CA_REFERER)
+    rows, gap = _nse_json(_symbol_url(_CA_URL, symbol), _CA_REFERER)
     if gap:
         return {"items": [], "gap": f"NSE corporate actions: {gap}"}
+    rows, scope_gap = _scope_rows(rows, symbol, "NSE corporate actions")
     out = []
     for r in rows:
-        if _norm_symbol(_first(r, "symbol")) not in ("", symbol):
-            continue
         subject = _first(r, "subject", "purpose")
         if not subject:
             continue
@@ -221,7 +219,7 @@ def fetch_nse_corp_actions(symbol):
             "isin": _first(r, "isin"),
             "exchange": "NSE",
         })
-    return {"items": out, "gap": None if out else "no forthcoming corporate actions"}
+    return {"items": out, "gap": scope_gap or (None if out else "no forthcoming corporate actions")}
 
 
 _SHP_REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-shareholding-pattern"
@@ -238,34 +236,89 @@ _PLEDGE_TAGS = {
 _PLEDGE_FLAG = "WhetherAnySharesHeldByPromotersAreEncumberedUnderPledged"
 
 
+def _nse_document_url(url):
+    """An exchange-hosted HTTPS document link; payload-supplied URLs are untrusted."""
+    if not isinstance(url, str):
+        return False
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    return parts.scheme == "https" and (host == "nseindia.com" or host.endswith(".nseindia.com"))
+
+
 def pledge_from_xbrl(url):
     """Promoter pledge from the quarter's SEBI shareholding XBRL — the filed source.
 
     NSE's pledge JSON endpoint is usually empty, which leaves pledge UNKNOWN. The XBRL
-    behind the same filing always carries it, including an explicit `false` that settles
+    behind the same filing may carry it, including an explicit `false` that settles
     the one distinction that matters: a company that filed "no pledge" versus one whose
     pledge nobody could read.
 
     Percentages are filed as fractions of the promoter holding (0.7299 = 72.99%).
     Returns {declared, pledged_pct, encumbered_pct, ..., source} or None.
     """
-    if not url:
+    if not _nse_document_url(url):
         return None
     body, gap = transport.request(url, timeout=45, referer=_SHP_REFERER)
     if gap or not body:
         return None
-    flag = re.search(rf"<[^>]*:{_PLEDGE_FLAG}[^>]*>([^<]*)<", body)
-    declared = flag.group(1).strip().lower() == "true" if flag else None
-    out = {"declared": declared, "source": url}
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(body)
+    except (ET.ParseError, TypeError):
+        return None
+    by_tag = {}
+    for element in root.iter():
+        local = element.tag.rsplit("}", 1)[-1]
+        if local in {*_PLEDGE_TAGS.values(), _PLEDGE_FLAG}:
+            by_tag.setdefault(local, []).append(element)
+    if not by_tag:
+        return None
+    gaps, invalid = [], set()
+
+    def fact(tag, parse):
+        values = set()
+        for element in by_tag.get(tag, []):
+            if element.get("{http://www.w3.org/2001/XMLSchema-instance}nil") in ("true", "1"):
+                continue
+            value = parse((element.text or "").strip())
+            if value is None:
+                invalid.add(tag)
+            else:
+                values.add(value)
+        if tag in invalid or len(values) > 1:
+            invalid.add(tag)
+            gaps.append(f"NSE XBRL: invalid or conflicting {tag}; left unknown")
+            return None
+        return next(iter(values)) if values else None
+
+    def number(text, fraction):
+        value = _f(text)
+        if value is None or value < 0:
+            return None
+        if fraction and value > 1 or not fraction and not value.is_integer():
+            return None
+        return value
+
+    declared = fact(_PLEDGE_FLAG, lambda value: {"true": True, "1": True,
+                                                "false": False, "0": False}.get(value.lower()))
+    out = {"declared": declared, "source": url, "gaps": gaps}
     for key, tag in _PLEDGE_TAGS.items():
-        m = re.search(rf"<[^>]*:{tag}[^>]*>([^<]*)<", body)
-        val = _f(m.group(1)) if m else None
-        out[key] = round(val * 100, 2) if val is not None and key.endswith("_pct") else val
+        fraction = key.endswith("_pct")
+        value = fact(tag, lambda text: number(text, fraction))
+        out[key] = round(value * 100, 2) if value is not None and fraction else value
     if declared is False:
-        for key in _PLEDGE_TAGS:
-            out.setdefault(key, None)
-            if out[key] is None:
-                out[key] = 0.0 if key.endswith("_pct") else 0
+        pledged = ("pledged_pct", "pledged_shares")
+        if any(_PLEDGE_TAGS[key] in invalid or (out[key] or 0) > 0 for key in pledged):
+            out["declared"] = None
+            gaps.append("NSE XBRL: no-pledge declaration conflicts with pledge figures; reconcile filing")
+        else:
+            for key in pledged:
+                if out[key] is None:
+                    out[key] = 0
+        # A pledge is only one form of encumbrance. The declaration says nothing
+        # about the other forms, so their missing values must remain unknown.
+    if out["declared"] is None and out["pledged_pct"] is None and out["pledged_shares"] is None:
+        gaps.append("NSE XBRL: promoter pledge UNKNOWN, not nil")
     return out
 
 
@@ -278,13 +331,18 @@ def fetch_nse_shareholding(symbol, quarters=8):
     them is safe to act on.
 
     Returns {items: [...], pledge: [...], gap: str|None}."""
+    if type(quarters) is not int or quarters <= 0:
+        return {"items": [], "pledge": [], "gap": "quarters must be a positive integer"}
     symbol = _norm_symbol(symbol)
     if not symbol:
         return {"items": [], "pledge": [], "gap": "no NSE symbol given for shareholding"}
-    rows, gap = _nse_json(f"{_SHP_URL}?index=equities&symbol={symbol}", _SHP_REFERER)
+    rows, gap = _nse_json(_symbol_url(_SHP_URL, symbol), _SHP_REFERER)
     if gap:
         return {"items": [], "pledge": [], "gap": f"NSE shareholding: {gap}"}
 
+    rows, scope_gap = _scope_rows(rows, symbol, "NSE shareholding")
+    # Newest filing first by its own period date; the latest XBRL carries the pledge.
+    rows = sorted(rows, key=lambda r: spine.iso_date(_first(r, "date")) or "", reverse=True)
     out = []
     for r in rows[:quarters]:
         out.append({
@@ -297,14 +355,16 @@ def fetch_nse_shareholding(symbol, quarters=8):
         })
 
     pledge_rows, pgap = _nse_json(
-        f"{_PLEDGE_URL}?index=equities&symbol={symbol}", _SHP_REFERER)
-    pledge = _rows(pledge_rows) if pledge_rows else []
-    gaps = []
+        _symbol_url(_PLEDGE_URL, symbol), _SHP_REFERER)
+    pledge, pledge_gap = _scope_rows(pledge_rows, symbol, "NSE pledge data")
+    gaps = [g for g in (scope_gap, pledge_gap) if g]
     if pgap:
         gaps.append(f"NSE pledge data: {pgap}")
 
     # The JSON endpoint is usually empty; the filing's own XBRL is not.
     summary = pledge_from_xbrl(out[0]["xbrl"]) if out else None
+    if summary is not None:
+        gaps.extend(summary.get("gaps", []))
     if summary is None and not pledge:
         gaps.append("promoter pledge unreadable from both the NSE endpoint and the "
                     "quarter's XBRL — UNKNOWN, not nil")
@@ -337,14 +397,15 @@ def corporate_actions(symbol):
 
 
 def _dedupe(items):
-    """Collapse a repeated event to one row; keep the first seen."""
+    """Collapse identical filing evidence, preserving distinct same-day disclosures."""
     seen, out = set(), []
     for it in items:
-        key = (it["date"], it["headline"][:80].lower())
+        key = (it["date"], it.get("attachment") or "", it["headline"])
         if key in seen:
             continue
         seen.add(key)
-        out.append(it)
+        identity = hashlib.sha256(json.dumps(key, ensure_ascii=False).encode("utf-8")).hexdigest()
+        out.append({**it, "filing_id": identity})
     return out
 
 
@@ -354,16 +415,19 @@ def summarize(symbol, days=30, fresh=False):
     Announcements + corporate actions. A blocked call records a *labelled* gap and the run
     returns whatever it gathered; `ok` is true when at least one announcement came back.
     """
-    symbol = _norm_symbol(symbol)
-    cache_file = os.path.join(paths.cache_dir("filings"), f"{symbol}_{days}.json")
-    if not fresh and os.path.exists(cache_file):
-        try:
-            with open(cache_file) as fh:
-                cached = json.load(fh)
-            if cached.get("data", {}).get("date") == date.today().isoformat():
-                return cached
-        except Exception:  # noqa: BLE001 — a bad cache file never blocks a fetch
-            pass
+    try:
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol must be a nonempty NSE symbol")
+        symbol = paths.ticker_key(_norm_symbol(symbol))
+        if type(days) is not int or not 0 <= days < date.today().toordinal():
+            raise ValueError("days must be a nonnegative integer within the supported calendar")
+    except ValueError as exc:
+        return _envelope(False, "NSE", {"items": []}, [f"invalid filings request: {exc}"])
+    # Older snapshots may already have discarded distinct filings by headline prefix.
+    cache_file = os.path.join(paths.cache_dir("filings"), f"v3_{symbol}_{days}.json")
+    cached = spine.read_cache(cache_file, fresh)
+    if cached and cached["data"].get("symbol") == symbol and cached["data"].get("days") == days:
+        return cached
 
     gaps, sources, items, corp_actions = [], [], [], []
     if not symbol:
@@ -378,7 +442,7 @@ def summarize(symbol, days=30, fresh=False):
 
         ca = fetch_nse_corp_actions(symbol)
         corp_actions = ca["items"]
-        if ca["gap"] and not ca["items"] and "no forthcoming" not in ca["gap"]:
+        if ca["gap"] and "no forthcoming" not in ca["gap"]:
             gaps.append(ca["gap"])
 
     items = _dedupe(items)
@@ -397,9 +461,5 @@ def summarize(symbol, days=30, fresh=False):
     }
     env = _envelope(bool(items), "+".join(sources) if sources else None, data, gaps)
     if items:
-        try:
-            with open(cache_file, "w") as fh:
-                json.dump(env, fh, ensure_ascii=False)
-        except Exception:  # noqa: BLE001
-            pass
+        spine.write_cache(cache_file, env)
     return env

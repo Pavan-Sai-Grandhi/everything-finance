@@ -1,6 +1,6 @@
 # Market Read — {{as_of}}
 
-*Computed {{generated}} from `artifacts/market-analysis/{{generated}}.json`. `as_of` is the last trading bar.*
+*Computed {{generated}} from `artifacts/market-analysis/{{generated}}.json`. `as_of` is the last available Nifty bar; show “unavailable” if null. Other components may have different observation dates.*
 
 ## The call
 
@@ -24,11 +24,11 @@
 
 | Measure | Reading |
 |---|---|
-| Above 50-DMA | {{breadth.pct_above_sma50}}% of {{breadth.universe}} |
-| Above 200-DMA | {{breadth.pct_above_sma200}}% |
+| Above 50-DMA | {{breadth.pct_above_sma50}}% of {{breadth.counts.above_sma50.of}} priced stocks |
+| Above 200-DMA | {{breadth.pct_above_sma200}}% of {{breadth.counts.above_sma200.of}} priced stocks |
 | Near 52w high | {{breadth.pct_near_52w_high}}% |
 | Near 52w low | {{breadth.pct_near_52w_low}}% |
-| Sectors above 50-EMA | {{breadth.pct_sectors_above_ema50}}% |
+| Sectors above 50-EMA | {{breadth.pct_sectors_above_ema50 or unavailable}}; coverage {{breadth.sectors_available}}/{{breadth.sectors_expected}} |
 
 {{one line: broad / narrow / diverging from the index, and what that implies}}
 
@@ -38,7 +38,7 @@ India VIX **{{volatility.vix}}** — {{volatility.band}}, {{volatility.percentil
 
 ## Valuation by cap tier
 
-*Level, and percentile against that index's own {{history_years}}-year history. A low dividend yield is an expensive market.*
+*Level, and percentile against that index's own {{history_years}}-year history. The blend inverts dividend-yield percentile as a valuation heuristic.*
 
 | Index | P/E | %ile | P/B | %ile | Div yld | %ile | Stance |
 |---|---|---|---|---|---|---|---|
@@ -46,13 +46,13 @@ India VIX **{{volatility.vix}}** — {{volatility.band}}, {{volatility.percentil
 | Midcap 150 | | | | | | | |
 | Smallcap 250 | | | | | | | |
 
-{{any pe_pctile_note — how many samples were excluded as earnings-collapse distortions}}
+{{pe_pctile_note, available sample coverage and exclusions; the filter does not establish the cause of outliers}}
 
 **Relative:** smallcap/largecap P/B {{relative.smallcap_vs_largecap_pb_ratio}}, percentile spread {{relative.percentile_spread}}. {{relative.read}}
 
 ## Flows
 
-Session {{flows_session}} — FII net ₹{{FII.net_cr}} Cr, DII net ₹{{DII.net_cr}} Cr. {{one line on direction and persistence; one session is noise}}
+Session {{flows_session}} — FII net ₹{{FII.net_cr}} Cr, DII net ₹{{DII.net_cr}} Cr. {{describe this session; discuss persistence only with additional sourced sessions}}
 
 ## Macro backdrop
 

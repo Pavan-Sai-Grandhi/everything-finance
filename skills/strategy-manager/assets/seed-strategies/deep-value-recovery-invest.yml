@@ -14,7 +14,7 @@ goal: "Profitable, low-debt businesses on a depressed multiple — quality at a 
 source_references:
   - "Zerodha Varsity — Fundamental Analysis (P/B, earnings quality, balance-sheet safety as the value-trap guard). Deep-value overlay; Varsity is the official source, the thresholds are the plugin's bottom-fishing guard."
 
-status: draft                         # active on the completeness gate (fields verified to resolve 2026-08-30, 30 matches)
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-08-30
   validated_at: null
@@ -34,7 +34,7 @@ screening:
   fundamental:
     provider: tickertape
     query: >
-      Market Cap > 2000 AND PB Ratio < 2 AND PE Ratio < 15
+      Market Cap > 2000 AND PB Ratio > 0 AND PB Ratio < 2 AND PE Ratio > 0 AND PE Ratio < 15
       AND ROCE > 12 AND Return on Equity > 12
       AND Debt to Equity < 0.6 AND Promoter Pledge < 10
     max_survivors: 40

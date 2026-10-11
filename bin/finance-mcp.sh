@@ -16,7 +16,6 @@ SERVER_NAME="${1:-}"
 # Claude Code injects CLAUDE_PLUGIN_ROOT/DATA; an Agent Plugins client injects PLUGIN_ROOT/DATA.
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
 DATA_DIR="${CLAUDE_PLUGIN_DATA:-${PLUGIN_DATA:-$PLUGIN_ROOT/.data}}"
-VENV="$DATA_DIR/venv"
 
 # stdout is the MCP wire protocol — every diagnostic must go to stderr.
 log() { printf '[finance-mcp:%s] %s\n' "${SERVER_NAME:-?}" "$*" >&2; }
@@ -34,31 +33,19 @@ if [ ! -f "$PLUGIN_ROOT/finance/mcp/$SERVER_NAME.py" ]; then
   exit 1
 fi
 
-# Optional secrets (screener.in, TradingView cookies). Absent is fine: the public paths
-# still work and the affected tool degrades to a labelled gap rather than failing.
+# Optional secrets (today only the Telegram pair; see .env.example). Absent is fine: the
+# data tools need none, and anything that does degrades to a labelled gap.
 # shellcheck source=load-env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/load-env.sh"
 ef_load_secrets "$PLUGIN_ROOT" "$DATA_DIR"
 
-PY=""
-if command -v python3 >/dev/null 2>&1 && python3 -c 'import mcp' >/dev/null 2>&1; then
-  PY="$(command -v python3)"
-elif [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c 'import mcp' >/dev/null 2>&1; then
-  PY="$VENV/bin/python"
-else
-  log "MCP SDK not found — bootstrapping a venv at $VENV (one time)"
-  mkdir -p "$DATA_DIR"
-  if ! python3 -m venv --system-site-packages "$VENV" >&2; then
-    log "FATAL: could not create venv. Install the SDK manually: pip install 'mcp>=2,<3'"
-    exit 1
-  fi
-  if ! "$VENV/bin/pip" install --quiet --disable-pip-version-check 'mcp>=2,<3' >&2; then
-    log "FATAL: could not install the MCP SDK (offline?). Retry, or: pip install 'mcp>=2,<3'"
-    exit 1
-  fi
-  PY="$VENV/bin/python"
-  log "bootstrap complete"
+# Standard-library helper holds a kernel lock while repairing the shared venv.
+# It probes the API actually used by the servers, not merely an import named mcp.
+if ! command -v python3 >/dev/null 2>&1; then
+  log "FATAL: python3 is required"
+  exit 1
 fi
+PY=$(python3 "$PLUGIN_ROOT/bin/ensure-mcp.py" "$(command -v python3)" "$DATA_DIR")
 
 export PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 exec "$PY" -m "finance.mcp.$SERVER_NAME"

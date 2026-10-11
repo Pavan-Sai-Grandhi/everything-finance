@@ -46,9 +46,10 @@ Reached through: run_dcf, which pairs this with the relative read from `relval.p
 """
 import argparse
 import json
+import math
 import os
 import sys
-from functools import reduce
+import tempfile
 
 from finance import paths, spine
 from finance.compute import relval
@@ -56,15 +57,36 @@ from finance.deps import need as _need
 
 _SOURCE = "finance.compute.dcf"
 
+def _number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("model inputs must be finite numbers, not booleans or text")
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise ValueError("model input exceeds the supported numeric range") from exc
+    if not math.isfinite(number):
+        raise ValueError("model inputs must be finite numbers, not booleans or text")
+    return number
+
+
+def _horizon(spec):
+    if not isinstance(spec, dict):
+        raise ValueError("model inputs must be a mapping")
+    years = spec.get("years", 10)
+    if type(years) is not int or years < 1:
+        raise ValueError("years must be a positive integer")
+    return years
+
+
 def _as_path(value, n, default):
     """Expand a scalar OR a list into an N-length list. Last value carries forward."""
     if value is None:
         value = default
     if isinstance(value, (int, float)):
-        return [float(value)] * n
-    seq = [float(x) for x in value]
-    if len(seq) == 0:
-        return [float(default)] * n
+        return [_number(value)] * n
+    if not isinstance(value, (list, tuple)) or not value:
+        raise ValueError("model paths must be a number or a nonempty list")
+    seq = [_number(x) for x in value]
     if len(seq) < n:
         seq = seq + [seq[-1]] * (n - len(seq))
     return seq[:n]
@@ -85,11 +107,14 @@ def resolve_growth(spec, n):
     if "revenue_growth" in spec and spec["revenue_growth"] is not None:
         return _as_path(spec["revenue_growth"], n, 0.0)
     g = spec.get("growth_glide")
+    if g is not None and not isinstance(g, dict):
+        raise ValueError("growth_glide must be a mapping")
     if g:
-        hi = float(g["initial"])
-        lo = float(g.get("fade_to", hi))
-        yh = int(g.get("years_high", 1))
-        yh = max(0, min(yh, n))
+        hi = _number(g["initial"])
+        lo = _number(g.get("fade_to", hi))
+        yh = g.get("years_high", 1)
+        if type(yh) is not int or not 0 <= yh <= n:
+            raise ValueError("years_high must be an integer within the modeled horizon")
         head = [hi] * yh
         # `_ramp` includes its start.  Drop that duplicate after the explicit
         # high-growth block so `years_high: 3` means exactly three years, not four.
@@ -107,11 +132,14 @@ def resolve_margin(spec, n):
     if "operating_margin" in spec and spec["operating_margin"] is not None:
         return _as_path(spec["operating_margin"], n, 0.0)
     m = spec.get("margin_glide")
+    if m is not None and not isinstance(m, dict):
+        raise ValueError("margin_glide must be a mapping")
     if m:
-        start = float(m["start"])
-        target = float(m["target"])
-        yt = int(m.get("year_target", n))
-        yt = max(1, min(yt, n))
+        start = _number(m["start"])
+        target = _number(m["target"])
+        yt = m.get("year_target", n)
+        if type(yt) is not int or not 1 <= yt <= n:
+            raise ValueError("year_target must be an integer within the modeled horizon")
         head = _ramp(start, target, yt)
         tail = [target] * (n - yt)
         return (head + tail)[:n]
@@ -139,37 +167,39 @@ def resolve_wacc(spec, n):
         path = _as_path(raw, n, 0.11)
         if isinstance(raw, (int, float)) and lifecycle_stage(spec) in YOUNG_STAGES \
                 and spec.get("terminal_wacc") is not None:
-            path = _ramp(path[0], float(spec["terminal_wacc"]), n)
+            path = _ramp(path[0], _number(spec["terminal_wacc"]), n)
         return path, None
     b = spec.get("wacc_buildup")
+    if b is not None and not isinstance(b, dict):
+        raise ValueError("wacc_buildup must be a mapping")
     if not b:
         raise ValueError("inputs need a discount rate — either an explicit `wacc` (scalar/list) "
                          "or a `wacc_buildup` block; WACC must be sourced, never defaulted")
-    beta = float(b.get("beta", 1.0))
-    mature_erp = float(b["mature_erp"])
-    crp = float(b.get("country_risk_premium", 0.0))
+    beta = _number(b.get("beta", 1.0))
+    mature_erp = _number(b["mature_erp"])
+    crp = _number(b.get("country_risk_premium", 0.0))
     bond_yield = b.get("government_bond_yield")
     default_spread = b.get("sovereign_default_spread")
     if bond_yield is not None:
         if default_spread is None:
             raise ValueError("wacc_buildup with `government_bond_yield` also needs "
                              "`sovereign_default_spread` to derive a default-free risk-free rate")
-        rf = float(bond_yield) - float(default_spread)
+        rf = _number(bond_yield) - _number(default_spread)
         if rf <= 0:
             raise ValueError("government_bond_yield minus sovereign_default_spread must be > 0")
     elif b.get("risk_free") is not None:
-        rf = float(b["risk_free"])
-        if crp > 0 and not bool(b.get("risk_free_is_default_free")):
+        rf = _number(b["risk_free"])
+        if crp > 0 and b.get("risk_free_is_default_free") is not True:
             raise ValueError("country risk is being added, so `risk_free` must be explicitly confirmed "
                              "as default-free with `risk_free_is_default_free: true`, or derived from "
                              "`government_bond_yield - sovereign_default_spread`")
     else:
         raise ValueError("wacc_buildup needs either a default-free `risk_free` or "
                          "`government_bond_yield` plus `sovereign_default_spread`")
-    lam = float(b.get("lambda_country", 1.0))
+    lam = _number(b.get("lambda_country", 1.0))
     coe = rf + beta * mature_erp + lam * crp
     erp_total = mature_erp + lam * crp
-    cod = float(b.get("cost_of_debt_pretax", coe))
+    cod = _number(b.get("cost_of_debt_pretax", coe))
     # the buildup needs a SCALAR tax rate for the debt shield; a per-year spec `tax_rate` path
     # cannot stand in, so require an explicit scalar rather than defaulting one.
     tax_spec = b.get("tax_rate", spec.get("tax_rate"))
@@ -179,12 +209,18 @@ def resolve_wacc(spec, n):
                          "wacc_buildup block")
     if tax_spec is None:
         raise ValueError("wacc_buildup needs `tax_rate` for the after-tax cost of debt")
-    tax = float(tax_spec)
-    we = float(b.get("equity_weight", 1.0))
-    wd = float(b.get("debt_weight", 1.0 - we))
+    tax = _number(tax_spec)
+    we = _number(b.get("equity_weight", 1.0))
+    wd = _number(b.get("debt_weight", 1.0 - we))
+    if not 0 <= we <= 1 or not 0 <= wd <= 1 or not math.isclose(we + wd, 1.0, abs_tol=1e-9):
+        raise ValueError("equity/debt weights must lie in [0,1] and sum to one")
+    if str(spec.get("model_shape") or "fcff").strip().lower() == "equity" and (we != 1 or wd != 0):
+        raise ValueError("equity model requires cost of equity: buildup weights must be equity=1, debt=0")
     wacc = we * coe + wd * cod * (1.0 - tax)
     detail = {"cost_of_equity": round(coe, 6), "after_tax_cost_of_debt": round(cod * (1 - tax), 6),
-              "default_free_risk_free": round(rf, 6),
+              # This rate is reused by validation and scenario calculations.
+              # Keep its precision; presentation rounding belongs in reports.
+              "default_free_risk_free": rf,
               "government_bond_yield": round(float(bond_yield), 6) if bond_yield is not None else None,
               "sovereign_default_spread": round(float(default_spread), 6) if default_spread is not None else None,
               "beta": round(beta, 6), "lambda_country": round(lam, 6),
@@ -192,7 +228,7 @@ def resolve_wacc(spec, n):
               "equity_risk_premium": round(erp_total, 6), "wacc": round(wacc, 6)}
     path = _as_path(wacc, n, wacc)
     if lifecycle_stage(spec) in YOUNG_STAGES and spec.get("terminal_wacc") is not None:
-        path = _ramp(wacc, float(spec["terminal_wacc"]), n)
+        path = _ramp(wacc, _number(spec["terminal_wacc"]), n)
     return path, detail
 
 
@@ -211,20 +247,26 @@ def _cum_discount(wacc_path):
     """Cumulative discount factors: df[t] = prod_{i<=t}(1+wacc_i)."""
     factors, running = [], 1.0
     for w in wacc_path:
+        if not math.isfinite(w) or w <= -1:
+            raise ValueError("discount rates must be finite and greater than -1")
         running *= (1.0 + w)
+        if not math.isfinite(running) or running <= 0:
+            raise ValueError("discount factors are outside the finite numeric range")
         factors.append(running)
     return factors
 
 
 def value(spec):
     """Run the DCF. Returns a result dict. Raises ValueError on invalid input/model."""
-    n = int(spec.get("years", 10))
+    n = _horizon(spec)
     if n < 1:
         raise ValueError("years must be >= 1")
 
-    base_rev = float(spec["base_revenue"])
+    base_rev = _number(spec["base_revenue"])
     growth = resolve_growth(spec, n)
     margin = resolve_margin(spec, n)
+    if any(g < -1 for g in growth):
+        raise ValueError("revenue growth cannot be below -100%")
     if spec.get("tax_rate") is None:
         raise ValueError("inputs need `tax_rate` — the effective tax rate must be sourced "
                          "(annual-report tax note), never defaulted")
@@ -241,20 +283,31 @@ def value(spec):
                          "must be sourced (historical ΔRevenue ÷ reinvestment, or peer benchmark), "
                          "never defaulted")
     s2c = _as_path(spec["sales_to_capital"], n, 0.0)
+    if any(not math.isfinite(ratio) or ratio <= 0 for ratio in s2c):
+        raise ValueError("sales_to_capital must be finite and positive in every year")
     wacc, wacc_detail = resolve_wacc(spec, n)
 
     if spec.get("terminal_growth") is None:
         raise ValueError("inputs need `terminal_growth` — the perpetuity growth rate must be "
                          "sourced (capped at the risk-free rate), never defaulted")
-    g_T = float(spec["terminal_growth"])
-    wacc_T = float(spec.get("terminal_wacc", wacc[-1]))
-    margin_T = float(spec.get("terminal_margin", margin[-1]))
-    tax_T = float(spec.get("terminal_tax_rate", tax[-1]))
+    g_T = _number(spec["terminal_growth"])
+    wacc_T = _number(spec.get("terminal_wacc", wacc[-1]))
+    margin_T = _number(spec.get("terminal_margin", margin[-1]))
+    tax_T = _number(spec.get("terminal_tax_rate", tax[-1]))
+    if shape == "equity":
+        if any(m != 1 for m in margin) or margin_T != 1:
+            raise ValueError("equity model uses after-tax earnings: explicit and terminal margins must be 1")
+        if any(t != 0 for t in tax) or tax_T != 0:
+            raise ValueError("equity model uses after-tax earnings: explicit and terminal tax rates must be 0")
+        if _number(spec.get("net_debt", 0.0)) != 0:
+            raise ValueError("equity model already values equity cash flows: net_debt must be 0")
     # Default: convergence — no perpetual excess return. Damodaran's base case for a going concern is
     # ROIC -> cost of capital (competition erodes excess returns); set terminal_roic > WACC only when a
     # durable moat earns it. The excess return (ROIC - WACC), not g_T, is what actually moves terminal value.
-    roic_T = float(spec.get("terminal_roic", wacc_T))
+    roic_T = _number(spec.get("terminal_roic", wacc_T))
     risk_free = spec.get("risk_free")
+    if risk_free is not None:
+        risk_free = _number(risk_free)
     if wacc_detail:
         derived_rf = wacc_detail["default_free_risk_free"]
         if risk_free is not None and abs(float(risk_free) - derived_rf) > 1e-9:
@@ -268,6 +321,8 @@ def value(spec):
     if risk_free is not None and g_T > float(risk_free) + 1e-9:
         raise ValueError(f"terminal growth ({g_T}) must not exceed the default-free risk-free "
                          f"rate ({float(risk_free)}) in the cash-flow currency")
+    if g_T < -1:
+        raise ValueError("terminal growth cannot be below -100%")
     if roic_T <= 0:
         raise ValueError("terminal_roic must be > 0")
 
@@ -277,7 +332,7 @@ def value(spec):
         rev = prev_rev * (1.0 + growth[t])
         ebit = rev * margin[t]
         nopat = ebit * (1.0 - tax[t])
-        reinvest = (rev - prev_rev) / s2c[t] if s2c[t] else 0.0
+        reinvest = (rev - prev_rev) / s2c[t]
         fcff = nopat - reinvest
         pv = fcff / df[t]
         pv_sum += pv
@@ -305,9 +360,9 @@ def value(spec):
     pv_tv = tv / df[-1]
 
     ev = pv_sum + pv_tv
-    net_debt = float(spec.get("net_debt", 0.0))
-    non_op_cash = float(spec.get("non_operating_cash", 0.0))
-    minority = float(spec.get("minority_interest", 0.0))
+    net_debt = _number(spec.get("net_debt", 0.0))
+    non_op_cash = _number(spec.get("non_operating_cash", 0.0))
+    minority = _number(spec.get("minority_interest", 0.0))
     equity_going_concern = ev - net_debt + non_op_cash - minority
 
     # Two adjustments Damodaran keeps SEPARATE from the operating story, each applied only when
@@ -321,9 +376,11 @@ def value(spec):
     #       can't see: opaque cross-holdings, family-control wealth-transfer risk, pledging, political
     #       dependence (Adani: clean operating value first, then "a significant discount on intrinsic
     #       value"). Kept separate so the operating story is never quietly poisoned to express it.
-    p_fail = float(spec.get("failure_probability", 0.0))
-    recovery = float(spec.get("failure_recovery", 0.0))  # fraction of going-concern equity in failure
-    cx = float(spec.get("complexity_discount", 0.0))     # governance/cross-holding/control haircut
+    p_fail = _number(spec.get("failure_probability", 0.0))
+    recovery = _number(spec.get("failure_recovery", 0.0))  # fraction of going-concern equity in failure
+    cx = _number(spec.get("complexity_discount", 0.0))     # governance/cross-holding/control haircut
+    if not 0.0 <= recovery <= 1.0:
+        raise ValueError("failure_recovery must be between 0 and 1")
     if not 0.0 <= p_fail <= 1.0:
         raise ValueError("failure_probability must be between 0 and 1")
     if not 0.0 <= cx < 1.0:
@@ -331,15 +388,21 @@ def value(spec):
     equity_after_failure = equity_going_concern * ((1.0 - p_fail) + recovery * p_fail)
     equity = equity_after_failure * (1.0 - cx)
 
-    shares = float(spec["shares_outstanding"])
+    shares = _number(spec["shares_outstanding"])
     if shares <= 0:
         raise ValueError("shares_outstanding must be > 0")
     per_share = equity / shares
 
     price = spec.get("current_price")
     mos = None
-    if price not in (None, 0):
-        mos = per_share / float(price) - 1.0
+    if price is not None:
+        price = _number(price)
+        if price <= 0:
+            raise ValueError("current_price must be positive when supplied")
+        mos = per_share / price - 1.0
+    computed = (pv_sum, pv_tv, ev, equity_going_concern, equity, per_share)
+    if not all(math.isfinite(v) for v in computed) or (mos is not None and not math.isfinite(mos)):
+        raise ValueError("valuation exceeds supported finite numeric range")
 
     tv_fraction = pv_tv / ev if ev else None
 
@@ -502,9 +565,9 @@ def sensitivity(spec, wacc_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01),
     This is a mechanical terminal-value check, not a coherent whole-company risk
     scenario: explicit-period discount rates and operating assumptions stay fixed.
     """
-    base_wacc_T = float(spec.get("terminal_wacc", _as_path(spec.get("wacc", 0.11),
-                        int(spec.get("years", 10)), 0.11)[-1]))
-    base_g_T = float(spec.get("terminal_growth", 0.04))
+    explicit_wacc, buildup = resolve_wacc(spec, _horizon(spec))
+    base_wacc_T = _number(spec.get("terminal_wacc", explicit_wacc[-1]))
+    base_g_T = _number(spec["terminal_growth"])
     grid = {"wacc_axis": [round(base_wacc_T + d, 6) for d in wacc_deltas],
             "growth_axis": [round(base_g_T + d, 6) for d in g_deltas],
             "wacc_axis_label": "terminal WACC",
@@ -516,6 +579,9 @@ def sensitivity(spec, wacc_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01),
         for gd in g_deltas:
             # only the terminal discount rate shifts; explicit years keep their own path
             trial = dict(spec)
+            trial["wacc"] = explicit_wacc
+            if buildup:
+                trial["risk_free"] = buildup["default_free_risk_free"]
             trial["terminal_wacc"] = base_wacc_T + wd
             trial["terminal_growth"] = base_g_T + gd
             try:
@@ -528,21 +594,16 @@ def sensitivity(spec, wacc_deltas=(-0.01, -0.005, 0.0, 0.005, 0.01),
 
 def story_sensitivity(spec, growth_shifts=(-0.04, -0.02, 0.0, 0.02, 0.04),
                       margin_shifts=(-0.03, 0.0, 0.03)):
-    """Per-share value across the levers that actually move a growth company: the whole
+    """Per-share values for specified operating scenarios: the whole
     revenue-growth path shifted by Δ (the rate path; duration is tested separately below)
-    × the steady-state operating margin shifted by Δ.
+    × the explicit operating-margin path and terminal margin shifted by Δ.
+    Negative margins remain negative; a zero shift reproduces the base model.
 
-    This is the headline range for a young/growth firm. The WACC×terminal-growth grid
-    (`sensitivity`) perturbs the two LOWEST-leverage levers — in a rupee model a full ±1%
-    on terminal growth barely moves value — so leading with it reports a falsely narrow band
-    and hides that a premature growth fade is what's driving a low number. Damodaran's actual
-    uncertainty tool for Zomato was a distribution over exactly these story drivers (market
-    size/share → growth, and steady-state margin); this is the deterministic version of it.
-
-    Also returns a `duration` read: holding the growth RATE, extend the high-growth phase —
-    the single most common reason a quality Indian compounder prints far below price is that
-    its demonstrated growth was faded to a mature rate years too early."""
-    n = int(spec.get("years", 10))
+    This is a conditional scenario grid, not a probability interval or proof that
+    these inputs dominate every valuation. Compare it with discount-rate and terminal
+    sensitivities. The duration cases extend the high-growth phase at the same rate;
+    they do not establish which duration is supported by business evidence."""
+    n = _horizon(spec)
     base_g = resolve_growth(spec, n)
     base_m = resolve_margin(spec, n)
 
@@ -551,7 +612,8 @@ def story_sensitivity(spec, growth_shifts=(-0.04, -0.02, 0.0, 0.02, 0.04),
         s.pop("growth_glide", None)
         s.pop("margin_glide", None)
         s["revenue_growth"] = [g + gd for g in base_g]
-        s["operating_margin"] = [max(0.0, m + md) for m in base_m]
+        s["operating_margin"] = [m + md for m in base_m]
+        s["terminal_margin"] = _number(spec.get("terminal_margin", base_m[-1])) + md
         try:
             return round(value(s)["intrinsic_value_per_share"], 2)
         except ValueError:
@@ -561,11 +623,13 @@ def story_sensitivity(spec, growth_shifts=(-0.04, -0.02, 0.0, 0.02, 0.04),
         "growth_shift_axis": [round(g, 4) for g in growth_shifts],
         "margin_shift_axis": [round(m, 4) for m in margin_shifts],
         "cells": [[trial(gd, md) for md in margin_shifts] for gd in growth_shifts],
-        "note": "rows = revenue-growth-path shift, cols = steady-state-margin shift; "
-                "these are the levers a growth stock's value actually turns on.",
+        "note": "rows = revenue-growth-path shift, cols = explicit and terminal margin shift; "
+                "conditional scenarios with other assumptions fixed, not a probability interval.",
     }
 
     g = spec.get("growth_glide")
+    if g is not None and not isinstance(g, dict):
+        raise ValueError("growth_glide must be a mapping")
     if g:
         dur = []
         base_yh = int(g.get("years_high", 1))
@@ -592,15 +656,18 @@ def reverse_dcf(spec, target_per_share=None, solve="growth", tol=1e-4, max_iter=
     solve = "margin"  -> implied operating-margin path
 
     Returns {solved: True, lever, shift, implied_path, implied_year1, base_year1, ...} or
-    {solved: False, lever, reason} when the target can't be bracketed (price below what even
-    a conservative assumption supports, or beyond a credible range — which is itself the finding).
+    {solved: False, lever, reason} when the target is not bracketed or convergence fails.
+    A bracketed root need not be unique; an unbracketed search makes no valuation judgment.
     """
     if target_per_share is None:
         target_per_share = spec.get("current_price")
     if target_per_share in (None, 0):
         raise ValueError("reverse_dcf needs a target — set current_price or pass target_per_share")
-    target = float(target_per_share)
-    n = int(spec.get("years", 10))
+    target = _number(target_per_share)
+    tol = _number(tol)
+    if target <= 0 or tol <= 0 or type(max_iter) is not int or max_iter < 1:
+        raise ValueError("reverse target and tolerance must be positive; max_iter must be a positive integer")
+    n = _horizon(spec)
 
     if solve == "growth":
         base = resolve_growth(spec, n)
@@ -610,67 +677,78 @@ def reverse_dcf(spec, target_per_share=None, solve="growth", tol=1e-4, max_iter=
             s.pop("growth_glide", None)
             s["revenue_growth"] = [g + delta for g in base]
             return s
-        lo, hi, label = -0.30, 0.60, "revenue growth"
+        lo, hi, label = max(-0.30, -1.0 - min(base)), 0.60, "revenue growth"
     elif solve == "margin":
         base = resolve_margin(spec, n)
 
         def make(delta):
             s = dict(spec)
             s.pop("margin_glide", None)
-            s["operating_margin"] = [max(0.0, m + delta) for m in base]
+            s["operating_margin"] = [m + delta for m in base]
+            s["terminal_margin"] = _number(spec.get("terminal_margin", base[-1])) + delta
             return s
         lo, hi, label = -0.30, 0.40, "operating margin"
     else:
         raise ValueError("solve must be 'growth' or 'margin'")
 
     def f(delta):
-        return value(make(delta))["intrinsic_value_per_share"] - target
+        return _number(value(make(delta))["intrinsic_value_per_share"]) - target
+
+    def unsolved(reason):
+        return {"solved": False, "lever": label, "target_per_share": target,
+                "reason": reason, "search_shift_bounds": [lo, hi]}
 
     flo, fhi = f(lo), f(hi)
-    # value rises with the lever (assuming terminal ROIC > WACC), so we expect flo < 0 < fhi.
-    if flo >= 0:
-        v = value(make(lo))["intrinsic_value_per_share"]
-        return {"solved": False, "lever": label, "target_per_share": target,
-                "reason": f"Even with {label} cut by {abs(lo):.0%} across the board, intrinsic value "
-                          f"(₹{v:,.0f}/sh) still meets or exceeds the ₹{target:,.0f} target — the market "
-                          f"is pricing in LESS than your already-conservative {label}; the stock looks cheap "
-                          f"on this lever."}
-    if fhi <= 0:
-        v = value(make(hi))["intrinsic_value_per_share"]
-        return {"solved": False, "lever": label, "target_per_share": target,
-                "reason": f"Even with {label} raised by {hi:.0%} across the board, intrinsic value "
-                          f"(₹{v:,.0f}/sh) stays below the ₹{target:,.0f} target — the price implies {label} "
-                          f"beyond a credible/searchable range (or growth adds no value here because terminal "
-                          f"ROIC ≤ WACC). Either way the price is very hard to justify on this lever alone."}
-
-    for _ in range(max_iter):
-        mid = (lo + hi) / 2.0
-        fm = f(mid)
-        if abs(fm) <= tol * max(1.0, target):
-            lo = hi = mid
-            break
-        if (fm > 0) == (flo > 0):
-            lo, flo = mid, fm
+    tolerance = tol * max(1.0, target)
+    if abs(flo) <= tolerance:
+        delta = lo
+    elif abs(fhi) <= tolerance:
+        delta = hi
+    elif (flo > 0) == (fhi > 0):
+        return unsolved("Target is not bracketed within the searched shift bounds. Endpoint values "
+                        "lie on the same side of the target; interior or multiple roots remain possible.")
+    else:
+        for _ in range(max_iter):
+            delta = (lo + hi) / 2.0
+            residual = f(delta)
+            if abs(residual) <= tolerance:
+                break
+            if (residual > 0) == (flo > 0):
+                lo, flo = delta, residual
+            else:
+                hi, fhi = delta, residual
         else:
-            hi, fhi = mid, fm
-    delta = (lo + hi) / 2.0
-    implied = [round(b + delta, 6) for b in base] if solve == "growth" \
-        else [round(max(0.0, b + delta), 6) for b in base]
+            return unsolved("Iteration limit reached before the valuation matched the target tolerance.")
+    # Retain machine precision: rounding the solved input can undo convergence.
+    implied = [b + delta for b in base]
     out = {
         "solved": True,
         "lever": label,
         "target_per_share": target,
-        "shift": round(delta, 6),
+        "shift": delta,
         "implied_path": implied,
         "implied_year1": implied[0],
-        "base_year1": round(base[0], 6),
+        "base_year1": base[0],
     }
     if solve == "growth":
-        implied_cagr = reduce(lambda a, g: a * (1.0 + g), implied, 1.0) ** (1.0 / n) - 1.0
-        base_cagr = reduce(lambda a, g: a * (1.0 + g), base, 1.0) ** (1.0 / n) - 1.0
+        def cagr(growth):
+            return -1.0 if -1.0 in growth else math.expm1(sum(math.log1p(g) for g in growth) / n)
+        implied_cagr = cagr(implied)
+        base_cagr = cagr(base)
         out["implied_revenue_cagr"] = round(implied_cagr, 6)
         out["base_revenue_cagr"] = round(base_cagr, 6)
     return out
+
+
+def _unique_fields(pairs):
+    result = {}
+    for key, value in pairs:
+        if not isinstance(key, str):
+            raise ValueError("model field names must be strings")
+        if key in result:
+            raise ValueError(f"duplicate model field: {key}")
+        result[key] = value
+    return result
 
 
 def load_inputs(path):
@@ -678,8 +756,24 @@ def load_inputs(path):
         text = f.read()
     if path.endswith((".yml", ".yaml")):
         yaml = _need("yaml", "pyyaml")
-        return yaml.safe_load(text)
-    return json.loads(text)
+
+        class ModelLoader(yaml.SafeLoader):
+            pass
+
+        def mapping(loader, node):
+            # Flatten merges before validation so an inherited assumption cannot
+            # silently be replaced by a second value in the same model mapping.
+            loader.flatten_mapping(node)
+            return _unique_fields((loader.construct_object(key, deep=True),
+                                   loader.construct_object(value, deep=True))
+                                  for key, value in node.value)
+
+        ModelLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+        try:
+            return yaml.load(text, Loader=ModelLoader)
+        except yaml.YAMLError as exc:
+            raise ValueError(f"invalid YAML input: {exc}") from exc
+    return json.loads(text, object_pairs_hook=_unique_fields)
 
 
 SELFTEST_SPEC = {
@@ -705,13 +799,20 @@ def compute(spec, sensitivity_grid=False, story=False, reverse=False,
             reverse_solve="growth", reverse_target=None):
     """The DCF result plus whichever optional grids were asked for."""
     result = value(spec)
-    if sensitivity_grid:
-        result["sensitivity"] = sensitivity(spec)
-    if story:
-        result["story_sensitivity"] = story_sensitivity(spec)
-    if reverse:
-        result["reverse_dcf"] = reverse_dcf(spec, target_per_share=reverse_target,
-                                            solve=reverse_solve)
+    result["gaps"] = []
+    for requested, key, calculate, options in (
+        (sensitivity_grid, "sensitivity", sensitivity, {}),
+        (story, "story_sensitivity", story_sensitivity, {}),
+        (reverse, "reverse_dcf", reverse_dcf,
+         {"target_per_share": reverse_target, "solve": reverse_solve}),
+    ):
+        if not requested:
+            continue
+        try:
+            result[key] = calculate(spec, **options)
+        except (ValueError, ArithmeticError) as exc:
+            result["gaps"].append(f"{key} unavailable: {exc}")
+            result[key] = {"solved": False, "reason": str(exc)} if key == "reverse_dcf" else None
     return result
 
 
@@ -774,41 +875,11 @@ def grid_markdown(grid, row_axis, col_axis, corner, axis_kind="shift"):
     return "\n".join(out)
 
 
-_LEDGER_LEVERS = ("growth_path", "margin_path", "tax_path", "sales_to_capital_path",
-                  "wacc_path", "terminal_growth", "terminal_wacc", "terminal_roic")
-
-
-def _revisions(path, result):
-    """The ledger of superseded runs for this ticker-day, oldest first.
-
-    Re-running the same day overwrites `dcf.json`, so without this the only surviving
-    version is the last one — and a flag answered by editing the input that raised it
-    leaves no trace. Each entry records what the superseded run produced and which
-    levers moved, so a changed assumption is visible in the artifact itself.
-    """
-    try:
-        with open(path) as fh:
-            prior = json.load(fh)
-    except (OSError, ValueError):
-        return []
-    old_a, new_a = prior.get("assumptions", {}), result.get("assumptions", {})
-    changed = [k for k in _LEDGER_LEVERS if old_a.get(k) != new_a.get(k)]
-    ledger = list(prior.get("revisions") or [])
-    ledger.append({
-        "n": len(ledger) + 1,
-        "intrinsic_value_per_share": prior.get("intrinsic_value_per_share"),
-        "terminal_value_fraction": prior.get("terminal_value_fraction"),
-        "flags": prior.get("flags", []),
-        "changed_levers": changed,
-    })
-    return ledger
-
-
 def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=False,
         reverse_solve="growth", reverse_target=None, date=None):
     """Intrinsic value and relative value as one envelope.
 
-    The full result JSON is bulk: it is written to `dcf.json` in the ticker's run-day
+    The full result JSON is bulk: it is written to `dcf-<hash>.json` in the ticker's run-day
     folder and `data` carries the headline numbers plus `dcf_path`. `relative` is the
     optional figures mapping `relval.relative_read` reads — omit it and only the DCF
     comes back. Inputs the model rejects are a labelled gap, never an exception.
@@ -824,7 +895,7 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
         return spine.envelope(False, _SOURCE, {"ticker": ticker},
                               [f"dcf inputs rejected: {exc}"])
 
-    gaps = []
+    gaps = list(result.get("gaps", []))
     read = None
     if relative is not None:
         if isinstance(relative, dict):
@@ -832,14 +903,18 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
         else:
             gaps.append("relative valuation skipped: `relative` is not a mapping")
 
-    path = os.path.join(paths.stock_dir(ticker, date), "dcf.json")
-    result["revisions"] = _revisions(path, result)
+    # A same-day call from another session is not a revision of this valuation.
+    # Preserve each exact input/result pair; the author cites any intentional revisions.
+    result["revisions"] = []  # compatibility field; never infer lineage by filename
+    result["inputs"] = inputs
+    result["relative"] = read
+    path = None
     try:
-        with open(path, "w") as fh:
-            json.dump(result, fh, indent=2)
-    except OSError as exc:
-        gaps.append(f"could not write the DCF result to {path}: {exc}")
-        path = None
+        prefix = os.path.join(paths.stock_dir(ticker, date), "dcf")
+        path = spine.publish_evidence(prefix, ".json",
+            lambda fh: json.dump(result, fh, indent=2, sort_keys=True, allow_nan=False))
+    except (OSError, ValueError, TypeError) as exc:
+        gaps.append(f"could not persist DCF evidence: {type(exc).__name__}")
 
     data = {k: result[k] for k in (
         "currency_unit", "explicit_years", "enterprise_value", "equity_value",
@@ -851,7 +926,10 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
     data["assumptions"] = {k: a[k] for k in (
         "wacc_path", "wacc_buildup", "tax_path", "sales_to_capital_path",
         "terminal_growth", "terminal_wacc", "terminal_roic")}
-    data["ticker"] = paths.ticker_key(ticker)
+    try:
+        data["ticker"] = paths.ticker_key(ticker)
+    except ValueError:
+        data["ticker"] = None
     data["relative"] = read
     data["dcf_path"] = path
     data["revisions"] = result["revisions"]
@@ -892,10 +970,19 @@ def main():
     ap.add_argument("--selftest", action="store_true", help="run the built-in worked example")
     args = ap.parse_args()
 
+    if args.inputs and args.out:
+        same_path = os.path.realpath(args.inputs) == os.path.realpath(args.out)
+        if os.path.exists(args.inputs) and os.path.exists(args.out):
+            same_path = same_path or os.path.samefile(args.inputs, args.out)
+        if same_path:
+            ap.error("--out must not overwrite the input file")
     if args.selftest:
         spec = SELFTEST_SPEC
     elif args.inputs:
-        spec = load_inputs(args.inputs)
+        try:
+            spec = load_inputs(args.inputs)
+        except (OSError, ValueError) as exc:
+            ap.error(f"could not read inputs: {exc}")
     else:
         ap.error("need --inputs <file> or --selftest")
 
@@ -906,20 +993,36 @@ def main():
                          reverse=args.reverse or args.selftest,
                          reverse_solve=args.reverse_solve,
                          reverse_target=args.reverse_target)
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, ZeroDivisionError, OverflowError) as e:
         print(f"MODEL-INVALID: {e}", file=sys.stderr)
         sys.exit(3)
 
-    out = json.dumps(result, indent=2)
-    if args.out:
-        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-        with open(args.out, "w") as f:
-            f.write(out + "\n")
-        print(f"wrote {args.out}")
-    else:
-        print(out)
+    pending = None
+    try:
+        out = json.dumps(result, indent=2, allow_nan=False)
+        if args.out:
+            directory = os.path.dirname(os.path.abspath(args.out))
+            os.makedirs(directory, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8",
+                                             delete=False) as stream:
+                pending = stream.name
+                stream.write(out + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(pending, args.out)
+            pending = None
+            print(f"wrote {args.out}")
+        else:
+            print(out)
+    except (OSError, ValueError, TypeError) as exc:
+        ap.error(f"could not publish result: {exc}")
+    finally:
+        if pending and os.path.exists(pending):
+            os.unlink(pending)
 
     ps = result["intrinsic_value_per_share"]
+    for gap in result.get("gaps", []):
+        print(f"Data gap: {gap}", file=sys.stderr)
     cu = result["currency_unit"].split()[0]
     print(f"\nIntrinsic value/share: {cu} {ps:,.2f}", file=sys.stderr)
     if result.get("failure_probability") or result.get("complexity_discount"):

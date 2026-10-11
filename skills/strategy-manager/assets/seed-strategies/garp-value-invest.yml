@@ -13,7 +13,7 @@ goal: "Quality growth still trading on a sane multiple — a shortlist for an ex
 source_references:
   - "Zerodha Varsity — Fundamental Analysis (quality + valuation discipline); GARP overlay (PE-capped growth). Varsity is the official source; the PE cap is the plugin's expensive-market guard, not a Varsity number."
 
-status: draft                         # active on the completeness gate (fields verified to resolve 2026-08-30, 46 matches)
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-08-30
   validated_at: null
@@ -32,7 +32,7 @@ screening:
   fundamental:
     provider: tickertape
     query: >
-      Market Cap > 3000 AND PE Ratio < 25 AND ROCE > 16
+      Market Cap > 3000 AND PE Ratio > 0 AND PE Ratio < 25 AND ROCE > 16
       AND Return on Equity > 15 AND Debt to Equity < 0.75
       AND 1Y Historical EPS Growth > 12 AND 5Y Historical Revenue Growth > 10
     max_survivors: 40

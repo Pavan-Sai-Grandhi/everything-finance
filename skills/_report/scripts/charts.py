@@ -17,6 +17,8 @@ Two rules that recur:
     rule in handoff §3a. `_svg_text` does this so labels never stretch.
 """
 from html import escape as _e
+import math
+import re
 
 # ── palette (mirrors deck.css tokens; charts emit literal hex like the mock) ──────────────────
 INK = "#1C1F23"; INK2 = "#4A4F56"; INK3 = "#837D74"
@@ -27,6 +29,30 @@ WARN = "#8A6A1F"; WARNT = "#F6EFDF"
 BAR = "#2C5B8F"; BAR_MUTED = "#C4BFB2"; EBITDA_GREY = "#D8D2C6"
 
 _MONO = "font-family:var(--mono);"
+
+
+def _finite(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _color(value, fallback=BAR):
+    return value if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?", value) else fallback
+
+
+def _polylines(values, xof, yof, color, width):
+    """Keep each contiguous observation run separate; never interpolate a data gap."""
+    runs, points = [], []
+    for i, value in enumerate(values):
+        if value is None:
+            if points:
+                runs.append(points)
+                points = []
+        else:
+            points.append(f"{xof(i):.1f},{yof(value):.1f}")
+    if points:
+        runs.append(points)
+    return ''.join(f'<polyline points="{" ".join(run)}" fill="none" stroke="{_color(color)}" '
+                   f'stroke-width="{width}" vector-effect="non-scaling-stroke"></polyline>' for run in runs)
 
 
 # ── number formatting (Indian grouping) ──────────────────────────────────────────────────────
@@ -178,6 +204,15 @@ def line_svg(series_list, labels, *, px_h=430, vbw=700, vbh=320, baseline=None,
     `series_list` is [{values, color, width, dots}]. `right_labels` is [{y_val, text, color}] placed
     at the right edge. Values are mapped to the viewBox with 0 at the given vmin..vmax spread.
     Reference: mock slide 13 (relative strength vs Nifty, rebased)."""
+    if (not series_list or not labels or any(
+            not isinstance(s, dict) or not isinstance(s.get("values"), (list, tuple))
+            or len(s["values"]) != len(labels)
+            or any(v is not None and not _finite(v) for v in s["values"])
+            for s in series_list)
+            or (baseline is not None and not _finite(baseline))):
+        return '<p class="data-gap">Line chart unavailable — invalid or misaligned observations.</p>'
+    if not any(v is not None for s in series_list for v in s["values"]):
+        return '<p class="data-gap">Line chart unavailable — no observations.</p>'
     pxw = 1728  # nominal content width; preserveAspectRatio='none' makes absolute px cancel out
     allvals = [v for s in series_list for v in s["values"] if v is not None]
     if baseline is not None:
@@ -200,16 +235,17 @@ def line_svg(series_list, labels, *, px_h=430, vbw=700, vbh=320, baseline=None,
         parts.append(f'<line x1="0" y1="{yb:.1f}" x2="{vbw}" y2="{yb:.1f}" stroke="{INK3}" '
                      'stroke-width="2" stroke-dasharray="7 5" vector-effect="non-scaling-stroke"></line>')
     for s in series_list:
-        pts = " ".join(f"{xof(i):.1f},{yof(v):.1f}" for i, v in enumerate(s["values"]) if v is not None)
-        parts.append(f'<polyline points="{pts}" fill="none" stroke="{s["color"]}" '
-                     f'stroke-width="{s.get("width", 3)}" vector-effect="non-scaling-stroke"></polyline>')
+        color = _color(s.get("color"))
+        width = s.get("width", 3)
+        width = width if _finite(width) and 0 < width <= 20 else 3
+        parts.append(_polylines(s["values"], xof, yof, color, width))
         if s.get("dots"):
             for i, v in enumerate(s["values"]):
                 if v is not None:
-                    parts.append(f'<circle cx="{xof(i):.1f}" cy="{yof(v):.1f}" r="6" fill="{s["color"]}"></circle>')
+                    parts.append(f'<circle cx="{xof(i):.1f}" cy="{yof(v):.1f}" r="6" fill="{color}"></circle>')
     for rl in (right_labels or []):
         parts.append(_svg_text(vbw - 6, yof(rl["y_val"]) - 12, rl["text"], vbw=vbw, vbh=vbh,
-                               pxw=pxw, pxh=px_h, fill=rl.get("color", INK3), anchor="end"))
+                               pxw=pxw, pxh=px_h, fill=_color(rl.get("color"), INK3), anchor="end"))
     svg = (f'<svg viewBox="0 0 {vbw} {vbh}" preserveAspectRatio="none" '
            f'style="width:100%;height:{px_h}px;overflow:visible;">{"".join(parts)}</svg>')
     ax = ""
@@ -350,6 +386,13 @@ def candles_levels(closes, ema, levels, *, band=None, cmp_label=None, px_h=630, 
 
     `levels` = [{price, kind: 'R'|'S', touches, note, side: 'left'|'right'}]; `band` = {low, high}.
     y maps price to the viewBox over the priced min..max. Reference: mock slide 10."""
+    if (not closes or len(ema) != len(closes)
+            or not any(v is not None for v in closes)
+            or any(v is not None and (not _finite(v) or v <= 0) for v in closes + ema)
+            or any(not _finite(l.get("price")) or l["price"] <= 0 for l in levels)
+            or (band is not None and (not _finite(band.get("low")) or not _finite(band.get("high"))
+                                      or not 0 < band["low"] <= band["high"]))):
+        return '<p class="data-gap">Price chart unavailable — invalid or missing observations.</p>'
     pxw = 1728
     allp = [p for p in closes + ema if p is not None] + [l["price"] for l in levels]
     if band:
@@ -376,15 +419,13 @@ def candles_levels(closes, ema, levels, *, band=None, cmp_label=None, px_h=630, 
         dash = "" if l.get("emphasis") else ' stroke-dasharray="8 6"'
         parts.append(f'<line x1="0" y1="{y:.1f}" x2="{vbw}" y2="{y:.1f}" stroke="{col}" '
                      f'stroke-width="{w}"{dash} vector-effect="non-scaling-stroke"></line>')
-    ep = " ".join(f"{xof(i):.1f},{yof(v):.1f}" for i, v in enumerate(ema) if v is not None)
-    if ep:
-        parts.append(f'<polyline points="{ep}" fill="none" stroke="{ACCENT}" stroke-width="3" '
-                     'vector-effect="non-scaling-stroke"></polyline>')
-    cp = " ".join(f"{xof(i):.1f},{yof(v):.1f}" for i, v in enumerate(closes) if v is not None)
-    parts.append(f'<polyline points="{cp}" fill="none" stroke="{INK}" stroke-width="4" '
-                 'vector-effect="non-scaling-stroke"></polyline>')
-    lastx = xof(len(closes) - 1); lasty = yof(closes[-1])
-    parts.append(f'<circle cx="{lastx - 4:.1f}" cy="{lasty:.1f}" r="7" fill="{INK}"></circle>')
+    parts.append(_polylines(ema, xof, yof, ACCENT, 3))
+    parts.append(_polylines(closes, xof, yof, INK, 4))
+    lasty = None
+    if closes[-1] is not None:
+        lastx = xof(len(closes) - 1)
+        lasty = yof(closes[-1])
+        parts.append(f'<circle cx="{lastx:.1f}" cy="{lasty:.1f}" r="7" fill="{INK}"></circle>')
     for l in levels:
         y = yof(l["price"])
         col = NEG if l["kind"] == "R" else POS
@@ -395,7 +436,7 @@ def candles_levels(closes, ema, levels, *, band=None, cmp_label=None, px_h=630, 
         else:
             parts.append(_svg_text(vbw - 8, y - 18, l["note"], vbw=vbw, vbh=vbh, pxw=pxw, pxh=px_h,
                                    fill=col, anchor="end"))
-    if cmp_label:
+    if cmp_label and lasty is not None:
         parts.append(_svg_text(vbw - 8, lasty - 22, cmp_label, vbw=vbw, vbh=vbh, pxw=pxw, pxh=px_h,
                                size=26, fill=INK, anchor="end"))
     return (f'<svg viewBox="0 0 {vbw} {vbh}" preserveAspectRatio="none" '
@@ -467,13 +508,33 @@ def stacked_bar(items, *, height=64, min_label_pct=7.0):
     `items` = [{label, pct, color}] in display order. A segment wide enough (>= min_label_pct)
     carries its label inline in white; every segment is named in the legend. Reference: the Desk
     allocation split — a single clean row where a treemap would over-fragment a few segments."""
-    total = sum(i["pct"] for i in items) or 1
+    import math
+    import re
+    if not isinstance(items, list) or not items:
+        return '<p class="data-gap">Allocation unavailable.</p>'
+    clean = []
+    for item in items:
+        if not isinstance(item, dict):
+            return '<p class="data-gap">Invalid allocation data.</p>'
+        pct = item.get("pct")
+        if not isinstance(pct, (int, float)) or isinstance(pct, bool) or not math.isfinite(pct) or not 0 <= pct <= 100:
+            return '<p class="data-gap">Invalid allocation percentage.</p>'
+        color = item.get("color", BAR)
+        if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?", color):
+            color = BAR
+        clean.append(dict(item, label=str(item.get("label", "Unknown")), color=color))
+    total = sum(item["pct"] for item in clean)
+    if total > 100.000001:
+        return '<p class="data-gap">Allocation exceeds 100%; reconcile overlapping categories.</p>'
+    if total < 100:
+        clean.append({"label": "Unclassified", "pct": 100 - total, "color": BAR_MUTED})
+    items = clean
     segs = []
     for it in items:
-        w = it["pct"] / total * 100
+        w = it["pct"]
         inside = (f'<span style="{_MONO}font-size:24px;color:#fff;white-space:nowrap;">'
                   f'{_e(it["label"])} {it["pct"]:.1f}%</span>') if it["pct"] >= min_label_pct else ""
-        segs.append(f'<div style="width:{w:.3f}%;background:{it["color"]};display:flex;align-items:center;'
+        segs.append(f'<div style="box-sizing:border-box;flex-shrink:0;width:{w:.3f}%;background:{it["color"]};display:flex;align-items:center;'
                     f'padding-left:{20 if inside else 0}px;overflow:hidden;">{inside}</div>')
     legend = "".join(
         '<span style="display:inline-flex;align-items:center;gap:10px;' + _MONO +
@@ -526,3 +587,24 @@ def treemap(items, *, height=609, big_w=633):
                    '<div style="' + _MONO + f'font-size:28px;">{it["pct"]:.1f}%</div></div>')
     col.append("</div>")
     return f'<div style="min-height:420px;display:flex;gap:4px;">{big_html}{"".join(col)}</div>'
+
+
+def runway_gauge(months, target_low=3, target_high=6, cap=8):
+    """Render assessed runway only; missing inputs never become a zero marker."""
+    import math
+    values = (months, target_low, target_high, cap)
+    if (not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in values)
+            or months < 0 or not 0 <= target_low <= target_high or cap <= 0):
+        return '<p class="data-gap">Runway unavailable — no assessed emergency-reserve estimate.</p>'
+    scale = max(cap, target_high, months)
+    left = target_low / scale * 100
+    width = (target_high - target_low) / scale * 100
+    marker = months / scale * 100
+    return (f'<div class="runway-gauge" role="img" aria-label="{months:g} months of runway; '
+            f'target {target_low:g} to {target_high:g} months">'
+            f'<div style="font-family:var(--mono);font-size:52px;">{months:g} mo</div>'
+            '<div style="position:relative;height:34px;background:var(--paper2);border:1px solid var(--rule);margin-top:20px;">'
+            f'<div style="position:absolute;top:0;bottom:0;left:{left:g}%;width:{width:g}%;background:var(--posT);border-left:1px solid var(--pos);border-right:1px solid var(--pos);"></div>'
+            f'<div style="position:absolute;top:-10px;bottom:-10px;left:{marker:g}%;width:4px;transform:translateX(-50%);background:var(--ink);"></div></div>'
+            '<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:24px;margin-top:14px;">'
+            f'<span>0 MO</span><span>{target_low:g}–{target_high:g} MO TARGET</span><span>{scale:g} MO</span></div></div>')

@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = tempfile.mkdtemp(prefix="ef-universe-")
 
 from finance import transport
-from finance.compute import backtest, screen
+from finance.compute import screen
 from finance.sources import universe
 from finance.tests.harness import check, run
 
@@ -103,12 +103,38 @@ def test_resolve_writes_to_file_not_inline():
           open(env["data"]["universe_path"]).read().split() == ["RELIANCE", "TCS"])
 
 
-def test_resolver_parity():
-    """screen and backtest resolve an input identically, largecap20 included."""
+def test_screen_resolver_uses_authority():
+    """The screen compatibility helper uses the universe authority."""
     for name in ("largecap20", "reliance,tcs", ["INFY", "SBIN"]):
         check(f"parity for {name!r}",
-              screen.resolve_symbols(name) == backtest.resolve_universe(name),
-              f"{screen.resolve_symbols(name)} vs {backtest.resolve_universe(name)}")
+              screen.resolve_symbols(name) == universe.resolve_symbols(name)[0],
+              f"{screen.resolve_symbols(name)} vs {universe.resolve_symbols(name)[0]}")
+
+
+def test_stale_fallback_is_not_promoted_to_a_fresh_cache():
+    current = universe._cache_path("microcap")
+    stale = universe._cache_path("microcap", "2020-01-01")
+    universe._write_list(stale, ["TCS"])
+    orig = _stub(None, gap="offline")
+    try:
+        first = universe.resolve("microcap")
+        second = universe.resolve("microcap")
+    finally:
+        transport.request = orig
+    check("stale read does not create today's cache", not os.path.exists(current))
+    check("repeat read retains the stale-data gap", bool(second["gaps"]))
+    check("returned path is the authentic older snapshot",
+          first["data"]["universe_path"] == stale)
+    check("as_of is the snapshot date", first["data"]["as_of"] == "2020-01-01")
+
+
+def test_custom_universes_keep_independent_snapshots():
+    first = universe.resolve(["TCS"])
+    second = universe.resolve(["INFY"])
+    check("different custom universes have different paths",
+          first["data"]["universe_path"] != second["data"]["universe_path"])
+    check("later call does not overwrite earlier symbols",
+          open(first["data"]["universe_path"]).read().split() == ["TCS"])
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ def run(cmd):
 def spec(name, status, trend, exp_R, pf=1.5, vix_max=20, breadth=50, live_R=None):
     live = ""
     if live_R is not None:
-        live = f"\nlive_performance:\n  expectancy_R: {live_R}\n  profit_factor: 2.0\n"
+        live = f"\nlive_performance:\n  expectancy_R: {live_R}\n  profit_factor: 2.0\n  eligible_for_selection: true\n"
     return textwrap.dedent(f"""\
         name: {name}
         status: {status}
@@ -88,6 +88,16 @@ check("none fit in down regime -> selected None", out["selected"] is None, out["
 check("exit 11 when none fit", rc == 11, rc)
 
 # no active specs -> exit 12
+missing = os.path.join(D, "missing.json")
+for missing_key in ("market_trend", "trend_detail", "volatility", "breadth"):
+    partial = json.loads(regime_up)
+    partial.pop(missing_key)
+    w(missing, json.dumps(partial))
+    out, rc = run([sys.executable, SELECT, "--strategies", sdir, "--regime", missing])
+    check(f"missing required {missing_key} evidence refuses selection",
+          rc == 11 and out["selected"] is None, out)
+
+# no active specs -> exit 12
 empty = os.path.join(D, "empty"); os.makedirs(empty, exist_ok=True)
 w(os.path.join(empty, "X.yml"), spec("X", "draft", "up", 0.5))
 out, rc = run([sys.executable, SELECT, "--strategies", empty, "--regime", rpath])
@@ -137,6 +147,10 @@ def trade(sym, strat, realized_R, reason="EXIT_STOP", status="closed"):
     res = "" if status != "closed" else textwrap.dedent(f"""\
         result:
           exit_date: 2026-07-01
+          exit_price: {1000 + realized_R * 100}
+          charges: 0
+          exit_qty: 50
+          execution: {{source: kite, exit_trade_ids: ["fixture-{sym}"]}}
           exit_reason: {reason}
           realized_R: {realized_R}
           realized_pnl: {realized_R * 5000}
@@ -147,6 +161,10 @@ def trade(sym, strat, realized_R, reason="EXIT_STOP", status="closed"):
         strategy: {strat}
         status: {status}
         direction: long
+        fill_avg: 1000
+        plan: {{stop: 900}}
+        entry_date: 2026-06-17
+        sizing: {{qty: 50}}
         """) + res
 
 
@@ -195,5 +213,72 @@ check("deactivated_reason recorded",
       bool(updated.get("lifecycle", {}).get("deactivated_reason")), updated.get("lifecycle"))
 check("live_performance written",
       updated["live_performance"]["trades_closed"] == 12, updated.get("live_performance"))
+
+# Closed status and an unrealized number alone are not proof of execution.
+legacy = trade("LEGACY", "stratX", 100).replace('  execution: {source: kite, exit_trade_ids: ["fixture-LEGACY"]}\n', "")
+w(os.path.join(tdir, "legacy.yml"), legacy)
+out, rc = run([sys.executable, AGG, "--trades", tdir, "--strategies", sdir2])
+x = next(row for row in out["strategies"] if row["strategy"] == "stratX")
+check("legacy close without execution evidence is excluded", x["metrics"]["trades_closed"] == 12, x)
+check("excluded legacy close is reported", bool(out.get("gaps")), out)
+check("incomplete outcomes cannot optimize/deactivate", x["verdict"] == "REVIEW", x)
+
+# Trade-supplied names must not allow --update-spec to mutate another directory.
+outside = os.path.join(D2, "outside.yml")
+w(outside, spec("outside", "active", "up", 0.3))
+for i in range(12):
+    w(os.path.join(tdir, f"escape{i}.yml"), trade(f"ESC{i}", "../outside", -1))
+out, rc = run([sys.executable, AGG, "--trades", tdir, "--strategies", sdir2, "--update-spec"])
+with open(outside) as stream:
+    check("strategy names cannot escape the selected directory", yaml.safe_load(stream)["status"] == "active")
+
+# Selection must not reuse cached performance created by the old unchecked workflow.
+w(os.path.join(sdir, "A.yml"), spec("A", "active", "up", 0.35, live_R=9).replace("  eligible_for_selection: true\n", ""))
+out, _ = run([sys.executable, SELECT, "--strategies", sdir, "--regime", rpath, "--purpose", "trading"])
+check("legacy live scores cannot override backtest", out["selected"]["name"] == "B", out["selected"])
+
+import copy
+import aggregate_performance as aggregation
+valid = yaml.safe_load(trade("GOOD", "stratZ", -1))
+for label, mutate in (
+    ("nonfinite R", lambda t: t["result"].update(realized_R=float("nan"))),
+    ("wrong result shape", lambda t: t.update(result=[1])),
+    ("partial exit", lambda t: t["result"].update(exit_qty=25)),
+    ("missing charges", lambda t: t["result"].pop("charges")),
+    ("negative charges", lambda t: t["result"].update(charges=-1)),
+    ("unrealized substituted for realized", lambda t: t["result"].update(realized_R=2)),
+    ("inconsistent PnL", lambda t: t["result"].update(realized_pnl=100)),
+    ("reversed dates", lambda t: t["result"].update(exit_date="2026-01-01")),
+    ("wrong execution source", lambda t: t["result"]["execution"].update(source="indmoney")),
+):
+    artifact = copy.deepcopy(valid)
+    mutate(artifact)
+    try:
+        aggregation.closed_result(artifact)
+        check(label + " excluded from learning", False)
+    except ValueError:
+        check(label + " excluded from learning", True)
+
+artifact = copy.deepcopy(valid)
+artifact["result"].update(charges=25, realized_pnl=-5025, realized_R=-1.005)
+check("learning recomputes net R from actual costs", aggregation.closed_result(artifact)[0] == -1.005)
+
+D3 = tempfile.mkdtemp()
+t3, s3 = os.path.join(D3, "trades"), os.path.join(D3, "strategies")
+w(os.path.join(s3, "one.yml"), spec("one", "active", "up", 0.3))
+w(os.path.join(s3, "two.yml"), spec("two", "active", "up", 0.3))
+w(os.path.join(t3, "one.yml"), trade("SAME", "one", -1))
+w(os.path.join(t3, "two.yml"), trade("SAME", "two", -1))
+out, _ = run([sys.executable, AGG, "--trades", t3, "--strategies", s3, "--update-spec"])
+check("shared execution IDs require reconciliation for both strategies", len(out["strategies"]) == 2 and all(row["verdict"] == "REVIEW" for row in out["strategies"]), out)
+with open(os.path.join(s3, "one.yml")) as stream:
+    check("incomplete live sample is ineligible for selection", yaml.safe_load(stream)["live_performance"]["eligible_for_selection"] is False)
+link = os.path.join(s3, "linked.yml")
+os.symlink(outside, link)
+try:
+    aggregation.spec_path(s3, "linked")
+    check("strategy symlink cannot escape root", False)
+except ValueError:
+    check("strategy symlink cannot escape root", True)
 
 summary()

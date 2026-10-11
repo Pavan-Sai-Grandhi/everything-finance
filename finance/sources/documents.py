@@ -14,13 +14,17 @@ Returns the shared data-spine envelope (finance/contracts.md). Reached through g
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 from html import unescape
+from urllib.parse import urlsplit
 
+from finance import spine
 from finance import paths
 from finance import transport
 from finance.sources import fundamentals
@@ -41,17 +45,34 @@ _TAG_RE = re.compile(r"<[^>]+>")
 
 _YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 _QUARTER_RE = re.compile(r"\bQ([1-4])\b", re.I)
+_REPORT_YEAR_RE = re.compile(
+    r"\b(?:annual\s+report|financial\s+year|FY)\s*(?:for\s+)?"
+    r"((?:19|20)\d{2})(?:\s*[-/–]\s*((?:19|20)\d{2}|\d{2}))?\b", re.I)
 
 
 def _label_recency(label):
     """(year, quarter) parsed from a document label, for a newest-first sort; None when the
     label carries no 4-digit year. Annual reports name a year ("Financial Year 2026");
-    concalls add a quarter ("Q1 2026 Transcript"). The latest year in the label wins."""
-    years = _YEAR_RE.findall(label or "")
-    if not years:
+    concalls add a quarter ("Q1 2026 Transcript"). A stated annual period takes
+    precedence over incidental filing dates; otherwise multiple years are ambiguous."""
+    label = label or ""
+    period = _REPORT_YEAR_RE.search(label)
+    if period:
+        year = int(period.group(1))
+        if period.group(2):
+            end = period.group(2)
+            end_year = int(end) if len(end) == 4 else year // 100 * 100 + int(end)
+            if len(end) == 2 and end_year < year:
+                end_year += 100
+            if end_year not in (year, year + 1):
+                return None
+            year = end_year
+        return year, 0
+    years = set(_YEAR_RE.findall(label))
+    if len(years) != 1:
         return None
-    q = _QUARTER_RE.search(label or "")
-    return max(int(y) for y in years), (int(q.group(1)) if q else 0)
+    q = _QUARTER_RE.search(label)
+    return int(next(iter(years))), (int(q.group(1)) if q else 0)
 
 
 def _order_newest_first(found, section, wanted, gaps):
@@ -69,16 +90,12 @@ def _order_newest_first(found, section, wanted, gaps):
     for link in ordered[:max(0, int(wanted or 0))]:
         if id(link) in undated_ids:
             label = (link.get("label") or "").strip() or section
-            gaps.append(f"{label}: no year in the label — ordered by list position, not date")
+            gaps.append(f"{label}: no year or ambiguous reporting period in the label — ordered by list position, not date")
     return ordered
 
 
 def _key(url):
-    """Content address for a document.
-
-    A published annual report or transcript never changes at its URL, so the URL is the
-    whole key and the cache has no expiry — `fresh=True` is the only re-download.
-    """
+    """URL identity for the current snapshot pointer; content may change on refresh."""
     return hashlib.sha256(str(url).encode("utf-8")).hexdigest()[:20]
 
 
@@ -96,7 +113,7 @@ def _html_to_text(raw):
     return re.sub(r"\n\s*\n\s*\n+", "\n\n", text).strip()
 
 
-def _to_text(src_path, txt_path):
+def _to_text(src_path, txt_path, expected_pdf=False):
     """Convert a downloaded document to text at `txt_path`. Returns `(method, gap)`.
 
     Text and HTML are stripped in process; anything else goes to `pdftotext -layout`,
@@ -109,14 +126,23 @@ def _to_text(src_path, txt_path):
         return None, f"could not read the download ({exc})"
 
     if head != b"%PDF-":
+        if expected_pdf:
+            return None, "expected a PDF but received a different format (possibly an access or error page)"
         try:
-            with open(src_path, encoding="utf-8", errors="replace") as fh:
+            with open(src_path, encoding="utf-8-sig") as fh:
                 raw = fh.read()
+            if any(ord(char) < 32 and char not in "\t\n\r\f" for char in raw):
+                return None, "download contains binary/control bytes, not readable document text"
+            title = re.search(r"<title\b[^>]*>(.*?)</title\s*>",raw,re.I|re.S)
+            if title:
+                heading = _html_to_text(title.group(1)).strip().lower().rstrip(".! ")
+                if heading in {"access denied", "forbidden", "just a moment", "attention required", "service unavailable", "404 not found", "sign in", "login"}:
+                    return None, "download is an access, login or error page, not the requested document"
             text, method = ((_html_to_text(raw), "html") if "<" in raw[:4096]
                             else (raw.strip(), "text"))
             with open(txt_path, "w", encoding="utf-8") as fh:
                 fh.write(text)
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             return None, f"could not extract text ({exc})"
         return method, None
 
@@ -133,6 +159,15 @@ def _to_text(src_path, txt_path):
         return None, (f"pdftotext exit {proc.returncode}"
                       + (f" ({detail[-1][:100]})" if detail else ""))
     return "pdftotext", None
+
+
+def _content_digest(path):
+    """Verify snapshot bytes, including same-length edits that counts cannot detect."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _measure(path):
@@ -219,6 +254,25 @@ def _outline(path, total_lines):
     return out
 
 
+def _public_web_url(url):
+    """A named public HTTP(S) host. Index links are untrusted data: an IP literal,
+    loopback or local-network name is refused rather than fetched from this machine."""
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or "." not in host:
+        return False
+    if host.endswith((".localhost", ".local", ".internal", ".lan", ".home.arpa")):
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        return True
+
+
 def _document(link, kind, fresh, gaps):
     """One index entry → its `data.documents` row, or None having appended a gap."""
     label = (link.get("label") or "").strip() or kind
@@ -226,48 +280,73 @@ def _document(link, kind, fresh, gaps):
     if not url:
         gaps.append(f"{label}: the document index carries no link")
         return None
+    if not _public_web_url(url):
+        gaps.append(f"{label}: refused a link that is not a named public web host ({url[:80]})")
+        return None
 
-    src, txt, meta = _cache_paths(url)
-    if not fresh and os.path.isfile(txt) and os.path.isfile(meta):
+    _, legacy_txt, meta = _cache_paths(url)
+    directory = os.path.dirname(meta)
+    if not fresh and os.path.isfile(meta):
         try:
             with open(meta, encoding="utf-8") as fh:
                 row = json.load(fh)
-            row["cached"] = True
-            return row
-        except (OSError, ValueError):
-            pass  # a damaged cache entry re-downloads rather than blocking the read
+            format_checked = row.pop("_format_validation", None) == 1
+            txt = row["text_path"]
+            # Metadata cannot redirect a reader outside this URL's snapshot namespace.
+            valid_path = (os.path.dirname(os.path.realpath(txt)) == os.path.realpath(directory)
+                          and re.fullmatch(re.escape(_key(url)) + r"-[0-9a-f]{64}\.txt", os.path.basename(txt)))
+            if (format_checked and row.get("url") == url and row.get("kind") == kind and valid_path
+                    and os.path.isfile(txt) and _measure(txt) == (row.get("text_chars"),row.get("text_lines"))):
+                expected = os.path.basename(txt)[len(_key(url)) + 1:-4]
+                if _content_digest(txt) == expected:
+                    row["cached"] = True
+                    row["label"] = label
+                    row["publisher"] = transport._host(url)
+                    return row
+                gaps.append(f"{label}: cached text failed its content hash; attempting a fresh download")
+        except (OSError, ValueError, TypeError, KeyError):
+            pass  # Invalid or legacy metadata triggers a fresh isolated extraction.
 
-    got, gap = transport.request(url, dest=src, timeout=_DOWNLOAD_TIMEOUT,
-                                 referer=fundamentals.SCREENER + "/")
-    if gap or not got:
-        gaps.append(f"{label}: download failed ({gap or 'empty response'})")
-        return None
-
-    method, gap = _to_text(src, txt)
-    if gap:
-        gaps.append(f"{label}: {gap}")
-        return None
     try:
-        os.remove(src)  # the raw download is never re-read; the .txt is the cached primary
-    except OSError:
-        pass
-
-    chars, lines = _measure(txt)
-    if not chars:
-        gaps.append(f"{label}: converted to an empty file — a scanned image, not text")
+        with tempfile.TemporaryDirectory(prefix="document-", dir=directory) as work:
+            src, extracted = os.path.join(work,"download.src"), os.path.join(work,"extracted.txt")
+            got, gap = transport.request(url, dest=src, timeout=_DOWNLOAD_TIMEOUT,
+                                         referer=fundamentals.SCREENER + "/")
+            if gap or not got:
+                gaps.append(f"{label}: download failed ({gap or 'empty response'})")
+                return None
+            method, gap = _to_text(src, extracted, expected_pdf=urlsplit(url).path.lower().endswith(".pdf"))
+            if gap:
+                gaps.append(f"{label}: {gap}")
+                return None
+            chars, lines = _measure(extracted)
+            if not chars:
+                gaps.append(f"{label}: converted to an empty file — no readable text")
+                return None
+            outline = _outline(extracted, lines)
+            def write(stream):
+                with open(extracted, encoding="utf-8") as source:
+                    shutil.copyfileobj(source, stream)
+            txt = spine.publish_evidence(os.path.splitext(legacy_txt)[0], ".txt", write)
+        row = {"kind": kind, "label": label, "url": url, "publisher": transport._host(url),
+               "text_path": txt, "text_chars": chars, "text_lines": lines,
+               "extracted_by": method, "outline": outline}
+        pending = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8", delete=False) as stream:
+                pending = stream.name
+                json.dump({**row, "_format_validation": 1}, stream, ensure_ascii=False)
+            os.replace(pending, meta)
+        except OSError as exc:
+            gaps.append(f"{label}: text saved but metadata not cached ({exc})")
+        finally:
+            if pending and os.path.exists(pending):
+                os.unlink(pending)
+        row["cached"] = False
+        return row
+    except (OSError, ValueError, TypeError) as exc:
+        gaps.append(f"{label}: document extraction failed ({exc})")
         return None
-
-    row = {"kind": kind, "label": label, "url": url, "publisher": transport._host(url),
-           "text_path": txt, "text_chars": chars, "text_lines": lines,
-           "extracted_by": method, "outline": _outline(txt, lines)}
-    try:
-        with open(meta, "w", encoding="utf-8") as fh:
-            json.dump(row, fh, ensure_ascii=False)
-    except OSError as exc:
-        gaps.append(f"{label}: cached the text but not its metadata ({exc}) — "
-                    "the next call re-downloads it")
-    row["cached"] = False
-    return row
 
 
 def fetch(symbol, annual_reports=1, concalls=1, fresh=False):
@@ -277,24 +356,57 @@ def fetch(symbol, annual_reports=1, concalls=1, fresh=False):
     labelled gap; every other document still comes back.
     """
     sym = _norm(symbol)
-    index = fundamentals.fetch(sym, sections=["documents"], fresh=fresh)
-    links = ((index.get("data") or {}).get("documents") or {})
-    gaps = [f"document index: {g}" for g in (index.get("gaps") or [])]
-
+    source = "screener.in (document index)"
     wanted = {"annual_reports": annual_reports, "concalls": concalls}
+    empty = {"symbol":sym, "documents":[], "documents_total":0}
+    if any(type(count) is not int or count < 0 for count in wanted.values()):
+        return _envelope(False, source, empty, ["document counts must be nonnegative integers"])
+    if not any(wanted.values()):
+        return _envelope(True, source, empty, [])
+    try:
+        index = fundamentals.fetch(sym, sections=["documents"], fresh=fresh)
+        links = index.get("data", {}).get("documents", {})
+        if not isinstance(links, dict):
+            raise ValueError("documents index must be a mapping")
+        gaps = [f"document index: {g}" for g in (index.get("gaps") or [])]
+        if index.get("ok") is not True and not gaps:
+            gaps.append("document index: source did not succeed")
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        return _envelope(False, source, empty, [f"document index unavailable: {exc}"])
+
     rows, available = [], {}
     for section, kind in _KINDS.items():
+        want_n = wanted[section]
         found = links.get(section) or []
-        available[f"{section}_available"] = len(found)
-        if not found:
-            gaps.append(f"screener.in lists no {section.replace('_', ' ')} for {sym}")
+        if not isinstance(found, list):
+            if want_n:
+                gaps.append(f"document index: malformed {section} list")
+            found = []
+        valid, seen = [], set()
+        for link in found:
+            if (not isinstance(link,dict) or not isinstance(link.get("label",""),str)
+                    or not isinstance(link.get("url"),str) or not link["url"].strip()):
+                if want_n:
+                    gaps.append(f"document index: malformed {section} entry excluded")
+                continue
+            url = link["url"].strip()
+            if url not in seen:
+                seen.add(url)
+                valid.append(link)
+        available[f"{section}_available"] = len(valid)
+        if not want_n:
             continue
-        want_n = max(0, int(wanted[section] or 0))
-        ordered = _order_newest_first(found, section, want_n, gaps)
+        if not valid:
+            gaps.append(f"screener.in lists no usable {section.replace('_', ' ')} for {sym}")
+            continue
+        ordered = _order_newest_first(valid, section, want_n, gaps)
         for link in ordered[:want_n]:
-            row = _document(link, kind, fresh, gaps)
-            if row:
-                rows.append(row)
+            try:
+                row = _document(link, kind, fresh, gaps)
+                if row:
+                    rows.append(row)
+            except (OSError, ValueError, TypeError, AttributeError) as exc:
+                gaps.append(f"{link.get('label') or kind}: document unavailable ({exc})")
 
     source = "screener.in (document index)"
     publishers = sorted({r["publisher"] for r in rows})

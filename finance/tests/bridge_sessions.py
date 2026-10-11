@@ -8,8 +8,9 @@ the bridge's stdio, and completes the browser leg of OAuth by fetching the
 authorize URL a shimmed `open` on PATH records instead of launching a browser.
 """
 import json
+from collections import deque
+from urllib.parse import urlsplit
 import os
-import shutil
 import signal
 import subprocess
 import sys
@@ -57,31 +58,45 @@ class Broker:
             self.env["STUB_PIN_FIRST_REDIRECT"] = "1"
 
     def __enter__(self):
-        shutil.rmtree(self.state_dir, ignore_errors=True)
-        os.makedirs(self.state_dir)
-        # stderr goes to a file, not a pipe: an undrained pipe fills up and
-        # wedges the broker mid-request.
+        # Test state must be fresh; never recursively delete a caller's directory.
+        os.makedirs(self.state_dir, exist_ok=False)
         self.log_path = os.path.join(self.state_dir, "broker.log")
         self._log = open(self.log_path, "wb")
-        self.proc = subprocess.Popen(
-            [sys.executable, "-u", STUB_BROKER, "0"],
-            env={**os.environ, **self.env},
-            stdout=self._log, stderr=self._log,
-        )
-        port_file = os.path.join(self.state_dir, "port")
-        for _ in range(100):
-            if os.path.exists(port_file):
-                self.port = int(open(port_file).read())
-                self.url = f"http://127.0.0.1:{self.port}/mcp"
-                return self
-            time.sleep(0.05)
-        raise RuntimeError("stub broker never bound a port: "
-                           + open(self.log_path).read())
+        self.proc = None
+        try:
+            self.proc = subprocess.Popen(
+                [sys.executable, "-u", STUB_BROKER, "0"],
+                env={**os.environ, **self.env}, stdout=self._log, stderr=self._log,
+            )
+            port_file = os.path.join(self.state_dir, "port")
+            for _ in range(100):
+                if self.proc.poll() is not None:
+                    break
+                if os.path.exists(port_file):
+                    with open(port_file) as stream:
+                        self.port = int(stream.read())
+                    self.url = f"http://127.0.0.1:{self.port}/mcp"
+                    return self
+                time.sleep(0.05)
+            with open(self.log_path) as stream:
+                detail = stream.read()
+            raise RuntimeError("stub broker never bound a port: " + detail)
+        except BaseException:
+            self.__exit__()
+            raise
 
     def __exit__(self, *exc):
-        self.proc.terminate()
-        self.proc.wait(timeout=5)
-        self._log.close()
+        try:
+            if self.proc is not None:
+                if self.proc.poll() is None:
+                    self.proc.terminate()
+                try:
+                    self.proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.proc.kill()
+                    self.proc.wait(timeout=5)
+        finally:
+            self._log.close()
 
     def events(self, kind=None):
         path = os.path.join(self.state_dir, "events.jsonl")
@@ -99,7 +114,7 @@ class Session:
         self.state_dir = state_dir
         self.extra_env = env or {}
         self.shim = shim_bin(state_dir)
-        self.stderr_lines = []
+        self.stderr_lines = deque(maxlen=2000)
         self._responses = {}
         self._next_id = 1
 
@@ -129,7 +144,7 @@ class Session:
                 msg = json.loads(raw)
             except ValueError:
                 continue
-            if "id" in msg:
+            if isinstance(msg, dict) and isinstance(msg.get("id"), (int, str)):
                 self._responses[msg["id"]] = msg
 
     def _pump_stderr(self):
@@ -153,10 +168,10 @@ class Session:
         return mid
 
     def wait_for(self, mid, timeout=60):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
             if mid in self._responses:
-                return self._responses[mid]
+                return self._responses.pop(mid)
             if self.proc.poll() is not None:
                 raise RuntimeError(
                     f"[{self.name}] bridge exited rc={self.proc.returncode}\n{self.stderr()}")
@@ -178,6 +193,8 @@ class Session:
 
     def stop(self):
         """Tear down the whole session: sh -> npx -> node, not just the shell."""
+        if not hasattr(self, "proc"):
+            return
         try:
             os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
@@ -220,26 +237,38 @@ class BrowserBot:
             self._stop.wait(0.1)
 
     def _login(self, url):
-        """Authorize, then hand the code to the callback the broker redirects to.
-
-        Split in two rather than following the 302 automatically: mcp-remote
-        prints the authorize URL just before it binds its callback port, so the
-        retry on the callback leg stands in for the seconds a human browser takes.
-        """
+        """Follow only explicit loopback OAuth legs; redirects never navigate implicitly."""
+        if not _local_url(url):
+            return
+        opener = urllib.request.build_opener(_NoRedirect)
         try:
-            urllib.request.build_opener(_NoRedirect).open(url, timeout=10)
-            return                                   # no redirect: nothing to deliver
+            with opener.open(url, timeout=2):
+                return
         except urllib.error.HTTPError as exc:
-            if exc.code not in (301, 302, 303, 307, 308):
+            callback = exc.headers.get("Location") if exc.code in (301, 302, 303, 307, 308) else None
+            exc.close()
+            if not _local_url(callback):
                 return
-            callback = exc.headers.get("Location")
+        except (OSError, ValueError):
+            return
 
-        deadline = time.time() + 30
-        while time.time() < deadline and not self._stop.is_set():
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not self._stop.is_set():
             try:
-                urllib.request.urlopen(callback, timeout=10).read()
-                return
-            except urllib.error.HTTPError:
-                return
-            except Exception:  # noqa: BLE001 - callback port not up yet
+                with opener.open(callback, timeout=2):
+                    return
+            except urllib.error.HTTPError as exc:
+                exc.close()
+                return  # no further redirect, even to another local endpoint
+            except (OSError, ValueError):
                 self._stop.wait(0.25)
+
+
+def _local_url(url):
+    try:
+        parts = urlsplit(url)
+        return (parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost", "::1")
+                and parts.port is not None and 0 < parts.port <= 65535
+                and parts.username is None and parts.password is None)
+    except (ValueError, TypeError):
+        return False

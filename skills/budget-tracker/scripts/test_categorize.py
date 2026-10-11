@@ -94,6 +94,64 @@ with tempfile.TemporaryDirectory() as tmp:
     bad = os.path.join(tmp, "merchant-map.json")
     with open(bad, "w") as f:
         f.write("{not json")
-    check("corrupt map loads as empty dict", C.load_map(bad) == {})
+    try:
+        C.load_map(bad)
+        rejected = False
+    except ValueError:
+        rejected = True
+    check("corrupt map cannot silently become writable empty state", rejected)
 
+for narration in ('CHOCOLATE SHOP', 'PUBLIC BOOKSTORE', 'RENTALITY', 'DIGITAL CAFE'):
+    check('substring is not a merchant token: ' + narration,
+          C.categorize_one(narration, {})[0] == 'UNCATEGORIZED')
+
+# Atomic publication and concurrent CLI corrections use only temporary state.
+import json
+import subprocess
+from unittest.mock import patch
+with tempfile.TemporaryDirectory() as tmp:
+    path = os.path.join(tmp, 'map.json')
+    C.save_map({'ZOMATO': 'Shopping'}, path)
+    before = open(path).read()
+    with patch.object(C.os, 'replace', side_effect=OSError('simulated write failure')):
+        try:
+            C.save_map({'NETFLIX': 'Shopping'}, path)
+        except OSError:
+            pass
+    check('failed save preserves prior merchant rules', open(path).read() == before)
+    check('failed save cleans temporary file', os.listdir(tmp) == ['map.json'])
+    processes = [subprocess.Popen([sys.executable, C.__file__, '--learn', '--map', path,
+                                  '--merchant', 'MERCHANT' + str(i), '--category', 'Shopping'],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for i in range(8)]
+    results = [p.communicate(timeout=20) for p in processes]
+    check('concurrent corrections succeed', all(p.returncode == 0 for p in processes), results)
+    check('concurrent corrections retain all merchant rules', len(C.load_map(path)) == 9)
+    with open(path, 'w') as stream: stream.write('{broken')
+    p = subprocess.run([sys.executable, C.__file__, '--learn', '--map', path,
+                        '--merchant', 'NEW', '--category', 'Shopping'], capture_output=True, text=True)
+    check('learning refuses to overwrite corrupt state', p.returncode != 0 and open(path).read() == '{broken')
+    gaps = []
+    check('read-only categorization can report and bypass corrupt map', C.load_map(path, gaps=gaps) == {} and bool(gaps))
+    for bad in ('{"X": "Shopping", "X": "Medical"}', '{"X": []}', '[]'):
+        with open(path, 'w') as stream: stream.write(bad)
+        try:
+            C.load_map(path)
+            rejected = False
+        except ValueError:
+            rejected = True
+        check('invalid merchant-map schema is rejected', rejected)
+
+bad_rows = [dict(txns[0], amount=bad) for bad in (True, None, float('nan'), float('inf'), 'unknown')]
+result = C.categorize(bad_rows + [txns[0]], {})
+check('invalid amounts are labelled and excluded from spend', len(result['gaps']) == 5 and result['by_bucket'] == {'Lifestyle': 500}, result)
+result = C.categorize([dict(txns[0], direction='unknown'), dict(txns[0], date='2026-02-30'), None], {})
+check('invalid normalized transactions do not disappear silently', len(result['gaps']) == 3 and not result['transactions'], result)
+with tempfile.TemporaryDirectory() as tmp:
+    source = os.path.join(tmp, 'transactions.json')
+    with open(source, 'w') as stream: json.dump(txns, stream)
+    before = open(source).read()
+    p = subprocess.run([sys.executable, C.__file__, '--txns', source, '--out', source, '--map', os.path.join(tmp, 'map.json')], capture_output=True, text=True)
+    check('result output cannot overwrite statement input', p.returncode != 0 and open(source).read() == before)
+check('explicit merchant correction also overrides exclusion guesses',
+      C.categorize_one('CRED CLUB', {'CRED': 'House rent & maintenance'})[:2] == ('House rent & maintenance', 'Essential'))
 summary()

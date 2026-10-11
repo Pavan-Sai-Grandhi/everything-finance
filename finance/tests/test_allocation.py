@@ -15,7 +15,7 @@ BOOK = [
      "asset_class": "equity"},
     {"ticker": "HDFCBANK", "qty": 100, "ltp": 1500, "kind": "stock", "sector": "Banking",
      "asset_class": "equity"},
-    {"ticker": "ITC", "invested": 80000, "kind": "stock", "sector": "FMCG",
+    {"ticker": "ITC", "invested": 80000, "pnl": 0, "kind": "stock", "sector": "FMCG",
      "asset_class": "equity"},
     {"ticker": "PPFAS", "value": 300000, "kind": "fund", "amc": "PPFAS",
      "asset_class": "equity", "style": "value"},
@@ -28,8 +28,10 @@ TOTAL = 150000 + 120000 + 150000 + 80000 + 300000 + 100000 + 100000
 def test_market_value_precedence():
     check("value: explicit wins", allocation.market_value({"value": 5, "qty": 9, "ltp": 9}) == 5.0)
     check("value: qty*ltp", allocation.market_value({"qty": 10, "ltp": 20}) == 200.0)
-    check("value: invested fallback", allocation.market_value({"invested": 4200}) == 4200.0)
-    check("value: qty*avg last", allocation.market_value({"qty": 10, "avg": 30}) == 300.0)
+    check("cost alone is not market value", allocation.market_value({"invested": 4200}) is None)
+    check("qty*avg alone is not market value", allocation.market_value({"qty": 10, "avg": 30}) is None)
+    check("reported cost plus P&L yields market value",
+          allocation.market_value({"invested": 4200, "pnl": 500}) == 4700.0)
     check("value: unvaluable -> None", allocation.market_value({"ticker": "X"}) is None)
 
 
@@ -80,10 +82,32 @@ def test_concentration_smallcap_sleeve():
     check("flag: small+micro sleeve 36% breach",
           any(f["dimension"] == "smallcap_microcap" and abs(f["pct"] - 36.0) < 0.01 for f in cap_flags),
           cap_flags)
+    for labels in (("Large Cap", "Small Cap", "Micro Cap"), ("largecap", "smallcap", "microcap")):
+        labelled = allocation.concentration_flags(
+            [{"ticker": "X", "value": 1000000, "kind": "stock"}],
+            breakdowns={"market_cap": {labels[0]: 640000, labels[1]: 300000, labels[2]: 60000}})
+        check(f"flag: provider cap labels {labels[1]!r} count toward the small+micro sleeve",
+              any(f["dimension"] == "smallcap_microcap" and abs(f["pct"] - 36.0) < 0.01
+                  for f in labelled), labelled)
     check("flag: no sleeve breach when under 30%",
           not any(f["dimension"] == "smallcap_microcap" for f in allocation.concentration_flags(
               [{"ticker": "X", "value": 1000000, "kind": "stock"}],
               breakdowns={"market_cap": {"large": 800000, "small": 200000}})))
+    pct_flags = allocation.concentration_flags(
+        [{"ticker": "X", "value": 1000000}],
+        breakdowns={"market_cap": {"large": {"pct": 60}, "small": {"pct": 40}}})
+    check("explicit percentage weights use the book's rupee total",
+          any(f["dimension"] == "smallcap_microcap" and f["value"] == 400000
+              and f["pct"] == 40 for f in pct_flags), pct_flags)
+
+
+def test_supplied_partial_breakdown_retains_coverage():
+    rev = allocation.review([{"ticker": "X", "value": 1000000}],
+                            breakdowns={"market_cap": {"small": {"pct": 40}}})
+    dimension = rev["dimensions"]["market_cap"]
+    check("partial cap mix is not reported as complete", dimension["coverage"] == 0.4)
+    check("partial cap mix is not renormalized to 100%",
+          dimension["breakdown"]["small"] == {"value": 400000, "pct": 40})
 
 
 def test_asset_drift_vs_target():
@@ -155,6 +179,77 @@ def test_review_book_routes_every_bundle_key():
 def test_review_empty_book():
     empty = allocation.review([])
     check("review: empty book ok", empty["total"] == 0.0 and empty["concentration_flags"] == [])
+
+
+def test_allocation_input_integrity():
+    for bad in ({'small': -1}, {'small': float('nan')}, {'small': {'pct': 101}}, {'small': 101}):
+        try:
+            allocation.from_breakdown(bad, total=100)
+            rejected = False
+        except ValueError:
+            rejected = True
+        check('invalid category values cannot produce allocation', rejected, bad)
+    merged = allocation.from_breakdown({'Small': 20, ' small ': 30}, total=100)
+    check('normalized category amounts add rather than overwrite', merged.get('small', {}).get('value') == 50)
+    holdings = [{'ticker': 'TCS', 'value': 6}, {'ticker': 'tcs', 'value': 6},
+                {'ticker': 'FUND', 'value': 88, 'kind': 'fund'}]
+    flags = allocation.concentration_flags(holdings)
+    check('same stock across accounts is tested as one exposure',
+          any(f['category'] == 'TCS' and f['pct'] == 12 for f in flags))
+
+
+def test_negative_value_coverage():
+    result = allocation.review([{'ticker': 'LONG', 'value': 100}, {'ticker': 'SHORT', 'value': -50}])
+    check('unsupported negative exposure does not shrink allocation denominator', result['total'] == 100)
+    check('unsupported negative exposure is disclosed', any('SHORT' in gap for gap in result['gaps']))
+
+
+def test_targets_and_partial_rebalancing():
+    for targets in ({'equity': 120}, {'equity': float('nan')}, {'equity': 60}, {'equity': True}, {}):
+        try:
+            allocation.asset_drift(BOOK, targets)
+            rejected = False
+        except ValueError:
+            rejected = True
+        check('invalid or incomplete targets are rejected', rejected)
+    partial = [{'ticker': 'X', 'value': 100, 'asset_class': 'equity'}, {'ticker': 'Y'}]
+    result = allocation.asset_drift(partial, {'equity': 50, 'debt': 50})
+    check('missing holding value cannot generate rebalancing instructions', not result['rebalance'])
+    check('missing holding value withholds precise move', result['classes']['equity'].get('move_value') is None)
+    unknown = [{'ticker': 'X', 'value': 100, 'asset_class': 'equity'}, {'ticker': 'Y', 'value': 100}]
+    result = allocation.asset_drift(unknown, {'equity': 20, 'debt': 80})
+    check('unknown asset classification withholds rebalance', not result['rebalance'])
+    result = allocation.asset_drift([{'value': 3333333, 'asset_class': 'equity'},
+                                    {'value': 6666667, 'asset_class': 'debt'}],
+                                   {'equity': 50, 'debt': 50})
+    check('moves use exact values instead of rounded percentages', result['classes']['equity']['move_value'] == 1666667)
+
+
+def test_allocation_cli_error():
+    import json
+    import subprocess
+    import tempfile
+    script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                          'skills', 'portfolio-review', 'scripts', 'allocation.py')
+    with tempfile.TemporaryDirectory() as tmp:
+        book = os.path.join(tmp, 'book.json')
+        with open(book, 'w') as stream:
+            json.dump({'holdings': BOOK, 'targets': {'equity': 60}}, stream)
+        result = subprocess.run([sys.executable, script, '--book', book], capture_output=True, text=True)
+        check('invalid target CLI fails without partial report', result.returncode == 1 and not result.stdout)
+        check('invalid target CLI emits a structured gap', json.loads(result.stderr)['ok'] is False)
+    partial = allocation.review([{'ticker': 'X', 'value': 100}, {'ticker': 'Y'}])
+    check('partial book concentration does not prescribe a trim amount',
+          all(f['suggestion'].startswith('REVIEW:') for f in partial['concentration_flags']))
+
+
+def test_amc_fund_sleeve_denominator():
+    flags = allocation.concentration_flags([
+        {'ticker': 'STOCK', 'kind': 'stock', 'value': 900},
+        {'ticker': 'FUND', 'kind': 'fund', 'value': 100, 'amc': 'A'}])
+    amc = [f for f in flags if f['dimension'] == 'amc']
+    check('AMC concentration uses fund sleeve even in stock-heavy book', len(amc) == 1 and amc[0]['pct'] == 100)
+    check('AMC denominator is explicit', amc[0]['denominator'] == 'fund_sleeve')
 
 
 if __name__ == "__main__":

@@ -16,7 +16,8 @@ pd = backtest.pd
 
 
 def trade(pnl, r, reason="SL", year=2024, **kw):
-    d = {"symbol": "X", "pnl": pnl, "r_multiple": r, "reason": reason, "year": year}
+    d = {"symbol": "X", "pnl": pnl, "r_multiple": r, "reason": reason, "year": year,
+         "entry_date": f"{year}-01-02", "exit_date": f"{year}-06-01"}
     d.update(kw)
     return d
 
@@ -32,21 +33,6 @@ def crash_frame():
     return pd.DataFrame({"Open": close.shift(1).fillna(close.iloc[0]),
                          "High": close + 2.0, "Low": close - 2.0, "Close": close,
                          "Volume": pd.Series([1000] * len(idx), index=idx)}, index=idx)
-
-
-def test_resolve_universe():
-    check("list passes through", backtest.resolve_universe(["TCS", "INFY"]) == ["TCS", "INFY"])
-    check("comma string splits", backtest.resolve_universe("TCS,INFY") == ["TCS", "INFY"])
-    check("whitespace trimmed", backtest.resolve_universe(" tcs , infy ") == ["TCS", "INFY"])
-    check("lowercase upcased", backtest.resolve_universe(["tcs"]) == ["TCS"])
-    check("empty entries dropped", backtest.resolve_universe("TCS,,INFY") == ["TCS", "INFY"])
-    check("None -> empty", backtest.resolve_universe(None) == [])
-    check("empty string -> empty", backtest.resolve_universe("") == [])
-    basket = backtest.resolve_universe("largecap20")
-    check("largecap20 expands via the authority", basket == universe.LARGECAP20_BASKET)
-    check("largecap20 case-insensitive", backtest.resolve_universe("LargeCap20") == basket)
-    check("basket is 20 names", len(basket) == 20)
-    check("basket has no duplicates", len(set(basket)) == 20)
 
 
 def test_buy_and_hold():
@@ -67,16 +53,16 @@ def test_buy_and_hold():
 
 
 def test_summarize_empty():
-    s = backtest.summarize([], 500000)
+    s = backtest.summarize([], 500000, {})
     check("no trades reported as zero", s["trades"] == 0)
-    check("no-signal note present", "no signals" in s["note"])
+    check("no-completed-trade note present", "no completed trades" in s["note"])
     check("no fabricated win rate", "win_rate_pct" not in s)
 
 
 def test_summarize_core():
     trades = [trade(2000, 2.0, "TARGET"), trade(-1000, -1.0, "SL"),
               trade(1000, 1.0, "TARGET"), trade(-1000, -1.0, "SL")]
-    s = backtest.summarize(trades, 100000)
+    s = backtest.summarize(trades, 100000, {"X": pd.Series([100000, 102000, 101000, 102000, 101000])})
     check("trade count", s["trades"] == 4)
     check("win rate", approx(s["win_rate_pct"], 50.0))
     check("avg win R", approx(s["avg_win_R"], 1.5))
@@ -89,26 +75,26 @@ def test_summarize_core():
 
 
 def test_summarize_edges():
-    s = backtest.summarize([trade(0, 0.0)], 100000)
+    s = backtest.summarize([trade(0, 0.0)], 100000, {"X": pd.Series([100000, 100000])})
     check("zero-pnl trade is not a win", approx(s["win_rate_pct"], 0.0))
 
-    s = backtest.summarize([trade(500, 1.0), trade(700, 1.4)], 100000)
-    check("no losses -> infinite profit factor", s["profit_factor"] == float("inf"))
-    check("no losses -> avg_loss_R is 0, not NaN", s["avg_loss_R"] == 0.0)
+    s = backtest.summarize([trade(500, 1.0), trade(700, 1.4)], 100000, {"X": pd.Series([100000, 100500, 101200])})
+    check("no losses -> undefined profit factor, valid JSON", s["profit_factor"] is None)
+    check("no losses -> avg_loss_R is unknown", s["avg_loss_R"] is None)
 
-    s = backtest.summarize([trade(-500, -1.0)], 100000)
-    check("no wins -> avg_win_R is 0, not NaN", s["avg_win_R"] == 0.0)
+    s = backtest.summarize([trade(-500, -1.0)], 100000, {"X": pd.Series([99500])})
+    check("no wins -> avg_win_R is unknown", s["avg_win_R"] is None)
     check("all losses -> profit factor 0", approx(s["profit_factor"], 0.0))
 
     s = backtest.summarize([trade(10000, 1.0), trade(-4000, -1.0), trade(-1000, -0.5)],
-                           100000)
+                           100000, {"X": pd.Series([100000, 110000, 106000, 105000])})
     check("equity drawdown off the running peak", approx(s["max_dd_on_equity_pct"], -4.55, 0.05))
 
 
 def test_summarize_partial_year():
     this_year = date.today().year
     trades = [trade(100, 0.5, year=2023), trade(200, 1.0, year=this_year)]
-    s = backtest.summarize(trades, 100000)
+    s = backtest.summarize(trades, 100000, {"X": pd.Series([100000, 100100, 100300])})
     check("closed year is plain", "2023" in s["by_year_pnl"])
     check("current year flagged partial",
           f"{this_year} (partial)" in s["by_year_pnl"],
@@ -138,31 +124,34 @@ def test_exit_reason():
     check("stop takes precedence over time", backtest._exit_reason(
         {"ExitPrice": 95.0, "SL": 95.0, "TP": 120.0, "EntryBar": 10, "ExitBar": 30},
         time_stop=15) == "SL")
+    check("a stop gapped through at the open is still SL", backtest._exit_reason(
+        {"ExitPrice": 91.0, "SL": 95.0, "TP": 120.0, "EntryBar": 10, "ExitBar": 30},
+        time_stop=15) == "SL")
+    check("a target gapped through at the open is still TARGET", backtest._exit_reason(
+        {"ExitPrice": 125.0, "SL": 95.0, "TP": 120.0}) == "TARGET")
     check("missing SL/TP degrades, never raises", backtest._exit_reason(
         {"ExitPrice": 108.0, "SL": float("nan"), "TP": float("nan")}) == "SIGNAL/OTHER")
 
 
-def test_load_ohlcv_alias():
+def test_load_ohlcv_source_contract():
     seen = {}
 
-    def fake(sym, years, cache):
-        seen["sym"] = sym
-        return "frame"
+    def fake(sym, period, adjusted):
+        seen.update(sym=sym, period=period, adjusted=adjusted)
+        return "frame", []
 
-    orig, backtest.ta.load_ohlcv = backtest.ta.load_ohlcv, fake
+    orig, backtest.prices.history_df = backtest.prices.history_df, fake
     try:
-        backtest.load_ohlcv("RELIANCE", 5, "/tmp")
+        backtest.load_ohlcv("RELIANCE", 5)
         check("unaliased symbol passes through", seen["sym"] == "RELIANCE")
-        key = next(iter(universe.SYMBOL_ALIASES))
-        backtest.load_ohlcv(key, 5, "/tmp")
-        check("aliased symbol resolves", seen["sym"] == universe.SYMBOL_ALIASES[key])
+        check("backtest asks for matching adjusted history", seen["period"] == "5y" and seen["adjusted"] is True)
     finally:
-        backtest.ta.load_ohlcv = orig
+        backtest.prices.history_df = orig
 
 
 def test_run_symbol_wiring():
     df = backtest._synth("up")
-    trades = backtest.run_symbol(df, backtest.SELFTEST_SPEC, "SYNTH", 500000, 1.0)
+    trades = backtest.run_symbol(df, backtest.SELFTEST_SPEC, "SYNTH", 500000, 1.0)["trades"]
     check("an uptrend fires trades", len(trades) > 0, f"got {len(trades)}")
     if not trades:
         return
@@ -175,8 +164,8 @@ def test_run_symbol_wiring():
     check("qty is a whole number of shares", isinstance(t0["qty"], int) and t0["qty"] > 0)
     check("stop sits below entry on a long", t0["sl"] < t0["entry"])
     check("exit is not before entry", all(t["exit_date"] >= t["entry_date"] for t in trades))
-    check("year matches entry date",
-          all(t["year"] == int(t["entry_date"][:4]) for t in trades))
+    check("year matches realized exit date",
+          all(t["year"] == int(t["exit_date"][:4]) for t in trades))
     check("every exit is labelled",
           all(t["reason"] in ("SL", "TARGET", "TIME", "SIGNAL/OTHER") for t in trades))
     check("R sign agrees with P&L sign",
@@ -213,7 +202,7 @@ def test_run_symbol_wiring():
 
 def test_run_symbol_downtrend():
     df = backtest._synth("down")
-    trades = backtest.run_symbol(df, backtest.SELFTEST_SPEC, "SYNTH", 500000, 1.0)
+    trades = backtest.run_symbol(df, backtest.SELFTEST_SPEC, "SYNTH", 500000, 1.0)["trades"]
     check("a long-only pullback spec takes no longs in a downtrend",
           len(trades) == 0, f"got {len(trades)}")
 
@@ -222,7 +211,7 @@ def test_run_symbol_stop_out():
     """The stop path, end to end: sizing, stop placement and costs at once."""
     capital, risk_pct = 500000.0, 1.0
     trades = backtest.run_symbol(crash_frame(), backtest.SELFTEST_SPEC, "SYNTH",
-                                 capital, risk_pct)
+                                 capital, risk_pct)["trades"]
     stopped = [t for t in trades if t["reason"] == "SL"]
     check("a crash takes out the stop", len(stopped) > 0,
           f"reasons={[t['reason'] for t in trades]}")
@@ -233,7 +222,7 @@ def test_run_symbol_stop_out():
     check("stop-out is a loss", t["pnl"] < 0)
 
     budget = capital * risk_pct / 100.0
-    gross_risk = (t["entry"] - t["sl"]) * t["qty"]
+    gross_risk = (t["entry"] - t["initial_stop"]) * t["qty"]
     check("position sized to the risk budget", approx(gross_risk, budget, budget * 0.01),
           f"risked {gross_risk:.0f} against a {budget:.0f} budget")
     check("never sized above the budget", gross_risk <= budget)
@@ -250,7 +239,7 @@ def test_run_envelope():
         yaml.safe_dump(backtest.SELFTEST_SPEC, fh)
 
     orig = backtest.load_ohlcv
-    backtest.load_ohlcv = lambda sym, years, cache: backtest._synth("up")
+    backtest.load_ohlcv = lambda sym, years: (backtest._synth("up"), [])
     try:
         out = os.path.join(tmp, "report")
         env = backtest.run(spec_path, ["SYNTH1", "SYNTH2"], years=2, capital=500000,
@@ -272,6 +261,10 @@ def test_run_envelope():
         with open(d["summary_path"]) as fh:
             saved = json.load(fh)
         check("saved summary matches the envelope", saved["summary"] == d["summary"])
+        equity = pd.read_csv(d["equity_path"], index_col="date")
+        check("equity evidence contains both independent accounts", set(equity) == {"SYNTH1", "SYNTH2"})
+        check("total capital includes both accounts", d["summary"]["total_initial_capital"] == 1000000)
+        check("return and drawdown bases are labelled", "per-symbol" in d["summary"]["drawdown_basis"] and "idle" in d["summary"]["return_basis"])
         rows = pd.read_csv(d["trades_path"])
         check("csv row count matches", len(rows) == d["trades"])
         check("per-trade log stays on disk, not inline", "trades_log" not in d)
@@ -289,10 +282,10 @@ def test_run_degrades():
 
     orig = backtest.load_ohlcv
 
-    def one_bad(sym, years, cache):
+    def one_bad(sym, years):
         if sym == "BAD":
             raise RuntimeError("no data for BAD")
-        return backtest._synth("up")
+        return backtest._synth("up"), []
 
     try:
         backtest.load_ohlcv = one_bad
@@ -303,7 +296,7 @@ def test_run_degrades():
               any("BAD" in g for g in env["gaps"]), f"gaps={env['gaps']}")
         check("the good symbol still produced trades", env["data"]["trades"] > 0)
 
-        backtest.load_ohlcv = lambda sym, years, cache: backtest._synth("down")
+        backtest.load_ohlcv = lambda sym, years: (backtest._synth("down"), [])
         env = backtest.run(spec_path, ["SYNTH1"], years=2, out=os.path.join(tmp, "r2"))
         check("no trades -> not ok", env["ok"] is False)
         check("no trades is called out as untested",
@@ -322,6 +315,134 @@ def test_caveats():
     for word in ("survivorship", "in-sample", "portfolio", "mechanical"):
         check(f"caveat covers {word}", word in joined)
     check("commission is a per-side fraction", 0 < backtest.COMMISSION_PER_SIDE < 0.01)
+
+
+def test_simulated_equity_accounting():
+    from backtesting import Backtest
+    original_run, original_load = Backtest.run, backtest.load_ohlcv
+    engine = []
+    def capture(self, **kwargs):
+        stats = original_run(self, **kwargs)
+        engine.append(stats)
+        return stats
+    Backtest.run = capture
+    backtest.load_ohlcv = lambda sym, years: (backtest._synth("down") if sym == "IDLE" else crash_frame(), [])
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            spec_path = os.path.join(tmp, "spec.yml")
+            with open(spec_path, "w") as stream:
+                backtest.ta._need("yaml", "pyyaml").safe_dump(backtest.SELFTEST_SPEC, stream)
+            env = backtest.run(spec_path, ["ONE", "TWO", "IDLE"], capital=500000, out=os.path.join(tmp, "report"))
+            s = env["data"]["summary"]
+            expected_return = sum(float(stats["Return [%]"]) for stats in engine) / 3
+            expected_dd = min(float(stats["Max. Drawdown [%]"]) for stats in engine)
+            check("return uses capital for every independently tested symbol including idle", approx(s["return_on_capital_pct"], expected_return, 0.051), (s, expected_return))
+            check("drawdown is actual worst per-symbol marked equity", approx(s["max_dd_on_equity_pct"], expected_dd, 0.051), (s, expected_dd))
+    finally:
+        Backtest.run, backtest.load_ohlcv = original_run, original_load
+
+
+def test_first_loss_drawdown():
+    s = backtest.summarize([trade(-500, -1.0)], 100000, {"X": pd.Series([99500])})
+    check("initial capital is a drawdown peak", approx(s["max_dd_on_equity_pct"], -0.5), s)
+
+def test_exit_year_and_trade_order():
+    trades = [trade(100, 0.5, year=2024, exit_date="2025-01-02"), trade(-50, -0.25, year=2023)]
+    curves = {"X": pd.Series([100000, 99950, 100050])}
+    s = backtest.summarize(trades, 100000, curves)
+    check("cross-year trade belongs to realization year", s["by_year_pnl"] == {"2023": -50, "2025": 100}, s)
+    check("trade enumeration cannot change equity statistics", s == backtest.summarize(trades[::-1], 100000, curves))
+    missing = backtest.summarize([trade(100, None)], 100000, {"X": pd.Series([100000, 100100])})
+    check("missing original risk cannot certify expectancy", missing["expectancy_R"] is None and missing["trades_missing_R"] == 1)
+    json.dumps(missing, allow_nan=False)
+    check("missing risk remains valid JSON", True)
+
+
+def test_gapped_fill_uses_actual_risk():
+    frame = backtest._synth("up")
+    frame["Open"] = frame["Close"].shift(1).fillna(frame["Close"].iloc[0]) * 1.01
+    frame["High"] = frame[["High", "Open"]].max(axis=1) + 1
+    tested = backtest.run_symbol(frame, backtest.SELFTEST_SPEC, "GAP", 500000, 1.0)
+    check("gap fixture produces trades", bool(tested["trades"]))
+    for t in tested["trades"]:
+        expected = t["pnl"] / ((t["entry"] - t["initial_stop"]) * t["qty"])
+        check("R uses actual fill and original stop " + t["entry_date"], approx(t["r_multiple"], expected, 1e-10))
+
+def test_run_input_and_output_boundaries():
+    import unittest.mock as mock
+    with tempfile.TemporaryDirectory() as tmp:
+        spec_path = os.path.join(tmp, "spec.yml")
+        with open(spec_path, "w") as stream:
+            backtest.ta._need("yaml", "pyyaml").safe_dump(backtest.SELFTEST_SPEC, stream)
+        for key, value in (("capital", float("nan")), ("capital", 0), ("years", 0), ("years", 1.5), ("risk_pct", 2)):
+            try:
+                with mock.patch.object(backtest, "load_ohlcv", side_effect=AssertionError("unexpected fetch")) as loader:
+                    env = backtest.run(spec_path, ["TEST"], out=os.path.join(tmp, "invalid"), **{key: value})
+                check(f"invalid {key}={value} rejects before data fetch", not loader.called and not env["ok"] and any("input" in g for g in env["gaps"]), env)
+            except Exception as exc:
+                check(f"invalid {key}={value} is an envelope, not a crash", False, str(exc))
+        with mock.patch.object(backtest, "load_ohlcv", return_value=(backtest._synth("up"), [])):
+            with mock.patch.object(backtest.universe, "resolve_symbols", return_value=(["ONE"], ["fixture stale universe"])):
+                degraded = backtest.run(spec_path, "named-basket", out=os.path.join(tmp, "degraded"))
+            check("backtest keeps the universe authority's gaps", "fixture stale universe" in degraded["gaps"] and degraded["data"]["config"]["symbols_resolved"] == ["ONE"])
+            first = backtest.run(spec_path, ["ONE"], out=os.path.join(tmp, "report"))
+            path = first["data"]["trades_path"]
+            before = open(path, "rb").read()
+            second = backtest.run(spec_path, ["TWO"], out=os.path.join(tmp, "report"))
+            check("rerun preserves previous trade evidence", first["data"]["trades_path"] != second["data"]["trades_path"] and open(path, "rb").read() == before)
+        with mock.patch.object(backtest, "load_ohlcv", return_value=(backtest._synth("up"), [])), mock.patch.object(backtest.os, "replace", side_effect=OSError("fixture disk failure")):
+            try:
+                env = backtest.run(spec_path, ["ONE"], out=os.path.join(tmp, "failed"))
+                check("output failure preserves computed metrics and labels gap", env["ok"] and env["data"]["summary_path"] is None and bool(env["gaps"]))
+            except Exception as exc:
+                check("output failure is an envelope, not a crash", False, str(exc))
+
+def test_last_bar_signal_cannot_fill_without_a_next_bar():
+    frame = backtest._synth("up")
+    frame.loc[frame.index[-1], "Volume"] = 1000000
+    spec = {**backtest.SELFTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
+    result = backtest.run_symbol(frame, spec, "LAST", 500000, 1.0)
+    check("last-bar signal has no next-open execution", result["equity"].iloc[-1] == 500000, result["equity"].iloc[-1])
+
+
+def test_unfinished_position_is_marked_not_realized():
+    frame = backtest._synth("up")
+    frame.loc[frame.index[-2], "Volume"] = 1000000
+    spec = {**backtest.SELFTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
+    result = backtest.run_symbol(frame, spec, "OPEN", 500000, 1.0)
+    check("real next-open fill remains open at end", result["open_trades"] == 1, result)
+    check("unclosed trade does not enter realized sample", result["trades"] == [])
+    check("open mark affects actual equity", result["equity"].iloc[-1] != 500000)
+
+
+def test_backtest_loader_uses_source_cache_not_undated_csv():
+    import unittest.mock as mock
+    from finance.sources import prices
+    with tempfile.TemporaryDirectory() as cache:
+        stale, current = backtest._synth("up"), backtest._synth("down")
+        stale.to_csv(os.path.join(cache, "SYNTH_2y.csv"))
+        with mock.patch.object(prices, "history_df", return_value=(current, ["fixture history degradation"])) as source:
+            result = backtest.load_ohlcv("SYNTH", 2)
+        check("backtest delegates to the source cache", source.called)
+        check("loader retains source gaps", isinstance(result, tuple) and result[1] == ["fixture history degradation"])
+
+
+def test_backtest_warmup_matches_live_atr_requirement():
+    from finance.compute import strategy
+    try:
+        strategy.floor_stop(100, 99.5, float("nan"))
+        floored = False
+    except ValueError:
+        floored = True
+    check("a nonfinite ATR cannot silently skip the stop floor", floored)
+    frame = backtest._synth("up")
+    frame.loc[:, "Volume"] = 1000000
+    spec = {**backtest.SELFTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
+    trades = backtest.run_symbol(frame, spec, "WARM", 500000, 1.0)["trades"]
+    first = str(frame.index[14].date())
+    check("no backtest entry before ATR14 exists (live would skip)",
+          trades and all(t["entry_date"] > first for t in trades),
+          [t["entry_date"] for t in trades[:3]])
 
 
 run(globals())

@@ -28,12 +28,12 @@ Also identify the **type** (term / health / vehicle) from the request. If the mo
 
 Type-aware interview → size the need → research candidates → score → **shortlist exactly 2** → side-by-side.
 
-**1 — Interview.** Ask the per-type questions (see the type's reference), **one at a time**, conversationally. Missing answers become **stated assumptions** in the Assumptions table — never stall.
+**1 — Interview.** Ask the per-type questions (see the type's reference), **one at a time**, conversationally. Continue the sections supported by evidence. Missing current-policy or household facts remain **data gaps**; do not convert them into zero. Forward scenarios may use explicit assumptions with a stated basis.
 
 **2 — Size the need** with `run_insurance_math`:
-- term → `term_cover_need` (larger of income-replacement and liability+goals; gap vs existing cover).
-- health → `health_sum_insured` (base + super top-up; employer cover at half weight).
-- vehicle → `idv_ncb_sanity` on the current/quoted IDV & NCB.
+- term → `term_cover_need` (larger of income-replacement and liability+goals; gap vs existing cover). Supply every input explicitly: `annual_income`, `income_multiple`, `outstanding_loans`, `education_corpus`, `annual_expenses`, `years_to_independence`, `existing_corpus`, and `existing_cover`. Explain the chosen income multiple and forward goals as scenario assumptions; zeros require a known absence or an explicitly labelled scenario. Supply annual family expenses when modelling a positive support horizon. If missing, report that calculation as a gap; do not set the horizon to zero to bypass it.
+- health → `health_sum_insured` with explicit `base_target`, `total_target`, `deductible`, `personal_cover`, and `employer_cover` (INR). Explain and label the chosen targets as scenarios based on the interview and current research. Take deductible and existing-cover amounts from policy evidence; missing values are gaps, not zero. The tool reports `base_gap`, `top_up_target`, `deductible_gap` against current personal cover, and `planned_deductible_gap` against the proposed base. Employer cover stays separate; do not add an invented fraction of it to personal cover. A nominal gap calculation does not establish claim eligibility.
+- vehicle → `idv_ncb_sanity` on the current/quoted IDV & NCB; supply discontinued-model status. For older/discontinued vehicles, a null IDV check and its gap require policy/agreement evidence, not an inferred pass. NCB can still be checked when both claim-free history and the quoted bonus are supplied. Missing NCB evidence stays unknown; never substitute zero.
 
 **3 — Research candidates** under the sourcing guardrails in `reference.md` (IRDAI authoritative, every figure sourced and dated, premiums indicative, too-few-candidates handling).
 
@@ -51,7 +51,7 @@ Type-aware interview → size the need → research candidates → score → **s
 - Compute **need vs have** with `run_insurance_math`; report the **₹ gap per category** in a current-vs-required table.
 - **Assumptions table** — every value assumed, with the figure used.
 - **Policy-level red flags** from the relevant per-type reference, each tied to the clause in the user's own document.
-- For an in-force **endowment/ULIP** held "for investment": compute the **marginal IRR of *continuing*** (`marginal_irr_continue` — forgo surrender value + pay remaining premiums → maturity) and compare to a safe hurdle. Say plainly whether to keep it or surrender-and-buy-term-invest-the-rest, and label marginal-IRR vs whole-policy-IRR.
+- For an in-force **endowment/ULIP** held "for investment": compute the **marginal IRR of *continuing*** (`marginal_irr_continue` — forgo surrender value + pay remaining premiums → maturity) and compare only to an explicitly supplied, sourced or justified `hurdle_rate`. If absent, report the IRR with a comparison gap; do not invent a benchmark. The comparison alone is not a surrender decision: consider the actual coverage, replacement eligibility, guarantees, charges and tax treatment supported by the policy and current sources. Label marginal-IRR vs whole-policy-IRR.
 - 3–5 prioritised actions with rough premium magnitudes.
 - Save to `paths.report_path("insurance")` → `insurance/YYYY-MM-DD.md`. End with the compliance close.
 - **As wealth-manager's protection leg:** open the report with the `protection-block` digest, whose shape `finance/contracts.md` owns. Its fields are the need-vs-have gap table and red-flag list already computed above, transcribed — nothing extra to compute. Return that block plus the report path, never the body.

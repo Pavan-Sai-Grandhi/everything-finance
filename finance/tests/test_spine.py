@@ -108,6 +108,18 @@ def test_cache_never_blocks_a_fetch():
     check("an unparseable stamp is a miss",
           spine.read_cache(junkstamp, False, max_age_days=7) is None)
 
+    for blob in ([], None, 7, {"data": [1]}, {"data": "bad"}):
+        json.dump(blob, open(junkstamp, "w"))
+        try:
+            result = spine.read_cache(junkstamp, False)
+        except (AttributeError, TypeError) as exc:
+            result = type(exc).__name__
+        check("wrong-shaped valid JSON is a cache miss", result is None, result)
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    json.dump(_blob(tomorrow), open(junkstamp, "w"))
+    check("future-stamped cache is not fresh",
+          spine.read_cache(junkstamp, False, max_age_days=7) is None)
+
     spine.write_cache("/nonexistent-dir/x.json", {"data": {}})
     check("an unwritable path is swallowed, never raised", True)
 
@@ -150,6 +162,8 @@ def test_iso_date():
     check("empty -> None", spine.iso_date("") is None)
     check("None -> None", spine.iso_date(None) is None)
     check("bad month -> None", spine.iso_date("17-Xyz-2026") is None)
+    for invalid in ("2026-02-30", "2026-13-01", "32-Aug-2026", "0-Jun-2026"):
+        check("impossible date is missing", spine.iso_date(invalid) is None, invalid)
 
 
 def test_pct():

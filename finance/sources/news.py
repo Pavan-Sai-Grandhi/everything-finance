@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""News fetch — the company-news rung of the data spine.
+"""Company news from Google News RSS.
 
 Google News RSS is the single source: it indexes the mainstream
 Indian outlets, structured and dated, with no bot wall. Because it also indexes low-quality
@@ -7,7 +7,7 @@ aggregators, the quality filter is explicit rather than implicit in a hand-picke
 list — every item carries a `publisher_tier` of `established` | `aggregator` | `unknown`.
 
 Every item is dated, deduped, classified (`company` | `sector` | `noise`) and tagged
-`fact` | `narrative`. Noise (generic "stocks to watch" listicles) is filtered from the
+`reported` | `narrative`. Noise (generic "stocks to watch" listicles) is filtered from the
 default `data.items` view.
 
 The classifier reads only the title; it never follows a link's directive.
@@ -16,15 +16,16 @@ Returns the shared data-spine envelope (finance/contracts.md). Reached through g
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
-import sys
 from datetime import date, datetime, timedelta
 
 from finance import paths
 from finance import transport
-from finance.spine import envelope as _envelope, norm_symbol as _norm
+from finance.spine import (envelope as _envelope, norm_symbol as _norm,
+                           read_cache as _read_cache, write_cache as _write_cache)
 
 
 _DATE_FORMATS = ("%Y-%m-%d", "%d %b %Y", "%b %d, %Y", "%d %B %Y", "%B %d, %Y",
@@ -92,7 +93,7 @@ _SECTOR_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Opinion / forward-looking markers → `narrative`; everything else is a reported `fact`.
+# Opinion / forward-looking markers → `narrative`; everything else is an unverified `reported` event.
 _NARRATIVE_RE = re.compile(
     r"\b(target\s+price|price\s+target|raises?\s+target|cuts?\s+target|upgrade[sd]?|"
     r"downgrade[sd]?|buy|sell|hold|outperform|underperform|overweight|underweight|"
@@ -133,8 +134,8 @@ def _classify(title, company, ticker):
 
 
 def _tag(title):
-    """`fact` (reported event) vs `narrative` (broker target / opinion / forecast)."""
-    return "narrative" if _NARRATIVE_RE.search(title or "") else "fact"
+    """Title-only triage; `reported` never means verified against a primary source."""
+    return "narrative" if _NARRATIVE_RE.search(title or "") else "reported"
 
 
 def _dedup_key(title):
@@ -221,9 +222,14 @@ def _publisher_tier(source):
     s = (source or "").strip().lower()
     if not s:
         return "unknown"
-    if any(name in s for name in _ESTABLISHED):
+    # Display labels are metadata, not authenticated publisher identity. Exact aliases
+    # avoid treating "Peppermint" or "Fake Reuters News" as established publishers.
+    aliases = {name for name in _ESTABLISHED}
+    aliases.update({"the economic times", "moneycontrol.com", "cnbc-tv18",
+                    "cnbc tv18", "the hindu businessline", "theprint"})
+    if s in aliases:
         return "established"
-    if any(name in s for name in _AGGREGATOR):
+    if s in _AGGREGATOR:
         return "aggregator"
     return "unknown"
 
@@ -246,20 +252,14 @@ def _fetch_google_rss(company, ticker, days):
     return items, (None if items else "no RSS items returned")
 
 
-# Resolved by name at call time so a test can monkeypatch it to a saved fixture.
-_LADDER = ("_fetch_google_rss",)
-_LABELS = {"_fetch_google_rss": "Google News RSS"}
-
-
 def _process(raw, company, ticker, days, today=None):
-    """Turn raw rung items into the finished, dated, windowed, classified item list."""
+    """Turn raw feed items into the dated, windowed, classified item list."""
     out = []
     for r in raw:
         title = (r.get("title") or "").strip()
         if not title:
             continue
-        iso = r.get("date") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(r.get("date") or "")) \
-            else _parse_date(r.get("date"))
+        iso = _parse_date(r.get("date"))
         if not _within_window(iso, days, today):
             continue
         out.append({
@@ -285,73 +285,72 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False, today
     returning a silent empty. Noise is filtered from the default view unless
     `include_noise`, and every item carries a `publisher_tier`. `today` fixes the date the
     recency window is measured against, so a caller can window against a known day."""
-    company = (company or "").strip()
+    try:
+        if not isinstance(company, str) or not company.strip():
+            raise ValueError("company name is required")
+        if isinstance(days, bool) or not isinstance(days, int) or days <= 0:
+            raise ValueError("days must be a positive integer")
+        if isinstance(today, str):
+            today = date.fromisoformat(today)
+        if isinstance(today, datetime):
+            today = today.date()
+        if today is not None and not isinstance(today, date):
+            raise ValueError("today must be an ISO date")
+    except (ValueError, TypeError) as exc:
+        return _envelope(False, None, {"items": [], "count": 0}, [f"news input: {exc}"])
+    company = company.strip()
     ticker = _norm(ticker or company)
-    cache_file = os.path.join(paths.cache_dir("news"),
-                              f"{re.sub(r'[^a-z0-9]+', '_', company.lower()) or 'x'}_{days}.json")
-    cached = _read_cache(cache_file, fresh)
+    # Cache the source response, not one caller's classification/noise/window view.
+    # A versioned key also prevents old processed caches from masquerading as raw feeds.
+    key = hashlib.sha256(json.dumps([company.casefold(), days]).encode()).hexdigest()
+    cache_file, cached, cache_gaps = None, None, []
+    try:
+        cache_file = os.path.join(paths.cache_dir("news"), f"rss-v1-{key}.json")
+        cached = _read_cache(cache_file, fresh)
+    except OSError:
+        cache_gaps.append("news cache unavailable; fetched without cache")
     if cached is not None:
-        return cached
-
-    gaps, raw, source_used = [], [], None
-    for name in _LADDER:
-        items, gap = getattr(sys.modules[__name__], name)(company, ticker, days)
-        if gap:
-            gaps.append(f"{_LABELS[name]}: {gap}")
-        if items:
-            raw, source_used = items, _LABELS[name]
-            break
-
+        items = cached["data"].get("items")
+        if (cached.get("source") != "Google News RSS"
+                or not isinstance(cached.get("fetched_at"), str)
+                or not isinstance(cached.get("gaps"), list)
+                or not all(isinstance(gap, str) for gap in cached.get("gaps", []))
+                or not isinstance(items, list)
+                or not all(isinstance(item, dict) and all(
+                    item.get(key) is None or isinstance(item[key], str)
+                    for key in ("title", "url", "date", "source", "origin")) for item in items)):
+            cached = None
+    if cached is None:
+        raw, gap = _fetch_google_rss(company, ticker, days)
+        cached = _envelope(bool(raw), "Google News RSS" if raw else None,
+                           {"items": raw}, [f"Google News RSS: {gap}"] if gap else [])
+        if raw and cache_file:
+            _write_cache(cache_file, cached)
+    raw = cached["data"]["items"]
+    gaps = list(cached.get("gaps") or []) + cache_gaps
+    source_used = cached.get("source")
     processed = _process(raw, company, ticker, days, today)
     noise = [it for it in processed if it["kind"] == "noise"]
     visible = processed if include_noise else [it for it in processed if it["kind"] != "noise"]
+    undated = sum(it["date"] is None for it in visible)
+    if undated:
+        gaps.append(f"Google News RSS: {undated} item(s) have unknown dates; recency unverified")
     data = {
         "company": company,
         "ticker": ticker,
         "days": days,
         "count": len(visible),
         "items": visible,
-        "noise_filtered": len(noise),
+        "noise_filtered": 0 if include_noise else len(noise),
         "established_count": sum(1 for it in visible
                                  if it["publisher_tier"] == "established"),
     }
-    if source_used is None:
-        # Blocked: a labelled gap and ok:false, never a silent empty.
-        if not gaps:
-            gaps.append("all news rungs returned no items")
-        return _envelope(False, None, data, gaps)
-    if not visible:
-        # The fetch worked but nothing survived the window and the noise filter, so
-        # ok:false here means "nothing to report", not "source down" — name which.
+    if source_used is None and not gaps:
+        gaps.append("Google News RSS: no items returned")
+    elif source_used is not None and not visible:
         gaps.append(f"{source_used}: {len(raw)} item(s) returned, none left after the "
                     f"{days}-day window and the noise filter ({len(noise)} noise)")
     env = _envelope(bool(visible), source_used, data, gaps)
-    if visible:
-        _write_cache(cache_file, env)
+    # Local filtering does not refresh the acquisition timestamp.
+    env["fetched_at"] = cached["fetched_at"]
     return env
-
-
-# Day-cache: reuse within the day, --fresh bypasses.
-def _read_cache(cache_file, fresh):
-    if fresh or not os.path.exists(cache_file):
-        return None
-    try:
-        with open(cache_file) as fh:
-            cached = json.load(fh)
-        if cached.get("data", {}).get("cached_on") == date.today().isoformat():
-            return cached
-    except Exception:  # noqa: BLE001 — a bad cache file never blocks a fetch
-        pass
-    return None
-
-
-def _write_cache(cache_file, env):
-    # The stamp records when WE cached, so it is assigned, never setdefault:
-    # upstream payloads carry their own "cached_on" and an inherited one would let
-    # the freshness check read a source's date as our fetch time.
-    env.setdefault("data", {})["cached_on"] = date.today().isoformat()
-    try:
-        with open(cache_file, "w") as fh:
-            json.dump(env, fh, ensure_ascii=False)
-    except Exception:  # noqa: BLE001
-        pass

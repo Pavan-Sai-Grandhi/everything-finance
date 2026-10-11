@@ -96,18 +96,10 @@ def run_fundamental_screen(query: str, limit: int = 1000, fresh: bool = False) -
 
 
 @SERVER.tool(
-    description="Run a PUBLIC screener.in saved screen and return its matched NSE symbols. This "
-                "is the escape hatch from the Tickertape screener's limits: a saved screener.in "
-                "screen can use the full screener.in query language — cross-period comparisons "
-                "('ROCE > ROCE preceding year'), PEG, promoter-holding change, pledged % — that "
-                "`run_fundamental_screen` cannot express. `screen_url` MUST be the full "
-                "https://www.screener.in/screens/<id>/<slug>/ form (the bare /screens/<id>/ 404s "
-                "to a non-browser client). Anonymous/public only: a private or login-walled screen "
-                "returns a labelled gap, never partial results. The screen's own query text comes "
-                "back in `data.query`; numeric BSE-only scrip codes carry no NSE symbol and are "
-                "skipped with a gap. `max_survivors` caps how many are returned (pages walked to a "
-                "500-name ceiling). To author a NEW screen, build and save it on screener.in, then "
-                "pass its public URL here."
+    description="Retired saved-screen compatibility endpoint. Always returns a labelled gap "
+                "without fetching: screener.in is approved only for document discovery. "
+                "Use run_fundamental_screen for supported Tickertape criteria; do not silently "
+                "replace unsupported cross-period conditions with different filters."
 )
 def run_saved_screen(screen_url: str, max_survivors: int = 200, fresh: bool = False) -> dict:
     return _screener_screen.screen(screen_url, max_survivors=max_survivors, fresh=fresh)
@@ -125,7 +117,7 @@ def get_stock_ratios(sid: str, fresh: bool = False) -> dict:
 
 @SERVER.tool(
     description="Company news over the last `days`, dated, deduped and classified "
-                "(company|sector|noise), tagged fact|narrative, each item carrying a "
+                "(company|sector|noise), tagged reported|narrative (title-only, unverified), each item carrying a "
                 "publisher_tier of established|aggregator|unknown. Weigh a single-"
                 "sourced claim from an aggregator accordingly."
 )
@@ -176,7 +168,7 @@ def get_corporate_actions(symbol: str) -> dict:
                 "sales_to_capital, wacc, terminal_growth/roic/margin, "
                 "shares_outstanding, net_debt, current_price); every figure must trace "
                 "to a source — the engine only does arithmetic on what you give it. "
-                "`relative` is optional and takes exactly four keys: `pe` a number, "
+                "`relative` is optional; its value fields are: `pe` a number, "
                 "`peer_pe` and `own_pe_history` flat lists of numbers (not rows, not a "
                 "symbol map), and `growth` the expected EPS growth **in percent** as "
                 "{value, basis}. Omit a key you cannot source rather than passing prose "
@@ -185,7 +177,7 @@ def get_corporate_actions(symbol: str) -> dict:
                 "and operations stay fixed), `story` the growth "
                 "x steady-state-margin grid (the levers a growth stock actually turns "
                 "on), `reverse` the assumption today's price implies. The full result "
-                "JSON is written to the ticker's run-day folder as dcf.json; the "
+                "JSON is written immutably to the ticker's run-day folder as dcf-<hash>.json; the "
                 "response carries the headline numbers plus `dcf_path`. "
                 "`inputs.model_shape` is `fcff` (default) or `equity` — use `equity` for "
                 "a bank, NBFC or insurer, where FCFF is ill-defined: feed net income as "
@@ -203,14 +195,18 @@ def run_dcf(ticker: str, inputs: dict, relative: dict | None = None,
 @SERVER.tool(
     description="The two integrity-gate checks that are arithmetic rather than "
                 "judgement, on figures you read out of the annual report. "
-                "`remuneration` scores total managerial/KMP pay against net profit, the "
-                "~5%-of-profit working norm and the Companies Act s.197 ceiling — pass "
-                "`total_remuneration` and `net_profit` in the same unit, and "
-                "`managing_directors` to pick the tighter single/multiple-MD cap. "
+                "`remuneration` scores total directors' pay (`total_remuneration`) "
+                "against net profit, the ~5%-of-profit working norm and the Companies "
+                "Act s.197 11% ceiling, all figures in one unit. The 5% (one) / 10% "
+                "(several) MD/WTD ceiling applies to MD/WTD/manager pay only: pass "
+                "`managing_directors` with `executive_remuneration`; without that figure "
+                "it is reported as not checked. A breach may still be lawful with "
+                "shareholders' general-meeting approval under the s.197(1) provisos. "
                 "`auditor_fee` reads the audit-fee trend against the business it audits "
                 "— `fees` oldest-first (two years minimum), with `revenues` and "
-                "`profits` matching where disclosed, so a fee outrunning revenue or "
-                "rising into a profit collapse is named. Each returns a "
+                "`profits` one value per fee year, so a fee outrunning revenue or rising "
+                "into a profit fall is named; without aligned revenue it cannot PASS. "
+                "Each returns a "
                 "PASS/FLAG/FAIL/NOT-CHECKED verdict with the number that decided it; a "
                 "missing input returns NOT-CHECKED, never the benign reading."
 )
@@ -218,11 +214,13 @@ def run_governance_checks(total_remuneration: float | None = None,
                           net_profit: float | None = None,
                           managing_directors: int | None = None,
                           fees: list | None = None, revenues: list | None = None,
-                          profits: list | None = None) -> dict:
+                          profits: list | None = None,
+                          executive_remuneration: float | None = None) -> dict:
     return _governance.checks(total_remuneration=total_remuneration,
                               net_profit=net_profit,
                               managing_directors=managing_directors,
-                              fees=fees, revenues=revenues, profits=profits)
+                              fees=fees, revenues=revenues, profits=profits,
+                              executive_remuneration=executive_remuneration)
 
 
 def main():

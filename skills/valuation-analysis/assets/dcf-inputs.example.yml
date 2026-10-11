@@ -1,9 +1,10 @@
-# DCF inputs — every value must trace to a primary source (get_company_fundamentals, the
-# annual report via get_documents, an exchange filing). The engine computes only what you
-# put here; it cannot detect a guess. This file is the audit trail; the same values go into
-# the run_dcf call.
-# Use ₹ Crore for ALL money fields and ₹ Crore for shares, so per-share lands in ₹.
-# Copy this file, fill with sourced numbers, drop the unused alternative of each pair.
+# SYNTHETIC EXAMPLE ONLY — none of these numbers represents a company or current market data.
+# Source annotations below describe what to obtain, not evidence for the sample values.
+# Before a real valuation, replace every observed input with primary-source evidence and
+# its observation date; label every forecast assumption and explain its rationale.
+# The engine cannot verify provenance. Preserve the completed input file as the audit trail.
+# Use ₹ Crore for money fields and CRORE SHARES (a count, not currency) for shares_outstanding.
+# Copy this file and retain only the chosen alternative. Duplicate YAML/JSON fields are rejected.
 
 currency_unit: "INR Crore"
 years: 10                       # explicit horizon; use 15 for a genuinely YOUNG/high-growth firm
@@ -13,13 +14,14 @@ lifecycle_stage: mature_stable  # start_up | young_growth | high_growth | mature
 # --- base (sourced from the latest consolidated financials) ----------------------------
 base_revenue: 90000.0           # latest FY / TTM Revenue from Operations [src: annual report FY24]
 base_revenue_basis: revenue_from_operations  # excludes interest/investment/other non-operating income
-shares_outstanding: 700.0       # diluted share count, ₹ Cr units  [src: balance_sheet_10y Common Shares Outstanding]
+shares_outstanding: 700.0       # diluted share count, crore shares  [src: balance_sheet_10y Common Shares Outstanding]
 net_debt: 12000.0               # total debt − cash                [src: balance_sheet_10y Total Debt − Cash and Equivalent]
 non_operating_cash: 0.0         # cash/investments not in FCFF      [src: balance_sheet_10y Long Term Investments]
 minority_interest: 0.0          # minority interest to subtract     [src: balance_sheet_10y Minority Interest]
 current_price: 1500.0           # market price/share, ₹             [src: get_quote]
-# Base-year reality check, not a model input: cash_flow_10y Free Cash Flow over the same ten
-# years. An order-of-magnitude gap to the model's year-0 FCFF means an input above is wrong.
+# Reconcile historical cash flows with the model definitions before using them as a check.
+# Accounting free cash flow and modeled FCFF may differ in taxes, interest and reinvestment;
+# a discrepancy requires explanation and is not by itself proof that an input is wrong.
 
 # --- revenue growth: EITHER an explicit path OR a high->fade glide ----------------------
 # revenue_growth: [0.15, 0.15, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.08, 0.07]
@@ -73,16 +75,19 @@ terminal_growth: 0.045
 terminal_wacc: 0.12             # mature-firm discount rate (defaults to last wacc)
 terminal_margin: 0.22           # steady-state margin (defaults to last margin)
 terminal_roic: 0.15             # return on new capital in perpetuity. The excess return (this − terminal_wacc)
-                                #   IS the terminal value; defaults to convergence (= wacc) if omitted —
-                                #   set > wacc ONLY for a named, durable moat. This is the model's biggest lever.
+                                #   affects terminal reinvestment; defaults to convergence (= wacc) if omitted —
+                                #   justify any persistent excess return. Compare sensitivities to identify material drivers.
 # Do not duplicate `risk_free` here when wacc_buildup derives it. If using an explicit `wacc`,
 # supply the already default-free rate here so the terminal-growth guard can run.
 # risk_free: 0.0485
 
 # Banks / NBFCs / insurers only:
 # model_shape: equity            # net-income stream, regulatory-capital reinvestment, cost of equity
+# This requires replacing the FCFF assumptions above: every explicit/terminal margin = 1,
+# every explicit/terminal tax rate = 0, net_debt = 0, and buildup weights equity=1/debt=0.
+# Merely changing model_shape on this operating-company example is invalid.
 
 # --- post-operating adjustments: apply ONLY when the diagnosis calls for them (see reference) ---
 # failure_probability: 0.10     # distress haircut — loss-making + heavy debt, or decline-phase; ~0 for mature
 # failure_recovery: 0.0         # fraction of equity recovered in failure (usually 0)
-# complexity_discount: 0.20     # governance/cross-holding/promoter-control haircut (the Adani move); 0 if clean
+# complexity_discount: 0.20     # governance/cross-holding/promoter-control haircut; justify explicitly if used

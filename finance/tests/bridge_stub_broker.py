@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """A stand-in for a hosted broker MCP, for finance/tests/test_mcp_bridge.py.
 
-Speaks just enough OAuth 2.1 and MCP streamable-HTTP for mcp-remote to drive it,
-and carries the two broker traits the bridge has to survive:
+Speaks the OAuth/MCP subset needed for mcp-remote login-sharing tests. It is
+not a protocol conformance or PKCE-security test server (it does not validate
+verifiers or refresh-token ownership). It carries the two broker traits the bridge has to survive:
 
   * one live access token per user — issuing a new one revokes every earlier
     token, so a needless re-authorization logs another session out;
@@ -153,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
                     "error_description": f"redirect_uri must use port {pinned}",
                 })
 
-        client_id = f"client-{len(clients) + 1}"
+        client_id = "client-" + uuid.uuid4().hex
         clients[client_id] = {"redirect_uris": uris}
         return self._json(201, {
             "client_id": client_id,

@@ -31,6 +31,8 @@ Reached through: get_fund_lookthrough.
 """
 from __future__ import annotations
 
+import math
+
 
 from finance.caps import cap_bucket
 from finance.spine import envelope as _envelope, f as _num, first as _first
@@ -62,31 +64,40 @@ def weighted_harmonic(pairs):
     multiples (loss-makers) are dropped, because a negative P/E is not a cheaper P/E;
     their weight is excluded from coverage so the omission is visible.
     """
-    num = cov = 0.0
+    usable = []
     for w, v in pairs:
         w, v = _num(w), _num(v)
         if w is None or w <= 0 or v is None or v <= 0:
             continue
-        num += w / v
-        cov += w
-    if num <= 0:
+        usable.append((w, v))
+    if not usable:
         return None, 0.0
-    return cov / num, cov
+    cov = math.fsum(w for w, _ in usable)
+    scale = min(v for _, v in usable)
+    denominator = math.fsum((w / cov) * (scale / v) for w, v in usable)
+    if denominator <= 0:
+        return None, cov
+    return _num(scale / denominator), cov
 
 
 def weighted_mean(pairs):
     """(weight, value) -> (weighted arithmetic mean, covered weight). For ROE, growth
     and earnings yield, which are additive and may legitimately be negative."""
-    num = cov = 0.0
+    usable = []
     for w, v in pairs:
         w, v = _num(w), _num(v)
         if w is None or w <= 0 or v is None:
             continue
-        num += w * v
-        cov += w
-    if cov <= 0:
+        usable.append((w, v))
+    if not usable:
         return None, 0.0
-    return num / cov, cov
+    cov = math.fsum(w for w, _ in usable)
+    scale = max(abs(v) for _, v in usable)
+    if not scale:
+        return 0.0, cov
+    normalized = math.fsum((w / cov) * (v / scale) for w, v in usable)
+    # The convex mean is bounded by the inputs, including at the float limit.
+    return min(1.0, max(-1.0, normalized)) * scale, cov
 
 
 def earnings_yields(holdings):
@@ -101,15 +112,6 @@ def earnings_yields(holdings):
         if pe is None or pe == 0:
             continue
         yield (h.get("weight"), 100.0 / pe)
-
-
-def cagr(series):
-    """First->last CAGR (%) over len-1 periods. None if <2 usable points or a
-    non-positive endpoint (a sign change makes CAGR meaningless)."""
-    xs = [_num(x) for x in (series or []) if _num(x) is not None]
-    if len(xs) < 2 or xs[0] <= 0 or xs[-1] <= 0:
-        return None
-    return ((xs[-1] / xs[0]) ** (1.0 / (len(xs) - 1)) - 1.0) * 100.0
 
 
 def cap_tilt(holdings):
@@ -252,6 +254,9 @@ def gated(value, covered_weight, total_weight, ndigits=2):
     """
     frac = (covered_weight / total_weight) if (total_weight and total_weight > 0) else 0.0
     grade = "unavailable" if covered_weight <= 0 else coverage_grade(frac)
+    if covered_weight > 0 and _num(value) is None:
+        return {"value": None, "coverage": round(frac, 4), "confidence": "unusable",
+                "withheld": True, "note": "calculated metric is missing or nonfinite"}
     ok = grade in ("decision-grade", "indicative")
     return {
         "value": _round(value, ndigits) if ok else None,
@@ -269,8 +274,21 @@ def portfolio_metrics(holdings, equity_weight=None):
     fund's total equity allocation (%) — the honest denominator for coverage, because
     positions the provider never listed must count against coverage, not vanish from it.
     """
-    listed = sum(_num(h.get("weight")) or 0.0 for h in holdings)
-    total = _num(equity_weight) or listed
+    if not isinstance(holdings, list) or any(not isinstance(h,dict) for h in holdings):
+        raise ValueError("holdings must be a list of mappings")
+    weights = [_num(h.get("weight")) for h in holdings]
+    if any(weight is None or not 0 <= weight <= 100 for weight in weights):
+        raise ValueError("holding weights must be finite percentages between 0 and 100")
+    listed = math.fsum(weights)
+    if listed > 100 and not math.isclose(listed,100,rel_tol=0,abs_tol=1e-8):
+        raise ValueError("holding weights exceed 100%; check duplicate or inconsistent positions")
+    if holdings and equity_weight is None:
+        raise ValueError("total equity allocation is missing; coverage cannot be established from listed holdings alone")
+    total = _num(equity_weight) if equity_weight is not None else 0.0
+    if total is None or not 0 <= total <= 100:
+        raise ValueError("equity weight must be a finite percentage between 0 and 100")
+    if listed > total and not math.isclose(listed,total,rel_tol=0,abs_tol=1e-8):
+        raise ValueError("listed holdings exceed the supplied equity allocation")
     total = max(total, listed)
 
     pe, pe_w = weighted_harmonic((h.get("weight"), _first(h, "pe", "ttm_pe"))
@@ -287,7 +305,7 @@ def portfolio_metrics(holdings, equity_weight=None):
         "portfolio_pb": gated(pb, pb_w, total),
         "portfolio_roe": gated(roe, roe_w, total),
         "earnings_yield_pct": gated(ey, ey_w, total),
-        "pb_over_roe": pb_over_roe(pb, roe, pb_w, roe_w, total),
+        "pb_over_roe": pb_over_roe(holdings, total),
         "cap_tilt": cap_tilt(holdings),
         "concentration": concentration(holdings),
         "sectors": sector_mix(holdings),
@@ -301,22 +319,26 @@ def portfolio_metrics(holdings, equity_weight=None):
     return m
 
 
-def pb_over_roe(pb, roe, pb_w, roe_w, total):
-    """Price-to-book per unit of return on equity — price paid for each point of
-    profitability.
+def pb_over_roe(holdings, total):
+    """P/B divided by weighted ROE on exactly the same covered holdings.
 
-    The quality-adjusted valuation cut, and the one most stable under data revision:
-    P/E collapses whenever the earnings denominator does, so it flip-flops; book value
-    does not collapse, and dividing by ROE asks whether you are paying up for a business
-    that earns. Lower is cheaper. Undefined for a non-positive ROE (paying anything for
-    no return on equity is not a ratio, it is a red flag).
+    Independent P/B and ROE coverage does not establish their overlap. Compute both
+    inputs again on the intersection, then gate on that joint covered weight.
+    This is a descriptive ratio, not proof of cheapness or resilience to bad data.
     """
+    shared = [h for h in holdings if (_num(h.get("pb")) is not None
+              and _num(h.get("pb")) > 0 and _num(h.get("roe")) is not None)]
+    pb, pb_w = weighted_harmonic((h.get("weight"),h.get("pb")) for h in shared)
+    roe, roe_w = weighted_mean((h.get("weight"),h.get("roe")) for h in shared)
     p, r = _num(pb), _num(roe)
-    if p is None or r is None or r <= 0:
-        return {"value": None, "coverage": 0.0, "confidence": "unusable",
-                "withheld": True,
-                "note": "undefined at non-positive portfolio ROE" if p is not None else None}
-    return gated(p / r, min(pb_w, roe_w), total, ndigits=4)
+    joint_weight = min(pb_w, roe_w)
+    if p is None or r is None:
+        return gated(None, 0, total, ndigits=4)
+    if r <= 0:
+        return {"value": None, "coverage": round(joint_weight / total,4) if total else 0.0,
+                "confidence": "unusable", "withheld": True,
+                "note": "undefined at non-positive ROE on the jointly covered holdings"}
+    return gated(p / r, joint_weight, total, ndigits=4)
 
 
 def metric_gaps(metrics):
@@ -326,8 +348,10 @@ def metric_gaps(metrics):
                 "earnings_yield_pct"):
         m = metrics.get(key) or {}
         if m.get("confidence") == "unavailable":
-            gaps.append(f"{key}: no source — nothing in the sanctioned data path publishes "
-                        f"it for these holdings; it is absent, not zero")
+            gaps.append(f"{key}: unavailable — the supplied holdings contain no usable "
+                        f"inputs for this metric; missing data is not zero")
+        elif m.get("withheld") and m.get("note"):
+            gaps.append(f"{key}: WITHHELD — {m['note']}")
         elif m.get("withheld"):
             gaps.append(f"{key}: WITHHELD — priced weight {100 * m.get('coverage', 0):.1f}% "
                         f"of the book is below the {100 * MIN_PUBLISHABLE_COVERAGE:.0f}% "
@@ -338,12 +362,12 @@ def metric_gaps(metrics):
                         f"do not cite it as a deciding factor")
     up = metrics.get("unpriced_weight_pct") or 0.0
     if up > UNPRICED_RISK_PCT:
-        gaps.append(f"{up:.2f}% of the book is unlisted or unpriced — excluded from every "
-                    f"ratio above, never extrapolated; treat as opacity risk")
+        gaps.append(f"{up:.2f}% of the book is unpriced (ratio data unconfirmed); "
+                    f"each metric reports its own usable coverage, without extrapolation")
     ct = metrics.get("cap_tilt") or {}
     if ct.get("by_label"):
         gaps.append(f"cap-tilt: {100 * ct['by_label']:.1f}% of classified weight fell back to "
-                    f"the provider's text label because no market-cap rank was published")
+                    f"the provider's text label because no usable market-cap rank was returned")
     ed = metrics.get("earnings_distress") or {}
     if ed.get("coverage") and metrics.get("equity_weight_pct"):
         frac = ed["coverage"] / metrics["equity_weight_pct"]
@@ -367,8 +391,13 @@ def load_fund(mf_id, fresh=False, workers=10):
     if not env.get("ok") or not positions:
         return [], 0.0, gaps or [f"no holdings returned for {mf_id}"], {"mf_id": mf_id}
 
-    enriched, enrich_gaps = funds.enrich(positions, workers=workers, fresh=fresh)
-    gaps += enrich_gaps
+    equity_weight = _num(data.get("equity_weight"))
+    if equity_weight is None:
+        # Coverage is already unusable; fetching every stock cannot repair it.
+        enriched = [dict(p) for p in positions if str(p.get("type", "")).lower() == "equity"]
+    else:
+        enriched, enrich_gaps = funds.enrich(positions, workers=workers, fresh=fresh)
+        gaps += enrich_gaps
     meta = {
         "mf_id": mf_id,
         "source": env.get("source"),
@@ -377,7 +406,7 @@ def load_fund(mf_id, fresh=False, workers=10):
         "equity_positions": len(enriched),
         "provider_sector_weights": data.get("sector_weights") or {},
     }
-    return enriched, _num(data.get("equity_weight")) or 0.0, gaps, meta
+    return enriched, equity_weight, gaps, meta
 
 
 def load_holdings_file(payload):
@@ -439,8 +468,19 @@ def report(mf_id, fresh=False, workers=10):
     unpublishable — a look-through built on a third of the book is a labelled gap, not a
     valuation.
     """
+    if type(workers) is not int or workers <= 0:
+        return _envelope(False, "finance.compute.lookthrough",
+                         {"meta": {"mf_id": mf_id}, "metrics": {}, "n_holdings": 0,
+                          "ratios_publishable": False, "confidence": "unusable"},
+                         ["invalid look-through inputs: workers must be a positive integer"])
     holdings, equity_weight, gaps, meta = load_fund(mf_id, fresh=fresh, workers=workers)
-    rep = build_report(holdings, equity_weight, gaps, meta)
+    try:
+        rep = build_report(holdings, equity_weight, gaps, meta)
+    except ValueError as exc:
+        return _envelope(False, "finance.compute.lookthrough",
+                         {"meta":meta, "metrics":{}, "n_holdings":len(holdings) if isinstance(holdings,list) else 0,
+                          "ratios_publishable":False, "confidence":"unusable"},
+                         list(gaps) + [f"invalid holdings coverage: {exc}"])
     data = {k: v for k, v in rep.items() if k != "gaps"}
     return _envelope(bool(holdings) and rep["ratios_publishable"],
                      "finance.compute.lookthrough", data, rep["gaps"])

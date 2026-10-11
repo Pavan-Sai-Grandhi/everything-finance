@@ -18,7 +18,13 @@ Spine schema, scorecard shape, and the input envelope are in `finance/contracts.
 
 Reached through: skills/wealth-manager/scripts/wealth.py.
 """
-from finance.spine import first as _first
+import json
+import re
+import math
+from datetime import date
+
+from finance.spine import first as _first, f
+from finance.compute.holdings import market_value as _position_value
 
 
 _SCALE_SUFFIXES = (
@@ -33,7 +39,7 @@ def _num(x):
     if x is None or isinstance(x, bool):
         return None
     if isinstance(x, (int, float)):
-        return float(x)
+        return f(x)
     if isinstance(x, str):
         s = x.replace(",", "").replace("₹", "").replace("%", "").strip()
         mult = 1.0
@@ -45,7 +51,7 @@ def _num(x):
         if s in ("", "-", "NA", "N/A", "null", "None"):
             return None
         try:
-            return float(s) * mult
+            return f(float(s) * mult)
         except ValueError:
             return None
     return None
@@ -55,10 +61,14 @@ def _num(x):
 # growth/equity-risk sleeve (drives risk posture); `liquid` marks the emergency-fund
 # eligible pool (cash + FD only — debt/funds may be long-duration, kept out on purpose).
 _CLASSES = [
+    # A broker wallet is uninvested cash, even inside a US-stock account.
+    ("cash",           ("wallet",)),
+    # A sovereign gold bond tracks the gold price; classify it before the "bond" needle.
+    ("gold",           ("sovereign gold", "sgb")),
     ("us_equity",      ("us stock", "us equit", "foreign", "international")),
     ("equity",         ("indian stock", "stock", "equity", "share", "direct equit")),
     ("mutual_funds",   ("mutual fund", "mf", "sip", "elss")),
-    ("debt",           ("debt", "bond", "fixed income", "ncd")),
+    ("debt",           ("debt", "bond", "fixed income", "ncd", "government security", "g-sec")),
     ("fd",             ("fixed deposit", "fd", "recurring deposit", "rd")),
     ("epf",            ("epf", "pf", "provident", "ppf", "nps")),
     ("real_estate",    ("real estate", "property", "reit")),
@@ -67,7 +77,7 @@ _CLASSES = [
     ("insurance",      ("insurance", "ulip", "endowment", "cash value")),
     ("crypto",         ("crypto", "bitcoin")),
 ]
-_MARKET_LINKED = {"equity", "mutual_funds", "us_equity", "crypto"}
+_DIRECT_EQUITY = {"equity", "us_equity"}
 _LIQUID = {"cash", "fd"}
 _LABEL = {
     "equity": "Indian equity", "mutual_funds": "Mutual funds", "us_equity": "US equity",
@@ -79,22 +89,41 @@ _LABEL = {
 
 def canonical_class(raw):
     """Map an IndMoney asset-class label to a net-worth bucket; unknown → 'other'."""
-    s = str(raw or "").lower()
+    s = " ".join(str(raw or "").lower().replace("_", " ").split())
+    # Fund wrappers do not reveal portfolio equity exposure, even when their
+    # labels contain 'equity', 'international' or 'debt'.
+    if re.search(r"\b(?:mutual funds?|mf|elss|sip)\b", s):
+        return "mutual_funds"
     for bucket, needles in _CLASSES:
-        if any(n in s for n in needles):
+        if any(re.search(r"\b" + re.escape(n) + (r"\w*\b" if n.endswith("equit") else r"s?\b"), s)
+               for n in needles):
             return bucket
     return "other"
+
+
+def _unwrap(payload):
+    """MCP tools can return the payload as a JSON string under `result` (IndMoney
+    does); decode it once — never evaluate it — and return the inner mapping."""
+    if isinstance(payload, dict) and set(payload) == {"result"} and isinstance(payload["result"], str):
+        try:
+            inner = json.loads(payload["result"])
+        except ValueError:
+            return payload
+        return inner if isinstance(inner, dict) else payload
+    return payload
 
 
 def _breakdown_rows(breakdown):
     """Dig the per-class [{class, value}] list out of a networth_allocation_breakdown
     payload — tolerant to a list, a wrapped list, or a flat {class: value} dict."""
+    breakdown = _unwrap(breakdown)
     if breakdown is None:
         return []
     inner = breakdown
     if isinstance(breakdown, dict):
         wrapped = _first(breakdown, "allocation", "breakdown", "asset_allocation",
-                         "networth_allocation_breakdown", "data", "result", "allocations")
+                         "networth_allocation_breakdown", "investments", "data", "result",
+                         "allocations")
         inner = wrapped if wrapped is not None else breakdown
     if isinstance(inner, dict):
         return [{"class": k, "value": v} for k, v in inner.items()]
@@ -103,24 +132,18 @@ def _breakdown_rows(breakdown):
     return []
 
 
-def _position_value(p):
-    """Market value of a canonical holdings.py position: invested+pnl, else ltp*qty."""
-    inv, pnl, ltp, qty = p.get("invested"), p.get("pnl"), p.get("ltp"), p.get("qty")
-    if inv is not None and pnl is not None:
-        return inv + pnl
-    if ltp is not None and qty is not None:
-        return ltp * qty
-    if inv is not None:
-        return inv
-    return None
-
-
-def build_spine(snapshot=None, breakdown=None, positions_env=None):
+def build_spine(snapshot=None, breakdown=None, positions_env=None, liabilities=None):
     """Assemble the net-worth spine. Precedence for the allocation: IndMoney's
     `networth_allocation_breakdown` (authoritative, sees every class) → else aggregate
     the tradeable positions by asset_class (partial, labelled tradeable-only)."""
     gaps = []
     positions = ((positions_env or {}).get("data") or {}).get("positions") or []
+    if not isinstance(positions, list):
+        gaps.append("invalid positions collection — holdings unavailable")
+        positions = []
+    if any(not isinstance(p, dict) for p in positions):
+        gaps.append("malformed position rows excluded")
+        positions = [p for p in positions if isinstance(p, dict)]
     pos_source = (positions_env or {}).get("source")
 
     alloc = {}
@@ -129,10 +152,15 @@ def build_spine(snapshot=None, breakdown=None, positions_env=None):
     if rows:
         for r in rows:
             if not isinstance(r, dict):
+                coverage = "incomplete"
+                gaps.append("malformed asset breakdown row excluded")
                 continue
-            bucket = canonical_class(_first(r, "class", "asset_class", "category", "name", "label"))
+            bucket = canonical_class(_first(r, "class", "asset_class", "asset_type", "category",
+                                            "name", "label"))
             val = _num(_first(r, "value", "current_value", "amount", "total", "worth"))
-            if val is None:
+            if val is None or val < 0:
+                coverage = "incomplete"
+                gaps.append(f"{bucket}: missing or unsupported negative asset value")
                 continue
             alloc[bucket] = alloc.get(bucket, 0.0) + val
     else:
@@ -142,63 +170,134 @@ def build_spine(snapshot=None, breakdown=None, positions_env=None):
         for p in positions:
             bucket = canonical_class(p.get("asset_class"))
             val = _position_value(p)
-            if val is not None:
-                alloc[bucket] = alloc.get(bucket, 0.0) + val
+            if val is None:
+                coverage = "incomplete"
+                gaps.append(f"{p.get('ticker', '?')}: no current value — holding excluded from the subtotal")
+                continue
+            alloc[bucket] = alloc.get(bucket, 0.0) + val
 
     alloc_total = sum(alloc.values())
 
-    # total net worth: snapshot is authoritative; else sum of allocation
-    total = _num(_first(snapshot or {}, "total_net_worth", "net_worth", "networth",
+    # Optional canonical liability evidence is supplied by the orchestrator, not
+    # guessed from an undocumented broker payload field or a balancing difference.
+    liability_total, liability_evidence = None, None
+    if liabilities is not None:
+        liability_total, liability_evidence, liability_gap = _dated_amount(liabilities, "total", "liabilities")
+        if liability_gap:
+            gaps.append(liability_gap)
+            coverage = "incomplete"
+
+    snapshot = _unwrap(snapshot) or {}
+    total = _num(_first(snapshot, "total_net_worth", "total_networth", "net_worth", "networth",
                         "total", "total_value", "current_value"))
+    # With no observed assets there is nothing to net a liability against.
+    calculated_net = alloc_total - liability_total if liability_total is not None and alloc else None
     if total is None:
-        total = alloc_total if alloc_total else None
+        total = calculated_net if calculated_net is not None else (alloc_total if alloc else None)
         if total is None:
             gaps.append("no net-worth total — neither snapshot nor allocation available")
-        elif coverage == "complete":
-            gaps.append("net-worth total inferred from allocation breakdown (no snapshot)")
+        elif liability_total is None:
+            coverage = "incomplete" if rows else coverage
+            gaps.append("asset subtotal only: no reported net worth or verified liability total")
+        else:
+            gaps.append("net worth calculated from supplied assets minus sourced liabilities")
 
-    denom = total if total else alloc_total
+    comparable = calculated_net if liability_total is not None else alloc_total
+    if rows and total is not None and not math.isclose(comparable, total, rel_tol=1e-8, abs_tol=0.01):
+        coverage = "incomplete"
+        gaps.append("asset/liability breakdown does not reconcile with reported net worth; reconcile missing rows or valuation dates")
+    # Asset allocation describes the gross asset mix. Dividing it by leveraged
+    # net worth would produce percentages above 100% unrelated to composition.
+    denom = alloc_total if liability_total is not None else total
+    denom = denom if denom is not None and denom > 0 else None
     allocation = {}
     for bucket, val in sorted(alloc.items(), key=lambda kv: -kv[1]):
         pct = round(val / denom * 100, 1) if denom else None
         allocation[bucket] = {"label": _LABEL.get(bucket, bucket.title()),
                               "value": round(val, 2), "pct": pct}
 
-    liquid = round(sum(alloc.get(b, 0.0) for b in _LIQUID), 2)
-    market_linked = sum(alloc.get(b, 0.0) for b in _MARKET_LINKED)
-    equity_share_pct = round(market_linked / denom * 100, 1) if denom else None
+    observed_liquid = round(sum(alloc.get(b, 0.0) for b in _LIQUID), 2)
+    liquid = None
+    gaps.append("emergency-reserve availability unverified: cash/FD labels alone do not establish accessible funds")
+    direct_equity = sum(alloc.get(b, 0.0) for b in _DIRECT_EQUITY)
+    known_equity_share_pct = round(direct_equity / denom * 100, 1) if denom and denom > 0 else None
+    unknown_equity_value = sum(alloc.get(b, 0.0) for b in ("mutual_funds", "other", "epf", "insurance"))
+    equity_share_pct = known_equity_share_pct if unknown_equity_value == 0 and coverage == "complete" else None
+    if equity_share_pct is None:
+        gaps.append("total equity exposure unavailable: unresolved fund/other asset composition or incomplete book; direct equity shown separately")
 
-    xirrs = [(p.get("ticker"), p.get("xirr")) for p in positions if p.get("xirr") is not None]
+    xirrs, weighted = [], []
+    for position in positions:
+        raw = position.get("xirr")
+        rate = f(raw) if not isinstance(raw, bool) else None
+        if rate is None:
+            if raw is not None:
+                gaps.append(f"{position.get('ticker', '?')}: invalid holding XIRR omitted")
+            continue
+        xirrs.append((position.get("ticker"), rate))
+        value = _position_value(position)
+        if value is not None and value > 0:
+            weighted.append((value, rate))
     if xirrs:
         best = max(xirrs, key=lambda t: t[1])
         worst = min(xirrs, key=lambda t: t[1])
-        # value-weight the average: an unweighted mean lets ₹1L at +80% cancel ₹50L at −5%
-        # and misreads as the book's return. None when no holding carries a market value.
-        weighted = [(v, p["xirr"]) for p in positions
-                    if p.get("xirr") is not None and (v := _position_value(p)) is not None]
-        wsum = sum(v for v, _ in weighted)
-        avg = round(sum(v * x for v, x in weighted) / wsum, 1) if wsum else None
-        xirr_summary = {"count": len(xirrs), "avg": avg,
+        # Normalize before multiplying so finite large position values do not overflow.
+        scale = max((value for value, _ in weighted), default=1)
+        weights = [(value / scale, rate) for value, rate in weighted]
+        weight_sum = sum(weight for weight, _ in weights)
+        mean = f(sum(weight / weight_sum * rate for weight, rate in weights)) if weight_sum else None
+        xirr_summary = {"count": len(xirrs), "avg": round(mean, 1) if mean is not None else None,
+                        "weighted_count": len(weighted),
+                        "method": "current-value-weighted mean of holding XIRRs; not portfolio XIRR",
+                        "portfolio_xirr": None,
                         "best": {"ticker": best[0], "xirr": best[1]},
                         "worst": {"ticker": worst[0], "xirr": worst[1]}}
+        gaps.append("portfolio XIRR is not computed from holding XIRRs; dated aggregate cash flows are required")
     else:
         xirr_summary = None
         if positions:
             gaps.append("no XIRR on holdings (broker/manual source) — return read unavailable")
 
-    as_of = _first(snapshot or {}, "as_of", "as_on", "date") or (positions_env or {}).get("fetched_at")
+    as_of = _first(snapshot, "as_of", "as_on", "date") or (positions_env or {}).get("fetched_at")
 
     return {
         "total_networth": round(total, 2) if total is not None else None,
         "as_of": as_of,
         "allocation": allocation,
         "liquid": liquid,
+        "observed_liquid": observed_liquid,
+        "allocation_total": round(alloc_total, 2),
+        "liabilities_total": liability_total,
+        "liabilities_evidence": liability_evidence,
+        "allocation_basis": "gross_assets" if liability_total is not None else "reported_total",
         "equity_share_pct": equity_share_pct,
+        "known_equity_share_pct": known_equity_share_pct,
+        "unclassified_equity_value": unknown_equity_value,
         "holdings_xirr": xirr_summary,
         "source": "indmoney" if rows else (pos_source or "none"),
         "coverage": coverage,
         "gaps": gaps + list((positions_env or {}).get("gaps") or []),
     }
+
+
+def _dated_amount(block, value_key, label):
+    """Validate an explicitly sourced balance supplied by the orchestrator."""
+    if not isinstance(block, dict):
+        return None, None, f"need a sourced, dated {label} balance"
+    value = _num(block.get(value_key))
+    source = block.get("source")
+    try:
+        stamp = date.fromisoformat(block.get("as_of"))
+    except (ValueError, TypeError):
+        stamp = None
+    if (value is None or value < 0 or stamp is None or stamp > date.today()
+            or not isinstance(source, str) or not source.strip()):
+        return None, None, f"{label} requires nonnegative {value_key}, past/current ISO as_of and source"
+    return value, {"as_of": stamp.isoformat(), "source": source.strip()}, None
+
+
+def _reserve(profile):
+    return _dated_amount(profile.get("emergency_reserve"), "available_value", "emergency reserve")
 
 
 def _monthly_expenses(cashflow, profile):
@@ -219,21 +318,23 @@ def _monthly_expenses(cashflow, profile):
 
 def emergency_fund(liquid, monthly_expenses):
     """Months of runway = liquid pool ÷ monthly expenses, vs a 3–6 month target."""
-    if not monthly_expenses:
+    liquid, monthly_expenses = _num(liquid), _num(monthly_expenses)
+    if liquid is None or liquid < 0 or monthly_expenses is None or monthly_expenses <= 0:
         return {"status": "not_assessed", "months": None,
-                "line": "need monthly expenses (run /budget-tracker or state them)"}
-    months = round(liquid / monthly_expenses, 1) if monthly_expenses else None
+                "line": "need a nonnegative liquid balance and positive monthly expenses"}
+    exact_months = f(liquid / monthly_expenses)
+    months = round(exact_months, 1) if exact_months is not None else None
     if months is None:
         status = "not_assessed"
-    elif months >= 6:
+    elif exact_months >= 6:
         status = "strong"
-    elif months >= 3:
+    elif exact_months >= 3:
         status = "adequate"
-    elif months >= 1:
+    elif exact_months >= 1:
         status = "thin"
     else:
         status = "critical"
-    tgt = "meets" if months and months >= 3 else "below"
+    tgt = "meets" if exact_months is not None and exact_months >= 3 else "below"
     return {"status": status, "months": months, "target": "3-6 months",
             "line": f"{months} months of runway — {tgt} the 3-6 month target"}
 
@@ -245,6 +346,7 @@ def protection_read(protection):
         return {"status": "not_assessed", "line": "protection not assessed — run /insurance-advisor"}
     lines_state = []
     worst = "strong"
+    missing = False
     order = {"strong": 0, "adequate": 1, "weak": 2, "critical": 3}
     for kind in ("term", "health"):
         blk = protection.get(kind) or {}
@@ -257,6 +359,7 @@ def protection_read(protection):
             st, note = "strong", f"{kind}: adequate"
         else:
             st, note = "not_assessed", f"{kind}: not assessed"
+            missing = True
         if st != "not_assessed" and order.get(st, 0) > order.get(worst, 0):
             worst = st
         lines_state.append(note)
@@ -264,33 +367,37 @@ def protection_read(protection):
     line = "; ".join(lines_state)
     if flags:
         line += f" · {len(flags)} policy red flag(s)"
-    return {"status": worst, "line": line}
+    return {"status": "not_assessed" if (missing or flags) and worst == "strong" else worst, "line": line}
 
 
-def risk_posture(equity_share_pct, ef_status, prot_status, age=None):
-    """Gate 'take more/less risk' on the equity share vs an age-appropriate band, but
-    only after the foundation (emergency fund + protection) is sound — a high equity
-    share on a thin emergency fund or a protection gap is fragile, not aggressive."""
-    if equity_share_pct is None:
-        return {"stance": "unknown", "line": "net-worth equity share unknown — connect IndMoney for the full picture"}
-    # age-appropriate equity ceiling: '100 - age' rule of thumb, wide band
-    ceiling = (100 - age) if age else 70
-    foundation_weak = ef_status in ("thin", "critical", "not_assessed") or \
-        prot_status in ("weak", "critical")
-    if equity_share_pct > ceiling + 10:
-        stance = "reduce-risk"
-        line = f"equity+MF {equity_share_pct}% is above the ~{ceiling}% ceiling for your profile — trim risk"
-    elif foundation_weak:
-        stance = "fix-foundation-first"
-        line = ("foundation not yet sound (emergency fund / protection) — fix that before "
-                "adding equity risk, whatever the equity share")
-    elif equity_share_pct < ceiling - 20:
-        stance = "can-add-risk"
-        line = f"equity+MF {equity_share_pct}% is well below the ~{ceiling}% ceiling — room to add growth assets"
+def risk_posture(equity_share_pct, ef_status, prot_status, age=None, equity_band=None):
+    """Compare exposure with a stated range; age alone does not define a target.
+
+    `age` remains accepted for older callers but is never used to invent a limit.
+    A range comparison is a review finding, not authorization to transact.
+    """
+    share = _num(equity_share_pct)
+    if share is None or not 0 <= share <= 100:
+        return {"stance": "unknown", "line": "net-worth equity share unavailable or invalid"}
+    if ef_status not in ("strong", "adequate") or prot_status not in ("strong", "adequate"):
+        return {"stance": "fix-foundation-first", "equity_share_pct": share,
+                "line": "emergency-fund or protection evidence is weak/incomplete — resolve it before considering more equity risk"}
+    if not isinstance(equity_band, dict):
+        return {"stance": "unknown", "equity_share_pct": share,
+                "line": "no stated equity target range; age alone does not establish suitable exposure"}
+    low, high = _num(equity_band.get("min_pct")), _num(equity_band.get("max_pct"))
+    if low is None or high is None or not 0 <= low <= high <= 100:
+        return {"stance": "unknown", "equity_share_pct": share,
+                "line": "equity target range must satisfy 0 <= min_pct <= max_pct <= 100"}
+    if share > high:
+        stance, comparison = "above-target", "above"
+    elif share < low:
+        stance, comparison = "below-target", "below"
     else:
-        stance = "balanced"
-        line = f"equity+MF {equity_share_pct}% sits within an age-appropriate band (~{ceiling}% ceiling)"
-    return {"stance": stance, "equity_share_pct": equity_share_pct, "line": line}
+        stance, comparison = "within-target", "within"
+    return {"stance": stance, "equity_share_pct": share,
+            "equity_band": {"min_pct": low, "max_pct": high},
+            "line": f"equity exposure {share}% is {comparison} the stated {low}–{high}% range; review goals, liquidity and costs before changing allocation"}
 
 
 _RANK = {"strong": 0, "adequate": 1, "thin": 2, "weak": 2, "critical": 3,
@@ -302,10 +409,12 @@ def _score_networth(spine):
     if total is None:
         return {"status": "not_assessed", "line": "net worth unavailable — connect IndMoney"}
     alloc = spine.get("allocation") or {}
+    if not alloc:
+        return {"status": "not_assessed", "line": "asset allocation unavailable"}
     top = next(iter(alloc.items()), None)
-    if spine.get("coverage") == "tradeable-only":
+    if spine.get("coverage") != "complete":
         return {"status": "not_assessed",
-                "line": "tradeable-only view — connect IndMoney for full net-worth allocation"}
+                "line": "incomplete or unreconciled allocation — complete the asset/liability picture"}
     if top and top[1].get("pct") is not None and top[1]["pct"] > 60:
         return {"status": "weak",
                 "line": f"{top[1]['label']} is {top[1]['pct']}% of net worth — heavily concentrated"}
@@ -318,7 +427,7 @@ def _score_investments(inv):
         return {"status": "not_assessed", "line": "investment book not assessed — run /portfolio-review"}
     flags = inv.get("concentration_flags") or []
     exits = inv.get("top_exits") or []
-    severe = [f for f in flags if str(f.get("severity", "")).lower() in ("high", "urgent", "severe")]
+    severe = [f for f in flags if str(f.get("severity", "")).lower() in ("act", "high", "urgent", "severe")]
     hard_exits = [e for e in exits if str(e.get("verdict", "")).upper() == "EXIT"]
     if severe or hard_exits:
         bits = []
@@ -327,6 +436,8 @@ def _score_investments(inv):
         if hard_exits:
             bits.append(f"{len(hard_exits)} EXIT flag(s)")
         return {"status": "weak", "line": "; ".join(bits) + " — run /portfolio-review"}
+    if (inv.get("gaps") or "concentration_flags" not in inv or "top_exits" not in inv):
+        return {"status": "not_assessed", "line": "investment evidence incomplete — review data gaps"}
     if flags or exits:
         return {"status": "adequate", "line": f"{len(flags)} concentration + {len(exits)} exit/trim flag(s) to review"}
     return {"status": "strong", "line": "no concentration or exit flags"}
@@ -336,8 +447,10 @@ def _score_cashflow(cf):
     if not cf:
         return {"status": "not_assessed", "line": "cashflow not assessed — run /budget-tracker"}
     sr = _num(cf.get("savings_rate"))
-    if sr is None:
-        return {"status": "not_assessed", "line": "savings rate unavailable"}
+    if sr is None or sr > 100:
+        return {"status": "not_assessed", "line": "savings rate unavailable or invalid"}
+    if cf.get("gaps"):
+        return {"status": "not_assessed", "line": "cashflow evidence incomplete — review source gaps"}
     leak = cf.get("biggest_leak")
     tail = f"; biggest leak {leak}" if leak else ""
     if sr >= 20:
@@ -366,14 +479,16 @@ def build_scorecard(spine, legs, cross):
     overall = max(assessed, key=lambda s: _RANK.get(s, 0)) if assessed else "not_assessed"
 
     actions = _prioritise(domains, spine, legs, cross)
-    return {"domains": domains, "overall": overall, "actions": actions}
+    return {"domains": domains, "overall": overall, "actions": actions,
+            "assessed_domains": len(assessed), "total_domains": len(domains),
+            "coverage_complete": len(assessed) == len(domains)}
 
 
 # priority: protection/emergency-fund gaps outrank fresh-equity moves — the cross-domain
 # ordering that no single leg can make. Each action names the spoke to run for depth.
 _PRIORITY = [
     ("emergency_fund", ("critical", "thin"), "Build the emergency fund first",
-     "park 3-6 months of expenses in liquid FD/sweep before any fresh equity", "/budget-tracker"),
+     "confirm accessible reserve needs against complete expenses and near-term commitments", "/budget-tracker"),
     ("protection", ("critical", "weak"), "Close the protection gap",
      "term + health cover must be sound before adding risk", "/insurance-advisor"),
     ("cashflow", ("weak",), "Lift the savings rate",
@@ -394,9 +509,9 @@ def _prioritise(domains, spine, legs, cross):
                             "status": st, "text": text, "next_step": step, "run": run})
         if len(actions) >= 5:
             break
-    if len(actions) < 5 and cross["risk_posture"]["stance"] == "can-add-risk":
+    if len(actions) < 5 and cross["risk_posture"]["stance"] in ("below-target", "above-target"):
         actions.append({"priority": len(actions) + 1, "domain": "risk_posture",
-                        "status": "opportunity", "text": "Room to add growth assets",
+                        "status": "review", "text": "Review allocation against the stated target",
                         "next_step": cross["risk_posture"]["line"], "run": "/portfolio-review"})
     return actions
 
@@ -404,18 +519,39 @@ def _prioritise(domains, spine, legs, cross):
 def run(picture, snapshot_mode=False):
     """Full picture → {spine, cross_domain, scorecard}. snapshot_mode skips the legs:
     spine + emergency-fund/protection flags only, no scorecard fan-out."""
+    if not isinstance(picture, dict):
+        raise ValueError("wealth picture must be an object")
+    for key in ("snapshot", "positions", "profile", "legs"):
+        if picture.get(key) is not None and not isinstance(picture[key], dict):
+            raise ValueError(f"{key} must be an object")
+    for key, value in (picture.get("legs") or {}).items():
+        if value is not None and not isinstance(value, dict):
+            raise ValueError(f"{key} leg must be an object")
     spine = build_spine(picture.get("snapshot"), picture.get("breakdown"),
-                        picture.get("positions"))
+                        picture.get("positions"), picture.get("liabilities"))
     legs = picture.get("legs") or {}
     profile = picture.get("profile") or {}
     cashflow = legs.get("cashflow")
+    reserve, reserve_evidence, reserve_gap = _reserve(profile)
+    if reserve_gap:
+        spine["gaps"].append(reserve_gap)
+    else:
+        spine["liquid"] = reserve
+        spine["reserve_evidence"] = reserve_evidence
+        spine["gaps"] = [gap for gap in spine["gaps"] if not gap.startswith("emergency-reserve availability unverified:")]
 
     exp, exp_basis = _monthly_expenses(cashflow, profile)
     ef = emergency_fund(spine["liquid"], exp)
+    if exp_basis and "floor" in exp_basis:
+        ef = {"status": "not_assessed", "months": None,
+              "months_upper_bound": ef.get("months"),
+              "line": "recurring expenses are only a floor; complete monthly spending is needed to assess runway"}
     ef["expense_basis"] = exp_basis
+    ef["reserve_evidence"] = reserve_evidence
     prot = protection_read(legs.get("protection"))
     age = profile.get("age")
-    risk = risk_posture(spine["equity_share_pct"], ef["status"], prot["status"], age)
+    risk = risk_posture(spine["equity_share_pct"], ef["status"], prot["status"], age,
+                        equity_band=profile.get("equity_band"))
 
     cross = {"emergency_fund": ef, "protection": prot, "risk_posture": risk}
 

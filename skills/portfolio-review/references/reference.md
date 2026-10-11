@@ -1,56 +1,35 @@
 # Portfolio review rubric
 
-Grounded in Varsity Fundamental Analysis (due-diligence checklist), Trading Systems (expectancy, position discipline), and Personal Finance (asset allocation chapters).
+Use this rubric to identify evidence requiring review. Thresholds are configurable research heuristics, not statutory limits, forecasts, or automatic instructions to transact.
 
-## The two-book separation
+## Trades and investments
 
-Trades and investments answer to different judges — the first mistake reviews catch is positions migrating between books ("it fell, so now it's a long-term investment"). Classify every holding into one book and hold it to that book's rules:
+Judge a recorded trade against its own entry, stop, target, invalidation and time-stop rules. Do not impose a universal holding period or infer the trade plan from a recent acquisition. Missing rationale is a review gap. A recommended exit and a confirmed broker fill are different events.
 
-- **Trading book**: judged by the system — entry/SL/target honored, time-stop ~4 weeks. An SL-hit position still in the account is a rule breach, not a market opinion.
-- **Investment book**: judged by the business — the fundamental drift checks below. Price drawdown alone is not an exit reason here; thesis damage is.
+For an investment, compare the current business evidence with its recorded thesis and comparable earlier periods. Price drawdown alone does not prove thesis failure.
 
-## The performance lens
+## Performance and health
 
-**XIRR is the primary performance lens** where the book carries it — a real laggard is a poor *held* XIRR, not a point-to-point guess. Where XIRR is absent the read is labelled inferred.
+Held XIRR reflects the investor's dated cash flows. A category return or published NAV CAGR is usually a different measure; the same start/end dates do not make the two comparable. To compare investor outcomes, a benchmark simulation needs those same dated cash flows. If unavailable, report the measures separately without inferring underperformance from their difference. Missing XIRR remains unavailable.
 
-## Investment-book drift checks (exit/trim triggers)
+Sourced deterioration in returns on capital, margins, debt service, cash conversion or governance can warrant review. Compare like reporting periods and bases, account for business-specific economics, and distinguish allegations from established findings. A single ratio cutoff or shareholding movement does not independently establish an exit, trim or keep verdict.
 
-Would-I-buy-today test on current data, focusing on deterioration:
-- ROCE/ROE declining 2+ consecutive years, or margin structure broken vs 5y band
-- Debt/equity rising materially or interest coverage < 3
-- Promoter pledge appearing/increasing; promoter stake dropping without dilution explanation
-- CFO diverging from EBITDA for 2+ years (profits not converting to cash)
-- Auditor qualification, KMP churn, related-party creep
-- Valuation stretch alone (P/E > 2× own 5y median with flat growth) → TRIM, not EXIT
+Fund quick digests are descriptive. Use available comparable performance, fees and changes as triage evidence; confirm consequential fund judgments through the bounded deep review. Portfolio overlap can indicate redundancy but does not by itself determine which fund to sell. Consider mandate, cost, goals and switching implications before recommending a change. Fund count alone is not proof of poor diversification.
 
-Three KEEP-grade reasons that survive drawdowns: intact growth + ROCE, falling debt, rising promoter/institutional holding. Name which applies.
+## Concentration and coverage
 
-## Concentration thresholds (multi-dimensional)
+`finance/compute/allocation.py` owns the thresholds and arithmetic. Defaults flag a stock above 10% of the valued book, a sector above 25% (above 35% escalates the flag), a small/micro sleeve above 30%, an AMC above 40% of the **fund sleeve**, and asset drift above 10 percentage points. These are review conventions. Use explicitly supplied plan limits when available and disclose the applied limits.
 
-`finance/compute/allocation.py` computes every dimension and returns each breach with its ₹-at-risk and a concrete ₹ trim. The thresholds it defaults to:
+Cross-account rows of the same ticker combine for stock concentration. Fund ownership and classification remain separate: personal sources establish units and values; approved decision sources establish cap and style. Missing fund look-through is a coverage gap, not evidence that the fund owns no smallcaps or shares no sectors with direct holdings.
 
-- **Single stock** > 10% of portfolio → flag (winner concentration is allowed but must be a conscious choice)
-- **Single sector** > 25% → flag; > 35% → urgent
-- **Market cap** — small+microcap sleeve > 30% → liquidity-risk flag (exit doors are narrow in corrections). Cap split is classified by **SEBI market-cap rank** (`get_stock_ratios.cap_rank`) plus fund look-through, never guessed per row.
-- **AMC** — one fund house > 40% of the fund sleeve → flag (platform/AMC-level risk hides behind fund-level diversification)
-- **Investing style** — the growth/value/factor mix (from mf-analysis style data); a single-factor tilt is a conscious choice, not a default — surface it
-- **Trading book** total > 20% of overall portfolio → the tail is wagging the dog
+Supplied breakdowns must be disjoint category amounts or explicit percentages of the full valued book. Do not pass equity-sleeve percentages as whole-book percentages. Report the denominator and coverage for every dimension. A tagged subset is never renormalized to imply complete coverage.
 
-Because dimensions like market-cap and style are portfolio-level weights, the engine takes them as pre-aggregated breakdowns (provenance-honest) while single-stock/sector/AMC aggregate the per-holding tags; missing tags lower a dimension's coverage rather than reading as zero.
+## Rebalancing
 
-## Fund-sleeve checks (method summary — depth deferred to mf-analysis)
+Use the user's stated targets; there is no automatic age-based target. Target weights must sum to 100%. When targets are absent, report relative allocations. When values or asset classifications are incomplete, preserve the engine's withheld move amounts and request the missing evidence.
 
-Every held fund gets an `mf-analysis quick` digest; the checks below decide which funds escalate to `mf-analysis deep`:
+A complete-book rupee move is a calculation under a fixed-total scenario, not an execution instruction or tax-adjusted optimum. Selling one asset and buying another differs from adding fresh cash, which changes the denominator. State the scenario and consider liquidity, costs and taxes before advising implementation. Do not claim an engine-calculated trim amount applies unchanged to a fresh-inflow plan.
 
-- **Held XIRR** materially below the category's return over the same window → REVIEW (the primary laggard signal on the real book); a persistent laggard confirmed by the deep run → EXIT candidate (switch, mind capital gains + exit load)
-- Expense-ratio drag vs category, returns behind the category over 1/3/5Y, or AUM instability → escalate to deep (which is where style drift and peer standing are established)
-- Pairwise overlap > 60% between two equity funds → redundant; keep the cheaper/more consistent one (overlap needs the look-through — defer the pair to `/mf-analysis`)
-- Fund count sanity: > 6–7 equity funds is diworsification
+## Reporting
 
-## Allocation drift
-
-Varsity's allocation chapters: the equity:debt split (age/goal-based, e.g. 100−age in equity as a default anchor) does more work than any selection decision. Drift > 10pp from plan → rebalance; specify the ₹ move and which instrument (fresh inflows first to avoid tax, then switches). Rebalancing is also the only systematic sell-high mechanism a personal portfolio has — frame it that way.
-
-## Report tone
-
-Verdicts must be falsifiable and specific: "EXIT — pledge up from 0 to 18% over two quarters while ROCE fell to 9%" not "weak fundamentals". Maximum five actions — a 15-item action list produces zero actions.
+Lead with the finding, its evidence and coverage limits. Keep the action list prioritized and short. Use REVIEW when the evidence cannot support a stronger verdict; do not fill every holding with a confident keep/exit label simply to complete a table.

@@ -11,6 +11,8 @@ The filter language is a tiny SAFE vectorized evaluator, NOT python eval.
 from __future__ import annotations
 
 import re
+import math
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 
 from finance.compute import ta
 
@@ -25,46 +27,85 @@ pd = ta.pd
 #   "<expr> or <expr>"            disjunction                  ("nr7 or inside_bar")
 # where <term> is a column, a number, or "<number> * <col>"   ("1.5 * vol10").
 # AND across conditions is expressed by listing them separately (entry_filters).
+def _block(doc, key):
+    if not isinstance(doc, dict):
+        raise ValueError("strategy blocks must be mappings")
+    value = doc.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{key} must be a mapping")
+    return value
+
+
+def _conditions(value, label, required=False):
+    """One grammar contract for entry, screening, and exit condition lists."""
+    if value is None:
+        value = []
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"{label} must be a nonempty expression or a list of nonempty expressions")
+    if required and not value:
+        raise ValueError(f"{label} needs at least one machine condition")
+    return [item.strip() for item in value]
+
+
+def _constant(token):
+    value = float(token)
+    if not math.isfinite(value):
+        raise ValueError("expression constants must be finite")
+    return value
+
+
 def _term(token, df):
-    """A term -> a Series or a scalar (number)."""
+    """A finite numeric constant, a column, or a constant times a term."""
     token = token.strip()
     if "*" in token:
-        a, b = (t.strip() for t in token.split("*", 1))
-        return float(a) * _term(b, df)
+        a, b = (part.strip() for part in token.split("*", 1))
+        return _constant(a) * _term(b, df)
+    # Try numeric syntax separately so a nonfinite number cannot fall through as
+    # an alleged missing column. Actual columns keep their case-sensitive names.
     try:
-        return float(token)
+        float(token)
     except ValueError:
         if token not in df.columns:
             raise KeyError(f"unknown column in filter: {token!r}")
         return df[token]
+    return _constant(token)
 
 
 def eval_series(expr, df):
-    """Evaluate one filter expression over `df` -> boolean Series (NaN -> False)."""
-    e = (expr.strip().replace(" OR ", " or ").replace(" AND ", " and ")
-         .replace(" BETWEEN ", " between "))
+    """Evaluate the safe grammar, always returning an aligned boolean Series."""
+    expr = _conditions(expr, "filter", required=True)
+    if len(expr) != 1:
+        raise ValueError("eval_series accepts one expression")
+    e = re.sub(r"\s+", " ", expr[0])
+    e = re.sub(r"\b(or|and|between)\b", lambda match: match[0].lower(), e, flags=re.I)
+
+    def aligned(value):
+        return value.fillna(False).astype(bool) if isinstance(value, pd.Series) else pd.Series(bool(value), index=df.index)
+
     if " or " in e:
-        out = None
+        out = pd.Series(False, index=df.index)
         for part in e.split(" or "):
-            s = eval_series(part, df)
-            out = s if out is None else (out | s)
-        return out.fillna(False)
+            out |= eval_series(part, df)
+        return out
     if " between " in e and " and " in e:
         col, rest = e.split(" between ", 1)
         lo, hi = rest.split(" and ", 1)
-        v = _term(col, df)
-        return ((v >= _term(lo, df)) & (v <= _term(hi, df))).fillna(False)
+        value = _term(col, df)
+        return aligned((value >= _term(lo, df)) & (value <= _term(hi, df)))
     for op in (">=", "<=", ">", "<"):
         if op in e:
             a, b = e.split(op, 1)
             va, vb = _term(a, df), _term(b, df)
-            cmp = {">": lambda: va > vb, "<": lambda: va < vb,
-                   ">=": lambda: va >= vb, "<=": lambda: va <= vb}[op]()
-            return cmp.fillna(False) if hasattr(cmp, "fillna") else pd.Series(cmp, index=df.index)
-    col = e.strip()
-    if col not in df.columns:
-        raise KeyError(f"unknown column in filter: {col!r}")
-    return df[col].fillna(False).astype(bool)
+            compared = {">": lambda: va > vb, "<": lambda: va < vb,
+                        ">=": lambda: va >= vb, "<=": lambda: va <= vb}[op]()
+            return aligned(compared)
+    if e not in df.columns:
+        raise KeyError(f"unknown column in filter: {e!r}")
+    return aligned(df[e])
 
 
 def eval_filter(expr, row):
@@ -90,14 +131,13 @@ def referenced_features(spec):
     """The features a spec mentions in its technical/entry expressions — registered
     patterns/signals or parameterized indicator tokens (ema100, rsi9, hh50, ...) —
     so the engine materializes exactly those columns and nothing more."""
-    tech = (spec.get("screening", {}) or {}).get("technical", {}) or {}
-    entry = spec.get("entry", {}) or {}
-    exitb = spec.get("exit", {}) or {}
-    exprs = list(tech.get("compute_filters", []) or [])
-    exprs += list(entry.get("signal", []) or [])
-    exprs += list(entry.get("confirm_indicators", []) or [])
-    exit_sig = exitb.get("exit_signal")           # e.g. "Close > sma5" (mean-reversion exit)
-    exprs += (exit_sig if isinstance(exit_sig, list) else [exit_sig]) if exit_sig else []
+    tech = _block(_block(spec, "screening"), "technical")
+    entry = _block(spec, "entry")
+    exitb = _block(spec, "exit")
+    exprs = _conditions(tech.get("compute_filters"), "compute_filters")
+    exprs += _conditions(entry.get("signal"), "entry.signal")
+    exprs += _conditions(entry.get("confirm_indicators"), "confirm_indicators")
+    exprs += _conditions(exitb.get("exit_signal"), "exit_signal")
     names = set()
     for expr in exprs:
         for tok in re.findall(r"[A-Za-z_]\w*", str(expr)):
@@ -107,15 +147,8 @@ def referenced_features(spec):
 
 
 def entry_filters(spec):
-    """The machine-evaluable entry condition: prefer an explicit `entry.signal`
-    (the precise trigger, e.g. coil_breakout), else fall back to the coarse
-    `compute_filters` (for setups whose held state IS the entry)."""
-    entry = spec.get("entry", {}) or {}
-    sig = entry.get("signal")
-    if sig:
-        return list(sig)
-    tech = (spec.get("screening", {}) or {}).get("technical", {}) or {}
-    return list(tech.get("compute_filters", []) or [])
+    """Require an explicit executable entry; screening/prose cannot define trades."""
+    return _conditions(_block(spec, "entry").get("signal"), "entry.signal", required=True)
 
 
 def entry_signal_series(df, spec):
@@ -132,10 +165,9 @@ def exit_signal_series(df, spec):
     for exits a price target can't express (a mean-reversion close back above the
     5-SMA, a trend break below the 20-EMA). Empty when the spec names none, leaving
     stop/target/time-stop to govern the close."""
-    sig = (spec.get("exit", {}) or {}).get("exit_signal")
-    if not sig:
+    exprs = _conditions(_block(spec, "exit").get("exit_signal"), "exit_signal")
+    if not exprs:
         return pd.Series(False, index=df.index)
-    exprs = sig if isinstance(sig, list) else [sig]
     out = pd.Series(True, index=df.index)
     for f in exprs:
         out &= eval_series(f, df)
@@ -147,13 +179,17 @@ def floor_stop(entry, stop, atr):
     A narrow-range entry (NR/inside bar, a squeeze low) can sit a hair under the
     close, collapsing `risk = entry - stop` toward zero and exploding every
     R-multiple; no one trades a sub-1% stop anyway. Applied on both paths so live
-    and backtest price risk identically."""
-    floor = max(0.5 * float(atr), 0.01 * float(entry))
-    return min(float(stop), float(entry) - floor)
+    and backtest price risk identically. A nonfinite input is unusable, never unfloored."""
+    entry, stop, atr = float(entry), float(stop), float(atr)
+    if not all(math.isfinite(v) for v in (entry, stop, atr)) or atr < 0:
+        raise ValueError("entry, stop and ATR must be usable finite values")
+    floor = max(0.5 * atr, 0.01 * entry)
+    return min(stop, entry - floor)
 
 
 def resolve_stop(df, kind):
     """Stop level from spec.exit.stop on the latest bar."""
+    validate_exit({"stop": kind})
     last = df.iloc[-1]
     if kind == "ema50_minus_2atr":
         return float(last["ema50"] - 2 * last["atr14"])
@@ -162,37 +198,124 @@ def resolve_stop(df, kind):
     return float(df["Low"].rolling(10).min().iloc[-1])   # recent_swing_low
 
 
+def minimum_rrr(exitb):
+    """Validate the trading discipline floor shared by live and historical plans."""
+    if exitb is None:
+        exitb = {}
+    if not isinstance(exitb, dict):
+        raise ValueError("exit must be a mapping")
+    value = exitb.get("min_rrr", 1.5)
+    try:
+        result = float(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("min_rrr must be finite and at least 1.5") from exc
+    if isinstance(value, bool) or not math.isfinite(result) or result < 1.5:
+        raise ValueError("min_rrr must be finite and at least 1.5")
+    return result
+
+
+def target_kind(exitb):
+    """Exact executable target names; prose belongs in the strategy rationale."""
+    kind = exitb.get("target", "trailing" if exitb.get("trail_atr") else
+                     "signal" if exitb.get("exit_signal") else "min_rrr")
+    if kind not in ("measured_move", "min_rrr", "next_resistance", "trailing", "signal", "none"):
+        raise ValueError("target must be measured_move, min_rrr, next_resistance, trailing, signal or none; put prose in rationale")
+    if kind == "trailing" and not exitb.get("trail_atr"):
+        raise ValueError("target trailing requires a positive trail_atr")
+    if kind == "signal" and not _conditions(exitb.get("exit_signal"), "exit_signal"):
+        raise ValueError("target signal requires exit_signal")
+    if kind == "none" and not (exitb.get("trail_atr") or _conditions(exitb.get("exit_signal"), "exit_signal")):
+        raise ValueError("target none requires trail_atr or exit_signal")
+    return kind
+
+
+def validate_exit(exitb):
+    """Reject malformed executable exit rules before either engine fetches data."""
+    minimum_rrr(exitb)
+    exitb = {} if exitb is None else exitb
+    stop = exitb.get("stop", "recent_swing_low")
+    if stop not in ("recent_swing_low", "ema50_minus_2atr", "range_low"):
+        raise ValueError("stop must be recent_swing_low, ema50_minus_2atr or range_low")
+    sessions = exitb.get("time_stop_sessions", 20)
+    if type(sessions) is not int or sessions <= 0:
+        raise ValueError("time_stop_sessions must be a positive integer")
+    trail = exitb.get("trail_atr", 0)
+    if isinstance(trail, bool) or not isinstance(trail, (int, float)):
+        raise ValueError("trail_atr must be a finite nonnegative number")
+    try:
+        valid = math.isfinite(trail) and trail >= 0
+    except OverflowError:
+        valid = False
+    if not valid:
+        raise ValueError("trail_atr must be a finite nonnegative number")
+    target_kind(exitb)
+
+
 def target_from_spec(entry, risk, exitb, last):
     """(target_price, basis) from spec.exit.target. measured_move -> the prior
     consolidation height; else a next-resistance proxy placed at min_rrr."""
-    min_rrr = float(exitb.get("min_rrr", 1.5))
-    target_spec = str(exitb.get("target", "")).lower()
-    if "measured" in target_spec:
-        return entry + float(last["hh20"] - last["ll20"]), "measured-move"
-    return entry + min_rrr * risk, "min-RRR (next resistance to be confirmed on chart)"
+    entry, risk = Decimal(str(entry)), Decimal(str(risk))
+    min_rrr = Decimal(str(minimum_rrr(exitb)))
+    kind = target_kind(exitb)
+    if kind in ("trailing", "signal", "none"):
+        raise ValueError("dynamic exit has no fixed target: backtest supported, live entry requires a sourced fixed objective")
+    if kind == "measured_move":
+        target = entry + Decimal(str(last["hh20"])) - Decimal(str(last["ll20"]))
+        return float(target.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)), "measured-move"
+    target = (entry + min_rrr * risk).quantize(Decimal("0.01"), rounding=ROUND_CEILING)
+    return float(target), "min-RRR (next resistance to be confirmed on chart)"
+
+
+def risk_parameters(spec, capital, risk_pct=None):
+    """The shared capital/risk boundary for live sizing and historical runs."""
+    sizing = spec.get("sizing") or {}
+    if not isinstance(sizing, dict):
+        raise ValueError("sizing must be a mapping")
+    raw_risk = risk_pct if risk_pct is not None else sizing.get("risk_per_trade_pct", 1.0)
+    if isinstance(capital, bool) or isinstance(raw_risk, bool):
+        raise ValueError("capital and risk percent must be numbers")
+    try:
+        capital, risk_pct = float(capital), float(raw_risk)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("capital and risk percent must be numbers") from exc
+    if not math.isfinite(capital) or capital <= 0:
+        raise ValueError("capital must be finite and positive")
+    if not math.isfinite(risk_pct) or not 0 < risk_pct <= 1:
+        raise ValueError("risk per trade must be positive and at most 1%")
+    return capital, risk_pct
 
 
 def build_signal(df, spec, capital, entry_override=None):
     """Construct a live trade signal for one stock from the spec. Returns a dict,
     or {skip: reason} when the RRR gate or a malformed stop rejects it."""
-    last = df.iloc[-1]
-    exitb = spec.get("exit", {}) or {}
-    sizing = spec.get("sizing", {}) or {}
-    min_rrr = float(exitb.get("min_rrr", 1.5))
-
-    entry = float(entry_override) if entry_override is not None else float(last["Close"])
-    stop = floor_stop(entry, resolve_stop(df, exitb.get("stop", "recent_swing_low")),
-                      last["atr14"])
-    if not (stop < entry) or (entry - stop) / entry > 0.15:
-        return {"skip": f"malformed/too-wide stop (entry {entry:.2f}, stop {stop:.2f})"}
-    risk = entry - stop
-    target, target_basis = target_from_spec(entry, risk, exitb, last)
-    rrr = (target - entry) / risk
-    if rrr < min_rrr:
-        return {"skip": f"RRR {rrr:.2f} < min {min_rrr}"}
-
-    risk_pct = float(sizing.get("risk_per_trade_pct", 1.0))
-    qty = max(int((capital * risk_pct / 100) / risk), 0)
+    try:
+        capital, risk_pct = risk_parameters(spec, capital)
+        last = df.iloc[-1]
+        exitb = _block(spec, "exit")
+        validate_exit(exitb)
+        min_rrr = Decimal(str(minimum_rrr(exitb)))
+        raw_entry = float(entry_override) if entry_override is not None else float(last["Close"])
+        atr = float(last["atr14"])
+        raw_stop = resolve_stop(df, exitb.get("stop", "recent_swing_low"))
+        if not all(math.isfinite(v) for v in (raw_entry, atr, raw_stop)) or raw_entry <= 0 or atr < 0:
+            raise ValueError("entry, stop and ATR must be usable finite values")
+        # Size the published plan. Rounding after sizing can exceed the risk budget.
+        entry_d = Decimal(str(raw_entry)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        stop = floor_stop(float(entry_d), raw_stop, atr)
+        stop_d = Decimal(str(stop)).quantize(Decimal("0.01"), rounding=ROUND_FLOOR)
+        entry, stop = float(entry_d), float(stop_d)
+        if not 0 < stop_d < entry_d or (entry_d - stop_d) / entry_d > Decimal("0.15"):
+            return {"skip": f"malformed/too-wide stop (entry {entry:.2f}, stop {stop:.2f})"}
+        risk_d = entry_d - stop_d
+        target, target_basis = target_from_spec(entry_d, risk_d, exitb, last)
+        rrr_d = (Decimal(str(target)) - entry_d) / risk_d
+        if not rrr_d.is_finite() or rrr_d < min_rrr:
+            return {"skip": f"RRR {rrr_d:.2f} < min {min_rrr}"}
+        budget = Decimal(str(capital)) * Decimal(str(risk_pct)) / 100
+        qty = int(budget / risk_d)
+        risk, rrr = float(risk_d), float(rrr_d)
+    except (ValueError, TypeError, KeyError, IndexError, InvalidOperation, ZeroDivisionError) as exc:
+        return {"skip": str(exc)}
     if qty == 0:
         return {"skip": "qty rounds to 0 at this risk budget"}
 
@@ -227,25 +350,19 @@ def build_bt_strategy(spec, capital, risk_pct=None):
     exit.stop (floored), a fixed target gated at min_rrr, an optional ATR trailing
     stop, an optional discretionary exit_signal, and the time_stop; size by
     risk_per_trade_pct. The frame must come from prepare_backtest_frame()."""
+    exitb = _block(spec, "exit")
+    validate_exit(exitb)
+    min_rrr = minimum_rrr(exitb)
+    capital, rpct = risk_parameters(spec, capital, risk_pct)
     ta._need("backtesting")
     from backtesting import Strategy
-
-    exitb = spec.get("exit", {}) or {}
-    sizing = spec.get("sizing", {}) or {}
     stop_kind = exitb.get("stop", "recent_swing_low")
-    target_spec = str(exitb.get("target", "")).lower()
-    measured = "measured" in target_spec
-    trail_atr = float(exitb.get("trail_atr", 0) or 0)
+    kind = target_kind(exitb)
+    measured = kind == "measured_move"
+    trail_atr = float(exitb.get("trail_atr", 0))
     use_exit_signal = bool(exitb.get("exit_signal"))
-    # When a trail or an exit_signal governs the close, a `trailing`/`none`/`signal`
-    # target drops the take-profit so a winner runs to the trail instead of capping
-    # at min_rrr. A spec with neither keeps the default target.
-    no_target = (("trail" in target_spec or target_spec in ("", "none", "signal"))
-                 and (trail_atr or use_exit_signal))
-    min_rrr = float(exitb.get("min_rrr", 1.5))
-    time_stop = int(exitb.get("time_stop_sessions", 20) or 20)
-    rpct = float(risk_pct if risk_pct is not None
-                 else sizing.get("risk_per_trade_pct", 1.0))
+    no_target = kind in ("trailing", "none", "signal")
+    time_stop = exitb.get("time_stop_sessions", 20)
 
     class SpecStrategy(Strategy):
         def init(self):
@@ -275,9 +392,14 @@ def build_bt_strategy(spec, capital, risk_pct=None):
             elif stop_kind == "range_low":
                 stop = float(self.data.ll20[-1])
             else:                                   # recent_swing_low
+                if len(self.data) < 10:              # same rolling warmup as live
+                    return
                 stop = float(min(self.data.Low[-10:]))
             entry = float(self.data.Close[-1])      # sizing proxy; fill is next open
-            stop = floor_stop(entry, stop, self.data.atr14[-1])
+            try:                                    # warmup bars: live skips these too
+                stop = floor_stop(entry, stop, self.data.atr14[-1])
+            except ValueError:
+                return
             if not (stop < entry) or (entry - stop) / entry > 0.15:
                 return
             risk = entry - stop
@@ -293,8 +415,8 @@ def build_bt_strategy(spec, capital, risk_pct=None):
             qty = min(qty, int(self.equity * 0.95 / entry))   # never over-commit cash
             if qty < 1:
                 return
-            # tag the risk-per-share so the R-multiple is recoverable even when the
-            # trade later closes on the time-stop (SL/TP columns can go NaN then)
-            self.buy(size=qty, sl=stop, tp=target, tag=round(risk, 4))
+            # Preserve the original stop through trailing/closing. Realized R uses
+            # the actual next-open fill, which can differ from this sizing proxy.
+            self.buy(size=qty, sl=stop, tp=target, tag={"initial_stop": stop})
 
     return SpecStrategy

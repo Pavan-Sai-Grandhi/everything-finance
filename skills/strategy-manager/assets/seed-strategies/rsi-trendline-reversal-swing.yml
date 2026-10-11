@@ -7,7 +7,7 @@ goal: "Buy trendline touches in an uptrend where RSI holds the 38-45 bullish-sup
 source_references:
   - ".refs/swing-strategies.txt §3 Strategy 3 — RSI + Trendline Reversal"
 
-status: draft
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-06-12
   validated_at: null
@@ -58,7 +58,7 @@ entry:
 
 exit:
   stop: recent_swing_low                                  # just below the trendline / swing low
-  target: "recent swing high; min 2R"
+  target: min_rrr  # Approximation: does not compute the referenced recent swing high.
   min_rrr: 2.0
   time_stop_sessions: 15
 

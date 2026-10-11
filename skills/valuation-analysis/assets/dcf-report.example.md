@@ -13,7 +13,7 @@ axis: valuation
 <Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case.>
 
 
-> Story-driven FCFF DCF (Damodaran) triangulated with the multiples read. A model, not a price target. Every input is sourced below.
+> <FCFF discounted at WACC | equity cash flow discounted at cost of equity>, compared with the multiples read. A model, not a price target. Observed inputs carry sources and dates; forecast assumptions carry explicit rationales.
 
 **Combined stance: Undervalued / Fair / Overvalued** — <one line on what the DCF and the relative read jointly say, and which led, by confidence>.
 
@@ -24,9 +24,9 @@ axis: valuation
 ## The story
 <3–4 sentences: the narrative the numbers encode — what drives growth, why margins land where they do, what it costs to grow. The numbers below must be consistent with this story.>
 
-## Assumptions (each traced to a source)
+## Inputs and assumptions (sources, dates and rationales)
 
-<Where the engine returned a non-empty `revisions` ledger, add a `was → now` line per changed lever with the reason it moved. A lever that changed after a flag was raised is stated, never quietly replaced.>
+<When revising a valuation, cite both immutable DCF evidence paths and add a `was → now` line per changed lever with the reason it moved. A same-day call is not automatically a revision of another session’s valuation.>
 | Lever | Value / path | Source / justification |
 |---|---|---|
 | Base revenue | ₹<…> Cr | Revenue from Operations FY<…> (consolidated; non-operating income excluded) |
@@ -43,6 +43,7 @@ axis: valuation
 Lease / R&D capitalisation: <applied | not material | data gap — explain>.
 
 ## Intrinsic value
+<For equity-shaped runs, use earnings/ROE/cost-of-equity labels throughout. The discounted cash-flow total is equity value before adjustments, not enterprise value. Do not present an equity-mode margin-shift scenario as an operating forecast.>
 - **Intrinsic value/share: ₹<…>** (equity ₹<…> Cr; EV ₹<…> Cr)
 - <If haircuts applied: going-concern ₹<…>/sh → ₹<…>/sh after <failure/complexity> adjustment.>
 - Current price: ₹<…> → **DCF margin of safety: <±…>%** (`dcf_mos`)
@@ -51,7 +52,7 @@ Lease / R&D capitalisation: <applied | not material | data gap — explain>.
 ### Sensitivity — the levers that move value (story-driver grid: growth × steady-state margin)
 <paste `story_sensitivity_md` from the engine verbatim — do not retype the numbers>
 
-Lead with this **range** (and the `duration` read: does extending the *demonstrated* growth a couple of years close the gap to price?).
+Explain what this scenario range varies and holds fixed; it is not a probability interval. Evaluate the `duration` cases against independent business evidence. Do not choose a growth duration merely because it closes the gap to the market price. For an unavailable grid, report its data gap instead of inventing a range.
 
 <details><summary>Terminal WACC × terminal growth (secondary mechanical check; explicit WACC and operations stay fixed)</summary>
 
@@ -60,8 +61,8 @@ Lead with this **range** (and the `duration` read: does extending the *demonstra
 </details>
 
 ## Reverse DCF — what ₹<price> already assumes
-- To justify ₹<price>, the market is pricing in **~<implied>% revenue growth** (year 1) ≈ **~<implied CAGR>% over <N> years** — vs your base story of <base>% and the company's <history>% history / <guidance> guidance.
-- **Plausible?** <yes/no and why — TAM, peer precedent, guidance>. <If solved:false, quote the reason — price below conservative value (cheap) or beyond any credible assumption (richly priced).>
+- Holding the other model assumptions fixed, one solved path matching ₹<price> implies **~<implied>% revenue growth** (year 1) ≈ **~<implied CAGR>% over <N> years** — vs your base story of <base>% and the company's <history>% history / <guidance> guidance.
+- **Plausible?** <yes/no and why — TAM, peer precedent, guidance>. <If solved:false, quote the reason and omit implied assumptions. Failure to bracket or converge does not establish that the stock is cheap or expensive. A solved root need not be unique.>
 - (If the bull thesis is margin-led, also: implied operating margin of **~<m>%** vs <base/peer>%.)
 
 ## Relative value — multiples vs peers

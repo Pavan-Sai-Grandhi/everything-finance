@@ -20,6 +20,9 @@
   .bucket-head .vs { font-size:12px; color:var(--muted); font-weight:400; }
   .bar { height:10px; border-radius:5px; background:#21262d; position:relative; overflow:hidden; }
   .bar .fill { height:100%; border-radius:5px; }
+  .bar .fill.good { background:var(--green); }
+  .bar .fill.bad { background:var(--red); }
+  .bar .fill.warn { background:var(--amber); }
   .bar .target { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text); opacity:.6; }
   /* fill width = actual % of inflow; .target left = target % of inflow.
      fill color: green within band, amber near edge (90-100% of target), red breached */
@@ -33,14 +36,19 @@
 </style>
 </head>
 <body>
+  <!-- Fill from verified artifacts. HTML-escape every text field; class fields must
+       be one of good/bad/warn (or empty). Numeric style fields must be finite,
+       nonnegative numbers. Omit gauges where income/targets are unassessed;
+       clamp visual widths to 100 while retaining the actual percentage in text.
+       SAVINGS_RATE_DISPLAY includes its unit or reads "Unassessed". -->
   <h1>Budget Discipline — {{MONTH}}</h1>
   <div class="meta">Inflow ₹{{TOTAL_INFLOW}} · Outflow ₹{{TOTAL_OUTFLOW}} · statements: {{SOURCES}}</div>
 
   <div class="headline">
-    <div class="stat"><div class="num {{SAVINGS_CLASS}}">{{SAVINGS_RATE}}%</div><div class="lbl">Savings + investments rate</div></div>
+    <div class="stat"><div class="num {{SAVINGS_CLASS}}">{{SAVINGS_RATE_DISPLAY}}</div><div class="lbl">Savings + investments rate</div></div>
     <div class="stat"><div class="num">₹{{INVESTED}}</div><div class="lbl">Invested</div></div>
     <div class="stat"><div class="num {{LEFTOUT_CLASS}}">₹{{LEFTOUT}}</div><div class="lbl">Leftout</div></div>
-    <div class="stat"><div class="num">₹{{RECURRING_MONTHLY}}</div><div class="lbl">Committed recurring / mo</div></div>
+    <div class="stat"><div class="num">₹{{RECURRING_MONTHLY}}</div><div class="lbl">Observed recurring / mo</div></div>
     <div class="stat"><div class="num">{{TXN_COUNT}}</div><div class="lbl">Transactions</div></div>
   </div>
 
@@ -52,7 +60,7 @@
       <span class="vs">₹{{BUCKET_ACTUAL}} · {{BUCKET_PCT}}% of inflow <em>(target {{BUCKET_TARGET}})</em></span>
     </div>
     <div class="bar">
-      <div class="fill" style="width:{{BUCKET_PCT}}%; background:var(--green);"></div>
+      <div class="fill {{BUCKET_STATUS_CLASS}}" style="width:{{BUCKET_BAR_PCT}}%;"></div>
       <div class="target" style="left:{{BUCKET_TARGET_PCT}}%;"></div>
     </div>
   </div>
@@ -74,22 +82,26 @@
     </tbody>
   </table>
 
-  <h2>Committed recurring spend</h2>
-  <div class="meta">₹{{RECURRING_MONTHLY}}/mo across {{RECURRING_COUNT}} recurring charges (dormant excluded from the total).</div>
+  <h2>Recurring patterns and candidates</h2>
+  <div class="meta">₹{{RECURRING_MONTHLY}}/mo across {{RECURRING_COUNT}} observed active patterns. Dormant and unconfirmed single charges are excluded; these patterns do not establish contractual obligations.</div>
   <table class="recurring">
     <thead><tr><th>Merchant</th><th>Cadence</th><th>Amount</th><th>₹/mo</th><th>Seen</th><th>Flag</th></tr></thead>
     <tbody>
       <!-- ROW per detected subscription/EMI/membership, sorted by ₹/mo desc.
            FLAG cell: 🆕 new · ⬆️ price creep (show prior→now) · 💤 dormant (lapsed — confirm cancel).
-           Low-confidence rows (single-period inferred): append "· inferred". -->
+           Low-confidence single-charge candidates: cadence "Unconfirmed", ₹/mo "—";
+           never turn null monthly equivalents into zero or an assumed monthly charge. -->
       <tr><td>{{MERCHANT}}</td><td>{{CADENCE}}</td><td>₹{{AMOUNT}}</td><td>₹{{MONTHLY_EQUIV}}</td><td>{{MONTHS_OBSERVED}}</td><td class="{{FLAG_CLASS}}">{{RECURRING_FLAG}}</td></tr>
     </tbody>
   </table>
+
+  <h2>Data gaps</h2>
+  <div class="meta">{{DATA_GAPS}}</div>
 
   <h2>Flags</h2>
   <!-- one .flag per breach (red) or near-edge (warn-flag), with top driver transactions -->
   <div class="flag">{{FLAG_TEXT}}</div>
 
-  <div class="footer">Targets from Monthly Budget Planning workbook ({{TARGET_SOURCE}}). Uncategorized: ₹{{UNCAT_AMOUNT}} across {{UNCAT_COUNT}} transactions.</div>
+  <div class="footer">Target source: {{TARGET_SOURCE}} (user workbook or labelled framework comparison). Uncategorized: ₹{{UNCAT_AMOUNT}} across {{UNCAT_COUNT}} transactions.</div>
 </body>
 </html>

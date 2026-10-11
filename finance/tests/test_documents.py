@@ -346,8 +346,8 @@ def test_scanned_pdf_yielding_no_text_is_a_gap():
         env = call(concalls=0)
         check("an empty conversion is not passed off as a document",
               env["data"]["documents"] == [], env["data"])
-        check("the gap says the PDF is an image, not text",
-              any("scanned image" in g for g in env["gaps"]), env["gaps"])
+        check("the gap reports empty extraction without inventing a cause",
+              any("no readable text" in g for g in env["gaps"]), env["gaps"])
     _harness(body, pdftotext="")
 
 
@@ -378,7 +378,8 @@ def test_cache_key_is_the_url():
         env = call()
         for row in env["data"]["documents"]:
             check(f"{row['kind']} text is cached under the URL key, in the cache tier",
-                  os.path.basename(row["text_path"]) == dz._key(row["url"]) + ".txt"
+                  os.path.basename(row["text_path"]).startswith(dz._key(row["url"]) + "-")
+                  and row["text_path"].endswith(".txt")
                   and os.sep + "cache" + os.sep in row["text_path"], row["text_path"])
     _harness(body)
 
@@ -389,7 +390,7 @@ def test_raw_source_deleted_after_conversion():
         for row in env["data"]["documents"]:
             src, txt, meta = dz._cache_paths(row["url"])
             check(f"{row['kind']}: the extracted .txt is kept",
-                  os.path.isfile(txt), txt)
+                  os.path.isfile(row["text_path"]), row["text_path"])
             check(f"{row['kind']}: the raw .src download is deleted after conversion",
                   not os.path.isfile(src), src)
     _harness(body)
@@ -404,13 +405,17 @@ def test_label_recency_parses_year_and_quarter():
           dz._label_recency("Financial Year 2026 from bse") == (2026, 0))
     check("a quarter and year are parsed from a concall label",
           dz._label_recency("Q3 2025 Transcript") == (2025, 3))
-    check("the latest year in the label wins",
-          dz._label_recency("Annual Report 2023 (filed 2026)") == (2026, 0))
+    check("filing year does not replace the annual reporting period",
+          dz._label_recency("Annual Report 2023 (filed 2026)") == (2023, 0))
     check("a label with no year has no recency", dz._label_recency("Annual Report") is None)
+    check("short fiscal range uses its ending year", dz._label_recency("Annual Report 2024-25") == (2025, 0))
+    check("full fiscal range uses its ending year", dz._label_recency("Financial Year 2024/2025") == (2025, 0))
+    check("ambiguous unrelated years are not silently ordered", dz._label_recency("Transcript 2023 revised 2026") is None)
+
 
 
 def test_out_of_order_index_returns_the_true_latest():
-    docs = {"annual_reports": [{"label": "Financial Year 2024", "url": AR_OLD},
+    docs = {"annual_reports": [{"label": "Annual Report 2024 (filed 2027)", "url": AR_OLD},
                                {"label": "Financial Year 2026", "url": AR_NEW}],
             "concalls": []}
 
@@ -433,6 +438,96 @@ def test_undated_label_is_a_gap_not_a_silent_miscite():
         check("the document still comes back on the DOM-order fallback",
               env["data"]["documents_total"] == 1, env["data"])
     _harness(body, docs=docs, bodies={AR_URL: PDF_BYTES})
+
+
+def test_refresh_preserves_previously_returned_text():
+    bodies={CC_URL:b"<p>Original transcript fixture.</p>"}
+    def body(call,calls):
+        first=call(annual_reports=0)["data"]["documents"][0]
+        bodies[CC_URL]=b"<p>Corrected transcript fixture.</p>"
+        second=call(annual_reports=0,fresh=True)["data"]["documents"][0]
+        check("refresh returns distinct evidence for changed content",first["text_path"]!=second["text_path"])
+        check("earlier citation still has original text",open(first["text_path"]).read()=="Original transcript fixture.")
+        check("new citation contains corrected text",open(second["text_path"]).read()=="Corrected transcript fixture.")
+    _harness(body,docs={"concalls":[{"label":"Q1 2025","url":CC_URL}]},bodies=bodies)
+
+
+def test_invalid_request_counts_do_not_fetch():
+    from unittest import mock
+    for value in (-1, True, 1.5, "two", None):
+        with mock.patch.object(fundamentals,"fetch") as fetch:
+            result=dz.fetch("RELIANCE",annual_reports=value)
+        check("invalid document count rejects before index fetch",not fetch.called and not result["ok"],value)
+
+
+def test_malformed_index_rows_do_not_abort_good_documents():
+    docs={"annual_reports":[None, {"label":5,"url":AR_URL}, {"label":"FY2025","url":AR_URL}], "concalls":[]}
+    def body(call,calls):
+        env=call(concalls=0)
+        check("malformed index rows are gaps",env["ok"] and bool(env["gaps"]),env)
+        check("good document survives malformed neighbors",env["data"]["documents_total"]==1,env)
+        check("disabled section does not report missing documents",not any("no concalls" in gap for gap in env["gaps"]),env)
+    _harness(body,docs=docs)
+
+
+def test_same_length_cache_corruption_is_refetched():
+    def body(call,calls):
+        row=call(annual_reports=0)["data"]["documents"][0]
+        path=row["text_path"]
+        with open(path) as stream:
+            original=stream.read()
+        with open(path,"w") as stream:
+            stream.write(original.replace("18.4%","99.9%"))
+        before=len(calls)
+        result=call(annual_reports=0)
+        check("same-length corrupted document is refetched",len(calls)==before+1,calls)
+        check("corrupted cached text never reaches the reader",open(result["data"]["documents"][0]["text_path"]).read()==original)
+    _harness(body)
+
+
+def test_corrupt_cache_cannot_be_used_when_refresh_fails():
+    bodies={CC_URL:HTML_BODY.encode()}
+    def body(call,calls):
+        row=call(annual_reports=0)["data"]["documents"][0]
+        with open(row["text_path"]) as stream:
+            text=stream.read()
+        with open(row["text_path"],"w") as stream:
+            stream.write(text.replace("18.4%","99.9%"))
+        bodies[CC_URL]="fixture download failure"
+        env=call(annual_reports=0)
+        check("corruption plus failed refresh returns no document",not env["ok"] and env["data"]["documents_total"]==0,env)
+        check("both corruption and download failure remain visible",any("content hash" in gap for gap in env["gaps"]) and any("download failed" in gap for gap in env["gaps"]),env)
+    _harness(body,docs={"concalls":[{"label":"Q1 2025","url":CC_URL}]},bodies=bodies)
+
+
+def test_download_format_failures_are_not_reports():
+    cases=[(AR_URL,b"<html><title>Access denied</title></html>"),
+           (CC_URL,b"PK\x03\x04\x00\x00archive"),
+           (CC_URL,b"\xff\xfeinvalid bytes"),
+           (CC_URL,b"<html><title>Just a moment...</title><body>Checking your browser</body></html>")]
+    for url,payload in cases:
+        docs={"annual_reports":[{"label":"FY2025","url":url}]}
+        def body(call,calls):
+            env=call(concalls=0)
+            check("non-document response is a gap, not research text",not env["ok"] and env["data"]["documents_total"]==0 and bool(env["gaps"]),(url,env))
+        _harness(body,docs=docs,bodies={url:payload})
+
+
+def test_index_links_to_private_hosts_are_not_fetched():
+    calls = []
+    original = dz.transport.request
+    dz.transport.request = lambda url, **kw: calls.append(url) or (None, "unexpected")
+    try:
+        for url in ("http://localhost:8080/ar.pdf", "http://127.0.0.1/ar.pdf",
+                    "http://169.254.169.254/latest/meta-data", "http://10.0.0.5/ar.pdf",
+                    "http://[::1]/ar.pdf", "http://printer.local/ar.pdf", "ftp://bseindia.com/a.pdf"):
+            gaps = []
+            row = dz._document({"label": "AR", "url": url}, "annual_report", True, gaps)
+            check(f"index link to {url} is refused", row is None
+                  and any("refused" in g for g in gaps), gaps)
+    finally:
+        dz.transport.request = original
+    check("refused links never reach transport", calls == [], calls)
 
 
 if __name__ == "__main__":

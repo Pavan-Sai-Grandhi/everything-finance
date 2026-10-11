@@ -33,10 +33,12 @@ Reached through: get_fund_scan.
 from __future__ import annotations
 
 import json
+import math
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
+from finance import spine
 from finance.compute import rolling as R
 from finance.spine import envelope as _envelope, f as _f
 
@@ -156,9 +158,9 @@ def cap_purity(pct_in_mandate_cap):
     under a small-cap label, and its headline return is partly another tier's.
     """
     p = _f(pct_in_mandate_cap)
-    if p is None:
+    if p is None or not 0 <= p <= 100:
         return None
-    return max(0.0, min(1.0, p / 100.0))
+    return p / 100.0
 
 
 def composite(components, weights=None):
@@ -237,26 +239,27 @@ def match_amfi_scheme(fund_name, schemes):
 
     Token-set matching, never substring: "ITI" must not match inside "MULTI", and
     "Small Cap" must not match "Large Cap". Every identifying token of the fund name has
-    to be present, the scheme has to be Direct + Growth, and any IDCW/bonus/reinvestment
+    to match exactly after plan/noise tokens, the scheme has to be Direct + Growth, and any IDCW/bonus/reinvestment
     variant is rejected outright — those share the fund's name but not its NAV series,
     and scoring a growth mandate on a dividend-stripped NAV would understate it every time.
-    Among survivors the shortest name wins (the plain Growth option, not a sub-variant).
+    Exactly one distinct AMFI code must match; ambiguity never picks an arbitrary NAV.
     """
     want = {t for t in _tokens(fund_name) if t not in _NOISE_TOKENS}
     if not want:
         return None
-    best = None
+    matches = {}
     for s in schemes or []:
-        toks = set(_tokens(s.get("name", "")))
-        if not want <= toks:
+        if not isinstance(s,dict) or not isinstance(s.get("name"),str) or not s.get("code"):
+            continue
+        toks = set(_tokens(s["name"]))
+        if want != toks - _NOISE_TOKENS:
             continue
         if toks & _BAD_PLAN_TOKENS:
             continue
         if "direct" not in toks or "growth" not in toks:
             continue
-        if best is None or len(s["name"]) < len(best["name"]):
-            best = s
-    return best
+        matches[str(s["code"])] = s
+    return next(iter(matches.values())) if len(matches) == 1 else None
 
 
 def nav_metrics(navs, window_years):
@@ -268,16 +271,22 @@ def nav_metrics(navs, window_years):
     dates, values = [], []
     for r in navs or []:
         try:
-            dates.append(date.fromisoformat(r["date"]))
-            values.append(float(r["nav"]))
-        except (KeyError, TypeError, ValueError):
-            continue
+            day = date.fromisoformat(r["date"])
+            raw = r["nav"]
+            if isinstance(raw, bool):
+                raise ValueError("boolean NAV")
+            value = float(raw)
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("invalid dated NAV observation") from exc
+        dates.append(day)
+        values.append(value)
+    returns = R.rolling_returns(dates, values, window_years)
     if len(values) < 2:
         return {"roll_mean": None, "roll_min": None, "roll_median": None, "n_windows": 0,
                 "max_drawdown_pct": None, "span_years": None, "confidence": "unknown",
                 "nav_as_of": None}
     span = (dates[-1] - dates[0]).days / R.YEAR_DAYS
-    stats = R.rolling_stats(R.rolling_returns(dates, values, window_years))
+    stats = R.rolling_stats(returns)
     return {
         "roll_mean": stats["mean"],
         "roll_median": stats["median"],
@@ -285,7 +294,7 @@ def nav_metrics(navs, window_years):
         "n_windows": stats["n"],
         "max_drawdown_pct": R.max_drawdown(values),
         "span_years": round(span, 2),
-        "confidence": span_confidence(span),
+        "confidence": span_confidence(span) if stats["n"] else "unknown",
         "nav_as_of": dates[-1].isoformat(),
     }
 
@@ -299,11 +308,15 @@ def _resolve_and_nav(row, schemes, window_years, fresh):
     from finance.sources import funds  # inside the worker; the module import is already cached
     hit = match_amfi_scheme(row.get("name") or "", schemes)
     if not hit:
-        return None, None, ["no AMFI Direct-Growth scheme matched this name"]
+        return None, None, ["no unique exact AMFI Direct-Growth scheme matched this name"]
     env = funds.nav_history(hit["code"], fresh=fresh)
     if not env.get("ok"):
         return hit, None, list(env.get("gaps") or ["NAV history unavailable"])
-    return hit, nav_metrics((env.get("data") or {}).get("navs") or [], window_years), []
+    try:
+        metrics = nav_metrics((env.get("data") or {}).get("navs") or [], window_years)
+    except ValueError as exc:
+        return hit, None, list(env.get("gaps") or []) + [f"invalid NAV history: {exc}"]
+    return hit, metrics, list(env.get("gaps") or [])
 
 
 def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
@@ -312,10 +325,29 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     """The whole pipeline: universe -> hard gates -> NAV compute -> composite -> top N."""
     from finance.sources import funds
 
+    if not isinstance(category,str) or not category.strip():
+        raise ValueError("category must be a nonempty name")
+    if not isinstance(window,str) or window not in WINDOW_YEARS:
+        raise ValueError("window must be 1y, 3y or 5y")
+    for label,value in (("top",top),("workers",workers)):
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"{label} must be a positive integer")
+    for label,value in (("min_aum_cr",min_aum_cr),("ter_ceiling",ter_ceiling),
+                        ("min_age_months",min_age_months),("agility_ceiling_cr",agility_ceiling_cr)):
+        if value is None and label in ("min_age_months","agility_ceiling_cr"):
+            continue
+        try:
+            valid = (not isinstance(value,bool) and isinstance(value,(int,float))
+                     and math.isfinite(value) and value >= 0
+                     and (label != "agility_ceiling_cr" or value > 0))
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise ValueError(f"{label} must be finite and nonnegative (agility ceiling strictly positive)")
     cfg = category_config(category)
-    if agility_ceiling_cr:
+    if agility_ceiling_cr is not None:
         cfg["agility_ceiling_cr"] = agility_ceiling_cr
-    years = WINDOW_YEARS.get(window, 3)
+    years = WINDOW_YEARS[window]
     min_age_months = min_age_months if min_age_months is not None else years * 12
 
     env = funds.screen(subsector=category, option="Growth", min_aum=min(min_aum_cr, 100),
@@ -344,16 +376,23 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
 
     scored, nav_failed = [], {}
     for row, (hit, nav, row_gaps) in zip(survivors, resolved):
+        gaps.extend(f"{row.get('name') or 'fund'}: {gap}" for gap in row_gaps)
         if nav is None:
             reason = row_gaps[0] if row_gaps else "NAV history unavailable"
             nav_failed[reason] = nav_failed.get(reason, 0) + 1
+            continue
+        if not nav["n_windows"]:
+            reason = f"no eligible rolling {years}y windows in NAV history"
+            nav_failed[reason] = nav_failed.get(reason, 0) + 1
+            gaps.append(f"{row.get('name') or 'fund'}: {reason}")
             continue
         scored.append({"row": row, "amfi": hit, "nav": nav})
     for reason, n in nav_failed.items():
         rejected[reason] = rejected.get(reason, 0) + n
 
     if not scored:
-        return _empty(category, window, cfg, universe, rejected, gaps, market_context)
+        return _empty(category, window, cfg, universe, rejected, gaps, market_context,
+                      passed_gates=len(survivors))
 
     raw = {
         "roll_mean":  [s["nav"]["roll_mean"] for s in scored],
@@ -373,6 +412,8 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
         comp["aum_agility"] = aum_agility(s["row"].get("aum"), min_aum_cr,
                                           cfg["agility_ceiling_cr"])
         comp["cap_purity"] = cap_purity(s["row"].get(purity_field)) if purity_field else None
+        if purity_field and s["row"].get(purity_field) is not None and comp["cap_purity"] is None:
+            gaps.append(f"{s['row'].get('name') or 'fund'}: invalid {purity_field}; cap-purity score unavailable")
         score, cov, used = composite(comp)
         s["components"] = {k: (round(v, 4) if isinstance(v, float) else v)
                            for k, v in comp.items()}
@@ -386,7 +427,7 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     scored.sort(key=lambda s: -s["score"])
 
     shortlist = [_shortlist_row(i + 1, s, purity_field, years)
-                 for i, s in enumerate(scored[:max(1, top)])]
+                 for i, s in enumerate(scored[:top])]
 
     # An advisory, not a data gap: `gaps` means a figure is missing or degraded, and
     # diluting it with commentary trains a caller to skim past the entries that matter.
@@ -431,20 +472,20 @@ def scan(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     }
 
 
-def _empty(category, window, cfg, universe, rejected, gaps, market_context):
+def _empty(category, window, cfg, universe, rejected, gaps, market_context, passed_gates=0):
     return {
         "as_of": date.today().isoformat(),
         "category": category,
         "window_credited": window,
-        "universe": {"screened": len(universe), "passed_gates": 0, "scored": 0,
+        "universe": {"screened": len(universe), "passed_gates": passed_gates, "scored": 0,
                      "shortlisted": 0},
         "gates": {"rejected_tally": dict(sorted(rejected.items(), key=lambda kv: -kv[1]))},
         "scoring": {"weights": WEIGHTS},
         "category_context": market_context,
         "pending_manual_gates": [],
         "shortlist": [],
-        "gaps": gaps + ["no fund cleared the hard gates — loosen --min-aum or --window "
-                        "explicitly rather than shortlisting a fund that failed one"],
+        "gaps": gaps + ["no fund has both eligible screening inputs and usable NAV coverage; "
+                        "see rejection counts and source gaps"],
     }
 
 
@@ -454,12 +495,15 @@ def _shortlist_row(rank, s, purity_field, years):
     if nav["confidence"] == "low":
         flags.append(f"only {nav['span_years']}y of NAV history — one regime; risk metrics "
                      f"are descriptive, not predictive")
-    if nav["n_windows"] and nav["n_windows"] < 60:
+    if not nav["n_windows"]:
+        flags.append(f"no eligible rolling {years}y windows — return coverage unavailable")
+    elif nav["n_windows"] < 60:
         flags.append(f"{nav['n_windows']} rolling {years}y windows — thin sample")
     if s["components"].get("aum_agility") is not None and s["components"]["aum_agility"] < 0.6:
         flags.append(f"AUM ₹{_f(row.get('aum')) or 0:,.0f} Cr is past the agility ceiling "
                      f"for this category")
-    purity = _f(row.get(purity_field)) if purity_field else None
+    purity_score = cap_purity(row.get(purity_field)) if purity_field else None
+    purity = purity_score * 100 if purity_score is not None else None
     if purity is not None and purity < 65:
         flags.append(f"only {purity:.1f}% of the book sits in the cap tier its mandate "
                      f"names — part of the record may be another cap tier's beta")
@@ -543,9 +587,11 @@ def render_table(result):
     hdr = (f"{'#':>2} {'fund':<38} {'score':>6} {'roll':>7} {'worst':>7} {'maxDD':>7} "
            f"{'TER':>5} {'AUM ₹Cr':>10} {'Shrp':>6} {'purity':>7}")
     lines += [hdr, "-" * len(hdr)]
+    purity_key = {"percSmallcap":"small", "percMidcap":"mid", "percLargecap":"large"}.get(
+        category_config(result["category"])["purity_field"])
     for r in result["shortlist"]:
         m = r["metrics"]
-        purity = m["cap_mix"].get("small") or m["cap_mix"].get("mid") or m["cap_mix"].get("large")
+        purity = m["cap_mix"].get(purity_key) if purity_key else None
         lines.append(
             f"{r['rank']:>2} {(r['name'] or '')[:38]:<38} {r['score']:>6.3f} "
             f"{_cell(m['rolling']['mean'], '%')  :>7} {_cell(m['rolling']['min'], '%'):>7} "
@@ -593,20 +639,24 @@ def report(category="Small Cap Fund", top=5, window="3y", min_aum_cr=500,
     carried through verbatim, so "which fund" and "is this category worth adding to now"
     stay separable questions.
     """
-    result = scan(category=category, top=top, window=window, min_aum_cr=min_aum_cr,
-                  min_age_months=min_age_months, agility_ceiling_cr=agility_ceiling_cr,
-                  ter_ceiling=ter_ceiling, workers=workers, fresh=fresh,
-                  market_context=load_market_context(market_context, category))
-    gaps = list(result.get("gaps") or [])
-    path = out or default_out_path(category)
     try:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-    except OSError as exc:
-        gaps.append(f"could not write the shortlist to {path}: {exc}")
-        path = None
+        result = scan(category=category, top=top, window=window, min_aum_cr=min_aum_cr,
+                      min_age_months=min_age_months, agility_ceiling_cr=agility_ceiling_cr,
+                      ter_ceiling=ter_ceiling, workers=workers, fresh=fresh,
+                      market_context=load_market_context(market_context, category))
+    except (ValueError, TypeError) as exc:
+        return _envelope(False, "finance.compute.fund_scan", {"shortlist":[],"report_path":None},
+                         [f"invalid fund scan inputs: {exc}"])
+    gaps = list(result.get("gaps") or [])
+    path = None
+    try:
+        target = os.fspath(out or default_out_path(category))
+        prefix = os.path.splitext(target)[0]
+        os.makedirs(os.path.dirname(os.path.abspath(prefix)), exist_ok=True)
+        path = spine.publish_evidence(prefix, ".json", lambda stream:
+            json.dump(result, stream, indent=2, ensure_ascii=False, allow_nan=False))
+    except (OSError, ValueError, TypeError) as exc:
+        gaps.append(f"could not write the shortlist: {exc}")
     data = {k: v for k, v in result.items() if k != "gaps"}
     data["report_path"] = path
     return _envelope(bool(result["shortlist"]), "finance.compute.fund_scan", data, gaps)

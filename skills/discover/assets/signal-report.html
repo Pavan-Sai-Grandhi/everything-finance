@@ -29,24 +29,25 @@
 </style>
 </head>
 <body>
-  <h1>Swing Screen — Nifty 500</h1>
-  <div class="meta">{{DATE}} · profile: {{RISK_PROFILE}} · fundamental gate survivors: {{GATE_COUNT}} · setups found: {{SETUP_COUNT}}</div>
+  <h1>Strategy Screen — {{UNIVERSE}}</h1>
+  <div class="meta">{{DATE}} · strategy: {{STRATEGY}} · decision bar: {{AS_OF}} · universe screened: {{UNIVERSE_COUNT}} · candidates: {{SETUP_COUNT}}</div>
 
   <div class="summary">
     <div class="stat"><div class="num">{{SETUP_COUNT}}</div><div class="lbl">Candidates</div></div>
-    <div class="stat"><div class="num">{{BREAKOUT_COUNT}}</div><div class="lbl">Breakouts</div></div>
-    <div class="stat"><div class="num">{{PULLBACK_COUNT}}</div><div class="lbl">Pullbacks</div></div>
+    <div class="stat"><div class="num">{{VOLUME_CONFIRMED_COUNT}}</div><div class="lbl">Volume-confirmed</div></div>
+    <div class="stat"><div class="num">{{REGIME}}</div><div class="lbl">Market regime</div></div>
     <div class="stat"><div class="num">{{CAPITAL}}</div><div class="lbl">Capital basis</div></div>
   </div>
 
   <table>
     <thead>
-      <tr><th>#</th><th>Stock</th><th>Setup</th><th>CMP</th><th>Entry</th><th>Stoploss</th><th>Target</th><th>RRR</th><th>Qty (1% risk)</th><th>Volume</th><th>Fundamentals</th></tr>
+      <tr><th>#</th><th>Stock</th><th>Setup</th><th>CMP</th><th>Entry</th><th>Stoploss</th><th>Target</th><th>RRR</th><th>Qty (1% risk)</th><th>Volume</th><th>Indicators</th><th>Fundamentals</th><th>Chart</th></tr>
     </thead>
     <tbody>
       <!-- ROW TEMPLATE: repeat per candidate, ranked best-first.
            RRR class: rrr-good if >=2, rrr-ok if 1.5-2.
-           Volume: class vol-ok "1.8× avg" or vol-weak "0.7× avg — WEAK". -->
+           Volume: class vol-ok "1.8× avg" or vol-weak "0.7× avg — low-volume, weak signal".
+           A missing fundamental or indicator value prints "gap", never a placeholder number. -->
       <tr>
         <td>1</td>
         <td><strong>{{TICKER}}</strong><br><span class="fund">{{COMPANY}}</span></td>
@@ -58,7 +59,9 @@
         <td class="rrr-good">{{RRR}}</td>
         <td>{{QTY}}</td>
         <td class="vol-ok">{{VOL_RATIO}}× avg</td>
+        <td class="fund">RSI {{RSI14}} · {{EMA50_STATE}}</td>
         <td class="fund">ROCE {{ROCE}}% · D/E {{DE}} · P/E {{PE}}</td>
+        <td><a href="https://www.tradingview.com/symbols/NSE-{{TICKER}}/">TradingView</a></td>
       </tr>
     </tbody>
   </table>

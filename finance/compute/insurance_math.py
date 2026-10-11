@@ -13,11 +13,22 @@ Reached through: run_insurance_math.
 """
 from __future__ import annotations
 
+import math
+import json
+
 from dataclasses import asdict, dataclass, field, is_dataclass
 
 from finance import spine
 
 _SOURCE = "finance.compute.insurance_math"
+
+
+def _number(name, value, *, minimum=0, integer=False):
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or (integer and not isinstance(value, int))):
+        raise ValueError(f"{name} must be a finite {'integer' if integer else 'number'}")
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
 
 
 @dataclass
@@ -33,45 +44,51 @@ class TermNeed:
 def term_cover_need(
     annual_income: float,
     *,
-    income_multiple: float = 12.0,
-    outstanding_loans: float = 0.0,
-    education_corpus: float = 0.0,
-    annual_expenses: float | None = None,
-    years_to_independence: float = 0.0,
-    existing_corpus: float = 0.0,
-    existing_cover: float = 0.0,
+    income_multiple: float,
+    outstanding_loans: float,
+    education_corpus: float,
+    annual_expenses: float | None,
+    years_to_independence: float,
+    existing_corpus: float,
+    existing_cover: float,
 ) -> TermNeed:
     """Term cover need = larger of income-replacement and liability+goals.
 
-    - income replacement: ``income_multiple`` x annual income (10-15x rule; 15x when
-      dependents are young).
+    - income replacement: explicitly chosen ``income_multiple`` x annual income.
+      The caller must explain this scenario assumption, not treat it as a universal rule.
     - liability + goals: outstanding loans + children's education corpus +
       (annual family expenses x years to youngest dependent's independence) - existing
-      liquid corpus. ``annual_expenses`` defaults to 45% of income when unstated.
+      liquid corpus. A positive expense runway requires explicit ``annual_expenses``;
+      the caller must supply the household figure or a clearly labelled scenario.
 
     The *need* is the larger; the *gap* is need minus cover already held (never below 0).
     """
-    if annual_income < 0:
-        raise ValueError("annual_income must be >= 0")
+    for name, value in {"annual_income": annual_income, "income_multiple": income_multiple,
+                        "outstanding_loans": outstanding_loans, "education_corpus": education_corpus,
+                        "years_to_independence": years_to_independence, "existing_corpus": existing_corpus,
+                        "existing_cover": existing_cover}.items():
+        _number(name, value)
+    if annual_expenses is not None:
+        _number("annual_expenses", annual_expenses)
     if income_multiple <= 0:
         raise ValueError("income_multiple must be > 0")
 
     income_replacement = income_multiple * annual_income
 
-    if annual_expenses is None:
-        annual_expenses = 0.45 * annual_income
-    expense_runway = annual_expenses * max(years_to_independence, 0.0)
+    if annual_expenses is None and years_to_independence > 0:
+        raise ValueError("annual_expenses is required when years_to_independence is positive")
+    expense_runway = annual_expenses * years_to_independence if annual_expenses is not None else 0.0
     liability_goals = (
-        max(outstanding_loans, 0.0)
-        + max(education_corpus, 0.0)
+        outstanding_loans
+        + education_corpus
         + expense_runway
-        - max(existing_corpus, 0.0)
+        - existing_corpus
     )
     liability_goals = max(liability_goals, 0.0)
 
     need = max(income_replacement, liability_goals)
     method = "income_replacement" if income_replacement >= liability_goals else "liability_goals"
-    gap = max(need - max(existing_cover, 0.0), 0.0)
+    gap = max(need - existing_cover, 0.0)
 
     return TermNeed(
         income_replacement=income_replacement,
@@ -83,76 +100,59 @@ def term_cover_need(
             "income_multiple": income_multiple,
             "annual_expenses": annual_expenses,
             "expense_runway": expense_runway,
-            "existing_cover": max(existing_cover, 0.0),
+            "existing_cover": existing_cover,
         },
     )
-
-
-# Base individual sum-insured floor by city tier (2026 metro context, INR).
-_HEALTH_TIER_BASE = {1: 10_00_000, 2: 7_50_000, 3: 5_00_000}
 
 
 @dataclass
 class HealthNeed:
-    base_recommended: float            # base policy sum insured to hold
-    effective_existing: float          # existing cover, employer weighted at half
-    top_up_recommended: float          # super top-up to cover the tail
-    gap: float                         # base_recommended - effective_existing (>= 0)
-    structure: str
-    breakdown: dict = field(default_factory=dict)
+    base_target: float
+    total_target: float
+    deductible: float
+    personal_cover: float
+    employer_cover: float
+    base_gap: float
+    top_up_target: float
+    deductible_gap: float
+    planned_deductible_gap: float
 
 
 def health_sum_insured(
     *,
-    adults: int,
-    eldest_age: int,
-    city_tier: int,
-    children: int = 0,
-    personal_cover: float = 0.0,
-    employer_cover: float = 0.0,
-    has_senior_parents: bool = False,
+    base_target: float,
+    total_target: float,
+    deductible: float,
+    personal_cover: float,
+    employer_cover: float,
 ) -> HealthNeed:
-    """Recommend a base sum insured + super top-up, and the gap vs existing cover.
+    """Arithmetic for an explicitly chosen personal-base + super-top-up scenario.
 
-    Family floaters need more than a single life; older members and senior parents push
-    the base up. Employer cover is real but vanishes with the job, so it counts at half
-    weight toward the effective existing cover. The resilient structure is a personal
-    base policy plus a super top-up above a deductible.
+    Targets are caller-supplied assumptions, not inferred recommendations. The total
+    target includes the deductible layer; the top-up sum insured is above it. Gaps
+    compare nominal amounts only, not claim eligibility or reimbursement. Employer
+    cover is reported separately, without discounting or adding it to personal cover.
     """
-    if adults < 0 or children < 0:
-        raise ValueError("adults and children must be >= 0")
-    if city_tier not in _HEALTH_TIER_BASE:
-        raise ValueError("city_tier must be 1, 2 or 3")
-
-    base = float(_HEALTH_TIER_BASE[city_tier])
-    lives = adults + children
-    if lives > 1:                       # floater: lift the base for a family
-        base += 5_00_000
-    if eldest_age >= 45:                # older lives claim more, cost more
-        base += 5_00_000
-    if has_senior_parents:              # separate senior policy, not on the floater
-        base += 5_00_000
-
-    effective_existing = max(personal_cover, 0.0) + 0.5 * max(employer_cover, 0.0)
-    gap = max(base - effective_existing, 0.0)
-    # Super top-up sizes the catastrophic tail above the base (medical inflation 12-14%).
-    top_up = max(50_00_000 - base, 0.0) + 50_00_000
-
+    for name, value in {"base_target": base_target, "total_target": total_target,
+                        "deductible": deductible, "personal_cover": personal_cover,
+                        "employer_cover": employer_cover}.items():
+        _number(name, value)
+    if base_target <= 0 or total_target < base_target:
+        raise ValueError("targets must satisfy 0 < base_target <= total_target")
+    if deductible > total_target:
+        raise ValueError("deductible cannot exceed total_target")
     return HealthNeed(
-        base_recommended=base,
-        effective_existing=effective_existing,
-        top_up_recommended=top_up,
-        gap=gap,
-        structure="personal base + super top-up above deductible",
-        breakdown={
-            "tier_base": float(_HEALTH_TIER_BASE[city_tier]),
-            "lives": lives,
-            "employer_weight": 0.5,
-        },
+        base_target=base_target, total_target=total_target, deductible=deductible,
+        personal_cover=personal_cover, employer_cover=employer_cover,
+        base_gap=max(base_target - personal_cover, 0.0),
+        top_up_target=total_target - deductible,
+        deductible_gap=max(deductible - personal_cover, 0.0),
+        planned_deductible_gap=max(deductible - base_target, 0.0),
     )
 
 
-# IRDAI depreciation grid for IDV by vehicle age (fraction retained of ex-showroom).
+# Age-based IDV schedule; policy source and scope are documented in
+# skills/insurance-advisor/references/vehicle.md. Values are retained fractions.
 _IDV_RETENTION = [
     (0.5, 0.95),   # <= 6 months
     (1.0, 0.85),   # 6 months - 1 year
@@ -166,16 +166,17 @@ _IDV_RETENTION = [
 _NCB_SLAB = [(1, 0.20), (2, 0.25), (3, 0.35), (4, 0.45), (5, 0.50)]
 
 
-def _idv_retention(age_years: float) -> float:
+def _idv_retention(age_years: float) -> float | None:
     for cap, frac in _IDV_RETENTION:
         if age_years <= cap:
             return frac
-    return 0.50  # >5y: IDV is mutually agreed, but ~50% is the practical floor
+    return None  # Beyond five years the insurer and insured agree the IDV.
 
 
 def expected_ncb(claim_free_years: int) -> float:
     """Entitled NCB fraction for a run of consecutive claim-free years (caps at 50%)."""
-    if claim_free_years <= 0:
+    _number("claim_free_years", claim_free_years, integer=True)
+    if claim_free_years == 0:
         return 0.0
     frac = 0.0
     for years, f in _NCB_SLAB:
@@ -186,12 +187,14 @@ def expected_ncb(claim_free_years: int) -> float:
 
 @dataclass
 class VehicleSanity:
-    expected_idv_low: float
-    expected_idv_high: float
-    idv_ok: bool
-    expected_ncb: float                # fraction, e.g. 0.35
-    ncb_ok: bool
+    expected_idv_low: float | None
+    expected_idv_high: float | None
+    idv_ok: bool | None
+    expected_ncb: float | None         # fraction, e.g. 0.35; missing history is unknown
+    ncb_ok: bool | None
     flags: list = field(default_factory=list)
+    idv_gap: str | None = None
+    ncb_gap: str | None = None
 
 
 def idv_ncb_sanity(
@@ -199,33 +202,54 @@ def idv_ncb_sanity(
     ex_showroom: float,
     age_years: float,
     quoted_idv: float,
-    claim_free_years: int = 0,
-    quoted_ncb: float = 0.0,
+    claim_free_years: int | None = None,
+    quoted_ncb: float | None = None,
     idv_tolerance: float = 0.10,
+    model_discontinued: bool = False,
 ) -> VehicleSanity:
     """Sanity-check a quoted IDV against the age-depreciated value, and NCB against slab.
 
     IDV should sit near ex-showroom x an age-based retention factor; a quote far below
     that band cuts the claim payout, one far above inflates premium. NCB should match the
     slab entitled by consecutive claim-free years — a higher quoted NCB is a red flag.
+    Older/discontinued models have no age-based IDV check; NCB remains available.
+    The tolerance band is a screening assumption, not a contractual entitlement.
     """
+    for name, value in {"ex_showroom": ex_showroom, "age_years": age_years,
+                        "quoted_idv": quoted_idv,
+                        "idv_tolerance": idv_tolerance}.items():
+        _number(name, value)
+    if quoted_ncb is not None:
+        _number("quoted_ncb", quoted_ncb)
+    if (quoted_ncb is not None and quoted_ncb > 1) or idv_tolerance > 1:
+        raise ValueError("quoted_ncb and idv_tolerance must be fractions between 0 and 1")
     if ex_showroom <= 0:
         raise ValueError("ex_showroom must be > 0")
-    retention = _idv_retention(max(age_years, 0.0))
-    mid = ex_showroom * retention
-    low = mid * (1 - idv_tolerance)
-    high = mid * (1 + idv_tolerance)
-    idv_ok = low <= quoted_idv <= high
+    if not isinstance(model_discontinued, bool):
+        raise ValueError("model_discontinued must be a boolean")
+    retention = None if model_discontinued else _idv_retention(age_years)
+    low = high = idv_ok = idv_gap = None
+    if retention is None:
+        idv_gap = "IDV requires insurer-insured agreement for vehicles over five years or discontinued models; age-based check unavailable"
+    else:
+        mid = ex_showroom * retention
+        low = mid * (1 - idv_tolerance)
+        high = mid * (1 + idv_tolerance)
+        idv_ok = low <= quoted_idv <= high
 
-    ncb = expected_ncb(claim_free_years)
-    ncb_ok = abs(quoted_ncb - ncb) < 1e-9 or quoted_ncb <= ncb
+    ncb = expected_ncb(claim_free_years) if claim_free_years is not None else None
+    ncb_ok = ncb_gap = None
+    if ncb is None or quoted_ncb is None:
+        ncb_gap = "NCB check requires both claim_free_years and quoted_ncb; missing evidence is not zero"
+    else:
+        ncb_ok = abs(quoted_ncb - ncb) < 1e-9 or quoted_ncb <= ncb
 
     flags = []
-    if quoted_idv < low:
+    if low is not None and quoted_idv < low:
         flags.append("quoted IDV below age-depreciated band — under-insured, lower claim payout")
-    elif quoted_idv > high:
+    elif high is not None and quoted_idv > high:
         flags.append("quoted IDV above age-depreciated band — inflated premium")
-    if quoted_ncb > ncb + 1e-9:
+    if ncb is not None and quoted_ncb is not None and quoted_ncb > ncb + 1e-9:
         flags.append("quoted NCB exceeds slab entitlement — verify claim-free history")
 
     return VehicleSanity(
@@ -235,43 +259,78 @@ def idv_ncb_sanity(
         expected_ncb=ncb,
         ncb_ok=ncb_ok,
         flags=flags,
+        idv_gap=idv_gap,
+        ncb_gap=ncb_gap,
     )
 
 
-def _npv(rate: float, cashflows: list) -> float:
-    return sum(cf / (1 + rate) ** t for t, cf in enumerate(cashflows))
+def _npv_sign_value(rate: float, cashflows: list) -> float:
+    """NPV or a positive rescaling of it; only its sign is used by bisection.
+
+    With negative rates multiply NPV by (1+rate)**(n-1) and use Horner's
+    method. With nonnegative rates use discounted Horner evaluation. Both avoid
+    raising discount factors to large powers and preserve the root.
+    """
+    value = 0.0
+    factor = 1 + rate
+    if rate < 0:
+        for cf in cashflows:
+            value = value * factor + cf
+    else:
+        for cf in reversed(cashflows):
+            value = value / factor + cf
+    return value
 
 
 def irr(cashflows: list, *, lo: float = -0.99, hi: float = 1.0, tol: float = 1e-7) -> float | None:
-    """Internal rate of return by bisection on NPV; None if no sign change in range.
+    """Periodic IRR for cashflows with one sign change; None if unbracketed.
 
-    No numpy dependency — the series here are short. cashflows[0] is t0.
+    Multiple sign changes are unsupported because they can have multiple IRRs.
+    cashflows[0] is t0; tol is the absolute rate-interval tolerance, independent
+    of the currency scale. No numpy dependency is needed.
     """
-    f_lo, f_hi = _npv(lo, cashflows), _npv(hi, cashflows)
+    if not isinstance(cashflows, (list, tuple)):
+        raise ValueError("cashflows must be a numeric sequence")
+    for value in (*cashflows, lo, hi, tol):
+        _number("cashflow or IRR parameter", value, minimum=None)
+    if not -1 < lo < hi:
+        raise ValueError("IRR bounds must satisfy -1 < lo < hi")
+    if tol <= 0:
+        raise ValueError("IRR tolerance must be positive")
+    nonzero = [cf for cf in cashflows if cf != 0]
+    changes = sum((a < 0) != (b < 0) for a, b in zip(nonzero, nonzero[1:]))
+    if changes != 1:
+        return None
+    # Removing endpoint zeros changes NPV by a positive factor, not its roots.
+    start = next(i for i, cf in enumerate(cashflows) if cf != 0)
+    end = len(cashflows) - next(i for i, cf in enumerate(reversed(cashflows)) if cf != 0)
+    scale = max(abs(cf) for cf in cashflows)
+    flows = [cf / scale for cf in cashflows[start:end]]
+    f_lo, f_hi = _npv_sign_value(lo, flows), _npv_sign_value(hi, flows)
     if f_lo == 0:
         return lo
     if f_hi == 0:
         return hi
-    if f_lo * f_hi > 0:
-        return None  # no root bracketed — caller treats as unsolvable
+    if (f_lo < 0) == (f_hi < 0):
+        return None
     for _ in range(200):
-        mid = (lo + hi) / 2
-        f_mid = _npv(mid, cashflows)
-        if abs(f_mid) < tol:
+        mid = lo / 2 + hi / 2
+        f_mid = _npv_sign_value(mid, flows)
+        if f_mid == 0 or hi - lo <= tol or mid in (lo, hi):
             return mid
-        if f_lo * f_mid < 0:
-            hi, f_hi = mid, f_mid
+        if (f_lo < 0) != (f_mid < 0):
+            hi = mid
         else:
             lo, f_lo = mid, f_mid
-    return (lo + hi) / 2
+    return None  # no converged solution within the iteration limit
 
 
 @dataclass
 class ContinueDecision:
     marginal_irr: float | None         # IRR of continuing; None if unsolvable
     cashflows: list
-    beats_hurdle: bool | None          # marginal_irr >= hurdle_rate (None if unsolvable)
-    hurdle_rate: float
+    beats_hurdle: bool | None          # None if IRR or benchmark unavailable
+    hurdle_rate: float | None
 
 
 def marginal_irr_continue(
@@ -281,7 +340,7 @@ def marginal_irr_continue(
     remaining_premiums: int,
     years_to_maturity: int,
     maturity_value: float,
-    hurdle_rate: float = 0.07,
+    hurdle_rate: float | None = None,
 ) -> ContinueDecision:
     """Marginal IRR of *continuing* an in-force endowment/ULIP vs surrendering now.
 
@@ -289,26 +348,35 @@ def marginal_irr_continue(
     value you could have taken and invested (an outflow of that capital into the policy),
     you pay the remaining premiums, and at maturity you collect the maturity value.
 
-        t0:                 -surrender_value
-        t1 .. t_prem:       -annual_premium   (remaining_premiums years)
-        t_maturity:         +maturity_value
+        t0:                         -surrender_value
+        t0 .. t_remaining_premiums-1: -annual_premium
+        t_years_to_maturity:          +maturity_value
 
-    If the marginal IRR is below a safe hurdle (a comparable FD / debt fund), surrender and
-    invest the proceeds instead. Premiums are assumed paid at the start of each year.
+    Premiums are assumed paid at the start of each year, including the first payment
+    now. The result compares this cash-flow IRR to the supplied hurdle; it does not
+    decide whether to surrender coverage or account for taxes and policy guarantees.
     """
-    if remaining_premiums < 0 or years_to_maturity < 0:
-        raise ValueError("remaining_premiums and years_to_maturity must be >= 0")
+    for name, value in {"remaining_premiums": remaining_premiums,
+                        "years_to_maturity": years_to_maturity}.items():
+        _number(name, value, integer=True)
+    for name, value in {"surrender_value": surrender_value, "annual_premium": annual_premium,
+                        "maturity_value": maturity_value}.items():
+        _number(name, value)
+    if hurdle_rate is not None:
+        _number("hurdle_rate", hurdle_rate, minimum=None)
+        if hurdle_rate <= -1:
+            raise ValueError("hurdle_rate must exceed -1")
     if remaining_premiums > years_to_maturity:
         raise ValueError("remaining_premiums cannot exceed years_to_maturity")
 
     cashflows = [0.0] * (years_to_maturity + 1)
-    cashflows[0] = -max(surrender_value, 0.0)
+    cashflows[0] = -surrender_value
     for t in range(remaining_premiums):
-        cashflows[t] += -max(annual_premium, 0.0)
-    cashflows[years_to_maturity] += max(maturity_value, 0.0)
+        cashflows[t] += -annual_premium
+    cashflows[years_to_maturity] += maturity_value
 
     r = irr(cashflows)
-    beats = None if r is None else (r >= hurdle_rate)
+    beats = None if r is None or hurdle_rate is None else (r >= hurdle_rate)
     return ContinueDecision(
         marginal_irr=r,
         cashflows=cashflows,
@@ -341,12 +409,20 @@ def run(calculation, inputs=None):
              f"{', '.join(sorted(CALCULATIONS))}"])
     try:
         result = fn(**(inputs or {}))
-    except (TypeError, ValueError) as exc:
+        output = asdict(result) if is_dataclass(result) else result
+        json.dumps(output, allow_nan=False)
+    except (TypeError, ValueError, ArithmeticError) as exc:
         return spine.envelope(False, _SOURCE, {"calculation": calculation},
                               [f"{calculation} rejected these inputs: {exc}"])
-    solved = result is not None
+    solved = result is not None and (
+        not isinstance(result, ContinueDecision) or result.marginal_irr is not None)
+    gaps = [] if solved else [f"{calculation} had no supported solution for these inputs"]
+    if isinstance(result, ContinueDecision) and result.hurdle_rate is None:
+        gaps.append("hurdle_rate not supplied; IRR comparison is unavailable")
+    if isinstance(result, VehicleSanity):
+        gaps.extend(gap for gap in (result.idv_gap, result.ncb_gap) if gap)
     return spine.envelope(
         solved, _SOURCE,
         {"calculation": calculation,
-         "result": asdict(result) if is_dataclass(result) else result},
-        [] if solved else [f"{calculation} had no solution for these inputs"])
+         "result": output},
+        gaps)

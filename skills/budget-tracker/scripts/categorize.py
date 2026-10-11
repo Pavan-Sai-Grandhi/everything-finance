@@ -18,7 +18,12 @@ CLI (the file-handoff the skill uses):
     categorize.py --learn --map merchant-map.json --merchant "<narration>" --category "<Category>"
 """
 import argparse
+import fcntl
+import tempfile
+import threading
 import json
+import math
+from datetime import date
 import os
 import re
 import sys
@@ -117,11 +122,17 @@ def normalize_token(description):
     return re.sub(r"[^A-Z0-9]+", " ", (description or "").upper()).strip()
 
 
+def matches_token(description, token):
+    """Narration punctuation delimits names; substrings inside other names do not."""
+    return bool(re.search(r"(?<![A-Z0-9])" + re.escape(token.strip()) + r"(?![A-Z0-9])",
+                          (description or "").upper()))
+
+
 def _taxonomy_category(description):
     up = (description or "").upper()
     for category, tokens in TAXONOMY:
         for tok in tokens:
-            if tok in up:
+            if matches_token(up, tok):
                 return category
     return None
 
@@ -130,22 +141,55 @@ def categorize_one(description, merchant_map):
     """-> (category, bucket, source). source in
     {map, taxonomy, excluded, atm, uncategorized}."""
     up = (description or "").upper()
-    if any(tok in up for tok in EXCLUDE_TOKENS):
-        return "Transfer/CC Payment", "Excluded", "excluded"
-
     token = normalize_token(description)
     if token in merchant_map:
         cat = merchant_map[token]
         return cat, CATEGORY_BUCKET.get(cat, "UNCATEGORIZED"), "map"
 
+    if any(matches_token(up, tok) for tok in EXCLUDE_TOKENS):
+        return "Transfer/CC Payment", "Excluded", "excluded"
+
     cat = _taxonomy_category(description)
     if cat:
         return cat, CATEGORY_BUCKET[cat], "taxonomy"
 
-    if any(tok in up for tok in ATM_TOKENS):
+    if any(matches_token(up, tok) for tok in ATM_TOKENS):
         return "ATM/Cash", "Lifestyle", "atm"
 
     return "UNCATEGORIZED", "UNCATEGORIZED", "uncategorized"
+
+
+def validate_transactions(transactions):
+    """Validate the normalized statement boundary once for both budget computations."""
+    if not isinstance(transactions, list):
+        raise ValueError("transactions must be a list")
+    clean, gaps = [], []
+    for index, row in enumerate(transactions):
+        try:
+            if not isinstance(row, dict):
+                raise ValueError("transaction must be an object")
+            when = row.get("date")
+            if not isinstance(when, str) or len(when) != 10:
+                raise ValueError("date must be YYYY-MM-DD")
+            date.fromisoformat(when)
+            direction = str(row.get("direction", "")).strip().lower()
+            if direction not in ("debit", "dr", "d", "credit", "cr", "c"):
+                raise ValueError("unknown transaction direction")
+            raw = row.get("amount")
+            try:
+                amount = abs(float(raw))
+            except (ValueError, TypeError, OverflowError):
+                raise ValueError("amount must be a finite number") from None
+            if isinstance(raw, bool) or not math.isfinite(amount):
+                raise ValueError("amount must be a finite number")
+            if not isinstance(row.get("description"), str) or not row["description"].strip():
+                raise ValueError("description is missing")
+            if row.get("account") is not None and not isinstance(row["account"], str):
+                raise ValueError("account must be text")
+            clean.append(dict(row, amount=amount, direction=("debit" if direction in ("debit", "dr", "d") else "credit")))
+        except (ValueError, TypeError) as exc:
+            gaps.append(f"Transaction {index + 1}: {exc}; skipped")
+    return clean, gaps
 
 
 def categorize(transactions, merchant_map):
@@ -155,6 +199,8 @@ def categorize(transactions, merchant_map):
     account). Returns the same rows annotated with ``category``/``bucket``/``token``/
     ``source``, plus ``uncategorized`` (rows needing a decision), ``by_bucket`` and
     ``by_category`` spend sums (debits only; credits are inflow, not spend)."""
+    _validate_map(merchant_map)
+    transactions, gaps = validate_transactions(transactions)
     out, uncat = [], []
     by_bucket, by_category = {}, {}
     for t in transactions:
@@ -173,39 +219,105 @@ def categorize(transactions, merchant_map):
             amt = abs(float(t.get("amount", 0) or 0))
             by_bucket[bucket] = by_bucket.get(bucket, 0.0) + amt
             by_category[cat] = by_category.get(cat, 0.0) + amt
+            if not math.isfinite(by_bucket[bucket]) or not math.isfinite(by_category[cat]):
+                raise ValueError("transaction totals exceed supported numeric range")
     return {
         "transactions": out,
         "uncategorized": uncat,
         "by_bucket": by_bucket,
         "by_category": by_category,
+        "gaps": gaps,
     }
 
 
-def load_map(path=None):
+def _validate_map(merchant_map):
+    if not isinstance(merchant_map, dict):
+        raise ValueError("merchant map must be an object")
+    for token, category in merchant_map.items():
+        if not isinstance(token, str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9 ]*", token):
+            raise ValueError("merchant-map keys must be normalized tokens")
+        if not isinstance(category, str) or category not in CATEGORY_BUCKET:
+            raise ValueError("merchant map contains an unsupported category")
+    return merchant_map
+
+
+def _unique_map(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("merchant map contains duplicate keys")
+        result[key] = value
+    return result
+
+
+def load_map(path=None, *, gaps=None):
+    """Missing map is empty. Damaged state is never silently writable.
+
+    Read-only callers may supply a gap list to continue with taxonomy alone.
+    Writers omit it and must preserve a map they cannot read and validate.
+    """
     path = path or paths.merchant_map_path()
-    if not os.path.isfile(path):
-        return {}
     try:
-        with open(path) as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError):
+        with open(path, encoding="utf-8") as stream:
+            return _validate_map(json.load(stream, object_pairs_hook=_unique_map))
+    except FileNotFoundError:
+        return {}
+    except (ValueError, OSError) as exc:
+        if gaps is None:
+            raise
+        gaps.append("Merchant map unreadable or invalid; using taxonomy only; saved rules preserved")
         return {}
 
 
-def save_map(merchant_map, path=None):
-    path = path or paths.merchant_map_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(merchant_map, f, indent=2, sort_keys=True)
+def write_json(value, path):
+    """Publish a complete JSON file atomically, preserving prior data on failure."""
+    payload = json.dumps(value, indent=2, sort_keys=True, allow_nan=False)
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
+                                         delete=False) as stream:
+            pending = stream.name
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(pending, path)
+    finally:
+        if pending and os.path.exists(pending):
+            os.unlink(pending)
     return path
 
 
+def save_map(merchant_map, path=None):
+    return write_json(_validate_map(merchant_map), path or paths.merchant_map_path())
+
+
 def apply_correction(merchant_map, description, category):
-    """Write the merchant's token -> category so it sticks next run. Returns the token."""
+    """Apply one validated correction to an in-memory map."""
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError("merchant description is required")
     token = normalize_token(description)
+    _validate_map({token: category})
     merchant_map[token] = category
     return token
+
+
+_MAP_LOCK = threading.RLock()
+
+
+def learn(description, category, path=None):
+    """Serialize the whole read-modify-write transaction across processes/threads."""
+    path = os.path.realpath(path or paths.merchant_map_path())
+    apply_correction({}, description, category)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with _MAP_LOCK, open(path + '.lock', 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        merchant_map = load_map(path)
+        token = apply_correction(merchant_map, description, category)
+        save_map(merchant_map, path)
+    return token
+
 
 
 def _main(argv=None):
@@ -220,25 +332,26 @@ def _main(argv=None):
     args = ap.parse_args(argv)
 
     map_path = args.map_path or paths.merchant_map_path()
-    merchant_map = load_map(map_path)
-
     if args.learn:
         if not args.merchant or not args.category:
             ap.error("--learn needs --merchant and --category")
-        token = apply_correction(merchant_map, args.merchant, args.category)
-        save_map(merchant_map, map_path)
+        token = learn(args.merchant, args.category, map_path)
         print(json.dumps({"learned": {token: args.category}, "map": map_path}))
         return 0
 
     if not args.txns:
         ap.error("--txns is required (or use --learn)")
+    gaps = []
+    merchant_map = load_map(map_path, gaps=gaps)
     with open(args.txns) as f:
         transactions = json.load(f)
     result = categorize(transactions, merchant_map)
-    payload = json.dumps(result, indent=2, default=str)
+    result.setdefault("gaps", []).extend(gaps)
+    payload = json.dumps(result, indent=2, allow_nan=False)
     if args.out:
-        with open(args.out, "w") as f:
-            f.write(payload)
+        if os.path.realpath(args.out) in (os.path.realpath(args.txns), os.path.realpath(map_path)):
+            raise ValueError("output cannot overwrite transactions or merchant map")
+        write_json(result, args.out)
         print(json.dumps({"out": args.out,
                           "uncategorized": len(result["uncategorized"]),
                           "categorized": len(result["transactions"])}))
@@ -248,4 +361,8 @@ def _main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(_main())
+    try:
+        sys.exit(_main())
+    except (OSError, ValueError, TypeError) as exc:
+        print(json.dumps({"ok": False, "gaps": [str(exc)]}), file=sys.stderr)
+        sys.exit(1)

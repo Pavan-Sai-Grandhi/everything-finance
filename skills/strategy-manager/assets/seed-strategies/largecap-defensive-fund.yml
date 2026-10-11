@@ -1,18 +1,17 @@
 # Fund discovery spec — feeds `discover funds`. See flexicap-allweather-fund.yml for the schema note.
-# CYCLE: weak / falling / high-volatility tape — the drawdown-protection sleeve. When breadth is
-# poor and VIX is elevated, large-cap funds fall less and recover cleaner; you rotate the satellite
-# here (or to cash/debt) and keep the core intact.
+# Research large-cap funds during a weak or volatile market. The category is
+# still equity risk: neither lower drawdown nor recovery is guaranteed.
 
 name: largecap-defensive-fund
 version: 1
 created: 2026-08-30
 purpose: fund
 archetype: defensive-largecap
-goal: "Drawdown-protection sleeve — a large-cap fund for a weak or volatile market"
+goal: "Research large-cap funds for a weak or volatile market; capital remains at risk"
 source_references:
-  - "Zerodha Varsity — Mutual Funds (large caps for capital protection in a downturn; judge on worst rolling window + max drawdown, which get_fund_scan already weights). Official source."
+  - "Zerodha Varsity — Mutual Funds, general educational reference. The category/regime/AUM choices here are plugin research assumptions, not a capital-protection claim."
 
-status: draft
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-08-30
   validated_at: null
@@ -24,6 +23,6 @@ regime_required:
 
 scan:
   category: large cap fund
-  window: 5y                          # reward the fund that protected capital across a full cycle
+  window: 5y                          # compare observed rolling returns and drawdowns; five years need not cover a full cycle
   min_aum: 5000                       # large-cap funds should have real scale
   top: 5

@@ -23,19 +23,20 @@ def test_bridge_script():
     check("config dir is one shared store",
           'MCP_REMOTE_CONFIG_DIR="${HOME}/.mcp-auth"' in src)
     check("config dir is not per-session", "$PPID" not in src)
+    helper = open(os.path.join(os.path.dirname(BRIDGE), 'broker-login.py')).read()
     check("pins an EXACT mcp-remote version, not a floating range",
-          'mcp-remote@$MCP_REMOTE_VERSION' in src
+          "mcp-remote@{version}" in helper
           and "mcp-remote@^" not in src and "mcp-remote@~" not in src,
           "a floating range drifts onto a fresh per-version token dir and re-auths every session")
     check("pin stays at or above the 0.1.43 concurrency floor",
           any(f"MCP_REMOTE_VERSION=0.1.{p}" in src for p in range(43, 100)),
           "the shared store needs 0.1.43's concurrency fixes")
     check("token check is scoped to the pinned version dir",
-          "mcp-remote-$MCP_REMOTE_VERSION/" in src and "mcp-remote-*/" not in src,
+          "mcp-remote-{version}" in helper and "mcp-remote-*/" not in src,
           "a token under another version dir is one mcp-remote will not read")
-    check("gates the first login", ".first-login-" in src)
+    check("gates the first login", ".first-login-" in helper)
     check("token store is owner-only", "chmod 700" in src)
-    check("reaps orphaned bridges", '[ "$ppid" = "1" ]' in src)
+    check("does not kill unrelated processes based on PPID", 'ps -o' not in src and 'kill "$pid"' not in src)
 
 
 def _session_env(work):

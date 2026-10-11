@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, Agent, Skill, mcp__indmoney__*, mcp__plugin_ev
 
 **No ticker given?** Deep-analysis reads one named stock. If the user invoked it with no company or ticker ("analyze a good stock", "find me something to research"), hand off to `discover stocks --invest` — it screens, triages, and surfaces candidates, then the user's pick flows back here for the full read. Do not guess a stock.
 
-Read `references/reference.md` — it owns how the six lenses combine into one verdict and the debate protocol. Resolve the argument to an NSE symbol first; `get_company_fundamentals` on the candidate symbol confirms the company name.
+Read `references/reference.md` — it owns how the six lenses combine into one verdict and the debate protocol. Resolve the argument to an NSE symbol first; `get_company_fundamentals` on the candidate symbol confirms the company name. For an explicit `--quick` request, ask only for `sections=["ratios", "pnl_10y", "balance_sheet_10y", "cash_flow_10y", "shareholding", "peers"]` and retain that response for the quick pass; it must not fetch the document index. Other modes may request the full response.
 
 **If the symbol will not resolve, do not brute-force it.** One clean symbol and at most one obvious alternative is the budget — never cycle through name fragments, old tickers, BSE codes and web searches (each failed call is envelope noise every later turn re-reads). A rename Tickertape search cannot reach still has a sid: read it from the Tickertape stock URL slug (…-SID), then pass `sid=` to `get_company_fundamentals` so the full path (10y statements, peers, shareholding) works, and hand that same sid to the legs. If you cannot get a trustworthy sid, `AskUserQuestion` at once — do not proceed on a near-match ticker's financials, and do not fall back to a hand-built read when the sid escape hatch is available.
 
@@ -19,19 +19,19 @@ Read `references/reference.md` — it owns how the six lenses combine into one v
 
 The tiers differ by **amount of judgment** — how much of the argument is worth building for the question being asked.
 
-| Mode | Primary documents | Legs | Debate | ~Agents |
+| Mode | Primary documents | Legs | Debate | Additional agents, including synthesis |
 |---|---|---|---|---|
-| `quick` | none — structured data only | **1 consolidated agent** (the elimination screen) | none | 1 |
-| `standard` *(default)* | warmed by you in phase 0 | financials, management, valuation, news | 1 `everything-finance:contest-researcher` (single pass) | ~5–6 |
-| `deep` | warmed by you in phase 0 | all 6 (adds technical, sector) | up to 3 rounds, the helper decides | ~11 |
-| `fundamentals` | warmed by you in phase 0 | financials, management, valuation | none | 3 |
+| `quick` | none — structured data only | one pass in the current context | none | 0 |
+| `standard` *(default)* | warmed by you in phase 0 | financials, management, valuation, news | 1 `everything-finance:contest-researcher` (single pass) | 7 |
+| `deep` | warmed by you in phase 0 | all 6 (adds technical, sector) | up to 3 rounds, the helper decides | 10–14 |
+| `fundamentals` | warmed by you in phase 0 | financials, management, valuation | none | 4 |
 
-`quick` is the **elimination screen** — one agent reading structured data only, applying the reject checklist (bad business / fake earnings / overpriced / crooked management) and returning keep/reject + a rank score + a one-line balance lean. It is discovery's per-name Stage B and a fast standalone take; it fetches no documents and renders no deck. `standard` is the full **investment** judgment — business, management, value and red-flag news, since timing (technical) and context (sector) do not *eliminate* a stock. `deep` is where the chart, the sector and the iterative bull/bear debate re-enter, for the finalists that earned the conviction.
+`quick` is the **elimination screen** — one pass reading structured data only and returning keep/reject/review with cited reasons and a one-line balance lean. It does not assign an independent numeric rank; discovery retains the deterministic scan order. It is discovery's per-name Stage B and a fast standalone take; it fetches no documents and renders no deck. `standard` is the full **investment** judgment — business, management, value and red-flag news, since timing (technical) and context (sector) do not *eliminate* a stock. `deep` is where the chart, the sector and the iterative bull/bear debate re-enter, for the finalists that earned the conviction.
 
 Resolution — the two reads the helper can't make, then the helper itself, which decides first-match-wins:
 
 1. **A fundamentals-only request is the `--fundamentals` flag.** "Are the fundamentals good?", "is X fundamentally sound?", "fundamental analysis of X" ask for the numbers, the people and the price without the debate — append `--fundamentals` to the argument string you hand the helper.
-2. **Check the broker, across every connected server.** Whether the resolved ticker is a **live holding or open position** decides the depth, so one server erroring is not an answer: try `mcp__indmoney__*`, then `mcp__upstox__*`, then `mcp__kite__*`, and stop at the first that returns. The result is `yes` (found in any book), `no` (at least one server answered and the ticker is not in it), or `unknown` (none connected, or every connected one errored). Script code can't call MCP tools, so this is your job. Keep the qty, avg cost and unrealised % where you get them — the portfolio-manager needs them in phase 3.
+2. **Check the broker across connected accounts.** Query all connected personal sources for holdings and open positions, including their pagination/completeness markers. `yes` means a matching position was found anywhere; `no` requires complete successful coverage of every connected account and no match; otherwise use `unknown`. An empty response from one broker says nothing about another broker. Preserve failed/incomplete account names as gaps even if a match elsewhere establishes `yes`. Normalize through `finance/compute/holdings.py`; do not add an aggregator's copy of a broker holding to that broker's own record. Keep exact per-account quantities and costs; if overlapping coverage cannot be reconciled, leave aggregate quantity/cost unknown and pass the account records and gap to the portfolio-manager. Script code cannot call broker MCP tools, so collection is your job. An explicit `--quick` may skip this check when no holdings snapshot was supplied, because it makes no position/sizing call; record status unknown and the omitted check.
 3. `python3 <plugin>/skills/deep-analysis/scripts/resolve_mode.py --args "<the raw argument string>" --symbol <TICKER> --holding <yes|no|unknown>` → `{mode, reason, gaps}`. It applies: **an explicit flag wins** (over the holding escalation too, and `--fundamentals` over the two depth flags — it names the question, not the rigour); else a **holding / open-trade auto-escalates to `deep`**; else **`standard`**. It checks the open-trade artifact half (`state/trades/<SYMBOL>-*.yml` `status: open`) itself.
 4. When the holding auto-escalation fires (no explicit flag), print the one-line note: `Held position → running deep analysis (override with --quick).`
 
@@ -43,9 +43,11 @@ Record `{mode, reason, gaps}` — the synthesis reports the first two and folds 
 
 ## Orchestration
 
-Four phases. Phase 0 is two calls you make yourself; phase 1 is the legs in **one** parallel wave; phase 2 is the debate; phase 3 decides. **The fan-out scales to the mode** — see the per-mode column. `quick` skips phases 0–2's fan-out entirely and runs a single agent (*Debate — by mode*).
+Four phases. Phase 0 is two calls you make yourself; phase 1 is the legs in **one** parallel wave; phase 2 is the debate; phase 3 decides. **The fan-out scales to the mode** — see the per-mode column. `quick` skips phases 0–2's fan-out entirely and executes the quick pass below in the current context.
 
-**Your context is the run's largest single cost**, because every turn re-reads all of it. Two rules keep it small. The phase table below **is** the plan — do not mirror it into a task list. And **a wave is launched in one message that ends the turn**: issue the `Agent` calls, say in one line what is running, and stop there. The harness re-invokes you when an agent completes, so there is nothing to wait for and nothing to poll — a filler command, a no-op shell call and a scheduled wakeup each buy a full context re-read and no information. An arriving notification is likewise not a cue to write: summarise nothing until the wave is complete, then move straight to the next phase.
+**Keep orchestration compact.** Use the phase table as the plan and pass evidence paths plus concise digests between phases. Dispatch a parallel wave only when the user and host permit it; otherwise run the same roles sequentially in the current context or one permitted agent at a time. Preserve the requested analysis scope when adapting execution.
+
+Use the host's documented completion mechanism. On a host that resumes the orchestrator from completion events, yield after dispatch; on a host with an explicit wait tool, wait on the actual running handles. Do not invent automatic resumption, issue filler shell commands, or schedule wakeups merely to poll. Inspect returned output paths once their writers finish; do not guess filenames or repeatedly read files that have not been produced. A failed worker with a complete output needs verification, not an automatic rerun.
 
 **Scripts and assets are under this skill's own base directory**, given to you in the header above. Use it — do not search the filesystem for the plugin.
 
@@ -55,15 +57,15 @@ Four phases. Phase 0 is two calls you make yourself; phase 1 is the legs in **on
 - **Primary documents.** `get_documents(TICKER, annual_reports=3)` — every mode but `quick`. It returns rows of `{kind, label, url, publisher, text_path, text_chars, text_lines, extracted_by, cached, outline}`: **paths, never text**. Hand each row's `text_path` *and* its `outline` — the map from each note to its line numbers — to the legs that read documents, so a leg reads the lines it needs instead of searching a report that runs to tens of thousands of lines. You never open one yourself.
 - **The peer set.** `get_company_fundamentals(TICKER)` already returned `peers`, each row carrying `ttm_pe` and `pb`. Pass that list to **both** the valuation and sector legs, so the peer-median multiple and the "leader or laggard in its group" read describe the same companies. Neither leg builds its own.
 
-Fetch-once is a **cache guarantee, not an ordering rule**: `get_documents` caches a converted document permanently and `get_company_fundamentals` caches for the day, so every leg that calls them lands on the same bytes whatever order it ran in. That is why phase 1 is a single wave.
+Reuse phase-0 response data and returned document paths across the legs. The tools cache results, but a refresh or changed upstream document can produce a new snapshot; caching is not proof that independently fetched responses contain identical evidence. Pass the exact paths and observation dates from this run. Fetch again only for a missing section or an intentional freshness check, and record any changed evidence.
 
-In `quick` there is no phase-0 warm-up and no leg fan-out at all — the single consolidated agent (below) reads structured data only. Skip phase 0's document and peer calls; still fetch `get_market_context(mode="quick")` for the cap-tier stance the agent weighs.
+In `quick` there is no phase-0 warm-up and no leg fan-out at all — the current context reads structured data only. Skip phase 0's document and peer calls; still fetch `get_market_context(mode="quick")` for market context, without treating cap-tier valuation as company valuation.
 
 ### Phase 1 — the legs, one parallel wave
 
 Each leg is a **skill run inside a generic profile agent** — issue every `Agent` call in one message. The dispatch names the skill, its mode where the skill has one, the output path, the ticker, and the leg's inputs.
 
-`quick` runs no legs — its one consolidated agent is in *Debate — by mode*. This wave is `standard` (4 legs), `deep` (6) or `fundamentals` (3).
+`quick` runs no legs and never dispatches itself; its local pass is in *Debate — by mode*. This wave is `standard` (4 legs), `deep` (6) or `fundamentals` (3).
 
 | Leg skill | Profile | Inputs beyond the ticker | Modes |
 |---|---|---|---|
@@ -76,7 +78,7 @@ Each leg is a **skill run inside a generic profile agent** — issue every `Agen
 
 The financials leg reports the earnings base (`clean_eps`, `eps_adjustments`) and the valuation leg strikes its multiples on it. They run in the same wave, so the valuation leg derives its own adjustment from the same published rows; where the two disagree, the synthesis names both and says which the verdict used.
 
-**Output paths.** Staged work papers go under `artifacts/tmp/staging/<TICKER>/agents/` (`paths.tmp_dir("staging")`) — `technical.md`, `financials.md`, `news.md`, `sector.md`, `contest.md`, `bull-r<N>.md`, `bear-r<N>.md`, `verdict.md`. The valuation and management legs are given their own run-day paths instead — `artifacts/stocks/<TICKER>/YYYY-MM-DD/dcf.md` (the engine also writes `dcf.json` beside it) and `management.md` (`paths.stock_dir`) — so `get_prior_run(skill="dcf"|"management")` finds them regardless of which skill produced them.
+**Output paths.** Before dispatching any report legs, create one bundle with `python3 -m finance.publication prepare --session <session-id> --ticker <TICKER> --date <YYYY-MM-DD> --mode <mode>`. Use the literal session id printed by SessionStart. On clients without that hook, generate one UUID for this run and retain it for explicit publication. Add `--telegram` only when the user authorized Telegram delivery; credentials alone are not authorization. Keep the returned `run_dir`, `report_json`, `report_html` and `agents_dir` paths and pass them to workers; never reconstruct staging paths from the ticker. Staged work papers go in this run's `agents_dir`. Give valuation the explicit `agents_dir/dcf.md` and `agents_dir/dcf-inputs.yml` output paths, and management `agents_dir/management.md`. They write directly there, not to shared dated report files. The valuation digest cites the immutable `dcf_path` returned by the engine. Pass these exact paths to the debate and writer.
 
 **IO hygiene (all modes).** Each leg `Write`s its **full report to its file** — opening with its machine-read block, then a `## Findings` section carrying the leg's whole case in a few sentences — and returns **only a compact digest** — its machine-readable top block plus the path, never the body. Downstream agents (`contest` / `bull` / `bear` / `portfolio-manager`) and your synthesis receive **paths** and Read what they need in their own context; you never hold six full reports at once. Pass each agent only what it needs — they are forked and share no context.
 
@@ -86,7 +88,6 @@ If phase 0 or any leg fails, state the gap and continue; the portfolio-manager w
 
 | Phase | Agent | Input | Modes |
 |---|---|---|---|
-| 1+2 | `everything-finance:terminal-analyst` (one agent, the elimination screen) | the ticker; the cap-tier `valuation.stance` from phase 0 | quick |
 | 2 | `everything-finance:contest-researcher` | the leg report **paths** (financials, management, valuation, news) | standard |
 | 2 | `everything-finance:bull-researcher` / `everything-finance:bear-researcher` | the phase-1 report **paths** (round 1); the opposing side's previous-round report, its own, the round number and the helper's `directive` (round r>1) | deep |
 | 3 | `everything-finance:portfolio-manager` | its **output path** (`verdict.md`), the leg report **paths**, the debate transcript paths, `position` (from step 2's broker check: `{held, qty, avg_cost, unrealised_pct}`), `debate` (`{rounds_run, stopped_because, engaged}`) and the market context — issues verdict: Buy / Accumulate / Hold / Avoid / Exit, with sizing and invalidation level | standard, deep |
@@ -95,8 +96,15 @@ If phase 0 or any leg fails, state the gap and continue; the portfolio-manager w
 
 Phase 2's shape depends on the resolved mode.
 
-**`quick` — one consolidated agent, no debate.** Fork a single `everything-finance:terminal-analyst` running `deep-analysis` in a structured-data-only pass: it reads `get_company_fundamentals` (cash quality — CFO vs PAT, accruals, debt/interest cover), `get_stock_ratios` (multiples) and `get_shareholding` (pledge, holding trend, remuneration), **fetches no documents**, applies the reject checklist (bad business / fake earnings / overpriced / crooked management), and returns **keep/reject + a rank score (0–100) + a one-line balance lean**. No leg fan-out, no contest, no portfolio-manager, no deck. This is discovery's Stage B and the fast standalone take. Its report is written to `artifacts/stocks/<TICKER>/YYYY-MM-DD/quick.md`; you return the digest and the path.
+**`quick` — execute locally, no child dispatch.** The context already running this skill performs the pass; it must not invoke `deep-analysis`, another lens skill, or an agent. If discovery launched a `terminal-analyst` worker, that worker is the whole pass.
 
+Reuse the structured fundamentals response above. Read annual periods by their labels, keeping FY and TTM separate: cash conversion, debt/service burden, returns and their trends, shareholding/pledge, and comparable current multiples. `get_shareholding` can supplement missing pledge evidence; it does not supply remuneration. Call `get_stock_ratios` only for a needed field absent from the existing response. Fetch no primary documents. Published ratios alone cannot establish fraud, management integrity or intrinsic value; those remain unassessed, and a high P/E alone is not an exclusion.
+
+- `reject`: a sourced, decision-relevant failure of the user's/spec's stated criteria; cite the criterion, period and evidence.
+- `keep`: the available screening checks pass, with their limited scope stated. It means worth fuller research, never BUY or a cleared integrity gate.
+- `review`: a material check is missing, contradictory or requires documents. Do not convert unavailable evidence into either a pass or an accusation.
+
+Write `quick.md` via `paths.stock_dir`, with a `quick-block` carrying `verdict`, `lean`, `flags`, `reasons` and `gaps`, followed by a short sourced explanation. Return only those fields plus `path`. There is no invented 0–100 score, no debate, no portfolio-manager and no deck. Discovery uses the existing deterministic rank among keeps, and presents review cases separately.
 **`standard` — single contest pass → verdict.** After the four legs (financials, management, valuation, news), fork one `everything-finance:contest-researcher` with those four paths. It writes `contest.md` (strongest bull case, strongest bear case, balance-of-evidence lean) and returns the digest — one pass, no bull/bear loop. Then the `portfolio-manager` issues the verdict. If the contest lean is **`genuinely split`**, the synthesis appends a one-line suggestion to re-run `deep` — it does not auto-escalate.
 
 **`deep` — round 1, then the helper decides.** Fork `everything-finance:bull-researcher` and `everything-finance:bear-researcher` in parallel (round 1) from the six phase-1 paths. After every round, write each side's `debate-block` fields to a small JSON and run:
@@ -128,7 +136,7 @@ The sector body (RS, KPIs, tailwinds/headwinds, leaders/laggards, stance) is cac
 
 ## Synthesize — one forked `report-writer`
 
-**`quick` skips synthesis entirely** — its one agent already wrote `quick.md`, and there is no deck. Return the keep/reject verdict, the rank score and the one-line lean in chat, plus the `quick.md` path. Everything below is `standard` / `deep` / `fundamentals`.
+**`quick` skips synthesis entirely** — the current context already wrote `quick.md`. Return keep/reject/review, the cited reason, the one-line lean and the path. Everything below is `standard` / `deep` / `fundamentals`.
 
 The deck is the deliverable; **there is no markdown report.** The work papers are the legs' own output; you do **not** write them, and you do **not** read them to build the deck. Fork one `everything-finance:report-writer` with the fixture path (the worked shape example), the output path, the work-paper paths, and the run facts only you hold:
 
@@ -136,9 +144,9 @@ The deck is the deliverable; **there is no markdown report.** The work papers ar
 
 It reads the papers in its own context, authors the deck's **render projection** — a single `.report.json` — and returns the path. The leg reports, the debate transcript and the verdict never enter your context at once — that is the point of the fork, so do not read them "to check" and do not ask it for the body.
 
-Output path: `artifacts/tmp/staging/<TICKER>.report.json` — in `fundamentals`, `artifacts/tmp/staging/<TICKER>.fundamentals.report.json` (`paths.tmp_dir("staging")`). Fixture: `skills/_report/scripts/fixtures/deep-analysis.sample.json`, the worked example whose shape the projection mirrors slide-for-slide; its `finance/contracts.md` → *Artifact: report projection* entry owns the field list.
+Output path: the bundle's returned `report_json`. Pass its exact ticker, date and mode to the writer; projection `meta` must match. Fixture: `skills/_report/scripts/fixtures/deep-analysis.sample.json`; `finance/contracts.md` owns the projection contract.
 
-The projection **must carry `coverage.brief`** (≤ 10 lines) — it is the Telegram brief the Stop hook parses and sends, so it must stand alone as the run's headline. It is a **render input with no consumer**: nothing in the plugin ever reads it back into a decision, so a missing field renders as a labelled gap, never a fabricated number.
+The projection **must carry `coverage.brief`** (≤ 10 lines) — it is the brief included when Telegram delivery is authorized, so it must stand alone as the run's headline. It is also the prior-run record and can be read by trade-tracker as rationale. Preserve source attribution and data gaps; missing evidence must never become a fabricated number in the projection.
 
 In chat (the debate modes), give the verdict, the two strongest opposing arguments, the sector stance, and the invalidation level — from the digests you already hold, not from the projection file.
 
@@ -148,14 +156,14 @@ Once the report-writer returns the `.report.json` path, produce the one self-con
 
 ```bash
 python3 skills/_report/scripts/render_report.py \
-  --report-json artifacts/tmp/staging/<TICKER>.report.json \
+  --report-json "<returned report_json>" \
   --template deep-analysis \
-  --out artifacts/tmp/staging/<TICKER>.report.html
+  --out "<returned report_html>"
 ```
 
 `render_report.py` is pure compute over that JSON (it fetches nothing); charts are the data-driven partials in `skills/_report/scripts/charts.py`, never hand-authored markup. Every number the deck prints comes from the artifact that sourced it — a value the projection does not carry renders as a **labelled gap** (an empty pledge list is "unknown", not "none"), and the gaps slide is never trimmed.
 
-The plugin's Stop hook archives the staged deck to `artifacts/stocks/<TICKER>/YYYY-MM-DD/` — `deep-analysis.html` + `deep-analysis.report.json`, or `fundamental-analysis.html` + `fundamental-analysis.report.json` from the `.fundamentals` staging name — moves the work papers to the folder of the same name beside it, reads the brief from the projection's `coverage.brief` and sends it to Telegram with a `file://` link to the deck. Do not send Telegram messages yourself and do not move the files. **The two modes archive to separate files on purpose**: a fundamentals run must never overwrite the day's full run, and `get_prior_run(skill="deep-analysis"|"fundamentals")` — which resolves to the `.report.json` (`paths.py` `_STOCK_ARTIFACT`) — then builds each mode on its own history. In `fundamentals` mode the two staged files are `<TICKER>.fundamentals.report.json/.html`.
+After rendering and verifying the deck, and after every work-paper writer finishes, write the empty `ready` file inside the returned `run_dir`. Publish explicitly with `<plugin-root>/hooks/post-deep-analysis.sh publish --session <session-id> --run-id <run-directory-name>` (the wrapper uses the shared secrets loader). Use the returned archived `report_html` link in the final response. Publication moves the entire bundle atomically into `stocks/<TICKER>/<date>/runs/<run-id>/`; same-day reruns never replace earlier evidence. If publication fails, preserve staging and report the gap. Do not move individual files. The Stop hook is recovery for ready bundles left by the same session; it ignores other sessions and legacy flat staging. Telegram sends the archived deck as a document only when authorized at preparation; a delivery failure leaves the archive intact and is reported without automatic retry.
 
 ## Alerts this skill raises (via `manage_alerts`)
 

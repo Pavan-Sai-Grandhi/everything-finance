@@ -400,11 +400,11 @@ check("run: story range brackets the base value",
       d["story_range"][0] <= d["intrinsic_value_per_share"] <= d["story_range"][1],
       d["story_range"])
 check("run: the year-by-year rows stay out of the response", "yearly" not in d, sorted(d))
-check("run: dcf_path names dcf.json under the ticker",
-      d["dcf_path"].endswith("dcf.json") and "RELIANCE" in d["dcf_path"], d["dcf_path"])
+check("run: dcf_path names immutable JSON under the ticker",
+      os.path.basename(d["dcf_path"]).startswith("dcf-") and d["dcf_path"].endswith(".json") and "RELIANCE" in d["dcf_path"], d["dcf_path"])
 check("run: the spilled file is the complete result",
       json.load(open(d["dcf_path"]))["yearly"][0]["fcff"] == rs["yearly"][0]["fcff"])
-check("run: the spill lands where latest_prior looks",
+check("run: the spill lands in the stock run-day folder",
       os.path.dirname(d["dcf_path"]) == paths.stock_dir("RELIANCE"), d["dcf_path"])
 
 solo = dcf.run("INFY", spec1)
@@ -460,8 +460,228 @@ except ValueError as e:
           "model_shape: equity" in str(e), str(e))
 
 equity_spec = dict(spec1, model_shape="equity", operating_margin=1.0, tax_rate=0.0,
-                   wacc=0.12, terminal_wacc=0.12, terminal_roic=0.14)
+                   wacc=0.12, terminal_wacc=0.12, terminal_roic=0.14, terminal_margin=1.0)
 check("declared equity-shaped model remains valid",
       dcf.value(equity_spec)["assumptions"]["model_shape"] == "equity")
 
+with tempfile.TemporaryDirectory() as evidence_root:
+    from unittest import mock
+    with mock.patch.dict(os.environ, {'EVERYTHING_FINANCE_ARTIFACTS':evidence_root}):
+        first = dcf.run('TESTCO',spec1)
+        evidence_path = first['data']['dcf_path']
+        original = open(evidence_path,'rb').read()
+        second = dcf.run('TESTCO',dict(spec1,base_revenue=1500))
+        check('DCF rerun preserves the first complete result',first['data']['dcf_path']!=second['data']['dcf_path'] and open(evidence_path,'rb').read()==original)
+        again = dcf.run('TESTCO',spec1)
+        check('identical DCF evidence reuses its path',again['data']['dcf_path']==evidence_path)
+        check('full DCF evidence retains exact supplied inputs',json.load(open(evidence_path)).get('inputs')==spec1)
+
+with mock.patch.object(dcf.spine,'publish_evidence',side_effect=OSError('fixture storage failure')):
+    failed_write = dcf.run('TESTCO',spec1)
+    check('DCF storage failure retains computed value with a gap',failed_write['ok'] and failed_write['data']['dcf_path'] is None and bool(failed_write['gaps']))
+
+# Zero-shift sensitivities must reproduce the same model, including loss years.
+loss_spec = dict(spec1, years=3, operating_margin=[-.2,-.1,.15], terminal_margin=.25)
+check('story center retains negative operating margins',dcf.story_sensitivity(loss_spec,(0,), (0,))['cells'][0][0]==round(dcf.value(loss_spec)['intrinsic_value_per_share'],2))
+shifted = dict(loss_spec, operating_margin=[-.17,-.07,.18], terminal_margin=.28)
+check('story margin shift includes explicit terminal margin',dcf.story_sensitivity(loss_spec,(0,), (.03,))['cells'][0][0]==round(dcf.value(shifted)['intrinsic_value_per_share'],2))
+buildup_spec = dict(spec1)
+buildup_spec.pop('wacc')
+buildup_spec['wacc_buildup']={'risk_free':.05,'mature_erp':.06,'beta':1.5,'tax_rate':.25}
+check('terminal sensitivity center uses the resolved buildup rate',dcf.sensitivity(buildup_spec,(0,), (0,))['cells'][0][0]==round(dcf.value(buildup_spec)['intrinsic_value_per_share'],2))
+young = dict(spec1, years=3, lifecycle_stage='young_growth', wacc=.2, terminal_wacc=.12)
+# Use a recognized young lifecycle to test that terminal perturbations freeze explicit rates.
+young['lifecycle_stage'] = next(iter(dcf.YOUNG_STAGES))
+resolved, _ = dcf.resolve_wacc(young,3)
+frozen = dict(young,wacc=resolved,terminal_wacc=.13)
+check('terminal-only sensitivity holds explicit discount path fixed',dcf.sensitivity(young,(.01,), (0,))['cells'][0][0]==round(dcf.value(frozen)['intrinsic_value_per_share'],2))
+for bad_ratio in (0,-1,float('nan'),float('inf')):
+    try:
+        dcf.value(dict(spec1,sales_to_capital=bad_ratio))
+        check('unusable capital efficiency cannot create free growth',False,bad_ratio)
+    except ValueError:
+        check('unusable capital efficiency cannot create free growth',True)
+
+reverse_loss = dcf.reverse_dcf(dict(loss_spec,current_price=dcf.value(loss_spec)['intrinsic_value_per_share']),solve='margin')
+check('reverse margin solve reproduces base loss years without a hidden floor',reverse_loss['solved'] and abs(reverse_loss['shift']) < .0001,reverse_loss)
+
+for key, bad_value in (('years',1.5),('years',True),('revenue_growth',[]),('wacc','123'),('operating_margin',[True]),('base_revenue',float('nan')),('shares_outstanding',float('inf')),('failure_recovery',2),('wacc',-1),('revenue_growth',-1.1)):
+    try:
+        dcf.value(dict(spec1, **{key:bad_value}))
+        check('malformed DCF input is rejected: '+key,False,bad_value)
+    except ValueError:
+        check('malformed DCF input is rejected: '+key,True)
+    except Exception as exc:
+        check('malformed DCF input has a clear validation error: '+key,False,type(exc).__name__)
+check('reverse margin result retains negative implied years',reverse_loss['implied_path'][0]<0,reverse_loss)
+bad_weights = dict(buildup_spec,wacc_buildup=dict(buildup_spec['wacc_buildup'],equity_weight=.8,debt_weight=.8))
+try:
+    dcf.value(bad_weights)
+    check('WACC financing weights must sum to one',False)
+except ValueError:
+    check('WACC financing weights must sum to one',True)
+
+for block, content, remove in (('growth_glide',{'initial':.1,'years_high':True},'revenue_growth'),('margin_glide',{'start':.1,'target':.2,'year_target':1.5},'operating_margin')):
+    malformed = dict(spec1,**{block:content})
+    malformed.pop(remove)
+    try:
+        dcf.value(malformed)
+        check('glide timing cannot be silently coerced: '+block,False)
+    except ValueError:
+        check('glide timing cannot be silently coerced: '+block,True)
+false_confirmation = dict(buildup_spec,wacc_buildup=dict(buildup_spec['wacc_buildup'],country_risk_premium=.02,risk_free_is_default_free='false'))
+try:
+    dcf.value(false_confirmation)
+    check('text false is not confirmation of a default-free rate',False)
+except ValueError:
+    check('text false is not confirmation of a default-free rate',True)
+
+# Pure solver regressions: decreasing functions, endpoint roots and convergence.
+with mock.patch.object(dcf, 'value', side_effect=lambda spec: {'intrinsic_value_per_share': 100 - 20 * spec['revenue_growth'][0]}):
+    decreasing = dcf.reverse_dcf(dict(spec1, revenue_growth=.1), target_per_share=95)
+    check('reverse solves a decreasing lever response', decreasing['solved'] and abs(decreasing['shift'] - .15) < .001, decreasing)
+with mock.patch.object(dcf, 'value', side_effect=lambda spec: {'intrinsic_value_per_share': 100 + 20 * spec['revenue_growth'][0]}):
+    endpoint = dcf.reverse_dcf(dict(spec1, revenue_growth=.1), target_per_share=96)
+    check('reverse accepts a root at the search endpoint', endpoint['solved'] and abs(endpoint['shift'] + .3) < 1e-8, endpoint)
+    exhausted = dcf.reverse_dcf(dict(spec1, revenue_growth=.1), target_per_share=109, max_iter=1, tol=1e-12)
+    check('iteration exhaustion cannot claim solved', not exhausted['solved'], exhausted)
+    outside = dcf.reverse_dcf(dict(spec1, revenue_growth=.1), target_per_share=1000)
+    check('unbracketed search does not make a cheapness judgment', not outside['solved'] and 'cheap' not in outside['reason'] and 'justify' not in outside['reason'], outside)
+for args in ({'target_per_share': float('nan')}, {'target_per_share': True}, {'target_per_share': -1},
+             {'target_per_share': 100, 'tol': 0}, {'target_per_share': 100, 'max_iter': 0}):
+    try:
+        dcf.reverse_dcf(spec1, **args)
+        rejected = False
+    except ValueError:
+        rejected = True
+    check('invalid reverse solver input rejected', rejected, args)
+for field, invalid in (('current_price', -1), ('current_price', 0), ('current_price', True),
+                       ('current_price', float('nan')), ('risk_free', float('inf')),
+                       ('risk_free', True), ('base_revenue', 1.79e308)):
+    try:
+        dcf.value(dict(spec1, **{field: invalid}))
+        rejected = False
+    except ValueError:
+        rejected = True
+    check('invalid price/rate or overflow cannot escape as valuation', rejected, field)
+# Calculation inputs must not be rounded by the WACC audit detail.
+precise_rf = 0.07123456
+precise_spec = dict(spec1, wacc=None, risk_free=precise_rf,
+                    wacc_buildup={'risk_free': precise_rf, 'mature_erp': 0.05,
+                                  'beta': 1.0, 'tax_rate': 0.25})
+try:
+    precise_result = dcf.value(precise_spec)
+    precision_ok = precise_result['assumptions']['risk_free'] == precise_rf
+except ValueError:
+    precision_ok = False
+check('matching high-precision risk-free rates remain valid', precision_ok)
+try:
+    huge_result = dcf.run('TESTCO', dict(spec1, base_revenue=10**400))
+    huge_rejected = not huge_result['ok'] and bool(huge_result['gaps'])
+except OverflowError:
+    huge_rejected = False
+check('unrepresentable integer becomes an input gap', huge_rejected)
+# CLI failures must preserve the user's inputs and any previous output.
+import contextlib
+import io
+from unittest import mock
+
+def cli_status(arguments):
+    with mock.patch.object(sys, 'argv', ['dcf'] + arguments), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        try:
+            dcf.main()
+        except SystemExit as exc:
+            return exc.code
+        except Exception:
+            return 'uncaught'
+    return 0
+
+with tempfile.TemporaryDirectory() as cli_root:
+    from pathlib import Path
+    source = Path(cli_root) / 'inputs.json'
+    original = json.dumps(spec1)
+    source.write_text(original)
+    check('CLI refuses input/output alias without modifying input',
+          cli_status(['--inputs', str(source), '--out', str(source)]) == 2
+          and source.read_text() == original)
+    alias = Path(cli_root) / 'alias.json'
+    alias.symlink_to(source)
+    check('CLI refuses symlink alias',
+          cli_status(['--inputs', str(source), '--out', str(alias)]) == 2
+          and source.read_text() == original)
+    alias.unlink()
+    os.link(source, alias)
+    check('CLI refuses hardlink alias',
+          cli_status(['--inputs', str(source), '--out', str(alias)]) == 2
+          and source.read_text() == original)
+    alias.unlink()
+    source.write_text('{broken json')
+    check('CLI malformed input has a controlled usage failure',
+          cli_status(['--inputs', str(source)]) == 2)
+    source.write_text(original)
+    output = Path(cli_root) / 'output.json'
+    output.write_text('previous evidence')
+    with mock.patch.object(dcf.os, 'replace', side_effect=OSError('simulated publication failure')):
+        status = cli_status(['--inputs', str(source), '--out', str(output)])
+    check('CLI failed publication preserves previous evidence',
+          status == 2 and output.read_text() == 'previous evidence')
+    check('CLI failed publication cleans pending file',
+          sorted(p.name for p in Path(cli_root).iterdir()) == ['inputs.json', 'output.json'])
+    check('CLI publishes a complete valid result',
+          cli_status(['--inputs', str(source), '--out', str(output)]) == 0
+          and json.loads(output.read_text())['intrinsic_value_per_share'] == r1['intrinsic_value_per_share']
+          and source.read_text() == original)
+
+# Repeated assumptions must not be silently overwritten by the parser.
+with tempfile.TemporaryDirectory() as input_root:
+    for suffix, content in (
+        ('.json', '{"wacc": 0.1, "wacc": 0.2}'),
+        ('.json', '{"wacc_buildup": {"beta": 1, "beta": 2}}'),
+        ('.yaml', 'wacc: 0.1\nwacc: 0.2\n'),
+        ('.yaml', 'wacc_buildup:\n  beta: 1\n  beta: 2\n'),
+        ('.yaml', 'base: &base {beta: 1}\nwacc_buildup: {<<: *base, beta: 2}\n'),
+        ('.yaml', '1: 0.1\n'),
+    ):
+        input_path = Path(input_root) / ('ambiguous' + suffix)
+        input_path.write_text(content)
+        try:
+            dcf.load_inputs(str(input_path))
+            refused = False
+        except ValueError:
+            refused = True
+        check('duplicate model field is rejected', refused, suffix)
+    valid_path = Path(input_root) / 'valid.yaml'
+    valid_path.write_text('years: 1\nbase_revenue: 1000\nwacc_buildup:\n  beta: 1.2\n')
+    check('valid nested YAML remains supported',
+          dcf.load_inputs(str(valid_path))['wacc_buildup']['beta'] == 1.2)
+# Equity adaptation uses after-tax earnings; FCFF transforms must not leak into it.
+for changes in ({'operating_margin': .2}, {'terminal_margin': .2},
+                {'tax_rate': .25}, {'terminal_tax_rate': .25}, {'net_debt': 100},
+                {'wacc': None, 'wacc_buildup': {'risk_free': .05, 'mature_erp': .06,
+                  'equity_weight': .8, 'debt_weight': .2, 'cost_of_debt_pretax': .07,
+                  'tax_rate': .25}}):
+    try:
+        dcf.value(dict(equity_spec, **changes))
+        refused = False
+    except ValueError:
+        refused = True
+    check('equity model rejects incompatible firm-side assumptions', refused, changes)
+# Optional scenarios cannot invalidate an already valid base valuation.
+with tempfile.TemporaryDirectory() as optional_root:
+    with mock.patch.dict(os.environ, {'EVERYTHING_FINANCE_ARTIFACTS': optional_root}):
+        optional_result = dcf.run('TESTCO', spec1, reverse=True)
+        check('missing reverse target preserves valid base result',
+              optional_result['ok'] and optional_result['data'].get('intrinsic_value_per_share') == r1['intrinsic_value_per_share'])
+        check('missing reverse target is a labelled gap',
+              any('reverse_dcf' in gap for gap in optional_result['gaps']))
+        with mock.patch.object(dcf, 'sensitivity', side_effect=ValueError('invalid scenario')):
+            degraded = dcf.run('TESTCO', spec1, sensitivity=True)
+        check('failed sensitivity preserves base and reports gap',
+              degraded['ok'] and degraded['data'].get('sensitivity_range') is None
+              and any('sensitivity' in gap for gap in degraded['gaps']))
+        if degraded['data'].get('dcf_path'):
+            recorded = json.loads(Path(degraded['data']['dcf_path']).read_text())
+            check('scenario gap survives in persisted evidence', bool(recorded.get('gaps')))
+        else:
+            check('scenario gap survives in persisted evidence', False)
 summary()

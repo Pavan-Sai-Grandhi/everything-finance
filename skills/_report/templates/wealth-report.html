@@ -145,22 +145,10 @@
 {#- ============================================================ 06 · CROSS-DOMAIN ======== -#}
 {% call c.slide('Cross-domain read', '06', 'The interactions', r.meta.subject_date, r.cross.title, r.cross.lede, r.cross.footer) %}
   {%- set ef = r.cross.ef -%}
-  {%- set band_left = (ef.target_low / ef.cap * 100) -%}
-  {%- set band_w = ((ef.target_high - ef.target_low) / ef.cap * 100) -%}
-  {%- set marker = (ef.months / ef.cap * 100) -%}
   <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:60px;margin-top:48px;align-items:start;">
     <div style="background:var(--card);border:1px solid var(--rule);padding:40px 44px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:26px;">
-        <span style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--ink3);">{{ ef.label }}</span>
-        <span style="font-family:var(--mono);font-size:52px;color:var(--warn);">{{ ef.months }}<span style="font-size:26px;color:var(--ink3);"> mo</span></span>
-      </div>
-      <div style="position:relative;height:34px;background:var(--paper2);border:1px solid var(--rule);">
-        <div style="position:absolute;top:0;bottom:0;left:{{ band_left }}%;width:{{ band_w }}%;background:var(--posT);border-left:1px solid var(--pos);border-right:1px solid var(--pos);"></div>
-        <div style="position:absolute;top:-10px;bottom:-10px;left:{{ marker }}%;width:4px;background:var(--ink);"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:24px;color:var(--ink3);margin-top:14px;">
-        <span>0 MO</span><span style="color:var(--pos);">3–6 MO TARGET</span><span>{{ ef.cap }} MO</span>
-      </div>
+      {{ c.eyebrow(ef.label) }}
+      {{ runway_gauge(ef.months, ef.target_low, ef.target_high, ef.cap) | safe }}
       <div style="margin-top:30px;padding-top:26px;border-top:1px solid var(--rule);font-size:var(--t-body);line-height:1.5;color:var(--ink2);">{{ ef.note }}</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:26px;">
@@ -211,7 +199,7 @@
       </div>
       <div style="margin-top:32px;">{{ c.eyebrow('Work papers') }}</div>
       <div style="font-family:var(--mono);font-size:24px;line-height:1.8;color:var(--ink2);background:var(--card);border:1px solid var(--rule);padding:26px 30px;">{{ r.gaps.papers | replace('\n','<br>'|safe) }}</div>
-      <div style="margin-top:auto;padding-top:26px;border-top:1px solid var(--rule2);font-size:24px;line-height:1.6;color:var(--ink2);">{{ r.gaps.disclaimer | safe }}</div>
+      <div style="margin-top:auto;padding-top:26px;border-top:1px solid var(--rule2);font-size:24px;line-height:1.6;color:var(--ink2);">{{ r.gaps.disclaimer }}</div>
     </div>
   </div>
 {% endcall %}

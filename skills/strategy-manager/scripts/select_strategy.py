@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
                    os.path.dirname(os.path.abspath(__file__))))))
 from finance import paths
 from finance.deps import load_yaml
+from finance.spine import f
 
 
 def regime_fit(req, regime):
@@ -30,24 +31,30 @@ def regime_fit(req, regime):
         return True, []
     trend = regime.get("market_trend")
     want_trend = req.get("market_trend")
-    if want_trend and trend and want_trend != trend:
+    if want_trend and want_trend != trend:
         fails.append(f"trend is {trend}, needs {want_trend}")
 
     if req.get("nifty_above") == "ema200":
         above = (regime.get("trend_detail") or {}).get("above_ema200")
-        if above is False:
-            fails.append("Nifty below 200-EMA")
+        if above is not True:
+            fails.append("Nifty below 200-EMA" if above is False else "Nifty 200-EMA evidence missing")
 
     vol = regime.get("volatility") or {}
-    vix = vol.get("vix")
+    vix = f(vol.get("vix"))
     vmax = req.get("vix_max")
-    if vix is not None and vmax is not None and vix > vmax:
-        fails.append(f"VIX {vix} > max {vmax}")
+    if vmax is not None:
+        if vix is None:
+            fails.append("VIX evidence missing")
+        elif vix > vmax:
+            fails.append(f"VIX {vix} > max {vmax}")
 
-    br = (regime.get("breadth") or {}).get("pct_sectors_above_ema50")
+    br = f((regime.get("breadth") or {}).get("pct_sectors_above_ema50"))
     bmin = req.get("breadth_min_pct")
-    if br is not None and bmin is not None and br < bmin:
-        fails.append(f"breadth {br}% < min {bmin}%")
+    if bmin is not None:
+        if br is None:
+            fails.append("breadth evidence missing")
+        elif br < bmin:
+            fails.append(f"breadth {br}% < min {bmin}%")
 
     return (len(fails) == 0), fails
 
@@ -67,10 +74,10 @@ def edge_score(spec):
         return (str(stamp), "", "recency")   # yaml may parse a date; rank as an ISO string
     lp = spec.get("live_performance") or {}
     ea = spec.get("expectancy_assumptions") or {}
-    live = lp.get("expectancy_R")
-    back = ea.get("expectancy_R")
+    live = f(lp.get("expectancy_R")) if lp.get("eligible_for_selection") is True else None
+    back = f(ea.get("expectancy_R"))
     val = live if live is not None else back
-    pf = (lp.get("profit_factor") if live is not None else ea.get("profit_factor"))
+    pf = f(lp.get("profit_factor") if live is not None else ea.get("profit_factor"))
     return (val if val is not None else float("-inf"),
             pf if pf is not None else float("-inf"),
             "live" if live is not None else ("backtest" if back is not None else "none"))

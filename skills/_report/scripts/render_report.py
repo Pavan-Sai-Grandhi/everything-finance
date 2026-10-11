@@ -15,6 +15,8 @@ projection"). Nothing in the plugin ever reads it back into a decision.
 """
 import argparse
 import json
+import math
+import tempfile
 import os
 import re
 import sys
@@ -33,6 +35,43 @@ FONTS_HREF = ("https://fonts.googleapis.com/css2?"
               "&family=IBM+Plex+Mono:wght@400;500;600&display=swap")
 
 
+def rich_text(value):
+    """Allow prose emphasis and line breaks without trusting authored HTML."""
+    from html import escape
+    from html.parser import HTMLParser
+    from urllib.parse import urlsplit
+    from markupsafe import Markup
+
+    class Prose(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.output = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                href = dict(attrs).get("href", "")
+                try:
+                    parts = urlsplit(href)
+                    valid = parts.scheme in ("https", "http") and bool(parts.netloc)
+                except ValueError:
+                    valid = False
+                self.output.append(f'<a href="{escape(href, quote=True)}" rel="noopener noreferrer">' if valid else '<a>')
+            elif tag in ("strong", "em", "b", "i", "br", "code"):
+                self.output.append(f"<{tag}>")
+
+        def handle_endtag(self, tag):
+            if tag in ("strong", "em", "b", "i", "code", "a"):
+                self.output.append(f"</{tag}>")
+
+        def handle_data(self, data):
+            self.output.append(escape(data))
+
+    parser = Prose()
+    parser.feed(str(value) if value is not None else "")
+    parser.close()
+    return Markup("".join(parser.output))
+
+
 def _jinja_env(templates_dir):
     from finance.deps import need
     need("jinja2")
@@ -43,6 +82,7 @@ def _jinja_env(templates_dir):
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    env.filters["rich_text"] = rich_text
     # Chart partials + formatting helpers, exposed to the template. Charts return trusted markup,
     # so the template calls them through `| safe`; data values still auto-escape.
     for name in dir(charts):
@@ -53,11 +93,35 @@ def _jinja_env(templates_dir):
     return env
 
 
+def _json_object(pairs):
+    obj = {}
+    for key, value in pairs:
+        if key in obj:
+            raise ValueError(f"duplicate report key: {key}")
+        obj[key] = value
+    return obj
+
+
+def _json_number(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError("report numbers must be finite")
+    return value
+
+
 def render(report_json, template, out=None, assets_dir=None, templates_dir=None):
+    if not isinstance(template, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", template):
+        raise ValueError("template must be a bundled template name")
+    out = out or os.path.join(os.path.dirname(os.path.abspath(report_json)), "report.html")
+    if os.path.realpath(out) == os.path.realpath(report_json):
+        raise ValueError("HTML output cannot overwrite its JSON input")
     assets_dir = assets_dir or os.path.join(_SKILL, "assets")
     templates_dir = templates_dir or os.path.join(_SKILL, "templates")
     with open(report_json) as fh:
-        data = json.load(fh)
+        data = json.load(fh, object_pairs_hook=_json_object, parse_float=_json_number,
+                         parse_constant=_json_number)
+    if not isinstance(data, dict):
+        raise ValueError("report projection must be a JSON object")
 
     env = _jinja_env(templates_dir)
     with open(os.path.join(assets_dir, "deck.css")) as fh:
@@ -82,13 +146,26 @@ def render(report_json, template, out=None, assets_dir=None, templates_dir=None)
         with open(fonts_path) as fh:
             fonts_css = re.sub(r"</(style)", r"<\\/\1", fh.read(), flags=re.IGNORECASE)
 
-    tpl = env.get_template(f"{template}.html")
-    html = tpl.render(r=data, deck_css=deck_css, deck_js=deck_js,
-                      fonts_href=FONTS_HREF, fonts_css=fonts_css)
+    from jinja2 import TemplateError
+    try:
+        tpl = env.get_template(f"{template}.html")
+        html = tpl.render(r=data, deck_css=deck_css, deck_js=deck_js,
+                          fonts_href=FONTS_HREF, fonts_css=fonts_css)
+    except TemplateError as exc:
+        raise ValueError(f"report template failed: {exc}") from exc
 
-    out = out or os.path.join(os.path.dirname(os.path.abspath(report_json)), "report.html")
-    with open(out, "w") as fh:
-        fh.write(html)
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False,
+                                         dir=os.path.dirname(os.path.abspath(out))) as fh:
+            pending = fh.name
+            fh.write(html)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(pending, out)
+    finally:
+        if pending and os.path.exists(pending):
+            os.unlink(pending)
     return out
 
 
@@ -98,7 +175,11 @@ def main(argv=None):
     ap.add_argument("--template", required=True, help="template name without .html (e.g. deep-analysis)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
-    out = render(args.report_json, args.template, args.out)
+    try:
+        out = render(args.report_json, args.template, args.out)
+    except (OSError, ValueError, TypeError) as exc:
+        print(json.dumps({"ok": False, "gaps": [str(exc)]}), file=sys.stderr)
+        return 1
     print(out)
     return 0
 

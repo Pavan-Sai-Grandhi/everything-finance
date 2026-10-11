@@ -12,7 +12,8 @@ Network-free and dependency-free by design, so the pure math core in
 `finance/compute/lookthrough.py` and the fetcher in `finance/sources/funds.py` can both
 sit on it.
 """
-from finance.spine import f as _num
+import math
+import re
 
 SEBI_CAP_RANKS = {"large": 100, "mid": 250}
 
@@ -24,21 +25,23 @@ def cap_bucket(cap_rank=None, cap_label=None):
     is missing. `source` is `"rank"` or `"label"` so a consumer can report which of the
     two a classification rests on.
     """
-    r = _num(cap_rank)
-    if r is not None and r > 0:
+    try:
+        r = float(cap_rank) if not isinstance(cap_rank, bool) else None
+    except (ValueError, TypeError, OverflowError):
+        r = None
+    if r is not None and math.isfinite(r) and r > 0 and r.is_integer():
         if r <= SEBI_CAP_RANKS["large"]:
             return "large", "rank"
         if r <= SEBI_CAP_RANKS["mid"]:
             return "mid", "rank"
         return "small", "rank"
-    lab = str(cap_label or "").strip().lower().replace(" ", "").replace("-", "")
-    if lab.startswith("large"):
-        return "large", "label"
-    if lab.startswith("mid"):
-        return "mid", "label"
-    if lab.startswith("small") or lab.startswith("micro"):
-        return "small", "label"
-    return None, None
+    if not isinstance(cap_label, str):
+        return None, None
+    lab = re.sub(r"[\s_-]+", "", cap_label.lower())
+    labels = {"large":"large", "largecap":"large", "mid":"mid", "midcap":"mid",
+              "small":"small", "smallcap":"small", "micro":"small", "microcap":"small"}
+    bucket = labels.get(lab)
+    return (bucket, "label") if bucket else (None, None)
 
 
 def cap_label(rank):

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Decide whether the bull/bear debate runs another round. One function, both modes.
+"""Decide whether the bull/bear debate runs another round. One bounded rule for deep mode; standard uses one contest.
 
 A debate round costs two agents. This decides, deterministically and identically in
-`standard` and `deep`, whether the next one buys anything — from the `debate-block`
+`deep`, whether the next one buys anything — from the `debate-block`
 digest each side emits, never from the orchestrator's impression of the argument.
 
 ## The axis rule
@@ -48,7 +48,7 @@ VALID_AXES = {
 }
 
 # Rounds a mode will run in total, including round 1.
-MAX_ROUNDS = {"standard": 2, "deep": 3}
+MAX_ROUNDS = {"standard": 1, "deep": 3}
 
 # What the next round is for. The orchestrator puts this in the round prompt.
 CROSS_EXAMINE = ("cross-examine: each side must answer the OPPONENT's axis directly "
@@ -57,21 +57,38 @@ REBUT = "rebut: both sides are on the same axis — attack the opposing claim's 
 
 
 def _norm(claim):
-    """Lowercase, collapse whitespace, strip punctuation — so two phrasings of the
-    *same* point read as identical and don't count as a genuine clash."""
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (claim or "").lower())).strip()
+    """Normalize typography without deleting signs, comparison operators or decimals."""
+    return re.sub(r"\s+", " ", claim.casefold()).strip().rstrip(".!?").strip()
 
 
-def should_escalate(bull, bear, mode="standard", round_no=1):
+def should_escalate(bull, bear, mode="deep", round_no=1):
     """bull/bear are the round-`round_no` digests {axis, claim, conceded, new_evidence}.
 
     Returns {escalate, reason, directive, gaps}. `directive` is what the next round is
     for (None when not escalating); `gaps` names any contract violation in the digests.
     """
-    cap = MAX_ROUNDS.get(mode, MAX_ROUNDS["standard"])
     stop = lambda reason, gaps=(): {"escalate": False, "reason": reason,
                                     "directive": None, "gaps": list(gaps)}
 
+    if (not isinstance(mode, str) or mode not in MAX_ROUNDS
+            or isinstance(round_no, bool) or not isinstance(round_no, int) or round_no < 1):
+        return stop("invalid debate controls", ["mode must be deep/standard and round must be a positive integer"])
+    bad = []
+    for side, digest in (("bull", bull), ("bear", bear)):
+        if not isinstance(digest, dict):
+            bad.append(f"{side} digest must be an object")
+            continue
+        axis = digest.get("axis")
+        if not isinstance(axis, str) or axis not in VALID_AXES:
+            bad.append(f"{side} axis {axis!r} is not one of {sorted(VALID_AXES)}")
+        if not isinstance(digest.get("claim"), str) or not _norm(digest["claim"]):
+            bad.append(f"{side} gave no evidence-tied claim")
+        for key in ("conceded", "new_evidence"):
+            if not isinstance(digest.get(key), bool):
+                bad.append(f"{side} {key} must be a JSON boolean")
+    if bad:
+        return stop("invalid digest — engagement not assessable", bad)
+    cap = MAX_ROUNDS[mode]
     if round_no >= cap:
         return stop(f"round {round_no} is the cap for {mode} mode")
 
@@ -89,19 +106,8 @@ def should_escalate(bull, bear, mode="standard", round_no=1):
         if bn is False and rn is False:
             return stop(f"neither side brought new evidence in round {round_no} — converged")
 
-    ba, ra = bull.get("axis"), bear.get("axis")
-    bad = [f"{side} axis {a!r} is not one of {sorted(VALID_AXES)}"
-           for side, a in (("bull", ba), ("bear", ra)) if a not in VALID_AXES]
-    if bad:
-        # Engagement is not assessable, so stop — but as a broken contract, not a
-        # converged debate.
-        return stop("a digest did not name a valid axis — engagement not assessable", bad)
-
-    bc, rc = _norm(bull.get("claim")), _norm(bear.get("claim"))
-    if not bc or not rc:
-        missing = [f"{s} gave no evidence-tied claim"
-                   for s, c in (("bull", bc), ("bear", rc)) if not c]
-        return stop("a side gave no evidence-tied claim — nothing to clash on", missing)
+    ba, ra = bull["axis"], bear["axis"]
+    bc, rc = _norm(bull["claim"]), _norm(bear["claim"])
 
     # Non-engagement — the case that needs the extra round most.
     if ba != ra:
@@ -120,25 +126,19 @@ def should_escalate(bull, bear, mode="standard", round_no=1):
 
 
 def _selftest():
-    # same axis, distinct claims → escalate to rebut
-    r = should_escalate({"axis": "valuation", "claim": "cheap"},
-                        {"axis": "valuation", "claim": "fairly priced"})
+    def digest(axis, claim, **flags):
+        return {"axis": axis, "claim": claim, "conceded": False, "new_evidence": True, **flags}
+    bull = digest("valuation", "cheap")
+    bear = digest("valuation", "fairly priced")
+    r = should_escalate(bull, bear)
     ok = r["escalate"] is True and r["directive"] == REBUT
-    # different axes → escalate to cross-examine
-    r = should_escalate({"axis": "valuation", "claim": "cheap"},
-                        {"axis": "governance", "claim": "pledging"})
+    r = should_escalate(bull, digest("governance", "pledging"))
     ok &= r["escalate"] is True and r["directive"] == CROSS_EXAMINE
-    # concession stops it
-    ok &= should_escalate({"axis": "valuation", "claim": "cheap", "conceded": True},
-                          {"axis": "valuation", "claim": "dear"})["escalate"] is False
-    # the cap stops it
-    ok &= should_escalate({"axis": "valuation", "claim": "a"},
-                          {"axis": "governance", "claim": "b"},
-                          mode="deep", round_no=3)["escalate"] is False
-    # no new evidence on either side, after round 1, stops it
-    ok &= should_escalate({"axis": "valuation", "claim": "a", "new_evidence": False},
-                          {"axis": "governance", "claim": "b", "new_evidence": False},
-                          mode="deep", round_no=2)["escalate"] is False
+    ok &= not should_escalate({**bull, "conceded": True}, bear)["escalate"]
+    ok &= not should_escalate(bull, bear, round_no=3)["escalate"]
+    ok &= not should_escalate({**bull, "new_evidence": False},
+                             {**bear, "new_evidence": False}, round_no=2)["escalate"]
+    ok &= not should_escalate(bull, bear, mode="standard")["escalate"]
     print("selftest", "ok" if ok else "FAIL")
     return 0 if ok else 1
 
@@ -147,19 +147,26 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bull", help="path to the bull digest JSON for this round")
     ap.add_argument("--bear", help="path to the bear digest JSON for this round")
-    ap.add_argument("--mode", default="standard", choices=sorted(MAX_ROUNDS),
-                    help="debate mode — sets the round cap (standard 2, deep 3)")
+    ap.add_argument("--mode", default="deep", choices=sorted(MAX_ROUNDS),
+                    help="deep permits up to 3 rounds; standard is a single contest pass")
     ap.add_argument("--round", type=int, default=1, dest="round_no",
                     help="the round that just finished")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
         sys.exit(_selftest())
-    with open(a.bull) as f:
-        bull = json.load(f)
-    with open(a.bear) as f:
-        bear = json.load(f)
-    print(json.dumps(should_escalate(bull, bear, mode=a.mode, round_no=a.round_no)))
+    if not a.bull or not a.bear:
+        ap.error("--bull and --bear are required unless --selftest is used")
+    try:
+        with open(a.bull) as f:
+            bull = json.load(f)
+        with open(a.bear) as f:
+            bear = json.load(f)
+        result = should_escalate(bull, bear, mode=a.mode, round_no=a.round_no)
+    except (OSError, ValueError) as exc:
+        result = {"escalate": False, "reason": "digest files could not be read",
+                  "directive": None, "gaps": [f"digest input failed ({type(exc).__name__})"]}
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":

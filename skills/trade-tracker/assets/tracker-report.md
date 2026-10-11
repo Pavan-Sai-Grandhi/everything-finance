@@ -10,11 +10,11 @@
 |---|---|---|---|---|---|---|---|---|
 | {{SYMBOL}} | {{QTY}} | ₹{{AVG}} | ₹{{LTP}} | {{R}}R | ₹{{PNL}} | **{{VERDICT}}** | {{REASON}} | {{ACTION}} |
 
-## Holding (rationale intact)
+## No mechanical exit trigger
 
 | Symbol | Qty | Avg | LTP | Unreal. R | P&L | Thesis check | Time left |
 |---|---|---|---|---|---|---|---|
-| {{SYMBOL}} | {{QTY}} | ₹{{AVG}} | ₹{{LTP}} | {{R}}R | ₹{{PNL}} | intact | {{SESSIONS_LEFT}} sessions |
+| {{SYMBOL}} | {{QTY}} | ₹{{AVG}} | ₹{{LTP}} | {{R}}R | ₹{{PNL}} | {{THESIS_STATUS}} | {{SESSIONS_LEFT}} sessions |
 
 ## Manual review (qualitative conditions to judge)
 
@@ -29,6 +29,6 @@
 - {{SYMBOL}}: {{what was missing — no rationale artifact / no price data / fetch blocked}}
 
 ---
-*Verdicts from `check_trade` (EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD), priority order. R = (price − entry)/(entry − stop).*
+*Verdicts from `check_trade` (EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD), priority order. Decision data as of {{DECISION_DATE}}. R uses the actual fill and original stop; valuation mark: {{MARK_SOURCE}}. Reverse price differences for shorts. Unrealized P&L excludes execution charges. HOLD still requires the outstanding manual checks.*
 
 *This tool recommends; you place the order. No automated execution. Not investment advice — personal research tool.*

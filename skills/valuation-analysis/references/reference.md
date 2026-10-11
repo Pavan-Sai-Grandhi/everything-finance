@@ -44,11 +44,7 @@ Margin of safety = intrinsic/share ÷ current_price − 1
 
 ## Worked example — a story turned into numbers
 
-The engine's self-test *is* a worked example. The story it encodes:
-
-> "A ₹1,000 Cr-revenue firm with a real but fading edge: it grows 15%/yr for 3 years while the edge holds, then fades to 4% (≈ the economy) by year 10. Today's 12% operating margin widens to 18% by year 5 as scale kicks in — no higher, because that's where the best peers sit. Each ₹1 of new capital buys ₹2 of sales (sales-to-capital 2.0). Discount at 11%. In perpetuity it grows 4% and earns 13% on new capital (a modest, durable moat). Net debt ₹500 Cr, ₹100 Cr surplus cash, 100 Cr shares."
-
-Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags. If the market price were ₹60, the margin of safety is **−70%** — the story doesn't support the price, so either the story is too conservative (defend a higher growth/margin with evidence) or the stock is dear. That tension *is* the output: the model surfaces where your narrative and the price disagree.
+The engine's `SELFTEST_SPEC` is a synthetic arithmetic example, not a company or current market observation. Run `python -m finance.compute.dcf --selftest` to obtain its current output and flags. Read its exact inputs alongside the output; do not reuse sample numbers as sourced assumptions or infer any real business's history from the example.
 
 ## The valuation levers (and where to source each)
 
@@ -59,13 +55,13 @@ Result: intrinsic ≈ **₹18.2/share**, terminal value ≈ 63% of EV, no flags.
 | Base revenue | annual-report **Revenue from Operations** (latest FY or TTM) | exclude interest, investment and other non-operating income; if the feed only exposes `Total Revenue`, derive the operating figure from the annual report rather than double-counting non-operating assets |
 | Revenue growth path | TAM studies + company guidance (concall) + Revenue from Operations history; fade to ≈ GDP+inflation by year N | peak growth > 30% must be defended against TAM and reinvestment |
 | Operating margin path | the company's own trend + peer steady-state margins | use operating EBIT ÷ Revenue from Operations. The published `OPM %` is EBITDA-like, not EBIT; above-peer margins need a stated moat and peak > 40% is rare |
-| Tax rate | **the annual report's tax note**, via `get_documents` | the published `Taxes & Other Items` row is tax **plus** the non-controlling interest — deriving a rate from it overstates the effective rate by ~9 points for any group with minorities. Never derive it. India ≈ 25% statutory for most |
+| Tax rate | **the annual report's tax note**, via `get_documents` | the published `Taxes & Other Items` row is tax **plus** the non-controlling interest — deriving a rate from it overstates the effective rate by the non-controlling share of profit — material for any group with large minorities, and different for every company. Never derive it. India ≈ 25% statutory for most |
 | Sales-to-capital | historical **ΔRevenue ÷ reinvestment**, reinvestment sourced per § below; peer benchmark | asset-light (software) high (3–5+); capital-heavy (utilities, autos) low (0.5–1.5) |
 | WACC | cost of equity (default-free risk-free + β×mature-ERP + λ×country-risk premium) and after-tax cost of debt, weighted | for INR, default-free risk-free = Indian government-bond yield − sovereign default spread; then add India CRP once. β is a **bottom-up/sector** beta, never raw regression β; see § Country risk |
 | Terminal growth | ≤ default-free risk-free rate, **in the currency of the cash flows** | use the adjusted rupee rate, not the unadjusted G-sec yield — see § Country risk |
 | Terminal ROIC | the return the mature firm earns on new capital | the excess return (ROIC−WACC), not g_T, is what moves terminal value; default to convergence (= WACC), set > WACC only if a durable moat persists — see § Terminal value |
 | Net debt | `balance_sheet_10y` **`Total Debt`** − **`Cash and Equivalent`** | consolidated; add capitalised lease debt (see § Capitalisation adjustments) |
-| Shares, minority | **`Common Shares Outstanding`**, **`Minority Interest`** | share count in ₹ Cr units so per-share lands in ₹; confirm dilution against the annual report |
+| Shares, minority | **`Common Shares Outstanding`**, **`Minority Interest`** | share count in crore shares (a count, not currency) so per-share lands in ₹; confirm dilution against the annual report |
 
 `Total Liabilities` in that table is liabilities **excluding** equity; the balance-sheet total is `Total Liabilities & Shareholders Equity`. Reading the wrong one halves the number.
 
@@ -88,9 +84,9 @@ sales_to_capital = (revenue_t − revenue_{t-1}) ÷ reinvestment_t
 
 Take the ratio over **several years, not one** — a single year's capex is lumpy, and one large project year makes an asset-light firm look capital-heavy. Where reinvestment is negative or near zero (a firm harvesting, or one year of asset sales), the ratio is meaningless: fall back to the peer benchmark and say which year forced it.
 
-**Cross-check the base year against the published `Free Cash Flow`.** `cash_flow_10y` carries FCF over the same ten years, so the model's year-0 FCFF has a sourced figure to sit beside. They are not the same quantity — FCFF is pre-financing and after cash taxes on EBIT, the published line is `Cash from Operating Activities − Capital Expenditures` — so they need not match, but an order-of-magnitude gap means an input is wrong, and that is worth catching before the model runs ten years on it.
+**Cross-check the base year against the published `Free Cash Flow`.** `cash_flow_10y` carries FCF over the same ten years, so the model's year-0 FCFF has a sourced figure to sit beside. They are not the same quantity — FCFF is pre-financing and after cash taxes on EBIT, the published line is `Cash from Operating Activities − Capital Expenditures` — so they need not match, and a material gap requires reconciliation of definitions, timing, interest, taxes and reinvestment before it can validate or invalidate an input.
 
-**Use one consistent money unit (₹ Crore) for every money input and ₹ Crore for the share count too, so per-share lands in ₹.** Mixing units is the most common silent error.
+**Use ₹ Crore for money inputs and crore shares for the share count, so per-share lands in ₹.** Check units explicitly before calculation.
 
 ## Diagnose first: the corporate life cycle decides which levers move
 
@@ -105,8 +101,11 @@ Damodaran's first-principles method is identical in every market and at every ag
 
 The engine's flags are tuned to the stage: `lifecycle_stage` relaxes the terminal-heavy flag for young firms and turns it into a red flag — plus a positive-terminal-growth warning — for declining ones.
 
-### Don't fade high growth prematurely (young / high-growth)
-The default 10-year fade-to-GDP assumes a company decelerates on a fixed schedule for no business reason. India's runways are often long (low penetration, young demographics, formalisation). A firm *demonstrably* compounding 30%+ should keep doing so for as long as its edge and TAM support, then fade to a *durable* rate. Set `years: 15` for a genuinely young firm so a 15–20-year story isn't crushed into 10, and read `story_sensitivity.duration`: if two extra years of the company's **demonstrated** growth closes most of the gap to price, your base case was fading too hard — that, not "overvaluation," is the finding. The discipline that keeps this honest: the **length of the high-growth period** is the moat lever (a firm with a real, durable competitive advantage compounds for *longer* — Damodaran's competitive-advantage period), while the **growth rate** stays anchored to TAM × share and history (over-optimism on the *rate* is the single most common valuation error). So when the reverse DCF shows the price-implied growth is roughly what the company has *already demonstrated* and you can name the edge that sustains it, **lengthen the runway and re-run, then report that as your base case** — don't leave a too-short fade standing and call the stock expensive. Extend the duration; never just bump the rate to close a gap. Build the revenue top-down from **TAM × share × take-rate** (Zomato, SpaceX) so the growth answers to a market size you can defend, and remember the **big-market delusion** both ways: a big market is already in the growth (don't add a separate premium), and a bigger market invites competition that *compresses* margins (SpaceX cut its target margin from 45%→25% when it chased the larger market) — bigger TAM travels with lower margin and heavier reinvestment, never a free margin bump.
+### Choose the growth duration from evidence
+
+Forecast duration and growth rate are separate assumptions. Choose both from the business evidence: addressable market, competitive position, reinvestment capacity and plausible limits on market share. Historical growth is evidence of past performance, not proof that it will persist. A longer horizon is a scenario to evaluate, not an automatic entitlement for a young company.
+
+Use `story_sensitivity.duration` to show how extending the assumed high-growth period affects value. A scenario matching the market price does not make it the correct base case. Revise the base only when independent evidence changes the business case; record that evidence and the old/new assumptions. Reverse DCF is a conditional comparison, not a calibration target. Growth, margins and reinvestment must remain mutually consistent when the market opportunity changes.
 
 ### Country risk scales with operating EXPOSURE, not incorporation (`lambda_country`)
 This is the clearest "think, don't hardcode" rule. India's equity risk premium = a mature-market ERP + an India country-risk premium (CRP, from Damodaran's country tables / sovereign spread — a number that *moves yearly*, look it up, don't memorise it). But that CRP applies to the company in proportion to **λ, its operating exposure to India**, not to where it is listed:
@@ -157,9 +156,9 @@ If you cannot make these adjustments precisely, **say so in the report as a data
 
 The forward DCF asks "given my story, what is it worth?" The **reverse DCF** flips it: "given the market price, what story must already be true?" It is often the single most decision-useful output, because it sidesteps the endless argument over your assumptions and instead tests the *market's* — which are usually far more aggressive than people realise.
 
-Mechanically, the engine holds every assumption fixed except one lever and shifts that lever's whole path by a constant until intrinsic value/share equals the price. It reports the **implied year-1 growth and the implied N-year revenue CAGR** (or the implied margin). Then you do the judgement: compare that number to the company's own history, management's guidance, and the size of the TAM. *Example (the bundled selftest): a ₹60 price implies ~28% revenue CAGR for a decade against a 15% base story — a demand the business has never met, which condemns the price more convincingly than any single fair-value figure.*
+Mechanically, the engine holds other assumptions fixed and shifts one path by a constant to match the target price. For growth it reports implied year-one growth and revenue CAGR; for margin it shifts the explicit and terminal margins together. Compare a solved path with sourced history, guidance and market constraints. A company's past growth or a named competitive advantage alone does not establish the duration or probability of that path.
 
-When it returns `solved: false`, that is a finding, not a failure: either the price sits **below** what even conservative assumptions support (the stock is cheap on that lever), or **above** any credible range (richly priced / the lever can't justify it — and if terminal ROIC ≤ WACC, growth adds no value, so the price can't be a growth story at all). Use growth as the primary lever for growth stories; use the margin version when the bull case is really a margin-expansion thesis.
+When it returns `solved: false`, report the reason and omit implied assumptions. The target may be unbracketed, an optional input may be absent, or the solver may not converge. None establishes that the stock is cheap or expensive. Even a solved path is conditional on every fixed assumption and need not be the only root. Use growth for a growth scenario; margin solving applies only to an FCFF margin scenario, not the equity adaptation's fixed unit margin.
 
 ## Relative valuation — multiples as the second view
 
@@ -185,7 +184,7 @@ Multiples are **DCF in shorthand**: every one of them traces to the same drivers
 
 Two structural cases **override to low** whatever the grid says: **banks / NBFCs / insurers**, and **violently cyclical / commodity** firms. Both are in SKILL.md § Boundaries.
 
-For a lender or insurer, run the DCF as an **equity-shaped** model rather than bending the firm-side levers silently: pass `model_shape: equity` alongside `base_revenue` = net income, `operating_margin` = 1.0, `tax_rate` = 0 (the stream is already post-tax), `sales_to_capital` = marginal return on reinvested equity/regulatory capital, `terminal_roic` = sustainable ROE, `net_debt` = 0, and a discount rate that is a **cost of equity, not WACC**. The engine rejects a visibly equity-shaped stream left under the default FCFF label. The stance still leads on P/B×RoE and peer multiples — the equity DCF is the sanity band.
+For a lender or insurer, run the DCF as an **equity-shaped** model rather than bending the firm-side levers silently: pass `model_shape: equity` alongside `base_revenue` = net income, `operating_margin` = 1.0, `tax_rate` = 0 (the stream is already post-tax), `sales_to_capital` = marginal return on reinvested equity/regulatory capital, `terminal_roic` = sustainable ROE, `net_debt` = 0, and a discount rate that is a **cost of equity, not WACC**. The engine rejects a visibly equity-shaped stream left under the default FCFF label. In equity mode it also rejects any explicit/terminal margin other than 1, any explicit/terminal tax rate other than 0, nonzero net debt, or a buildup with debt weight. Set terminal fields explicitly when adapting an existing FCFF input file; its old terminal margin/tax assumptions must not survive. The stance still leads on P/B×RoE and peer multiples — the equity DCF is the sanity band.
 
 **Combine into one stance, weighted by that grade:**
 
@@ -201,7 +200,7 @@ Emit a single **Undervalued / Fair / Overvalued** with a margin-of-safety range 
 
 ## Final discipline (the devil's-advocate pass)
 
-1. **Show a range, not a point — on the levers that matter.** Lead with the `story_sensitivity` grid (growth × steady-state margin) and its separate `duration` read; the single per-share number is the midpoint of an honest band, never a precise target. The terminal-WACC×terminal-growth grid is a secondary mechanical check: it leaves explicit WACC and operations unchanged, so it is not a coherent whole-company risk scenario and must not be labelled as one.
+1. **Show a range, not a point — on the levers that matter.** Lead with the `story_sensitivity` grid (growth-path × explicit-and-terminal margin shifts) and its separate `duration` read; the single per-share number is the midpoint of an honest band, never a precise target. The terminal-WACC×terminal-growth grid is a secondary mechanical check: it leaves explicit WACC and operations unchanged, so it is not a coherent whole-company risk scenario and must not be labelled as one.
 2. **Margin of safety, not fair value = buy.** Damodaran/Graham: require a discount (commonly ≥ 25–30% below intrinsic) before acting, sized to how terminal-heavy and assumption-laden the model is.
 3. **Break your own story.** If a competitor launched a cheaper product tomorrow, which input collapses? If the whole thesis hangs on one heroic assumption, say that out loud.
 4. **Say which view you trust.** The combined stance names whether the DCF or the multiples led it, and the confidence grade that decided.

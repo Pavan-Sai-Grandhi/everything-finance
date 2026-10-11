@@ -13,11 +13,11 @@ Read `references/reference.md` first — it defines the exit-decision framework 
 
 ## 1. Source live state, and fills (read-only)
 
-**Live position state — via `finance/compute/holdings.py`** (precedence **IndMoney → broker**). The resolver runs in script context and cannot call MCP tools, so for each connected source invoke its holdings tool (IndMoney `networth_holdings`; broker holdings + positions), **write the raw payload to a temp file** under `paths.tmp_dir("holdings")`, then resolve and take the equity slice:
+**Live position state — via `finance/compute/holdings.py`** (precedence **IndMoney → broker**). The resolver runs in script context and cannot call MCP tools, so for each connected source invoke its holdings tool (IndMoney `networth_holdings` once per needed `asset_type` (`IND_STOCK` and `US_STOCK` for equity, `MF` for funds — the tool requires it and serves one type per call); broker holdings + positions), **write each raw payload to a temp file** under `paths.tmp_dir("holdings")`, then resolve and take the equity slice:
 ```bash
-PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind.json> --kite <kite.json> --equity-only
+PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind-stock.json> --indmoney <ind-us.json> --kite <kite.json> --equity-only
 ```
-The envelope gives each open position's symbol / qty / avg / ltp / **P&L and XIRR** (IndMoney populates XIRR; broker leaves it `None`). Detect connections by tool presence (`mcp__indmoney__*`, `mcp__kite__*` = Zerodha, `mcp__upstox__*` = Upstox); honor a `broker:kite|upstox` override. If **no** source is connected, stop and tell the user to authenticate — never fabricate positions.
+The envelope gives each open position's name/symbol, qty, ltp and value. IndMoney carries **no XIRR** and no NSE symbol (its `investment_code` is internal), and for stocks held through a linked broker it reports no cost (`cost_basis: unreported_by_linked_broker`) — take cost and fills from the broker, and follow the resolver's gap that names them. Detect connections by tool presence (`mcp__indmoney__*`, `mcp__kite__*` = Zerodha, `mcp__upstox__*` = Upstox); honor a `broker:kite|upstox` override. If **no** source is connected, stop and tell the user to authenticate — never fabricate positions.
 
 **Fill price + date — broker order history ONLY.** The exact entry that R-multiple and the time-stop depend on comes from the broker's `orders`/`trades` history (`mcp__kite__*` / `mcp__upstox__*`), or from a real fill already recorded on the artifact (`fill_avg` / `entry_date`). **IndMoney's avg-cost is never used to approximate an entry.** So:
 - **Broker connected (or a recorded fill exists)** → use the real fill; full re-validation.
@@ -32,16 +32,18 @@ For every open position, find the "why" in this order:
 2. **Deep-analysis / strategy artifact** — a `deep-analysis` report for the ticker, or a `strategy-manager` spec named in the idea's `strategy` field.
 3. **Custom rationale** — if no artifact exists, ask the user for the thesis (stop, target, and what would prove it wrong) and **write a fresh artifact** to `artifacts/state/trades/<SYMBOL>-<today>.yml` (same trade-idea schema discover uses — see `<plugin>/finance/contracts.md`) so the position is tracked from now on.
 
-When a broker fill matches an artifact still at `status: idea`, **promote it to `status: open`** and write the real fill back into `sizing.qty`, a new `fill_avg` field, and `entry_date` (the fill date from broker order history) — don't overwrite the planned `entry`; record both. Promotion always requires a real broker fill; IndMoney live state never promotes an idea on its own. When a position is gone from the broker (or you recommend and the user confirms an exit), mark its artifact `status: closed` and write the `result` block described in §5 — that block is what `strategy-manager optimize` later aggregates, so closing a trade without it breaks the learning loop.
+When broker order history matches an artifact at `status: idea`, promote it to `status: open` and record `fill_avg`, `entry_date`, and the actual matched entry quantity in `sizing.qty`. Preserve the original `plan.entry` and `plan.stop` as the planned trigger and initial risk reference. Keep the entry quantity intact when later exits are partial; pass the remaining live quantity separately to `check_trade`.
+
+**Close only after broker executions account for the entire matched entry quantity.** A missing position, a failed holdings fetch, an exit recommendation, and the user's agreement to that recommendation do not prove execution. Leave the artifact open, append the discrepancy to `tracker_log`, and reconcile order history. Partial exits remain open until the remaining quantity is executed. Only confirmed closure completes the position's alerts.
 
 ## 3. Re-validate the thesis (mechanical, per position)
 
-Call `check_trade` with the **real fill** as `entry` (broker order history, or the recorded `fill_avg`) and the resolved live `qty`/`ltp`, so the verdict reflects the real position, not the plan:
+Call `check_trade` with the **real fill** as `entry` (or let it read recorded `fill_avg`) and the absolute remaining live `qty`. Optional personal `ltp` marks unrealized P&L/R only; stop, target and thesis decisions use the approved decision-price series:
 ```
 check_trade(trade="artifacts/state/trades/<SYMBOL>-<date>.yml",
             entry=<broker_fill>, qty=<live_qty>, ltp=<live_ltp>)
 ```
-It returns a verdict in priority order — **EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD** — plus unrealized R, P&L, and any conditions it could not parse under `manual_review`. Save the returned envelope to `artifacts/trade-tracker/YYYY-MM-DD/validate-<SYMBOL>.json`. (Pass `ohlcv=<csv path>` when the price series must come from a file instead of the live fetch.) **When no real fill is available**: skip the R-multiple/time-stop math, record it as a Data gap, and still report the price-mechanical checks (stop/target/thesis vs CMP) and live health.
+It returns a verdict in priority order — **EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD** — plus unrealized R, P&L, and any conditions it could not parse under `manual_review`. `as_of` is the decision bar date, `metrics.price` is its close, and `metrics.mark_price`/`mark_source` identify the unrealized valuation mark. Report stale bars and every returned gap. Holding sessions count after `entry_date`, excluding the entry session; incomplete history leaves the time stop unassessed. Every full session after the fill is checked, so a stop or target touched on an earlier bar is reported with its date even if price has since recovered. On the fill day (or with no fill date), daily high/low may predate entry, so the tool uses the decision close and labels that limitation. Save the returned envelope to `artifacts/trade-tracker/YYYY-MM-DD/validate-<SYMBOL>.json`. (Pass `ohlcv=<csv path>` when the price series must come from a file instead of the live fetch.) **When no real fill is available**: skip the R-multiple/time-stop math, record it as a Data gap, and still report the price-mechanical checks (stop/target/thesis vs CMP) and live health.
 
 ## 4. Judge what the tool can't (qualitative + regime)
 
@@ -59,23 +61,31 @@ Render `assets/tracker-report.md` (bundled) — one row per position with: symbo
 
 As it re-validates each open position, write watch-items for `daily-brief` (set `dedup_key` per symbol so a re-run updates in place):
 
-- **`price_cross` exit-watch** — the active stop and target as cheap triggers (`trigger: {metric: close, op: "<", level: <stop>}` and a `>=` target watch; `subject: {type: stock, id: <SYMBOL>}`, `created_by: trade-tracker`, `severity: act` for the stop, `action.suggest: "/trade-tracker <SYMBOL>"`, `dedup_key: stop-<SYMBOL>` / `target-<SYMBOL>`).
-- **`time_stop`** — a date alert at the plan's time-stop (`trigger: {due: <entry + time_stop_sessions>}`, `severity: watch`, `dedup_key: timestop-<SYMBOL>`).
-- **`regime_change`** (strategy-linked trades) — when the live regime fails the linked strategy's `regime_required`, raise a `regime_change` alert (`trigger: {check: trade-tracker, args: {symbol: <SYMBOL>}}`, `severity: watch`, `action.text` = "regime no longer supports this strategy", `dedup_key: regime-<SYMBOL>`). On exit, dismiss the position's alerts via `alert-manager` (status `done`).
+- **`price_cross` exit-watch** — the active stop and target as cheap triggers (long: `<=` stop and `>=` target; short: `>=` stop and `<=` target; `trigger: {metric: close, op: <operator>, level: <level>}`; `subject: {type: stock, id: <SYMBOL>}`, `created_by: trade-tracker`, `severity: act` for the stop, `action.suggest: "/trade-tracker <SYMBOL>"`, `dedup_key: stop-<SYMBOL>` / `target-<SYMBOL>`).
+- **`time_stop`** — a revalidation watch (`trigger: {check: trade-tracker}`, `severity: watch`, `dedup_key: timestop-<SYMBOL>`, `action.suggest: "/trade-tracker <SYMBOL>"`). Evaluate elapsed trading sessions from `entry_date` when checking the position. Do not convert session counts into calendar-day due dates.
+- **`regime_change`** (strategy-linked trades) — when the live regime fails the linked strategy's `regime_required`, raise a `regime_change` alert (`trigger: {check: trade-tracker}`, `severity: watch`, `action.text` = "regime no longer supports this strategy", `dedup_key: regime-<SYMBOL>`). On confirmed execution of the full exit, dismiss the position's alerts via `alert-manager` (status `done`).
 
-Update each artifact's `status` and append a dated `tracker_log` note (verdict + date) so the next run sees the history.
+Append a dated `tracker_log` note (recommendation + evidence date) on each run. Apply the status transitions in §2 only when their execution evidence exists.
 
-**On close, write the `result` block** (this is the feedback that lets `strategy-manager` optimize/retire the linked strategy) — use `check_trade`'s exit numbers:
+**On confirmed close, write `result` from actual broker fills and charges.** Use the quantity-weighted exit price across all matched partial exits, the final execution date, and their distinct trade IDs. Calculate net P&L from fills less actual charges, and realized R as net P&L divided by (initial fill-to-stop distance × original quantity) (reverse price differences for shorts). Preserve full fill precision. Never copy `check_trade`'s unrealized metrics into a realized result. If charges or the original stop cannot be sourced, close the confirmed execution with those metrics null and a gap; the learning script will exclude it.
+
+Fictional schema example (entry fill ₹100, original stop ₹90, quantity 50):
 ```yaml
 status: closed
 result:
   exit_date: 2026-07-01
-  exit_reason: EXIT_STOP        # EXIT_STOP | EXIT_THESIS | EXIT_TARGET | EXIT_TIME | MANUAL
-  exit_price: 1253.2
-  realized_R: -1.0             # the unrealized_R at exit becomes realized
-  realized_pnl: -4100
+  exit_reason: EXIT_STOP        # STOP | THESIS | TARGET | TIME use EXIT_ prefix; or MANUAL
+  exit_price: 89.5
+  exit_qty: 50                  # must reconcile to original sizing.qty
+  charges: 25                  # actual total entry + exit charges
+  realized_R: -1.1
+  realized_pnl: -550
   holding_sessions: 12
+  execution:
+    source: kite               # kite | upstox
+    exit_trade_ids: [example-trade-id]
 ```
-For strategy-linked closed trades, mention that `/strategy-manager optimize <strategy>` can now fold this outcome in (it needs ≥ 10 closed trades before it acts).
+
+For strategy-linked closes, `/strategy-manager optimize <strategy>` validates the evidence and arithmetic before learning from it. Legacy closed artifacts require reconciliation with broker records; do not synthesize execution IDs or charges. Unverified outcomes produce `REVIEW`, and fewer than ten verified closes cannot drive lifecycle changes or override the backtest in strategy selection.
 
 End with the reminder: **this skill recommends; you place the order.**

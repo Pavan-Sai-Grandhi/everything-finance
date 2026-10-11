@@ -4,7 +4,7 @@ Motor cover (car / two-wheeler).
 
 ## Interview — what to ask (one at a time)
 
-Make / model / year / variant · current IDV + no-claim bonus (NCB) % · usage pattern (personal / commercial, annual km) · city (claim frequency, garage network) · prior claims (last 3–5 years) · existing add-ons. Also useful: ex-showroom price of the variant (anchors the IDV sanity check), whether a loan/hypothecation is on the vehicle.
+Make / model / year / variant · whether the model is discontinued · current IDV + no-claim bonus (NCB) % · usage pattern (personal / commercial, annual km) · city (claim frequency, garage network) · prior claims (last 3–5 years) · existing add-ons. Also useful: ex-showroom price of the variant (anchors the IDV sanity check), whether a loan/hypothecation is on the vehicle.
 
 ## Comprehensive vs third-party
 
@@ -13,7 +13,7 @@ Make / model / year / variant · current IDV + no-claim bonus (NCB) % · usage p
 
 ## IDV & NCB sanity (feeds `idv_ncb_sanity`)
 
-- **IDV (Insured Declared Value)** = the sum insured = ex-showroom × an age-based retention factor (IRDAI grid: ~95% ≤6mo, 85% 1y, 80% 2y, 70% 3y, 60% 4y, 50% 5y; >5y mutually agreed). A quote **below** the band under-insures you (lower claim/theft payout); **above** the band just inflates premium. Don't chase the lowest IDV to cut premium — it caps your total-loss payout.
+- **IDV (Insured Declared Value):** the age schedule applies through five years; older vehicles and discontinued models require an insurer-insured agreement. Supply `model_discontinued:true` when applicable. A null `idv_ok` is an unavailable check, not approval or rejection. The tool's tolerance is a screening assumption, not a contractual entitlement. Confirm the agreed IDV and applicable valuation basis in the policy. Source: [New India private-car policy, pages 2–3](https://www.newindia.co.in/assets/docs/know-more/motor/STANDARD%20FORM%20FOR%20PRIVATE%20CAR%20PACKAGE%20POLICY.pdf), checked 2026-09-28.
 - **NCB** rewards claim-free years on a slab: 20% (1y) → 25% (2y) → 35% (3y) → 45% (4y) → 50% (5y, caps). A quoted NCB **above** the slab your claim-free history entitles is a red flag (verify history — misdeclaration voids it). **NCB is portable** across insurers and vehicles; **NCB-protect** add-on preserves it through one claim.
 
 ## Add-ons — worth it vs situational

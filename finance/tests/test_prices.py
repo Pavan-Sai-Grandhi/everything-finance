@@ -59,41 +59,11 @@ def test_screen_body_india_params():
     ready = prices._screen_body({"filter": [], "sort": {"sortBy": "name", "sortOrder": "asc"}},
                                 prices.SCREEN_COLUMNS)
     check("screen_body passes a ready payload's sort through", ready["sort"]["sortBy"] == "name")
+    basket = {"symbols": {"tickers": ["NSE:TCS"]}}
+    body = prices._screen_body(basket, prices.SCREEN_COLUMNS)
+    check("a basket-only payload stays a basket", body["symbols"] == basket["symbols"], body)
+    check("payload keys never become filter strings", body.get("filter", []) == [{"left":"exchange","operation":"equal","right":"NSE"}], body)
 
-
-def test_unsettled_bars_dropped():
-    """yfinance publishes a session's O/H/L before the close settles. That bar is not a
-    session: NaN passes `is not None`, and percentile(pool, NaN) returns 0.0 — a missing
-    value read as 'lowest in five years'. It must not reach a caller."""
-    import json as _json
-    rows = [{"date": "2026-08-13", "open": 100.0, "high": 101.0, "low": 99.0,
-             "close": 100.5, "volume": 1000},
-            {"date": "2026-08-14", "open": 100.5, "high": 102.0, "low": 100.0,
-             "close": float("nan"), "volume": 0}]
-    settled = [c for c in rows
-               if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
-    check("the unsettled bar is identified", len(settled) == 1)
-    check("the settled bar survives", settled[0]["date"] == "2026-08-13")
-    check("NaN is not None, so `is not None` cannot filter it",
-          float("nan") is not None)
-    check("NaN != NaN is the only reliable test", float("nan") != float("nan"))
-    check("a settled series serialises to strict JSON",
-          "NaN" not in _json.dumps(settled))
-
-
-def test_unsettled_bar_is_data_not_a_gap():
-    """Dropping an unsettled bar loses nothing that existed, so it is reported as
-    `bars_dropped_unsettled` + `as_of`, not as a gap. `gaps` has to keep meaning
-    "a figure is missing or degraded", or a caller learns to skim past it."""
-    rows = [{"date": "2026-08-13", "open": 100.0, "high": 101.0, "low": 99.0,
-             "close": 100.5, "volume": 1000},
-            {"date": "2026-08-14", "open": 100.5, "high": 102.0, "low": 100.0,
-             "close": float("nan"), "volume": 0}]
-    settled = [c for c in rows
-               if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
-    check("the series keeps only settled bars", len(settled) == 1)
-    check("as_of is the last settled session", settled[-1]["date"] == "2026-08-13")
-    check("the drop is counted, not hidden", len(rows) - len(settled) == 1)
 
 
 def test_df_to_candles():
@@ -138,8 +108,121 @@ def test_norm():
     check("norm strips an exchange prefix", prices._norm("NSE:TCS") == "TCS")
 
 
+def test_quote_uses_requested_issuer_and_rejects_bad_quotes():
+    from unittest import mock
+    from copy import deepcopy
+    import tempfile
+    with tempfile.TemporaryDirectory() as root, mock.patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS": root}):
+        with mock.patch.object(prices, "_scan_post", return_value=(SCAN_FIXTURE, None)):
+            result = prices.quote("TCS", fresh=True)
+        check("quote selects requested issuer instead of first row", result["ok"] and result["data"]["symbol"] == "TCS" and result["data"]["close"] == 3890, result)
+        for payload in ({"data":[SCAN_FIXTURE["data"][0]]}, {"data":"bad"},
+                        {"data":[SCAN_FIXTURE["data"][1],SCAN_FIXTURE["data"][1]]},
+                        {"data":[{"s":7,"d":[1]}]}, {"data":[{"s":"NSE:TCS","d":"bad"}]}):
+            with mock.patch.object(prices, "_scan_post", return_value=(payload, None)):
+                result = prices.quote("TCS", fresh=True)
+            check("wrong or malformed quote is a gap", not result["ok"] and bool(result["gaps"]), result)
+        for close in (None, True, -1, 0, float("inf")):
+            payload=deepcopy(SCAN_FIXTURE)
+            payload["data"][1]["d"][1]=close
+            with mock.patch.object(prices, "_scan_post", return_value=(payload, None)):
+                result=prices.quote("TCS", fresh=True)
+            check("unusable close cannot become a successful quote", not result["ok"], result)
+        wrong = prices._envelope(True, "TradingView", {"symbol":"RELIANCE", "exchange":"NSE", "close":100}, [])
+        with mock.patch.object(prices, "_read_cache", return_value=wrong), mock.patch.object(prices, "_scan_post", return_value=(SCAN_FIXTURE,None)) as fetch:
+            result=prices.quote("TCS")
+        check("wrong cached identity is refetched", fetch.called and result["data"]["symbol"]=="TCS", result)
+
+
+def test_price_cache_identity_is_contained_and_distinct():
+    from pathlib import Path
+    from unittest import mock
+    import tempfile
+    with tempfile.TemporaryDirectory() as root, mock.patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS": root}):
+        first = Path(prices._cache_path("history", "../../escape", "../../period", False))
+        check("untrusted cache identity remains inside price cache", first.parent == Path(root)/"cache"/"prices")
+        check("adjustment has distinct cache identity", prices._cache_path("history", "TCS", "1y", False) != prices._cache_path("history", "TCS", "1y", True))
+        check("cache identity stable for same request", first == Path(prices._cache_path("history", "../../escape", "../../period", False)))
+
+
+def test_history_validates_actual_download_and_reports_drops():
+    from unittest import mock
+    import tempfile
+    import types
+    frame = _ohlcv_frame()
+    frame.loc[frame.index[1], "Close"] = float("nan")
+    fake = types.SimpleNamespace(download=mock.Mock(return_value=frame))
+    with tempfile.TemporaryDirectory() as root, mock.patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS":root}), mock.patch.dict(sys.modules, {"yfinance":fake}):
+        result=prices.history("RELIANCE", fresh=True)
+    check("valid candles remain usable", result["ok"] and result["data"]["bars"]==2, result)
+    check("missing historical close is a visible gap", bool(result["gaps"]), result)
+    check("invalid candle count describes missing data honestly", result["data"].get("bars_dropped_invalid")==1, result)
+    check("finite close does not claim settlement", "bars_dropped_unsettled" not in result["data"], result)
+
+
+def test_history_rejects_invalid_geometry_and_duplicate_dates():
+    from unittest import mock
+    import tempfile
+    import types
+    import pandas as pd
+    for column, value in (("High",1), ("Low",9999), ("Open",0), ("Volume",-1)):
+        frame=_ohlcv_frame();frame.loc[frame.index[1],column]=value
+        fake=types.SimpleNamespace(download=mock.Mock(return_value=frame))
+        with tempfile.TemporaryDirectory() as root, mock.patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS":root}), mock.patch.dict(sys.modules, {"yfinance":fake}):
+            result=prices.history("RELIANCE",fresh=True)
+        check("invalid OHLCV excluded with gap",result["data"]["bars"]==2 and bool(result["gaps"]),(column,result))
+    frame=_ohlcv_frame();frame=pd.concat([frame,frame.iloc[[1]]])
+    fake=types.SimpleNamespace(download=mock.Mock(return_value=frame))
+    with tempfile.TemporaryDirectory() as root, mock.patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS":root}), mock.patch.dict(sys.modules, {"yfinance":fake}):
+        result=prices.history("RELIANCE",fresh=True)
+    check("ambiguous duplicate session excluded entirely", result["data"]["bars"]==2 and all(c["date"]!="2026-06-18" for c in result["data"]["candles"]), result)
+
+
+def test_history_cache_checks_identity_and_today_is_unverified():
+    from unittest import mock
+    from datetime import date
+    import tempfile
+    import types
+    fake=types.SimpleNamespace(download=mock.Mock(return_value=_ohlcv_frame()))
+    bad=prices._envelope(True,"yfinance",{"symbol":"OTHER","period":"1y","adjusted":False,"candles":[]},[])
+    with tempfile.TemporaryDirectory() as root, mock.patch.dict(os.environ, {"EVERYTHING_FINANCE_ARTIFACTS":root}), mock.patch.dict(sys.modules, {"yfinance":fake}):
+        with mock.patch.object(prices,"_read_cache",return_value=bad):
+            result=prices.history("RELIANCE")
+        check("wrong history cache refetched", fake.download.called and result["data"]["bars"]==3,result)
+        fake.download.reset_mock()
+        cached=prices.history("RELIANCE")
+        check("validated history cache reused",not fake.download.called and cached["data"]==result["data"])
+        frame=_ohlcv_frame().iloc[[-1]].copy()
+        import pandas as pd
+        frame.index=pd.to_datetime([date.today().isoformat()])
+        fake.download.return_value=frame
+        result=prices.history("RELIANCE",fresh=True)
+        check("finite current-day close is explicitly unverified",result["ok"] and any("completion is not verified" in gap for gap in result["gaps"]),result)
+
+
+def test_screen_input_errors_stop_before_fetch():
+    from unittest import mock
+    for kwargs in ({"limit":0},{"limit":True},{"limit":1.5},{"columns":"close"},
+                   {"columns":["close","close"]},{"filters":"close > 100"}):
+        args={"filters":[],**kwargs}
+        with mock.patch.object(prices,"_scan_post") as fetch:
+            result=prices.screen(**args)
+        check("invalid scanner inputs rejected locally",not fetch.called and not result["ok"] and bool(result["gaps"]),args)
+
+
+def test_screen_bad_rows_are_visible_and_candidates_are_unique_nse():
+    from unittest import mock
+    payload={"data":[{"s":"NSE:TCS","d":[100]}, {"s":"NSE:TCS","d":[100]},
+                     {"s":"BSE:TCS","d":[100]}, {"s":"NSE:BAD","d":"bad"},
+                     {"s":"NSE:ZERO","d":[0]}]}
+    with mock.patch.object(prices,"_scan_post",return_value=(payload,None)):
+        result=prices.screen([],columns=["close"],limit=10)
+    check("unique usable NSE candidates only",result["data"]["candidates"]==["TCS"],result)
+    check("excluded screen rows produce gaps",bool(result["gaps"]),result)
+    with mock.patch.object(prices,"_scan_post",return_value=({"error":"fixture"},None)):
+        result=prices.screen([])
+    check("malformed response not described as no matches", not result["ok"] and any("malformed" in gap for gap in result["gaps"]),result)
+
+
 if __name__ == "__main__":
-    run((test_parse_scan, test_parse_scan_empty, test_quote_body_no_auth,
-         test_screen_body_india_params, test_df_to_candles, test_unsettled_bars_dropped, test_unsettled_bar_is_data_not_a_gap,
-         test_df_to_candles_multiindex, test_reconcile_decision, test_envelope_shape,
-         test_norm))
+    run(globals())

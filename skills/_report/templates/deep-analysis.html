@@ -481,7 +481,7 @@
       </div>
       <div style="margin-top:32px;">{{ c.eyebrow('Work papers') }}</div>
       <div style="font-family:var(--mono);font-size:24px;line-height:1.8;color:var(--ink2);background:var(--card);border:1px solid var(--rule);padding:26px 30px;">{{ r.gaps.papers | replace('\n','<br>'|safe) }}</div>
-      <div style="margin-top:auto;padding-top:26px;border-top:1px solid var(--rule2);font-size:24px;line-height:1.6;color:var(--ink2);">{{ r.gaps.disclaimer | safe }}</div>
+      <div style="margin-top:auto;padding-top:26px;border-top:1px solid var(--rule2);font-size:24px;line-height:1.6;color:var(--ink2);">{{ r.gaps.disclaimer | rich_text }}</div>
     </div>
   </div>
 {% endcall %}

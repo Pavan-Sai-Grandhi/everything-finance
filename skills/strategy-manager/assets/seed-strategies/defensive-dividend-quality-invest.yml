@@ -12,7 +12,7 @@ goal: "Large, low-debt, dividend-paying compounders that hold up in a weak marke
 source_references:
   - "Zerodha Varsity — Fundamental Analysis (balance-sheet strength, interest cover, dividend as a cash-generation tell). Coffee-can-style defensive overlay; Varsity is the official source, the thresholds are the plugin's defensive guard."
 
-status: draft                         # active on the completeness gate (fields verified to resolve 2026-08-30, 22 matches)
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-08-30
   validated_at: null

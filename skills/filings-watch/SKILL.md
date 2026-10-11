@@ -15,13 +15,13 @@ The tools do the mechanical fetch and first-pass classification; this skill is t
 
 1. **Resolve the NSE symbol** — the primary key for every tool here. A company listed only on BSE is a labelled gap, not a silent empty.
 
-2. **Fetch + classify the feed.** Call `get_filings` (symbol, days) and `get_corporate_actions` (symbol).
+2. **Fetch + classify the feed.** Call `get_filings` (symbol, days). Reuse its `data.corporate_actions`; the summary already fetches that endpoint. Use `get_corporate_actions` alone only for an actions-only request or an explicitly requested refresh.
 
    The envelope gives `ok`, `source`, announcements already classified into act-on / monitor / routine under `data.items`, forthcoming corporate actions, and a `gaps` list. **`ok:false` with a gap means "unknown", not "nothing filed"** — never report an unreachable source as a clean feed. The full item list is written to `data.items_path`; read that file rather than re-calling the tool.
 
 3. **Review the classification** (taxonomy in reference.md): 🔴 act-on (results, M&A, pledge increase, resignation of auditor/KMP, fraud/regulatory action, buyback) / 🟡 monitor (capex, order wins, credit-rating notes, investor-meet PPTs) / ⚪ routine (trading windows, ESOP allotments, newspaper copies). That is the first-pass filter; **apply judgement on top** — an "unclassified → monitor" item, or an order win whose size you can size against revenue, may move tiers. Most filings are noise; the value of this skill is the filter plus that judgement.
 
-4. **Shareholding delta**: call `get_shareholding` (promoter %, public %, pledge, per quarter) and `get_company_fundamentals(sections=['shareholding'])` (the FII/DII/public split across 12 quarters). Fixed table format — `Quarter | Promoter % | Pledge % | FII % | DII % | Public %`, ≥ 4 quarters. If no SHP was filed inside the lookback window, show the latest quarterly anyway and say so in the section header. Pledge rising while stock falls is the classic red flag — call it out explicitly. **NSE frequently returns no pledge rows; that means UNKNOWN, not nil** — the tool labels it as a gap and the report must repeat it as a gap, never as zero pledge.
+4. **Shareholding delta**: call `get_shareholding` (promoter %, public %, pledge, per quarter) and `get_company_fundamentals(sections=['shareholding'])` (the FII/DII/public split across the six quarters Tickertape publishes). Table format — `Quarter | Promoter % | Pledge % | FII % | DII % | Public %`; request at least four quarters, show only sourced quarters and label missing coverage. State each field’s denominator and provider classification; NSE public ownership can include institutions and must not be added to FII/DII as a separate retail bucket. If no SHP was filed inside the lookback window, show the latest quarterly anyway and say so in the section header. Report rising pledge and falling price as separate observations; discuss possible collateral risk without predicting a forced sale or attributing motive. **NSE frequently returns no pledge rows; that means UNKNOWN, not nil** — the tool labels it as a gap and the report must repeat it as a gap, never as zero pledge.
 
 ## Output
 
@@ -29,4 +29,6 @@ Markdown report (text-first, no HTML template): materiality-grouped filing list 
 
 ## Alerts this skill raises (via `manage_alerts`)
 
-For every **🔴 act-on** filing found, raise a **`filing_act_on`** alert so `daily-brief` surfaces it (`subject: {type: stock, id: <TICKER>}`, `created_by: filings-watch`, `severity: act`, `action.text` = the one-line filing summary, `action.suggest: "/filings-watch <TICKER>"` or `/deep-analysis <TICKER>`, `trigger: {check: filings-watch, args: {symbol: <TICKER>}}`, `dedup_key: filing-<TICKER>-<filing-date>`). 🟡 monitor / ⚪ routine items do **not** raise alerts — keep the inbox act-worthy only.
+For every **🔴 act-on** filing found, raise a **`filing_act_on`** alert so `daily-brief` surfaces it (`subject: {type: stock, id: <TICKER>}`, `created_by: filings-watch`, `severity: act`, `action.text` = the one-line filing summary, `action.suggest: "/filings-watch <TICKER>"` or `/deep-analysis <TICKER>`, `trigger: {check: filings-watch, args: {symbol: <TICKER>}}`, `dedup_key: filing-<TICKER>-<filing_id>`). 🟡 monitor / ⚪ routine items do **not** raise alerts — keep the inbox act-worthy only.
+
+Use the exact `filing_id` from the tool item; the date alone is not unique. Separate material filings on one day must create separate alerts, while reruns of the same filing update its existing alert. If an older artifact lacks the ID, record the identity gap and use the current tool response before creating alerts.

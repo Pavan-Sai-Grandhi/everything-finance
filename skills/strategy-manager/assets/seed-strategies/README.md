@@ -1,49 +1,31 @@
 # Seed strategy library
 
-Starter strategy specs distilled from common Indian swing-trading methods
-(`.refs/swing-strategies.txt`). They exist so you don't start from a blank page —
-**but every one ships as `status: draft` and is NOT tradeable until you validate it.**
+These are draft research templates, not validated trading systems or recommended allocations. Numeric cutoffs are design assumptions. No bundled seed includes performance evidence, and field resolvability alone does not establish an edge.
 
-## How to use one
+Copy a selected seed to the path returned by `finance.paths.state_dir("strategies")` under the session artifact root. Preserve the draft until the applicable validation is complete; never activate all seeds simply because they parse.
 
-```bash
-# 1. copy a seed into your live library (session cwd)
-mkdir -p artifacts/state/strategies && cp ema-pullback-swing.yml artifacts/state/strategies/
-# 2. do the mandatory numeric indicator study (ta.py read) + backtest, then validate
-/strategy-manager validate ema-pullback-swing
-# 3. once active, discover can run it (or pick it for the regime)
-/discover stocks --trade --strategy ema-pullback-swing   # or just /discover -> pick
-```
+## Validation by purpose
 
-Validation is not a formality: the **mechanical EMA-pullback backtested to *negative*
-expectancy** when stripped of its reversal-candle + tested-S/R filters. Seeds encode the
-*idea*; only your backtest tells you whether this parameterisation has an edge on a real
-basket.
+- **Trading:** compare the prose setup with the exact expressions the engine executes. Most swing seeds contain coarse `compute_filters`; those are not a mechanical definition of a retest, reversal candle, trendline touch or Fibonacci impulse. Define an explicit `entry.signal` and any required feature in the shared TA registry before testing that idea. The engine refuses missing/empty signals before fetching; it never converts screening filters into an entry automatically. Check stop/target meanings as well: `range_low` and `measured_move` use the engine's lookback range, not a manually selected squeeze candle. Backtest the exact final rules, with costs and out-of-sample evidence, before activation. A result for a coarse proxy does not validate the prose strategy.
+- **Investment:** validate the approved fundamental query, universe and ranking. Activation makes the screen executable for research; it is not a buy recommendation and has no trading expectancy.
+- **Funds:** validate the category, scan window, AUM floor and shortlist size against `get_fund_scan`. A historical scan window does not define the investor's holding horizon, and a large-cap equity fund does not guarantee capital protection.
 
-## What's here, and how it relates to the breakout example spec
+## Swing ideas and unresolved definitions
 
-The documented example spec (`../strategy-spec.example.yml`) is a **breakout-momentum**
-system. The seeds add the methods it doesn't cover:
-
-| Seed | Method (refs §3) | Relation to the example breakout spec |
+| Seed | Intended idea | What must be made explicit before activation |
 |---|---|---|
-| `ema-pullback-swing` | 1 — MA Pullback (20/50 EMA) | **distinct** — enters a pullback, not a breakout |
-| `breakout-retest-swing` | 2 — Breakout + Retest | **variant** — same breakout, but enters on the retest (fewer false breaks) |
-| `rsi-trendline-reversal-swing` | 3 — RSI + Trendline | **distinct** — trendline touch with RSI in the 38–45 trend-support zone |
-| `inside-bar-nr7-swing` | 4 — Inside / NR4-NR7 | **distinct** — volatility-squeeze expansion (compute-path screen; TV has no NR filter) |
-| `fibonacci-retracement-swing` | 5 — Fibonacci | **distinct** — 38–62% retracement of an impulse leg |
+| `ema-pullback-swing` | Pullback to a rising moving average | Average period, proximity, reversal candle, support and volume confirmation |
+| `breakout-retest-swing` | Retest after a consolidation break | Prior breakout, elapsed retest window, pivot tolerance and separate breakout/retest volume rules |
+| `rsi-trendline-reversal-swing` | Reversal near a rising trendline | Trendline construction, touch tolerance, reversal and the exact RSI band |
+| `inside-bar-nr7-swing` | Expansion after a squeeze | Verify `coil_breakout` matches the intended squeeze and choose the exact stop/target rule |
+| `fibonacci-retracement-swing` | Retracement of an identified impulse | Causal impulse pivots, retracement zone and confirmation candle |
 
-**Refs §3 Strategy 6 — Multi-Timeframe — is deliberately NOT a separate spec.** It is an
-*overlay*, not a setup: "confirm the weekly trend, enter on the daily, time with the
-intraday." Encode it inside any of the above by (a) keeping `regime_required.nifty_above:
-ema200` as the higher-timeframe gate and (b) the entry's daily trigger — rather than as a
-standalone strategy with no entry of its own. (This plugin's horizon is daily/weekly, never
-intraday, per CLAUDE.md, so the 4-hour leg becomes "confirm on the daily close".)
+TradingView filters are coarse provider-specific cuts. SMA filters and local EMA filters are different definitions; do not describe the compute path as an exact fallback unless equivalence has been established. The shared local entry engine owns the final executed expressions.
 
-## The screening block
+A Nifty daily EMA200 gate is market context, not a weekly confirmation for the stock. True multi-timeframe confirmation needs separately defined, completed weekly bars and the same causal rule in live and historical execution; no seed currently establishes that overlay.
 
-Each seed populates the `screening` block: a **tickertape**
-fundamental cut and a **technical** cut that is either `provider: tradingview` (server-side
-filters) or `provider: compute` (local `finance/compute/ta.py`) where TradingView can't express the
-filter (NR-bars, fib zones). `fallback_compute: true` everywhere means discover reproduces
-the cut locally from yfinance if a provider is unreachable. See `discover` for how these run.
+## Retired source
+
+The former `soic-crossperiod-screener-in` seed was removed because repository policy approves screener.in only for document discovery. Legacy saved-screen calls return a gap without fetching. Re-author any user copy with approved decision data; do not silently replace unavailable cross-period conditions with point-in-time proxies.
+
+General educational references and old screen-result counts do not validate the exact cutoffs or execution rules. Recheck the sources and retain evidence with a user strategy when developing it.

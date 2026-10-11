@@ -207,7 +207,8 @@
       width: 100% !important;
       height: 100% !important;
       box-sizing: border-box !important;
-      overflow: hidden;
+      /* Report prose is variable length. Preserve it instead of clipping it. */
+      overflow: auto;
       opacity: 0;
       pointer-events: none;
       visibility: hidden;
@@ -598,23 +599,19 @@
         position: relative !important;
         inset: auto !important;
         width: var(--deck-design-w) !important;
-        height: var(--deck-design-h) !important;
+        height: auto !important;
+        min-height: var(--deck-design-h);
         box-sizing: border-box !important;
-        /* Size containment: slotted content that overflows the design box
-         * (an image-slot's aspect-ratio-derived width, say) must not count
-         * toward Chromium's print document width — without this, an
-         * abs-positioned child past the page edge shrinks the whole PDF
-         * to fit (~75%). Containment is safe here because the definite
-         * width/height above size the slide regardless of content.
-         * (Absorbed from PR #2619 with its owner's agreement.) */
-        contain: size !important;
+        /* Long report sections continue onto another page. Size containment
+         * and a fixed height would silently discard the remaining evidence. */
+        contain: none !important;
         opacity: 1 !important;
         visibility: visible !important;
         pointer-events: auto;
         break-after: page;
         page-break-after: always;
-        break-inside: avoid;
-        overflow: hidden;
+        break-inside: auto;
+        overflow: visible;
       }
       /* :last-child alone isn't enough once data-deck-skip hides the
          trailing slide(s) — the last *visible* slide still carries
@@ -1777,6 +1774,23 @@
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const key = e.key;
+      if (t && t.closest && t.closest(INTERACTIVE_SEL)
+          && [' ', 'Spacebar', 'Enter'].includes(key)) return;
+      // Up/down and paging keys scroll long reports; left/right still
+      // navigate slides. Preserve native activation of links/disclosures.
+      const slide = this._slides[this._index];
+      const scrollKeys = ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' ', 'Spacebar', 'Home', 'End'];
+      if (slide && slide.scrollHeight > slide.clientHeight + 1 && scrollKeys.includes(key)
+          && !(t && t.closest && t.closest(INTERACTIVE_SEL))) {
+        const page = slide.clientHeight * 0.85;
+        const delta = key === 'ArrowDown' ? 48 : key === 'ArrowUp' ? -48
+          : key === 'PageUp' || ((key === ' ' || key === 'Spacebar') && e.shiftKey) ? -page : page;
+        if (key === 'Home') slide.scrollTop = 0;
+        else if (key === 'End') slide.scrollTop = slide.scrollHeight;
+        else slide.scrollTop += delta;
+        e.preventDefault();
+        return;
+      }
       let handled = true;
 
       if (key === 'ArrowRight' || key === 'PageDown' || key === ' ' || key === 'Spacebar') {

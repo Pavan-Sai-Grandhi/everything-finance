@@ -1,6 +1,6 @@
 ---
 name: market-analysis
-description: The plugin's single market-of-record — what the Indian market is doing right now and what that implies for risk. Reads trend and regime (Nifty vs 50/200-EMA), real stock-level breadth, India VIX and its percentile, cap-tier valuation percentiles (Nifty 50 / Midcap 150 / Smallcap 250 P/E, P/B, dividend yield versus their own 10-year history), smallcap-vs-largecap relative richness, FII/DII flows, the cross-asset macro backdrop, and sector leadership. Runs `quick` (a cached digest other skills consume — the common case) or `deep` (the full written market read). Use whenever the user asks what the market is doing, about market conditions, regime, breadth, whether the market or a segment is expensive or cheap, "is this a good time to invest", "is smallcap overvalued", sector rotation, FII/DII flows, or before any skill needs market context to size or time a decision.
+description: Read the Indian market's shared trend, breadth, volatility, valuation and flow context. Use for market conditions, cap-tier valuation, sector leadership or risk context before a stock/fund decision. Quick returns the shared daily digest; deep produces a written market read.
 argument-hint: "[--quick | --deep] [--years N] (e.g. 'what's the market doing', 'is smallcap expensive')"
 allowed-tools: Read, Write, Bash, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*
 ---
@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, mcp__finance-market__*, mcp__plugin_everything
 
 The one place this plugin decides **what the market is doing** — trend, posture, real stock-level breadth, **cap-tier valuation percentiles**, institutional flows and the cross-asset backdrop. Every other skill reads that answer instead of computing its own.
 
-Read `references/reference.md` for the grounding — what each dimension means, how the regime taxonomy is defined, why a valuation percentile beats a raw multiple, and the traps (the earnings-collapse P/E distortion above all).
+Read `references/reference.md` for the grounding — what each dimension means, how the regime taxonomy is defined, why a valuation percentile beats a raw multiple, and the limitations of its valuation heuristics.
 
 ## The design rule — compute wide, report narrow
 
@@ -21,8 +21,8 @@ Reach for a raw `finance-market` tool (`get_indices`, `get_breadth`, `get_flows`
 
 ## Depth modes
 
-- **`quick`** (another skill requested it, or the user passed `--quick`) — reuse **today's artifact if it exists, with zero fetches**; compute only if it is missing. This is the mode every other skill calls, and it is why N skills in one day cost one computation. Emit the digest and stop.
-- **`deep`** (default on direct user invocation) — compute every rung, write the artifact, and produce the written market read below. Adds the regime-transition history (free — it diffs prior dated artifacts) and the per-sector valuation table.
+- **`quick`** (another skill requested it, or the user passed `--quick`) — reuse today’s compatible artifact for the requested history window with zero fetches; recompute if absent, invalid or incompatible. This is the mode every other skill calls, and it is why N skills in one day cost one computation. Emit the digest and stop.
+- **`deep`** (default on direct user invocation) — compute every rung, write the artifact, and produce the written market read below. Adds prior dated regime readings. Request `get_indices` only if a full per-sector valuation table is needed beyond the digest’s leaders and laggards.
 
 ## Workflow
 
@@ -40,18 +40,18 @@ Reach for a raw `finance-market` tool (`get_indices`, `get_breadth`, `get_flows`
 
 ## Output
 
-Write the digest to `artifacts/market-analysis/<date>.json` (`paths.report_path("market-analysis", ext="json")`) — `strategy-manager`'s strategy selection, `get_fund_scan(market_context=…)` and the next run's transition history all read that file, so a `deep` run that does not persist it breaks them. In `deep` also write `artifacts/market-analysis/<date>.md`, filled from `assets/market-read.md`.
-
+The tool persists the **full structured context**, not its text digest, at `paths.report_path("market-analysis", ext="json")`. Strategy selection, fund scans and later market runs consume that file. Never overwrite it with the tool envelope, digest or a model-written reconstruction. In `deep`, read that JSON for fields omitted from the compact tool return, then write the Markdown report at `paths.report_path("market-analysis", ext="md")` using `assets/market-read.md`. Report a persistence gap if the tool could not save the shared record.
 Summarize in chat: posture and trend, the breadth check, the cap-tier valuation table, the one tension that matters, and the data gaps. `quick` returns only the digest — no report, no chat narrative.
 
-**The market-context digest is a consumed contract** — `finance/contracts.md` (*Artifact: market-context*) lists every field, its meaning, which skill reads it, and the four spellings frozen because `strategy-manager/scripts/select_strategy.py` gates on them. Persist the digest exactly as the tool returned it; never rename a field on either side.
+**The market-context digest is a consumed contract** — `finance/contracts.md` (*Artifact: market-context*) lists every field, its meaning, which skill reads it, and the four spellings frozen because `strategy-manager/scripts/select_strategy.py` gates on them. The library owns JSON persistence; retain its field names when consuming it.
 
 ## Reporting rules specific to this read
 
 - Percentiles are against **that index's own history**, never another index or a remembered "normal". A multiple without its own distribution behind it is not evidence.
-- **Report the earnings-collapse exclusion count.** Samples above 3× the median are dropped from a P/E percentile because an earnings trough sends the ratio to five figures; the count dropped is part of the finding, not a silent filter (`references/reference.md` has the full case).
+- Report the P/E exclusion count and heuristic: positive samples at least 3× the median are excluded. This does not establish the cause of an outlier. Percentile bands and blends are research conventions, not calibrated forecasts.
+- Missing values remain data gaps. Null breadth cannot pass a strategy gate, and `neutral` with an incomplete-evidence rationale does not mean normal conditions. Use component observation dates when available; a Nifty bar date does not establish the freshness of flows or valuations.
 - Never explain a **trailing-window** number with a **calendar-year** number. "The trailing 1Y is weak but CY2025 was worse" compares two different windows and is not an argument.
 
 ## Alerts this skill raises (via `manage_alerts`)
 
-On a **posture change** versus the most recent prior reading (e.g. `risk_on` → `risk_off`), raise a **`regime_change`** alert (`subject: {type: market, id: nifty}`, `created_by: market-analysis`, `trigger: {from: <prior>, to: <current>}`, `severity: watch`, `action.text: "Market posture changed — re-check open positions and active strategy fit"`, `dedup_key: regime-<date>`). `daily-brief` surfaces it and `trade-tracker` re-validates against it. It is a prompt to re-examine, never an instruction to transact.
+On a posture change between complete, comparable readings, use `manage_alerts(action="add", subject_type="market", subject_id="nifty", kind="regime_change", created_by="market-analysis", check="review_regime_change", severity="watch", text="<prior posture/date> to <current posture/date>: re-check open positions and active strategy fit", dedup_key="regime-<date>")`. The check is a manual review request; include the observed transition in `text`. An incomplete-data fallback is not evidence of a genuine regime change. This prompts review, never a transaction.

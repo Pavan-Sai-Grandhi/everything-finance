@@ -82,7 +82,9 @@ res = R.detect(single, as_of="2026-06-30")
 s = sub(res, "NETFLIX")
 check("single sighting of known sub surfaced", s is not None, res["subscriptions"])
 check("single sighting is low confidence", s and s["confidence"] == "low", s)
-check("single sighting cadence inferred monthly", s and s["cadence"] == "monthly", s)
+check("single sighting has unconfirmed cadence", s and s["cadence"] is None, s)
+check("single sighting does not inflate committed cost", res['total_committed_monthly'] == 0, res)
+check("unconfirmed monthly equivalent stays missing", s and s['monthly_equivalent'] is None, s)
 
 # --- non-recurring variable spend is NOT surfaced ----------------------------
 groceries = [txn("2026-05-02", "UPI/BIGBASKET/ybl", 2100),
@@ -105,4 +107,20 @@ credits = [{"date": "2026-05-01", "description": "SALARY", "amount": 100000,
 res = R.detect(credits, as_of="2026-05-31")
 check("all-credit input yields no subscriptions", res["subscriptions"] == [], res)
 
+res = R.detect(newsub, as_of="2026-06-30")
+s = sub(res, "HOTSTAR")
+check('as-of excludes future transactions', s and s['occurrences'] == 1 and s['last_seen'] == '2026-06-03', res)
+check('future exclusions are reported', bool(res.get('gaps')), res)
+irregular = [txn(d, 'SOMECLUB', 100) for d in ('2026-01-01', '2026-01-02', '2026-03-03')]
+check('median alone cannot certify cadence', not R.detect(irregular)['subscriptions'])
+res = R.detect([txn('2026-06-01', 'APPLE STORE', 90000)], '2026-06-30')
+check('merchant alone cannot certify a subscription', res['total_committed_monthly'] == 0)
+invalid = [txn('invalid', 'NETFLIX', 10), txn('2026-06-01', 'NETFLIX', float('nan'))]
+res = R.detect(invalid, '2026-06-30')
+check('invalid rows do not poison recurring totals', res['total_committed_monthly'] == 0 and len(res['gaps']) == 2, res)
+other_account = [dict(t, account='SECOND') for t in netflix]
+res = R.detect(netflix + other_account, '2026-06-30')
+check('separate accounts retain separate recurrence series', len(res['subscriptions']) == 2 and res['total_committed_monthly'] == 1298, res)
+transfers = [txn(t['date'], 'CREDIT CARD PAYMENT', 1000) for t in netflix]
+check('card bill settlements do not count twice as recurring spending', R.detect(transfers)['total_committed_monthly'] == 0)
 summary()

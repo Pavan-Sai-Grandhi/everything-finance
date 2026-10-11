@@ -14,7 +14,7 @@ goal: "Quality businesses with 12-month price leadership — a shortlist to deep
 source_references:
   - "Varsity — Fundamental Analysis (quality checklist); momentum overlay"
 
-status: draft                         # draft | active | inactive (active on the completeness gate)
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-08-30
   validated_at: null                  # set when the completeness check passes

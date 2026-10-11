@@ -2,6 +2,7 @@
 """Offline unit tests for finance/sources/fundamentals.py + finance/sources/tickertape.py."""
 import os
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -102,9 +103,9 @@ FILTERS = {"success": True, "data": {
                          {"label": "aint", "premium": False}]}}
 
 SCREEN_RESULT = {"success": True, "data": {"results": [
-    {"sid": "TCS", "stock": {"info": {"ticker": "TCS"}, "advancedRatios": {"roce": 55.4}}},
-    {"sid": "INFY", "stock": {"info": {"ticker": "INFY"}, "advancedRatios": {"roce": 39.1}}},
-    {"sid": "TCS2", "stock": {"info": {"ticker": "TCS"}, "advancedRatios": {"roce": 55.4}}}],
+    {"sid": "TCS", "stock": {"info": {"ticker": "TCS"}, "advancedRatios": {"roce": 55.4, "mrktCapf": 70000, "apef": 20}}},
+    {"sid": "INFY", "stock": {"info": {"ticker": "INFY"}, "advancedRatios": {"roce": 39.1, "mrktCapf": 60000, "apef": 22}}},
+    {"sid": "TCS2", "stock": {"info": {"ticker": "TCS"}, "advancedRatios": {"roce": 55.4, "mrktCapf": 70000, "apef": 20}}}],
     "stats": {"count": 2}}}
 
 DOCUMENTS_PAGE = """<!doctype html><html><head><title>Reliance Industries Ltd</title></head>
@@ -158,7 +159,8 @@ class _Offline:
         import tempfile
         self._saved = (tt.get_json, fz.transport.request,
                        os.environ.get("EVERYTHING_FINANCE_ARTIFACTS"))
-        os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = tempfile.mkdtemp()
+        self._scratch = tempfile.TemporaryDirectory()
+        os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = self._scratch.name
         tt.get_json = self.get_json
         fz.transport.request = lambda url, **kw: (self.page, self.page_gap)
         return self
@@ -169,6 +171,7 @@ class _Offline:
             os.environ.pop("EVERYTHING_FINANCE_ARTIFACTS", None)
         else:
             os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = self._saved[2]
+        self._scratch.cleanup()
         return False
 
 
@@ -599,8 +602,137 @@ def test_T5_advertised_common_fields_are_all_real():
           set(known) <= set(fz.COMMON_FIELDS) and known, known)
 
 
+
+def test_T5_conjunctions_never_weaken_bounds():
+    names = {"roce": "roce"}
+    for query in ("ROCE > 20 AND ROCE > 10 AND ROCE < 40 AND ROCE < 50",
+                  "ROCE > 10 AND ROCE < 50 AND ROCE < 40 AND ROCE > 20"):
+        match, gaps = fz._parse_query(query, names, set())
+        check("all bounds survive regardless of clause order", match == {"roce": {"g": 20, "l": 40}} and not gaps, match)
+    for query in ("ROCE > 20 AND ROCE < 10", "ROCE > 20 AND ROCE < 20", "ROCE > 1..2", "ROCE > .", "ROCE > " + "9" * 400, "ROCE > 20 AND "):
+        try:
+            match, gaps = fz._parse_query(query, names, set())
+            valid = match is None and bool(gaps)
+        except Exception:
+            valid = False
+        check("impossible or malformed queries refuse the entire screen", valid, query[:80])
+
+
+def test_T5_verifies_returned_screen_rows():
+    def dishonest(path, payload=None, timeout=30):
+        if path == "/screener/query":
+            return {"data": {"results": [
+                {"stock": {"info": {"ticker": "GOOD"}, "advancedRatios": {"roce": 25}}},
+                {"stock": {"info": {"ticker": "BOUNDARY"}, "advancedRatios": {"roce": 20}}},
+                {"stock": {"info": {"ticker": "MISSING"}}},
+                {"stock": {"info": {"ticker": "NONFINITE"}, "advancedRatios": {"roce": "NaN"}}}],
+                "stats": {"count": 4}}}, None
+        return _stub_json(path, payload, timeout)
+    with _Offline(get_json=dishonest):
+        env = fz.screen("ROCE > 20", fresh=True)
+    check("only independently verified candidates survive", env["data"]["candidates"] == ["GOOD"], env)
+    check("missing and failed source projections are labelled", bool(env["gaps"]), env)
+    calls = []
+    def counting(path, payload=None, timeout=30):
+        calls.append(path)
+        return _stub_json(path, payload, timeout)
+    for limit in (0, -1, 1.5, True, "bad"):
+        with _Offline(get_json=counting):
+            try:
+                env = fz.screen("ROCE > 20", limit=limit, fresh=True)
+                valid = not env["ok"] and bool(env["gaps"])
+            except Exception:
+                valid = False
+        check("invalid result limit is refused before source access", valid and not calls, limit)
+        calls.clear()
+
+
+
+def test_company_request_and_cache_boundaries():
+    with _Offline(), patch.object(tt, "resolve_sid") as resolve, patch.object(fz, "_documents") as documents:
+        for sections in (["typo"], ["ratios", "typo"], "ratios", [{}]):
+            try:
+                env = fz.fetch("RELIANCE", sections=sections)
+                valid = not env["ok"] and bool(env["gaps"])
+            except Exception:
+                valid = False
+            check("invalid section request fails before any source is read", valid and not resolve.called and not documents.called, sections)
+        for symbol, sid in (("../outside", None), ("", None), ("RELIANCE", "../sid")):
+            try:
+                env = fz.fetch(symbol, sid=sid)
+                valid = not env["ok"] and bool(env["gaps"])
+            except Exception:
+                valid = False
+            check("invalid source identity is refused before source access", valid and not resolve.called and not documents.called, (symbol,sid))
+    with _Offline():
+        fz.fetch("RELIANCE", fresh=True)
+        narrow = fz.fetch("RELIANCE", sections=["ratios"])
+        check("narrowed cached result lists only returned sections", narrow["data"]["sections_returned"] == ["ratios"], narrow["data"])
+        with patch.dict(fz._TT_SECTIONS, {"ratios": lambda sid: ({"Market Cap": 100}, [])}):
+            other = fz.fetch("RELIANCE", sections=["ratios"], sid="OTHER")
+        check("explicit security-id request never reuses another identity's cached numbers", other["data"]["sid"] == "OTHER" and other["data"]["ratios"]["Market Cap"] == 100, other)
+
+
+def test_malformed_endpoint_keeps_other_company_sections():
+    def malformed(path, payload=None, timeout=30):
+        if path.startswith("/stocks/holdings/"):
+            return {"data": ["invalid row"]}, None
+        return _stub_json(path, payload, timeout)
+    with _Offline(get_json=malformed):
+        try:
+            env = fz.fetch("RELIANCE", sections=["ratios", "shareholding"], fresh=True)
+            valid = env["ok"] and env["data"]["ratios"]["Market Cap"] == 1777092.98 and env["data"]["shareholding"] == {"columns":[],"rows":{}}
+        except Exception as exc:
+            env, valid = {"gaps":[]}, False
+        check("one malformed endpoint does not abort unrelated successful sections", valid, env)
+        check("malformed section is named as a gap", any("shareholding" in g for g in env["gaps"]), env)
+    with _Offline(), patch.dict(fz._TT_SECTIONS, {"pnl_10y":lambda sid: ({"columns":[], "period_kinds":[],"rows":{}}, [])}):
+        env = fz.fetch("RELIANCE", sections=["pnl_10y"], fresh=True)
+    check("empty table metadata is not mistaken for usable company data", not env["ok"] and bool(env["gaps"]), env)
+
+
+
+def test_shared_tickertape_resolver_boundaries():
+    with _Offline():
+        first = tt.resolve_sid("RECLTD", fresh=True)
+        cache = tt.cache_path("sid", "RECLTD")
+        tt._write_cache(cache, {"data": {"ticker": "FOREIGN", "sid": "BAD"}})
+        second = tt.resolve_sid("RECLTD")
+        check("cached identity must match the requested ticker", second[0]["sid"] == "RECM", second)
+        check("different cache keys never collapse under punctuation replacement", tt.cache_path("sid", "M&M") != tt.cache_path("sid", "M_M"))
+    for payload in ({"data": []}, {"data": {"stocks": [None, "bad"]}}, {"data": {"stocks": [
+            {"ticker": "RECLTD", "sid": "ONE"}, {"ticker": "RECLTD", "sid": "TWO"}]}}):
+        with _Offline(get_json=lambda *a, **kw: (payload,None)):
+            try:
+                rec,gap = tt.resolve_sid("RECLTD", fresh=True)
+                valid = rec is None and bool(gap)
+            except Exception:
+                valid = False
+            check("malformed or conflicting resolution evidence cannot choose an issuer",valid,payload)
+    with patch.object(tt.transport, "json_request", return_value=({"success":False, "data": {"ratios": {"x":1}}},None)):
+        payload,gap=tt.get_json('/stocks/info/RELI')
+    check("provider-declared failure is a gap even with parseable data",payload is None and bool(gap))
+    with patch.object(tt.transport, "json_request") as invoke:
+        try:
+            payload,gap=tt.get_json('https://elsewhere.invalid')
+            valid=payload is None and bool(gap) and not invoke.called
+        except Exception:
+            valid=False
+    check("Tickertape client only accepts an API-relative path",valid)
+
+
+
+def test_field_resolution_cannot_invent_a_longer_metric():
+    names = {"debt to equity": "dbtEqt", "market cap": "mrktCapf"}
+    for field in ("Debt", "Debt to Equity Growth", "Market Cap Change", "Market Cap preceding year"):
+        label, gap = fz._resolve_field(field, names)
+        check("unpublished metric spelling cannot inherit a prefix's meaning", label is None and bool(gap), field)
+
+
 if __name__ == "__main__":
-    run((test_T1_resolve_sid, test_T1_resolve_sid_miss_is_a_labelled_gap,
+    run((test_field_resolution_cannot_invent_a_longer_metric, test_shared_tickertape_resolver_boundaries, test_company_request_and_cache_boundaries, test_malformed_endpoint_keeps_other_company_sections,
+         test_T5_conjunctions_never_weaken_bounds, test_T5_verifies_returned_screen_rows,
+         test_T1_resolve_sid, test_T1_resolve_sid_miss_is_a_labelled_gap,
          test_T1_resolve_sid_rejects_a_near_miss, test_T1_empty_symbol,
          test_T1_alias_bypasses_a_search_that_cannot_reach_the_company,
          test_T1_seeded_alias_covers_the_renamed_ticker,

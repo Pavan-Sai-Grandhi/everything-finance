@@ -22,16 +22,16 @@ It **orchestrates, it does not re-derive**: each domain's depth is a profile age
 
 The data foundation, and the only place the non-tradeable classes are seen. `finance/compute/holdings.py` and `scripts/wealth.py` run in script context and **cannot call MCP tools**, so the handoff is:
 
-1. Invoke IndMoney `networth_snapshot`, `networth_allocation_breakdown`, and `networth_holdings` (and, if IndMoney is absent, any connected broker's holdings+positions). **Write each raw payload to a temp file** under `paths.tmp_dir("wealth")`.
+1. Invoke IndMoney `networth_snapshot` and IndMoney `networth_holdings` once per needed `asset_type` (`IND_STOCK` and `US_STOCK` for equity, `MF` for funds — the tool requires it and serves one type per call) (and, if IndMoney is absent, any connected broker's holdings+positions). **Write each raw payload to a temp file** under `paths.tmp_dir("wealth")`. The snapshot is the net-worth source: its `investments[asset_type, current_value]` rows are the per-class breakdown (pass the snapshot as both `snapshot` and `breakdown`), and its `liabilities.total` becomes the picture's `liabilities` block (`as_of` = the fetch date, `source` = "IndMoney networth_snapshot"). `networth_allocation_breakdown` is per asset type and is not the whole-book breakdown.
 2. Normalize the holdings into canonical positions:
    ```bash
-   PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <networth_holdings.json> [--kite <k.json>|--upstox <u.json>] [--portfolio <portfolio.yml>] > positions.json
+   PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind-stock.json> --indmoney <ind-mf.json> --indmoney <ind-us.json> [--kite <k.json>|--upstox <u.json>] [--portfolio <portfolio.yml>] > positions.json
    ```
 3. Build the spine — total net worth, per-class allocation, liquid pool, equity share, XIRR summary — from the two net-worth payloads + the positions envelope. `wealth.py` does this (Section 3); you assemble the **picture JSON** it reads.
 
 ## Section 2 — Orchestrate the three legs (full-review only)
 
-Fork **one profile agent per available leg, in parallel** (all Agent calls in one message). Each runs its spoke in cheap mode in isolation, writes the spoke's full report, and returns **only its digest** + the report `path`:
+Run each available leg once in its specified mode and retain only its digest plus report path. Respect the user’s delegation preference: when agents are disallowed, execute the legs sequentially in the current task. If delegation is authorized, one profile per leg may run independently. Each leg writes only the artifacts its mode requires:
 
 | Leg | Profile | Spoke + mode | Digest returned |
 |---|---|---|---|
@@ -53,15 +53,22 @@ Assemble the **picture JSON** — the raw net-worth payloads, the positions enve
 python3 <plugin>/skills/wealth-manager/scripts/wealth.py --input <picture.json> [--snapshot]
 ```
 
-Picture shape (leg blocks are the digests you transcribed; omit a leg that didn't run):
+Picture shape (omit unavailable optional blocks; leg blocks are the digests you transcribed):
 ```json
 { "snapshot": <networth_snapshot raw|null>, "breakdown": <networth_allocation_breakdown raw|null>,
   "positions": <holdings.py envelope|null>,
+  "liabilities": {"total": <outstanding ₹>, "as_of": "YYYY-MM-DD", "source": "<statement/user evidence>"},
   "legs": { "investments": {…investments-block…}, "protection": {…protection-block…}, "cashflow": {…cashflow-block…} },
-  "profile": { "age": <n>, "dependents": <n>, "monthly_expenses": <₹|absent> } }
+  "profile": { "age": <n>, "dependents": <n>, "monthly_expenses": <₹|absent>, "equity_band": {"min_pct": <stated lower %>, "max_pct": <stated upper %>}, "emergency_reserve": {"available_value": <confirmed accessible ₹>, "as_of": "YYYY-MM-DD", "source": "<user confirmation or first-party evidence>"} } }
 ```
 
-`wealth.py` owns every number: the spine, the **emergency-fund runway**, the **protection-vs-net-worth** read, the **risk posture** (all gated by the foundation — see reference.md), and the **financial-health scorecard** with the prioritized action plan. Deterministic; you never eyeball a figure. Ask once for age / dependents / monthly expenses if not derivable — missing expenses makes the emergency-fund read "not assessed", not fabricated.
+Do not present `holdings_xirr.avg` as portfolio XIRR. It is a descriptive mean of individual returns with separate histories; report its `method` and coverage. A portfolio return needs aggregate dated cash flows or an attributed first-party portfolio figure.
+
+For liabilities, supply a total from first-party evidence or explicit user confirmation, with its date and source. Do not infer zero or calculate debt as the difference needed to balance the assets. The engine reconciles reported net worth with assets minus liabilities and labels the allocation denominator; preserve `allocation_basis` in the report.
+
+For emergency runway, obtain a dated accessible-reserve amount after considering encumbrances, withdrawal restrictions, near-term commitments and costs. Record it as `profile.emergency_reserve`; a cash/FD category total is only `observed_liquid`, not proof of availability. Preserve the reserve evidence date in the report, and flag stale evidence rather than calling it current.
+
+`wealth.py` owns every number: the spine, the **emergency-fund runway**, the **protection-vs-net-worth** read, the **risk posture** (all gated by the foundation — see reference.md), and the **financial-health scorecard** with the prioritized action plan. Deterministic; you never eyeball a figure. Ask for missing dependents / monthly expenses when needed; use an explicitly stated `equity_band` for allocation comparison, never derive one from age — missing expenses makes the emergency-fund read "not assessed", not fabricated. A recurring-expense floor provides only `months_upper_bound`, never an assessed runway or evidence permitting more investment risk.
 
 `risk_posture` here is the *personal balance-sheet* posture, distinct from market-analysis's `market_posture` (the tape). Never conflate them, and never let a `risk_on` market loosen a personal posture the foundation has gated.
 
@@ -94,4 +101,4 @@ python3 skills/_report/scripts/render_report.py \
 - **IndMoney not connected** → partial spine from broker + `portfolio.yml`, tradeable-only; net-worth-level allocation flagged incomplete; non-tradeable classes named as gaps.
 - **A leg's data absent** → that leg returns "data needed"; the scorecard marks the domain "not assessed — run /<spoke>"; the run still verdicts on the rest.
 - **A leg agent fails** → labelled scorecard gap, never an aborted review.
-- **Missing age / expenses** → the read that needs them (risk band, emergency-fund runway) is labelled not-assessed.
+- **Missing equity target range / expenses** → the corresponding target comparison or emergency-fund runway stays unassessed. Do not invent an age-based allocation range.

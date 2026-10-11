@@ -13,7 +13,7 @@ source_references:
   - "Zerodha Varsity — Mutual Funds (core-satellite; mid/small caps as the higher-beta satellite sized to risk appetite). Official source."
   - "SOIC — mid-cap exposure earns its place in a supportive regime; discipline is trimming it when valuations stretch (see the smallcap note below)."
 
-status: draft
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-08-30
   validated_at: null

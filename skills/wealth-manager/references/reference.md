@@ -19,16 +19,16 @@ So a **protection gap or a thin emergency fund always outranks a fresh-equity mo
 The spine is the only place the non-tradeable asset classes are seen — real estate, gold, EPF/PF, FDs, cash, US equity, insurance cash value — beyond the equity+MF book the investment spoke covers. Built by `finance/compute/wealth.py:build_spine`:
 
 - **Allocation** comes from IndMoney's `networth_allocation_breakdown` (authoritative — it sees every class). Only if that is absent do we aggregate the tradeable positions by asset class, and then the spine is labelled **tradeable-only** and the net-worth allocation is flagged incomplete.
-- **Total net worth** from `networth_snapshot`; if absent, inferred from the allocation sum (labelled).
-- **Liquid pool** = cash + FDs only. Debt funds and long bonds are deliberately excluded — they may be long-duration and are not emergency-fund-grade.
-- **Equity share** = equity + mutual funds + US equity, as a % of net worth — the market-linked/growth sleeve that drives risk posture.
+- **Total net worth** from `networth_snapshot`; if absent, the allocation sum is labelled as inferred. Missing/invalid asset rows or a mismatch between reported total and asset sum make coverage incomplete. Do not invent a balancing asset or liability. Zero/negative reported net worth cannot be used for an allocation percentage.
+- **Liquid pool** uses the explicitly confirmed `profile.emergency_reserve.available_value`, with an observation date and source. Cash/FD totals remain visible as `observed_liquid`, but labels alone do not prove withdrawal availability or freedom from commitments. A verified reserve can be assessed independently of incomplete net worth; an unverified reserve remains unavailable.
+- **Known direct-equity share** = Indian + US direct equity divided by the reported total. Crypto is not equity. Generic mutual-fund, retirement, insurance and unknown buckets can contain unresolved equity exposure, so total `equity_share_pct` stays unavailable when these are present or book coverage is incomplete. Do not promote the direct-equity subset into a whole-portfolio equity verdict. Fund labels alone do not establish underlying holdings.
 - Asset-class labels are free text from IndMoney; `canonical_class` maps them to fixed buckets. `us_equity` is matched before `equity` so "US Stocks" doesn't fold into Indian equity.
 
 ## Cross-domain figures (only the hub can compute)
 
-- **Emergency-fund runway** = liquid pool ÷ monthly expenses. Monthly expenses resolve: stated → cashflow-leg `monthly_outflow` → `recurring_monthly` (a labelled *floor*, actual spend is higher) → not-assessed. Bands: **strong ≥6**, **adequate 3–6**, **thin 1–3**, **critical <1** month.
+- **Emergency-fund runway** = liquid pool ÷ monthly expenses. Monthly expenses resolve: stated → cashflow-leg `monthly_outflow` → `recurring_monthly` (a labelled *floor*, actual spend is higher) → not-assessed. With complete monthly spending, bands are research conventions: **strong ≥6**, **adequate 3–6**, **thin 1–3**, **critical <1** month. A recurring-only floor yields an upper bound on runway and remains not assessed; it cannot certify a sound foundation.
 - **Protection-vs-net-worth** — weighs the protection-leg adequacy: an `absent` core line (term/health) is critical, a `short` line is weak, all `adequate` is strong. Red flags append but don't override.
-- **Risk posture** — equity share vs an age band (`100 − age` ceiling, wide). But it is **gated by the foundation**: however low the equity share, if the emergency fund is thin/critical or protection is weak, the verdict is *fix-foundation-first*, not *add-risk*. Only a sound foundation unlocks "room to add growth assets".
+- **Risk posture** — compare valid equity exposure with the user's stated `profile.equity_band` (`min_pct`, `max_pct`). Missing or invalid ranges yield `unknown`; age alone supplies no ceiling. Weak or unassessed emergency/protection evidence takes precedence as `fix-foundation-first`. A sound foundation permits a descriptive `below-target`, `within-target` or `above-target` comparison, not authorization to buy or sell.
 
 ## The financial-health scorecard
 
@@ -42,7 +42,7 @@ One status per domain — **strong / adequate / weak / critical / not_assessed**
 | Cashflow | saving ≥ 20% of inflow | saving < 10% |
 | Emergency fund | ≥ 6 months runway | < 3 months |
 
-**Overall** = the worst *assessed* domain (a `not_assessed` domain never sets the overall — it's a gap to fill, not a failure). A domain whose leg didn't run is marked "not assessed — run /<spoke>", and the review still produces a verdict on the rest.
+**Overall** = the worst *assessed* domain (a `not_assessed` domain never sets the overall — it's a gap to fill, not a failure). A gap-only investment digest cannot establish absence of risk, and an empty allocation cannot establish diversification. A domain whose leg didn't run is marked "not assessed — run /<spoke>", and the review still produces a verdict on the rest.
 
 ## Prioritised action plan (max 5)
 
@@ -54,7 +54,7 @@ Ordered by the health stack above, not by domain size. Each action carries a con
 4. Investments weak → fix concentration / exit laggards (`/portfolio-review`).
 5. Net-worth allocation weak → diversify the dominant sleeve (`/portfolio-review`).
 
-If the foundation is sound and the equity share has room, the last slot surfaces the "room to add growth assets" nudge instead. Fund depth routes to `/mf-analysis`; single-stock depth to `/deep-analysis`.
+If the foundation is sound and exposure lies outside an explicit target range, a remaining slot requests an allocation review; it does not recommend adding growth assets automatically. Fund depth routes to `/mf-analysis`; single-stock depth to `/deep-analysis`.
 
 ## Leg digest contracts (what each leg returns)
 

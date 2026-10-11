@@ -14,6 +14,9 @@ Run:  python3 -m finance.mcp.smoke_test [--quick] [--server market|company|funds
 from __future__ import annotations
 
 import argparse
+from collections import deque
+import queue
+import tempfile
 import json
 import os
 import subprocess
@@ -59,9 +62,8 @@ CASES = {
         ("run_fundamental_screen",
          {"query": "Market Cap > 100000 AND PE Ratio < 25", "limit": 25},
          ["candidates", "count"]),
-        ("run_saved_screen",
-         {"screen_url": "https://www.screener.in/screens/916319/soic-fundamental-stocks/",
-          "max_survivors": 25}, ["candidates", "count"]),
+        # Retired endpoint: verifies the labelled compatibility gap, never a fetch.
+        ("run_saved_screen", {"screen_url": "retired://saved-screen"}, ["candidates", "count"]),
         ("get_stock_ratios", {"sid": "RELI"}, ["ticker"]),
         ("get_news", {"company": "Reliance Industries", "ticker": "RELIANCE", "days": 30,
                       "limit": 5}, ["items_total"]),
@@ -85,7 +87,11 @@ CASES = {
     ],
     "personal": [
         ("run_insurance_math",
-         {"calculation": "term_cover_need", "inputs": {"annual_income": 20_00_000}},
+         # Synthetic protocol inputs (not a recommendation): every required key explicit.
+         {"calculation": "term_cover_need",
+          "inputs": {"annual_income": 20_00_000, "income_multiple": 10, "outstanding_loans": 0,
+                     "education_corpus": 0, "annual_expenses": 8_00_000,
+                     "years_to_independence": 20, "existing_corpus": 0, "existing_cover": 0}},
          ["result"]),
     ],
 }
@@ -108,18 +114,37 @@ class Client:
     """Minimal MCP stdio client — enough to initialize and call tools."""
 
     def __init__(self, python_exe, server):
-        env = dict(os.environ, PYTHONPATH=ROOT + os.pathsep + os.environ.get("PYTHONPATH", ""))
-        self.proc = subprocess.Popen(
-            [python_exe, "-m", f"finance.mcp.{server}"], stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
-            cwd=ROOT, env=env)
-        self.errlog = []
+        self.artifacts = tempfile.TemporaryDirectory(prefix="ef-smoke-")
+        env = dict(os.environ, PYTHONPATH=ROOT + os.pathsep + os.environ.get("PYTHONPATH", ""),
+                   EVERYTHING_FINANCE_ARTIFACTS=self.artifacts.name)
+        try:
+            self.proc = subprocess.Popen(
+                [python_exe, "-m", f"finance.mcp.{server}"], stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
+                cwd=ROOT, env=env)
+        except Exception:
+            self.artifacts.cleanup()
+            raise
+        self.errlog = deque(maxlen=200)
+        self.responses = queue.Queue()
+        threading.Thread(target=self._drain_stdout, daemon=True).start()
         threading.Thread(target=self._drain_stderr, daemon=True).start()
         self._id = 0
-        self._rpc("initialize", {
-            "protocolVersion": "2025-06-18", "capabilities": {},
-            "clientInfo": {"name": "smoke", "version": "1.0"}})
-        self._notify("notifications/initialized")
+        try:
+            self._rpc("initialize", {
+                "protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "smoke", "version": "1.0"}})
+            self._notify("notifications/initialized")
+        except Exception:
+            close(self)
+            raise
+
+    def _drain_stdout(self):
+        try:
+            for line in self.proc.stdout:
+                self.responses.put(line)
+        finally:
+            self.responses.put(None)
 
     def _drain_stderr(self):
         for line in self.proc.stderr:
@@ -136,20 +161,27 @@ class Client:
         self._id += 1
         want = self._id
         self._send({"jsonrpc": "2.0", "id": want, "method": method, "params": params})
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            line = self.proc.stdout.readline()
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"{method} timed out")
+            try:
+                line = self.responses.get(timeout=remaining)
+            except queue.Empty as exc:
+                raise TimeoutError(f"{method} timed out") from exc
             if not line:
                 raise RuntimeError("server closed the connection")
             try:
                 msg = json.loads(line)
             except ValueError:
                 continue
+            if not isinstance(msg, dict):
+                raise RuntimeError("RPC response must be an object")
             if msg.get("id") == want:
                 if "error" in msg:
                     raise RuntimeError(f"RPC error: {msg['error']}")
                 return msg["result"]
-        raise TimeoutError(f"{method} timed out")
 
     def tools(self):
         return [t["name"] for t in self._rpc("tools/list", {}).get("tools", [])]
@@ -169,15 +201,35 @@ class Client:
 def close(client):
     try:
         client.proc.stdin.close()
-        client.proc.wait(timeout=10)
+        client.proc.wait(timeout=2)
     except Exception:  # noqa: BLE001
         client.proc.kill()
+        client.proc.wait(timeout=2)
+    finally:
+        client.proc.stdout.close()
+        client.proc.stderr.close()
+        client.artifacts.cleanup()
+
+
+def valid_envelope(env):
+    """Degradation is valid only when it carries the complete typed contract."""
+    return (isinstance(env, dict) and type(env.get("ok")) is bool
+            and isinstance(env.get("source"), str) and bool(env["source"])
+            and isinstance(env.get("fetched_at"), str) and bool(env["fetched_at"])
+            and isinstance(env.get("data"), dict)
+            and isinstance(env.get("gaps"), list)
+            and all(isinstance(gap, str) and gap.strip() for gap in env["gaps"])
+            and (env["ok"] or bool(env["gaps"])))
 
 
 def run_server(server, python_exe, quick, files):
     """Every tool on one server. Returns (passed, degraded, failed, stderr_lines)."""
     print(f"\n=== finance-{server}")
-    client = Client(python_exe, server)
+    try:
+        client = Client(python_exe, server)
+    except Exception as exc:
+        print(f"FAIL     initialize                     {exc}")
+        return 0, 0, 1, []
     passed = degraded = failed = 0
     resolved = {"mf_id": None}
     try:
@@ -216,9 +268,9 @@ def run_server(server, python_exe, quick, files):
                 print(f"FAIL     {name:<30} {exc}")
                 continue
 
-            if not isinstance(env, dict) or not {"ok", "data", "gaps"} <= set(env):
+            if not valid_envelope(env):
                 failed += 1
-                print(f"FAIL     {name:<30} malformed envelope: {sorted(env)[:6]}")
+                print(f"FAIL     {name:<30} malformed envelope ({type(env).__name__})")
                 continue
 
             data = env.get("data") or {}
@@ -235,9 +287,12 @@ def run_server(server, python_exe, quick, files):
             else:
                 passed += 1
                 print(f"PASS     {name:<30} src={env.get('source')}")
+    except Exception as exc:
+        failed += 1
+        print(f"FAIL     protocol                       {exc}")
     finally:
-        errlog = list(client.errlog)
         close(client)
+        errlog = list(client.errlog)
     return passed, degraded, failed, errlog
 
 

@@ -7,7 +7,9 @@ rather than carrying its own copy, so the envelope contract and the cache-freshn
 have exactly one definition. See `finance/contracts.md`.
 """
 import json
+import hashlib
 import os
+import tempfile
 from datetime import date, datetime
 
 # Values that mean "absent" in a scraped cell. A blank must coerce to None, never 0 — a
@@ -37,9 +39,8 @@ def f(value):
         out = float(text.replace(",", "").replace("%", ""))
     except (TypeError, ValueError):
         return None
-    # NaN and inf are not values. yfinance hands back a NaN close for a bar that has
-    # not settled, and NaN survives every `is not None` filter — it must die here, or
-    # it reaches arithmetic that silently produces a confident wrong number.
+    # NaN and inf are not usable values. A missing close may reflect provider
+    # gaps or an unfinished session; its cause cannot be inferred from NaN alone.
     return out if out == out and out not in (float("inf"), float("-inf")) else None
 
 
@@ -60,13 +61,19 @@ def iso_date(value):
     if not text:
         return None
     if len(text) >= 10 and text[4] == "-" and text[7] == "-":
-        return text[:10]
+        try:
+            return date.fromisoformat(text[:10]).isoformat()
+        except ValueError:
+            return None
     parts = text.replace("/", "-").split("-")
     if len(parts) >= 3:
         d, mon, y = parts[0].strip(), parts[1].strip().upper()[:3], parts[2].strip()[:4]
         month = _MONTHS.get(mon)
         if month and d.isdigit() and y.isdigit():
-            return f"{int(y):04d}-{month:02d}-{int(d):02d}"
+            try:
+                return date(int(y), month, int(d)).isoformat()
+            except ValueError:
+                return None
     return None
 
 
@@ -116,7 +123,9 @@ def read_cache(path, fresh, stamp_key=CACHE_STAMP, max_age_days=0):
             blob = json.load(fh)
     except Exception:  # noqa: BLE001
         return None
-    stamp = (blob.get("data") or {}).get(stamp_key)
+    if not isinstance(blob, dict) or not isinstance(blob.get("data"), dict):
+        return None
+    stamp = blob["data"].get(stamp_key)
     if not stamp:
         return None
     if max_age_days <= 0:
@@ -125,7 +134,7 @@ def read_cache(path, fresh, stamp_key=CACHE_STAMP, max_age_days=0):
         age = (date.today() - date.fromisoformat(stamp)).days
     except (TypeError, ValueError):
         return None
-    return blob if age <= max_age_days else None
+    return blob if 0 <= age <= max_age_days else None
 
 
 def write_cache(path, env, stamp_key=CACHE_STAMP):
@@ -137,8 +146,35 @@ def write_cache(path, env, stamp_key=CACHE_STAMP):
     when we fetched. The source's own date field is left untouched.
     """
     env.setdefault("data", {})[stamp_key] = today()
+    pending = None
     try:
-        with open(path, "w") as fh:
+        with tempfile.NamedTemporaryFile(mode="w", dir=os.path.dirname(os.path.abspath(path)),
+                                         delete=False, encoding="utf-8") as fh:
+            pending = fh.name
             json.dump(env, fh, ensure_ascii=False)
+        os.replace(pending, path)
     except Exception:  # noqa: BLE001
         pass
+    finally:
+        if pending and os.path.exists(pending):
+            os.unlink(pending)
+
+
+def publish_evidence(prefix, suffix, write):
+    """Publish immutable evidence for both CSV and JSON, after a complete write."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=os.path.dirname(os.path.abspath(prefix)),
+                                         encoding="utf-8", newline="", delete=False) as stream:
+            temporary = stream.name
+            write(stream)
+        digest = hashlib.sha256()
+        with open(temporary, "rb") as stream:
+            for block in iter(lambda: stream.read(65536), b""):
+                digest.update(block)
+        path = f"{prefix}-{digest.hexdigest()}{suffix}"
+        os.replace(temporary, path)
+        return path
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)

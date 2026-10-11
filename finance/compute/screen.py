@@ -32,35 +32,29 @@ passes_technical = strategy.passes_technical
 build_signal = strategy.build_signal
 
 
-def _spine_loader(years):
-    """Default price loader: EOD history through the data spine (`prices.history_df`,
-    yfinance under the hood), adjusted so the live screen shares the backtest's series.
-    Indicators are still computed by `ta.add_indicators` — the spine fetches, ta.py decides."""
-    def load(sym):
-        df, gaps = prices.history_df(sym, f"{years}y", adjusted=True)
-        if df is None or len(df) == 0:
-            raise RuntimeError(gaps[0] if gaps else "no price history")
-        return df
-    return load
-
-
-def screen_compute(symbols, spec, years, capital, cache_dir, loader=None):
+def screen_compute(symbols, spec, years, capital, loader=None):
     """Run the local technical cut + signal build over `symbols`. `loader` lets
     tests inject synthetic frames; production fetches via the data spine (`prices.history_df`,
-    which self-caches through paths.py — `cache_dir` is kept for the injected-loader API)."""
-    load = loader or _spine_loader(years)
-    tech = (spec.get("screening", {}) or {}).get("technical", {}) or {}
-    filters = tech.get("compute_filters", [])
-    features = strategy.referenced_features(spec)
-    breakout = "breakout" in str(spec.get("archetype", "")).lower() \
-        or "prior_20d_high" in str((spec.get("entry") or {}).get("trigger", "")).lower() \
-        or "20d_high" in str((spec.get("entry") or {}).get("trigger", "")).lower() \
-        or "Close > hh20" in filters
+    which owns the cache through paths.py). Source gaps remain visible."""
+    try:
+        filters = strategy.entry_filters(spec)
+        features = strategy.referenced_features(spec)
+        capital, _ = strategy.risk_parameters(spec, capital)
+        strategy.validate_exit(spec.get("exit"))
+    except ValueError as exc:
+        return {"candidates": [], "rejected": [], "data_gaps": [f"invalid strategy: {exc}"]}
 
     candidates, rejected, gaps = [], [], []
     for sym in symbols:
         try:
-            df = ta.materialize(ta.add_indicators(load(sym)), features)
+            if loader is None:
+                raw, source_gaps = prices.history_df(sym, f"{years}y", adjusted=True)
+                gaps.extend(f"{sym}: {gap}" for gap in source_gaps)
+            else:
+                raw = loader(sym)
+            if raw is None or len(raw) == 0:
+                raise ValueError("no usable price history")
+            df = ta.materialize(ta.add_indicators(raw), features)
         except Exception as exc:
             gaps.append(f"{sym}: {exc}")
             continue
@@ -71,12 +65,15 @@ def screen_compute(symbols, spec, years, capital, cache_dir, loader=None):
         if not ok:
             rejected.append({"symbol": sym, "why": reasons})
             continue
-        entry_override = float(df["hh20"].iloc[-1]) if breakout else None
-        sig = build_signal(df, spec, capital, entry_override=entry_override)
+        try:
+            sig = build_signal(df, spec, capital)
+        except (KeyError, ValueError, TypeError, ArithmeticError) as exc:
+            gaps.append(f"{sym}: cannot construct signal: {exc}")
+            continue
         if "skip" in sig:
             rejected.append({"symbol": sym, "why": [sig["skip"]]})
             continue
-        candidates.append({"symbol": sym, **sig})
+        candidates.append({"symbol": sym, "as_of": str(df.index[-1].date()), **sig})
     candidates.sort(key=lambda c: c["rrr"], reverse=True)
     return {"candidates": candidates, "rejected": rejected, "data_gaps": gaps}
 
@@ -105,13 +102,25 @@ def run(spec, symbols=None, years=2, capital=500000, out=None):
     candidates and the rejection tally.
     """
     from finance.sources import universe
-    doc = load_spec(spec)
-    if not symbols:
-        symbols = (doc.get("universe") or {}).get("source")
-    syms, uni_gaps = universe.resolve_symbols(symbols)
-    res = screen_compute(syms, doc, years, capital, paths.cache_dir("ohlcv"))
+    try:
+        doc = load_spec(spec)
+        if not isinstance(doc, dict):
+            raise ValueError("strategy must be a mapping")
+        strategy.entry_filters(doc)
+        strategy.referenced_features(doc)
+        capital, _ = strategy.risk_parameters(doc, capital)
+        strategy.validate_exit(doc.get("exit"))
+        if symbols is None:
+            symbols = (doc.get("universe") or {}).get("source")
+        syms, uni_gaps = universe.resolve_symbols(symbols)
+        res = screen_compute(syms, doc, years, capital)
+    except Exception as exc:
+        return spine.envelope(False, "finance.compute.screen", {}, [f"cannot run strategy screen: {exc}"])
+    price_dates = sorted({candidate["as_of"] for candidate in res["candidates"] if candidate.get("as_of")})
     res["config"] = {"spec": doc.get("name"), "spec_path": spec, "symbols": len(syms),
-                     "capital": capital, "years": years, "as_of": str(date.today())}
+                     "capital": capital, "years": years, "generated_on": str(date.today()),
+                     "as_of": price_dates[0] if len(price_dates) == 1 else None,
+                     "price_dates": price_dates}
     path = out or paths.report_path("discover", ext="json")
     gaps = list(res["data_gaps"]) + uni_gaps
     try:
@@ -154,9 +163,8 @@ def _synth(kind):
 
 SELFTEST_SPEC = {
     "name": "selftest-ema-pullback", "archetype": "pullback",
-    "screening": {"technical": {"compute_filters": [
-        "ema50_rising", "Close > ema50", "rsi14 between 40 and 100"]}},
-    "entry": {"trigger": "bullish candle near ema50"},
+    "entry": {"signal": ["ema50_rising", "Close > ema50", "rsi14 between 40 and 100"],
+              "trigger": "synthetic test condition: rising EMA50, close above EMA50 and RSI 40–100"},
     "exit": {"stop": "ema50_minus_2atr", "target": "next_resistance", "min_rrr": 1.5},
     "sizing": {"risk_per_trade_pct": 1.0},
 }

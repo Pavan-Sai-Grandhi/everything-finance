@@ -4,18 +4,15 @@ Grounded in Zerodha Varsity — Insurance module (https://zerodha.com/varsity/mo
 
 ## The one stance: insurance is protection, not investment
 
-- **Buy term, invest the difference.** Mixing insurance with investment (endowment, ULIP, moneyback) buys bad versions of both — typical traditional-plan IRR is 4–5%, below inflation. Pure protection (term life, indemnity health, comprehensive motor) + the premium difference invested per the MF framework beats bundled products.
+- **Buy term, invest the difference.** Mixing insurance with investment (endowment, ULIP, moneyback) usually buys weaker versions of both. Judge a specific plan by its own computed IRR (`marginal_irr_continue` / `irr` on its actual cash flows) against an explicitly sourced hurdle, never by a remembered "typical" return. Pure protection (term life, indemnity health, comprehensive motor) + the premium difference invested per the MF framework beats bundled products.
 - **Disclosure is the claim.** Smoking, pre-existing conditions, family history, prior claims — misdeclaration is the #1 cause of claim rejection ("Perverse Incentives", "Dunning-Kruger"). Never optimise premium via omission; a cheaper policy that won't pay is worthless.
 - **A brochure claim never overrides a best-practice red flag** — the per-type red-flag lists win over marketing copy.
 
 ## Interview discipline (all modes)
 
 - **One question at a time**, type-aware (each per-type reference lists exactly what to ask). Conversational, not a form dump.
-- **Never stall on a gap.** Missing data → proceed on a **stated assumption**, recorded in the report's **Assumptions table** with the figure used and why. A labelled assumption beats a stalled interview; a labelled gap beats a fabricated number.
-- Interview defaults when the user gives no number (assume, label, list):
-  - Children's education corpus: ₹40–60L per child in today's money (use ₹50L mid-point).
-  - Annual family expenses: 40–50% of gross income if unstated (45% mid).
-  - Endowment bonus accrual: run low/mid/high scenarios (simple reversionary ₹40–50 per ₹1,000 SA as mid) rather than one guess.
+- **Continue around a gap.** Complete supported sections and name missing inputs. Current cover, loans, assets and household expenses are facts to obtain, not values to invent or default to zero.
+- Forward goals and scenario assumptions must state the figure, rationale and source where applicable. Do not supply a fixed education corpus, expense percentage or policy bonus merely because an answer is missing. Keep unsupported calculations as gaps. For a proposed policy, use its actual guaranteed and illustrated cash flows with their stated basis.
 
 ## Web research + sourcing (Advise mode fetches; all modes obey)
 

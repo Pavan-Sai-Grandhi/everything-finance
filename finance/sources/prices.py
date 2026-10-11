@@ -15,6 +15,9 @@ Reached through: get_quote, get_history, run_technical_screen.
 from __future__ import annotations
 
 import os
+import hashlib
+import json
+import math
 from datetime import date
 
 from finance import paths
@@ -28,6 +31,18 @@ _TV_SCAN = "https://scanner.tradingview.com/india/scan"
 # Order matters: the scanner returns each row's `d` array aligned to this list.
 QUOTE_COLUMNS = ["name", "close", "change", "change_abs", "volume", "market_cap_basic"]
 SCREEN_COLUMNS = ["name", "close", "change", "volume", "market_cap_basic"]
+
+
+def _cache_path(kind, *identity):
+    # Symbols and periods are untrusted identifiers, never filesystem components.
+    key = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+    return os.path.join(paths.cache_dir("prices"), f"{kind}_{key}.json")
+
+
+def _valid_quote(row, symbol):
+    return (isinstance(row, dict) and row.get("symbol") == symbol
+            and row.get("exchange") == "NSE"
+            and _f(row.get("close")) is not None and _f(row["close"]) > 0)
 
 
 def _quote_body(symbol, columns):
@@ -44,16 +59,26 @@ def _screen_body(filters, columns, limit=50):
     `filters` is either a ready scanner payload ({"filter": [...], "sort": {...}}) or a
     plain list of filter rows ([{left, operation, right}, ...]); both build the same shape.
     """
-    if isinstance(filters, dict) and ("filter" in filters or "sort" in filters):
+    if type(limit) is not int or limit <= 0:
+        raise ValueError("limit must be a positive integer")
+    if not isinstance(columns, list) or not columns or any(not isinstance(col,str) or not col.strip() for col in columns) or len(set(columns)) != len(columns):
+        raise ValueError("columns must be a nonempty list of distinct field names")
+    if filters is not None and not isinstance(filters, (dict,list)):
+        raise ValueError("filters must be a list or scanner payload mapping")
+    if isinstance(filters, dict):
         body = dict(filters)
     else:
         body = {"filter": list(filters or [])}
+    body.setdefault("filter", [])
+    if not isinstance(body["filter"], list) or any(not isinstance(row,dict) for row in body["filter"]):
+        raise ValueError("filter must be a list of scanner filter mappings")
+    body["filter"] = [*body["filter"], {"left":"exchange", "operation":"equal", "right":"NSE"}]
     body.setdefault("options", {"lang": "en"})
     body["markets"] = ["india"]
     body.setdefault("symbols", {"query": {"types": []}, "tickers": []})
     body["columns"] = list(columns)
     body.setdefault("sort", {"sortBy": "volume", "sortOrder": "desc"})
-    body.setdefault("range", [0, int(limit)])
+    body["range"] = [0, limit]
     return body
 
 
@@ -76,11 +101,17 @@ def _parse_scan(payload, columns):
     each `d` aligns to the requested `columns`."""
     rows = payload.get("data", []) if isinstance(payload, dict) else []
     out = []
+    if not isinstance(rows, list):
+        return out
     for r in rows:
         if not isinstance(r, dict):
             continue
         sym = r.get("s", "") or ""
-        vals = r.get("d", []) or []
+        vals = r.get("d", [])
+        if (not isinstance(sym, str) or sym.count(":") != 1
+                or not all(sym.split(":")) or not isinstance(vals, list)
+                or len(vals) != len(columns)):
+            continue
         rec = {}
         for col, val in zip(columns, vals):
             rec[col] = _f(val) if col != "name" else val
@@ -93,18 +124,21 @@ def _parse_scan(payload, columns):
 def quote(symbol, fresh=False):
     """Live quote for one NSE symbol via the TradingView scanner."""
     sym = _norm(symbol)
-    cache_file = os.path.join(paths.cache_dir("prices"), f"quote_{sym}.json")
+    cache_file = _cache_path("quote", sym)
     cached = _read_cache(cache_file, fresh)
-    if cached is not None:
+    if (isinstance(cached, dict) and cached.get("ok") is True
+            and cached.get("source") == "TradingView"
+            and _valid_quote(cached.get("data"), sym)):
         return cached
 
     payload, gap = _scan_post(_quote_body(sym, QUOTE_COLUMNS))
     if gap:
         return _envelope(False, "TradingView", {"symbol": sym}, [gap])
-    rows = _parse_scan(payload, QUOTE_COLUMNS)
-    if not rows:
+    parsed = _parse_scan(payload, QUOTE_COLUMNS)
+    rows = [row for row in parsed if row.get("symbol") == sym and row.get("exchange") == "NSE"]
+    if len(rows) != 1 or not _valid_quote(rows[0], sym):
         return _envelope(False, "TradingView", {"symbol": sym},
-                         [f"TradingView: no row for NSE:{sym} (symbol unknown/renamed?)"])
+                         [f"TradingView: expected one usable quote for NSE:{sym}; missing, invalid or ambiguous response"])
     row = rows[0]
     data = {"symbol": sym, "date": date.today().isoformat(), **row}
     env = _envelope(True, "TradingView", data, [])
@@ -115,19 +149,39 @@ def quote(symbol, fresh=False):
 def screen(filters, columns=None, limit=50):
     """Run a technical screen over the India market and return a candidate symbol list.
     `filters` is a scanner payload or a list of filter rows."""
-    cols = list(columns) if columns else SCREEN_COLUMNS
-    payload, gap = _scan_post(_screen_body(filters, cols, limit))
+    failure = {"filters":filters, "count":0, "candidates":[], "rows":[]}
+    try:
+        cols = SCREEN_COLUMNS if columns is None else columns
+        body = _screen_body(filters, cols, limit)
+    except (ValueError, TypeError) as exc:
+        return _envelope(False, "TradingView", failure, [f"invalid screen inputs: {exc}"])
+    payload, gap = _scan_post(body)
     if gap:
-        return _envelope(False, "TradingView", {"filters": filters, "candidates": []}, [gap])
-    rows = _parse_scan(payload, cols)
-    data = {
-        "filters": filters,
-        "count": len(rows),
-        "candidates": [r["symbol"] for r in rows],
-        "rows": rows,
-    }
-    gaps = [] if rows else ["TradingView screen matched no symbols (filters too tight?)"]
-    return _envelope(bool(rows), "TradingView", data, gaps)
+        return _envelope(False, "TradingView", failure, [gap])
+    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+        return _envelope(False, "TradingView", failure, ["TradingView: malformed screen response (missing data list)"])
+    parsed = _parse_scan(payload, cols)
+    gaps = []
+    if len(parsed) != len(payload["data"]):
+        gaps.append("TradingView: malformed screen rows excluded; results are incomplete")
+    rows, seen = [], set()
+    for row in parsed:
+        if row["exchange"] != "NSE" or ("close" in cols and not _valid_quote(row,row["symbol"])):
+            gaps.append("TradingView: non-NSE or unusable price row excluded")
+            continue
+        if row["symbol"] in seen:
+            gaps.append(f"TradingView: duplicate screen symbol {row['symbol']} excluded")
+            continue
+        seen.add(row["symbol"])
+        rows.append(row)
+    if len(rows) > limit:
+        gaps.append("TradingView: response exceeded requested limit; truncated locally")
+        rows = rows[:limit]
+    data = {"filters": filters, "count": len(rows),
+            "candidates": [r["symbol"] for r in rows], "rows": rows}
+    if not rows:
+        gaps.append("TradingView screen returned no usable NSE matches")
+    return _envelope(bool(rows), "TradingView", data, list(dict.fromkeys(gaps)))
 
 
 def _df_to_candles(df):
@@ -153,6 +207,38 @@ def _df_to_candles(df):
     return out
 
 
+def _validate_candles(rows):
+    """Validate source/cache OHLCV without inventing prices or choosing duplicates."""
+    if not isinstance(rows, list):
+        raise ValueError("candles must be a list")
+    dated, seen = {}, set()
+    invalid = 0
+    for row in rows:
+        try:
+            day = row["date"]
+            if not isinstance(day, str) or date.fromisoformat(day).isoformat() != day or day > date.today().isoformat():
+                raise ValueError("invalid/future candle date")
+            if day in seen:
+                if day in dated:
+                    dated.pop(day)
+                    invalid += 1
+                raise ValueError("duplicate candle date")
+            seen.add(day)
+            values = {key: _f(row.get(key)) for key in ("open","high","low","close","volume")}
+            if any(value is None for value in values.values()):
+                raise ValueError("missing OHLCV")
+            if any(values[key] <= 0 for key in ("open","high","low","close")) or values["volume"] < 0:
+                raise ValueError("nonpositive price or negative volume")
+            if not values["low"] <= min(values["open"],values["close"]) <= max(values["open"],values["close"]) <= values["high"]:
+                raise ValueError("inconsistent OHLC range")
+            dated[day] = {"date":day, **values}
+        except (ValueError, TypeError, KeyError, AttributeError):
+            invalid += 1
+    candles = [dated[day] for day in sorted(dated)]
+    gaps = [f"yfinance: excluded {invalid} invalid or ambiguous OHLCV rows; history is incomplete"] if invalid else []
+    return candles, invalid, gaps
+
+
 def _yf_ticker(sym):
     """yfinance market form of a symbol: indices (`^NSEI`, `^CNXIT`) and non-equity
     instruments (FX `INR=X`, futures `GC=F`, already-suffixed `NIFTY_FIN_SERVICE.NS`) pass
@@ -172,11 +258,18 @@ def history(symbol, period="1y", fresh=False, adjusted=False):
     adjusted series."""
     sym = _norm(symbol)
     yf_t = _yf_ticker(sym)
-    suffix = "_adj" if adjusted else ""
-    cache_file = os.path.join(paths.cache_dir("prices"), f"history_{sym}_{period}{suffix}.json")
+    cache_file = _cache_path("history", sym, period, adjusted)
     cached = _read_cache(cache_file, fresh)
-    if cached is not None:
-        return cached
+    if isinstance(cached, dict) and cached.get("ok") is True and cached.get("source") == "yfinance":
+        data = cached.get("data")
+        if (isinstance(data, dict) and data.get("symbol") == sym and data.get("period") == period
+                and data.get("adjusted") is adjusted):
+            try:
+                candles, invalid, _ = _validate_candles(data.get("candles"))
+                if candles and not invalid and candles == data["candles"] and data.get("bars") == len(candles) and data.get("as_of") == candles[-1]["date"]:
+                    return cached
+            except (ValueError, TypeError):
+                pass
 
     try:
         import yfinance as yf
@@ -189,21 +282,19 @@ def history(symbol, period="1y", fresh=False, adjusted=False):
     except Exception as exc:  # noqa: BLE001
         return _envelope(False, "yfinance", {"symbol": sym, "period": period, "candles": []},
                          [f"yfinance download failed for {yf_t}: {exc}"])
-    candles = _df_to_candles(df)
-    # A bar with no close has not settled — yfinance publishes the session's O/H/L
-    # before the close is final. It is not a session, and NaN survives every
-    # `is not None` filter downstream, so it is dropped here at the source rather
-    # than left to become a confident wrong number in someone's arithmetic.
-    settled = [c for c in candles
-               if isinstance(c.get("close"), (int, float)) and c["close"] == c["close"]]
-    dropped = len(candles) - len(settled)
-    candles = settled
-    # `bars_dropped_unsettled` rather than a gap: nothing that existed was lost, and the
-    # series is complete through its last settled session, which `as_of` states.
-    data = {"symbol": sym, "period": period, "bars": len(candles), "candles": candles,
+    try:
+        candles, dropped, gaps = _validate_candles(_df_to_candles(df))
+    except (ValueError, TypeError, AttributeError) as exc:
+        return _envelope(False, "yfinance", {"symbol":sym, "period":period, "candles":[]},
+                         [f"yfinance malformed OHLCV response: {exc}"])
+    data = {"symbol": sym, "period": period, "adjusted": adjusted,
+            "bars": len(candles), "candles": candles,
             "as_of": candles[-1]["date"] if candles else None,
-            "bars_dropped_unsettled": dropped}
-    gaps = [] if candles else [f"yfinance returned no bars for {yf_t} (delisted/renamed?)"]
+            "bars_dropped_invalid": dropped}
+    if candles and candles[-1]["date"] == date.today().isoformat():
+        gaps.append("yfinance: latest daily bar is dated today; session completion is not verified")
+    if not candles:
+        gaps.append(f"yfinance returned no usable bars for {yf_t}")
     env = _envelope(bool(candles), "yfinance", data, gaps)
     if candles:
         _write_cache(cache_file, env)
@@ -268,3 +359,28 @@ def reconcile(symbol, tolerance=0.01):
         "agree": bool(ok),
     }
     return _envelope(ok, "TradingView+yfinance", data, gaps)
+
+
+def close_history(sym, fresh=False, period="2y"):
+    """Default close-series loader — 2y adjusted EOD via the data spine, enough for a
+    12-month lookback. Retains source provenance and validates dated closes."""
+    env = history(sym, period=period, adjusted=True, fresh=fresh)
+    rows = (env.get("data") or {}).get("candles") or []
+    gaps = list(env.get("gaps") or [])
+    dated = {}
+    try:
+        if env.get("ok") is not True:
+            raise ValueError("price source did not succeed")
+        for row in rows:
+            day = date.fromisoformat(row["date"]).isoformat()
+            close = row["close"]
+            if day in dated or day > date.today().isoformat():
+                raise ValueError("duplicate or future candle date")
+            if isinstance(close, bool) or not isinstance(close, (int,float)) or not math.isfinite(close) or close <= 0:
+                raise ValueError("unusable close price")
+            dated[day] = close
+    except (ValueError, TypeError, KeyError) as exc:
+        return {"closes": [], "dates": [], "gaps": gaps + [str(exc)]}
+    dates = sorted(dated)
+    return {"closes": [dated[day] for day in dates], "dates": dates, "gaps": gaps,
+            "source": env.get("source"), "fetched_at": env.get("fetched_at")}

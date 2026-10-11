@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.mcp import smoke_test
@@ -144,6 +145,26 @@ with open(os.path.join(ROOT, "skills", "management-analysis", "SKILL.md"),
 check("management-analysis computes the gate arithmetic through run_governance_checks",
       "run_governance_checks" in _mgmt and "python3 -m finance.compute.governance" not in _mgmt)
 
+with open(os.path.join(ROOT, "skills", "technical-analysis", "SKILL.md"),
+          encoding="utf-8") as fh:
+    _tech = fh.read()
+check("technical-analysis computes indicators on adjusted candles, as discover/backtest do",
+      'get_history(symbol, period="1y", adjusted=True)' in _tech)
+
+import re as _re
+def _agent_tools(name):
+    with open(os.path.join(ROOT, "agents", name + ".md"), encoding="utf-8") as fh:
+        return _re.search(r"^tools: (.*)$", fh.read(), _re.M).group(1)
+def _skill_prior_run(name):
+    with open(os.path.join(ROOT, "skills", name, "SKILL.md"), encoding="utf-8") as fh:
+        return "get_prior_run(" in fh.read()
+for _skill, _agent in (("management-analysis", "field-analyst"), ("valuation-analysis", "terminal-analyst"),
+                       ("financial-analysis", "terminal-analyst"), ("news-scan", "field-analyst")):
+    if _skill_prior_run(_skill):
+        _granted = _agent_tools(_agent)
+        check(f"{_agent} can reach get_prior_run, which {_skill} calls",
+              "finance-market__get_prior_run" in _granted or "finance-market__*" in _granted, _granted)
+
 check(".env.example template ships", os.path.isfile(os.path.join(ROOT, ".env.example")))
 loader = os.path.join(ROOT, "bin", "load-env.sh")
 check("bin/load-env.sh exists", os.path.isfile(loader))
@@ -156,8 +177,7 @@ check("loader searches plugin dir then data dir, in that precedence",
       all(p >= 0 for p in pos) and pos == sorted(pos), str(pos))
 check("loader does not privilege a vendor home like ~/.claude",
       ".claude" not in loader_src)
-check("loader seeds $PLUGIN_DATA/.env from the template when none is found",
-      'cp "$root/.env.example" "$data/.env"' in loader_src)
+# Seed behavior, permissions and shell-state preservation are exercised in test_runtime.py.
 
 _agent_files = sorted(f"./agents/{n}" for n in os.listdir(os.path.join(ROOT, "agents"))
                       if n.endswith(".md"))
@@ -178,6 +198,20 @@ check("every skills/*/SKILL.md is declared in the manifest",
 check("every declared skill exists on disk",
       set(_declared_skills) <= set(_skill_dirs),
       sorted(set(_declared_skills) - set(_skill_dirs)))
+
+# Parse frontmatter with the runtime's YAML parser; string searches miss syntax errors.
+for rel in _agent_files + [path + "/SKILL.md" for path in _skill_dirs]:
+    with open(os.path.join(ROOT, rel[2:]), encoding="utf-8") as fh:
+        body = fh.read()
+    try:
+        parts = re.split(r"(?m)^---\s*$", body, maxsplit=2)
+        metadata = yaml.safe_load(parts[1]) if len(parts) == 3 and not parts[0].strip() else None
+        valid = (isinstance(metadata, dict) and isinstance(metadata.get("name"), str)
+                 and isinstance(metadata.get("description"), str) and bool(metadata["description"].strip()))
+        detail = "metadata must declare string name and description"
+    except yaml.YAMLError as exc:
+        valid, detail = False, str(exc).splitlines()[0]
+    check(f"{rel} frontmatter parses as YAML", valid, detail)
 
 for rel in _agent_files:
     with open(os.path.join(ROOT, rel[2:]), encoding="utf-8") as fh:
@@ -202,9 +236,11 @@ for rel in _agent_files:
         bare = server[len(_PLUGIN_PREFIX):] if server.startswith(_PLUGIN_PREFIX) else server
         check(f"{stem} grants a server the plugin declares: {pat}", bare in _servers, sorted(_servers))
         named.add(bare)
-    for bare in named:
-        check(f"{stem} grants {bare} under both the qualified and bare name",
-              f"mcp__{_PLUGIN_PREFIX}{bare}__*" in pats and f"mcp__{bare}__*" in pats, pats)
+    for pat in pats:
+        server, tool = pat[len("mcp__"):].rsplit("__", 1)
+        bare = server[len(_PLUGIN_PREFIX):] if server.startswith(_PLUGIN_PREFIX) else server
+        check(f"{stem} grants {bare}__{tool} under both the qualified and bare name",
+              f"mcp__{_PLUGIN_PREFIX}{bare}__{tool}" in pats and f"mcp__{bare}__{tool}" in pats, pats)
 
 for rel in _skill_dirs:
     name = rel.split("/")[-1]
@@ -264,5 +300,35 @@ for stem in _WRITERS:
         body = fh.read()
     check(f"{stem} carries the report-writing standard", "## How the report reads" in body, stem)
     check(f"{stem} carries the same wording, not a variant", _marker in body, stem)
+
+# The declared tool schema must accept both documented scanner request forms.
+with open(os.path.join(ROOT, "finance", "mcp", "market.py")) as stream:
+    market_tree = ast.parse(stream.read())
+technical = next(node for node in market_tree.body if isinstance(node, ast.FunctionDef) and node.name == "run_technical_screen")
+filter_arg = next(arg for arg in technical.args.args if arg.arg == "filters")
+annotation = ast.unparse(filter_arg.annotation)
+check("technical-screen schema accepts filter lists and basket payloads", "list" in annotation and "dict" in annotation, annotation)
+
+
+# Execute the declared hook command through a shell at a path containing spaces.
+# Stub scripts ensure this cannot invoke a real report hook or send a message.
+import tempfile
+import subprocess
+from pathlib import Path
+with tempfile.TemporaryDirectory(prefix="finance plugin fixture ") as directory:
+    fixture = Path(directory)
+    for group in _load("hooks/hooks.json")["hooks"].values():
+        for entry in group:
+            for hook in entry["hooks"]:
+                command = hook["command"]
+                name = "post-deep-analysis.sh" if "post-deep-analysis.sh" in command else "session-context.sh"
+                target = fixture / "hooks" / name
+                target.parent.mkdir(exist_ok=True)
+                target.write_text("#!/bin/sh\nprintf 'hook-fixture-ok'\n")
+                target.chmod(0o700)
+                result = subprocess.run(["/bin/sh", "-c", command], capture_output=True, text=True,
+                                        env={**os.environ, "CLAUDE_PLUGIN_ROOT":str(fixture)}, timeout=10)
+                check(f"{name} hook works with spaces in plugin root", result.returncode == 0 and result.stdout == "hook-fixture-ok", result.stderr)
+
 
 summary()

@@ -1,63 +1,31 @@
-# Market analysis knowledge base
+# Market-context methodology
 
-The grounding for the plugin's market-of-record. Method, taxonomy, and the traps that make a market read wrong in ways that look right.
+Implementation authority: `finance/compute/context.py`; handoff fields: `finance/contracts.md` (market-context). This reference explains interpretation rather than duplicating calculation code.
 
-## Why percentiles, not levels
+## Historical valuation
 
-A multiple on its own carries no information. "The Smallcap 250 trades at 34× earnings" is unusable — expensive or cheap only exists relative to a distribution. The same index at 34× is dear against a 10-year median of 32× and a bargain against one of 45×.
+Report each multiple alongside its percentile against the same index's available history. A percentile describes that sample, not intrinsic value or a forecast. The default request is ten years of monthly observations; missing samples, index composition changes and the actual available window limit comparability. Do not claim a complete cycle simply because ten years were requested.
 
-So every valuation figure here is reported as **level + percentile against that index's own history**. Percentile rank is also invariant to monotone transforms, which means ranking on P/E and ranking on earnings yield give the same answer — the choice of expression cannot smuggle in a conclusion.
+The P/E filter excludes positive observations at least three times their sample median and reports the count. This is a statistical heuristic: an extreme P/E can reflect a small earnings denominator, but the ratio alone does not establish earnings collapse or a data error. Disclose exclusions rather than treating the filtered result as the uniquely correct valuation.
 
-Ten years is the default window: long enough to contain a full earnings cycle and both a bear and a bull phase, short enough that the market's composition is still recognisable.
+The stance equally weights available P/E and P/B percentiles and inverted dividend-yield percentile. This is a research convention, not an empirically calibrated allocation model. Book values and dividends can also change during stress. Missing inputs change the blend's composition; compare individual metrics before interpreting a difference between tiers.
 
-## The earnings-collapse trap (the most important thing in this file)
+Positive P/E and earnings yield have opposite rankings because reciprocation is decreasing. The inverse dividend-yield percentile is used only to orient higher blended scores toward richer valuations. A low yield alone does not establish overvaluation; payout policy also matters.
 
-An index P/E is `price ÷ trailing earnings`. When aggregate earnings collapse, the denominator approaches zero and the ratio explodes. The Nifty Smallcap 250's own history contains month-ends above a P/E of **44,000** — real published prints from the mid-2020 earnings trough.
+## Trend, volatility and participation
 
-Those points describe *vanished earnings*, not an expensive market. Left in a percentile they are catastrophic: they make almost any present-day multiple look cheap by comparison, and a skill would confidently report "smallcaps are at the 56th percentile" when the honest number is meaningfully higher.
+The trend uses Nifty's 50/200-EMA position and 50-EMA slope. Missing comparisons produce `unknown`. The fixed VIX and breadth cutoffs in the implementation are screening conventions, not guarantees of safety or return.
 
-Three defences, all implemented:
-1. **Exclude and count.** Samples above 3× the median are dropped, and the number dropped is reported alongside the percentile. A silent filter would be its own kind of lie.
-2. **Weight P/B and dividend yield equally with P/E.** Book value does not evaporate in an earnings trough and dividends fall far less than earnings do, so these two stay meaningful exactly when P/E stops being. The stance blends all three.
-3. **Invert the yield.** A *low* dividend yield is an *expensive* market. It enters the blend as `100 − dy_percentile`.
+`risk_on` requires an uptrend, known acceptable volatility and available sector participation. High volatility, a downtrend or weak participation can warrant `risk_off`; otherwise posture is neutral. Read the rationale: incomplete evidence can also produce neutral, which does not authorize extra risk.
 
-When P/E and P/B percentiles diverge sharply, the divergence is itself the finding — it usually means earnings have moved a long way relative to book, and the direction tells you whether the market is pricing a recovery or a peak.
+Stock breadth describes the available priced denominator, which may differ from the requested universe. Sector breadth is a coarse index measure; its gate is withheld when any expected sector is unavailable. Neither proves that the same pattern holds across every constituent. One snapshot cannot establish that breadth is rising or falling without a comparable earlier reading.
 
-## Regime taxonomy
+## Relative valuation and allocation
 
-**Trend** (Nifty 50, EMA from `finance/compute/ta.py`):
-- `up` — price above both the 50- and 200-EMA, with the 50-EMA rising.
-- `down` — price below both, with the 50-EMA falling.
-- `range` — anything else. Most of the time is `range`, and that is a real answer, not a failure to decide.
+Nifty 50, Midcap 150 and Smallcap 250 are index proxies, not complete personal portfolio cap classifications. A spread between their blended historical percentiles flags a difference worth investigating. It does not by itself establish the dominant portfolio risk or an attractive entry. Check metric coverage, profitability, composition and the user's existing exposure before deriving an allocation implication.
 
-**Volatility** (India VIX): `low` < 13, `normal` 13–20, `high` > 20, reported with 1-year and 5-year percentiles. A low VIX is not automatically safe — it is the condition under which position sizes quietly get too large.
+## Flows and macro
 
-**Posture**: `risk_on` (uptrend + acceptable volatility + participation), `risk_off` (downtrend, high volatility, or narrow breadth), else `neutral`. This is a **risk gate for sizing**, not a directional forecast.
+Use the reported session for FII/DII flows. A single session supports a statement about that session, not persistent buying, selling or domestic absorption of foreign outflows. Establish persistence only from multiple comparable sourced sessions.
 
-## Breadth — the check that catches a hollow rally
-
-An index is a weighted average, so a handful of heavyweights can carry it while most stocks fall. Breadth is the difference between a broad advance and a narrow one:
-
-- **`pct_above_sma50` / `pct_above_sma200`** over the top 500 NSE names by market cap — the numbers actually worth reasoning about. Above 60% is broad participation; below 40% is narrow.
-- **`pct_near_52w_high` vs `pct_near_52w_low`** — the leadership/distress balance.
-- **`pct_sectors_above_ema50`** — a coarse 10-sector count, kept under a frozen name because strategy specs gate on it. Ten indices cannot distinguish a broad advance from five heavyweights, so the stock-level numbers above should outweigh it.
-
-**Index at highs + falling breadth** is the classic warning: fewer names doing more of the work. **Index flat + rising breadth** is the opposite and is usually constructive.
-
-## Cap tiers and relative valuation
-
-The three tiers — Nifty 50 (large), Midcap 150, Smallcap 250 — are compared on where each sits versus its *own* history, then against each other. The relative read uses **P/B** because it survives an earnings trough, with the P/E ratio alongside.
-
-A `percentile_spread` (smallcap blended percentile − largecap blended percentile) above +25 means the cap tier itself is the dominant risk: in that state, picking a better small-cap fund is a second-order decision compared with how much belongs in small-caps at all. Below −25, the tier is offering the better entry.
-
-This distinction matters more than it sounds. "Which is the best small-cap fund?" and "should I be adding to small-caps now?" are different questions with different answers, and a skill that fuses them will recommend the best fund in an expensive category without ever saying the category is expensive.
-
-## Flows
-
-FII/FPI and DII net cash-market flows, in ₹ Cr, from the exchange's own daily report. The structural fact of recent Indian markets is domestic (DII/SIP) money absorbing foreign selling; the flow rung exists so that claim is **sourced on the day** rather than asserted from memory. One session's flow is noise — read the direction and the persistence, not the print.
-
-## Macro backdrop
-
-India VIX, USDINR, gold, Brent, US 10-Year — each as level, 1-month change, and 5-year percentile. These are context for risk appetite (a rising US 10Y and a weakening rupee tighten conditions for Indian equity), never signals on their own.
-
-The rate cycle sits outside this set: no approved RBI or MoSPI feed exists, which is why the repo rate, CPI and the policy stance are a labelled gap rather than a rung.
+Macro series provide context; their instruments, observation dates and units matter. Distinguish futures proxies from spot prices and bond yields from returns. Missing rate-cycle inputs remain labelled gaps under the repository's source policy. Do not replace them with remembered figures.

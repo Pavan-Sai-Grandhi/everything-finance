@@ -19,6 +19,7 @@ Distilled from Zerodha Varsity — Technical Analysis module (https://zerodha.co
 ## Working the data
 
 - **Check the live quote against the latest EOD close before you trust a level** — a divergence beyond ~1% means one of the two is stale, and a level read off a stale close is not tradeable.
+- **Compute on the adjusted series** (`get_history(..., adjusted=True)`), as discover and the backtest do; raw bars across a split or bonus corrupt averages and old levels.
 - **Indicator math is shared, not hand-rolled.** EMA/SMA/RSI/MACD/ATR/Bollinger and the candlestick patterns are defined once in `<plugin>/finance/compute/ta.py` — the same module the backtest and discover use, so a divergent RSI here would make the verdict inconsistent with the screen that surfaced the stock. Run it over the candles file:
   ```bash
   python3 - <<'PY'
@@ -27,7 +28,7 @@ Distilled from Zerodha Varsity — Technical Analysis module (https://zerodha.co
   from finance.compute import ta
   df = pd.DataFrame(json.load(open("<candles_path>")))
   df.index = pd.to_datetime(df.pop("date")); df = df.rename(columns=str.capitalize)
-  print(ta.add_indicators(df).tail(5).to_string())   # ema20/ema50/sma200/rsi14/atr14/vol10/hh20/ll20
+  print(ta.add_indicators(df).tail(5).to_string())   # ema20/ema50/sma200/rsi14/atr14/vol10/hh20/ll20 (sma200 is a simple average)
   PY
   ```
   `ta.ema(df["Close"], 200)`, `ta.macd(...)` and the pattern helpers cover what `add_indicators` doesn't.

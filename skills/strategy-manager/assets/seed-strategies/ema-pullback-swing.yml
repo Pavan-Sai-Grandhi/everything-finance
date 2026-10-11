@@ -8,7 +8,7 @@ goal: "Buy healthy pullbacks to a rising EMA in liquid trending stocks (PSU/bank
 source_references:
   - ".refs/swing-strategies.txt §3 Strategy 1 — Moving Average Pullback (20 EMA aggressive / 50 EMA conservative)"
 
-status: draft
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-06-12
   validated_at: null
@@ -30,8 +30,8 @@ universe:
 screening:
   fundamental:
     provider: tickertape
-    # `5Y Historical Revenue Growth` approximates the 3-year sales-growth cut this spec's
-    # backtested edge rests on; it is a different filter, so re-validate before trusting.
+    # `5Y Historical Revenue Growth` approximates the 3-year sales-growth cut an older version's
+    # intended condition; it is a different filter, so re-validate before trusting.
     query: >
       Market Cap > 1000 AND ROCE > 12
       AND Debt to Equity < 1 AND 5Y Historical Revenue Growth > 8
@@ -62,7 +62,7 @@ entry:
 
 exit:
   stop: recent_swing_low
-  target: "next_resistance; min 2R"
+  target: min_rrr  # Risk-multiple proxy only; overhead resistance requires separate confirmation.
   min_rrr: 2.0
   time_stop_sessions: 15
 

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
+import tempfile
 
 from finance import paths
 
@@ -50,13 +52,24 @@ def spill(env, key, name, keep=0):
     rows = (env.get("data") or {}).get(key)
     if not isinstance(rows, list):
         return env
-    path = os.path.join(paths.cache_dir("mcp"), f"{name}.json")
+    keep = max(0, keep)
+    path = pending = None
     try:
-        with open(path, "w") as fh:
-            json.dump(rows, fh, ensure_ascii=False)
-    except OSError as exc:
+        payload = json.dumps(rows, ensure_ascii=False, allow_nan=False)
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        directory = paths.cache_dir("mcp")
+        path = os.path.join(directory, f"{safe_name(name)[:160]}-{digest}.json")
+        with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False,
+                                         encoding="utf-8") as fh:
+            pending = fh.name
+            fh.write(payload)
+        os.replace(pending, path)
+    except (OSError, TypeError, ValueError) as exc:
         env.setdefault("gaps", []).append(f"could not spill {key} to disk: {exc}")
         path = None
+    finally:
+        if pending and os.path.exists(pending):
+            os.unlink(pending)
     env["data"][key] = rows[:keep]
     env["data"][f"{key}_total"] = len(rows)
     env["data"][f"{key}_path"] = path

@@ -95,7 +95,8 @@ def test_stacked_bar_segments_and_legend():
     check("a sub-threshold segment omits its inline label", html.count("LARGE 0.3%") == 0)
     check("every segment is named in the legend", "LARGE · 0.3%" in html)
     total = 84.8 + 8.1 + 0.3
-    check("segment width is the share of the total", f"width:{84.8/total*100:.3f}%" in html)
+    check("partial coverage preserves absolute percentage width", "width:84.800%" in html)
+    check("unclassified remainder remains visible", "Unclassified · 6.8%" in html)
 
 
 def test_hbar_list_ranks_and_percent_formats():
@@ -209,7 +210,7 @@ def test_wealth_render_is_complete_and_clean():
           "@font-face" in html and "data:font/woff2;base64," in html)
     # the net-worth spine, the foundation-first verdict and the emergency-fund runway gauge all render
     check("headline net worth reaches the page", "₹1.85 Cr" in html)
-    check("foundation-first verdict on the cover", "FOUNDATION FIRST" in html)
+    check("supplied review verdict renders on the cover", "REVIEW PROTECTION" in html)
     check("emergency-fund runway gauge rendered", "EMERGENCY-FUND RUNWAY" in html and "3.1" in html)
     check("₹ is preserved, not mojibake", "₹" in html and "â\x82¹" not in html)
 
@@ -260,44 +261,106 @@ def _find_chrome():
     return None
 
 
-def test_no_slide_overflows_1620():
-    """Principle 7: every slide's content must fit the 1620px budget (scrollHeight <= 1620).
+def test_browser_report_layout():
+    """Opt-in actual runtime test; requested checks fail rather than silently skip.
 
-    Best-effort: rendered with the fallback font stack (no network) and measured via Chrome's
-    --dump-dom, which runs page JS. SKIPS with a note when no Chrome is available so the offline
-    suite still passes."""
+    EF_REPORT_BROWSER_CHECK=1 enables this check. Node must resolve Playwright
+    (NODE_PATH may point at an installed runtime); EF_REPORT_NODE selects Node.
+    """
+    if os.environ.get("EF_REPORT_BROWSER_CHECK") != "1":
+        print("  note browser integration not requested (set EF_REPORT_BROWSER_CHECK=1)")
+        return
     chrome = _find_chrome()
     if not chrome:
-        print("  note no chrome — overflow check skipped (offline-safe)")
-        return
+        raise RuntimeError("browser verification requested but Chrome is unavailable")
     with tempfile.TemporaryDirectory() as d:
-        html = _render_fixture(d)
-        css = re.search(r"<style>(.*?)</style>", html, re.S).group(1)
-        sections = re.findall(r'(<section [^>]*data-screen-label="\d\d"[^>]*>.*?</section>)', html, re.S)
-        # measure each slide at native width, natural height, fallback fonts only (offline)
-        blocks = "".join(f'<div class="m" data-i="{i}">{s}</div>' for i, s in enumerate(sections, 1))
-        page = (f"<!DOCTYPE html><html><head><meta charset=utf-8><style>{css}"
-                ".m{width:1920px;background:#FCFAF6;}.m>section{width:1920px !important;height:auto !important;}"
-                "</style></head><body>" + blocks +
-                "<script>document.title=[...document.querySelectorAll('.m')]"
-                ".map(m=>m.querySelector('section').scrollHeight).join(',');</script></body></html>")
-        p = os.path.join(d, "measure.html")
-        open(p, "w").write(page)
+        for name in ("deep-analysis", "wealth-report", "mf-analysis", "sector-analysis", "daily-brief"):
+            render_report.render(os.path.join(_HERE, "fixtures", name + ".sample.json"), name,
+                                 out=os.path.join(d, name + ".html"))
+        result = subprocess.run([os.environ.get("EF_REPORT_NODE", "node"),
+                                 os.path.join(_HERE, "check_report_layout.cjs"), d, chrome],
+                                capture_output=True, text=True, timeout=60)
+        check("actual browser scrolling, navigation and print layout", result.returncode == 0,
+              result.stdout + result.stderr)
+
+
+def test_wealth_runway_missing_and_scaled():
+    import json
+    check('missing runway renders a labelled gap', 'Runway unavailable' in charts.runway_gauge(None))
+    check('zero gauge cap renders a gap', 'Runway unavailable' in charts.runway_gauge(2, cap=0))
+    check('long runway expands scale instead of leaving slide', 'left:100%' in charts.runway_gauge(20) and '20 MO' in charts.runway_gauge(20))
+    check('gauge label follows supplied target', '2–4 MO TARGET' in charts.runway_gauge(3, 2, 4))
+    with open(os.path.join(_HERE, 'fixtures', 'wealth-report.sample.json')) as stream:
+        data = json.load(stream)
+    data['cross']['ef']['months'] = None
+    data['gaps']['disclaimer'] = '<img src=x onerror=alert(1)>'
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'report.json')
+        with open(path, 'w') as stream:
+            json.dump(data, stream)
+        html = open(render_report.render(path, 'wealth-report')).read()
+    check('wealth deck renders missing runway without arithmetic exception', 'Runway unavailable' in html)
+    check('wealth disclaimer remains escaped data', '<img src=x onerror=alert(1)>' not in html and '&lt;img' in html)
+
+
+def test_report_prose_and_allocation_boundaries():
+    unsafe = '<strong onclick="alert(1)">Fact</strong><script>alert(2)</script><img src=x onerror=alert(3)><a href="javascript:alert(4)">link</a>'
+    rendered = str(render_report.rich_text(unsafe))
+    check('prose formatting preserves emphasis', '<strong>Fact</strong>' in rendered)
+    check('prose cannot create executable tags or attributes', all(token not in rendered for token in ('<script', '<img', 'onclick', 'javascript:')))
+    linked = str(render_report.rich_text('<a href="https://example.com/filing?a=1&amp;b=2">filing</a>'))
+    check('source hyperlinks survive restricted formatting', 'href="https://example.com/filing?a=1&amp;b=2"' in linked)
+    for items in ([], [{'label': 'A', 'pct': -1}], [{'label': 'A', 'pct': float('nan')}], [{'label': 'A', 'pct': 101}]):
+        check('invalid allocation renders a gap', 'data-gap' in charts.stacked_bar(items))
+    rendered = charts.stacked_bar([{'label': '<img>', 'pct': 40, 'color': 'red;" onmouseover="alert(1)'}])
+    check('chart color cannot escape its attribute', 'onmouseover' not in rendered)
+    check('chart labels remain escaped', '&lt;img&gt;' in rendered and '<img>' not in rendered)
+
+
+def test_report_publication_integrity():
+    from unittest.mock import patch
+    with tempfile.TemporaryDirectory() as tmp:
+        output = os.path.join(tmp, 'existing.html')
+        with open(output, 'w') as stream:
+            stream.write('prior complete report')
+        with patch.object(render_report.os, 'replace', side_effect=OSError('simulated failure')):
+            try:
+                render_report.render(FIXTURE, 'deep-analysis', out=output)
+            except OSError:
+                pass
+        check('failed publication preserves existing report', open(output).read() == 'prior complete report')
+        check('failed publication leaves no temporary file', os.listdir(tmp) == ['existing.html'])
+        path = os.path.join(tmp, 'input.json')
+        for bad in ('[]', '{"x": NaN}', '{"x": 1e999}', '{"x": 1, "x": 2}'):
+            with open(path, 'w') as stream:
+                stream.write(bad)
+            try:
+                render_report.render(path, 'deep-analysis', out=output)
+                rejected = False
+            except ValueError:
+                rejected = True
+            check('invalid projection rejected before publication', rejected and open(output).read() == 'prior complete report')
+        with open(path, 'w') as stream:
+            stream.write('{}')
         try:
-            dom = subprocess.run([chrome, "--headless=new", "--disable-gpu", "--no-sandbox",
-                                  "--virtual-time-budget=4000", "--dump-dom", f"file://{p}"],
-                                 capture_output=True, text=True, timeout=60).stdout
-        except Exception as e:  # a flaky headless run must not fail the offline suite
-            print(f"  note chrome run failed ({e}) — overflow check skipped")
-            return
-    m = re.search(r"<title>([\d,]+)</title>", dom)
-    if not m:
-        print("  note chrome returned no measurement — overflow check skipped")
-        return
-    heights = [int(x) for x in m.group(1).split(",") if x]
-    check("measured all 15 slides", len(heights) == 15, heights)
-    for i, h in enumerate(heights, 1):
-        check(f"slide {i:02d} fits the 1620 budget (scrollHeight {h})", h <= 1620, h)
+            render_report.render(path, 'deep-analysis', out=path)
+            rejected = False
+        except ValueError:
+            rejected = True
+        check('output cannot replace its own source JSON', rejected and open(path).read() == '{}')
+
+
+def test_line_chart_missing_observations():
+    series = [{'values': [10, 12, None, 14, 15], 'color': charts.BAR}]
+    html = charts.line_svg(series, ['a', 'b', 'c', 'd', 'e'])
+    check('line breaks at missing observations', html.count('<polyline ') == 2)
+    html = charts.candles_levels([10, 12, None, 14, None], [None, 11, None, 13, None], [])
+    check('missing latest close has no current-price marker', '<circle ' not in html)
+    check('technical close line breaks at missing observations', html.count('stroke="' + charts.INK + '"') == 2)
+    check('empty technical chart is a labelled gap', 'data-gap' in charts.candles_levels([], [], []))
+    check('unobserved line is a labelled gap', 'data-gap' in charts.line_svg([{'values': [None], 'color': charts.BAR}], ['a']))
+    html = charts.line_svg([{'values': [1, 2], 'color': '\" onload=\"alert(1)'}], ['a', 'b'])
+    check('line color cannot inject SVG attributes', 'onload' not in html)
 
 
 if __name__ == "__main__":

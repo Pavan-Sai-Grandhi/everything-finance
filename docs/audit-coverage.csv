@@ -1,0 +1,224 @@
+file,review_state,remaining
+.claude-plugin/marketplace.json,reviewed,Consistent
+.claude-plugin/plugin.json,reviewed,Version/skills/agents consistent with disk
+.env.example,reviewed,Only optional Telegram keys; matches shared loader and senders
+.gitignore,reviewed-fixed,Launcher .data state now ignored; Git exclusion verified
+.mcp.json,reviewed,Servers/args identical to mcp.json
+AGENTS.md,reviewed-fixed,Layout list and transport rule reconciled with code (AGENTS.md is a symlink to CLAUDE.md)
+CLAUDE.md,reviewed-fixed,Layout list and transport rule reconciled with code (AGENTS.md is a symlink to CLAUDE.md)
+README.md,reviewed-fixed,"Reconciled 2026-10-11: hook behavior, sector/mf scope, deck rendering, layout, offline claim (proxy-verified); tool counts match the SDK"
+agents/bear-researcher.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+agents/bull-researcher.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+agents/contest-researcher.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+agents/desk-analyst.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+agents/field-analyst.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+agents/portfolio-manager.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+agents/report-writer.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+agents/terminal-analyst.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+bin/finance-mcp.sh,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+bin/load-env.sh,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+bin/mcp-bridge.sh,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+bin/test.sh,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/__init__.py,reviewed,Empty package marker; no behavior
+finance/caps.py,reviewed-fixed,Integer ordinal ranks and exact fallback labels; lookthrough and funds regression suites pass
+finance/compute/__init__.py,reviewed,Empty package marker; no behavior
+finance/compute/alerts.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/allocation.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/backtest.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/context.py,reviewed-fixed,P/E ranking method moved to sources/market.py owner and shared with get_index_valuation_history; component dates carried per component
+finance/compute/dcf.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/fund_scan.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/governance.py,reviewed-fixed,"s.197 scope, numeric validation, fee/profit alignment, unbenchmarked PASS fixed (2026-10-11)"
+finance/compute/holdings.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/insurance_math.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/lookthrough.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/relative_strength.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/relval.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/rolling.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/screen.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/sector_scan.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/stock_scan.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/strategy.py,reviewed-fixed,Exact target/stop rules validated; source fidelity of stop floors and seed methods still requires review; live dynamic-only exits explicitly skipped
+finance/compute/ta.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/trade_check.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/compute/wealth.py,reviewed-fixed,Unvalued tradeable holdings now gap + incomplete coverage. Fund look-through into equity share deliberately not inferred (labelled gap); live IndMoney payload shapes unverified
+finance/contracts.md,reviewed-fixed,"Reconciled 2026-10-11: governance row, fund/shareholding/document boundaries, P/E method, trade scan; every cited tool exists"
+finance/deps.py,reviewed-fixed,Offline missing/broken-import and three-process install checks pass; POSIX locking matches current launchers
+finance/mcp/__init__.py,reviewed,Empty package marker; no behavior
+finance/mcp/_server.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/mcp/company.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/mcp/funds.py,reviewed,Full read; declarations delegate; workers/id/screen boundaries fixed in the owning modules (2026-10-11)
+finance/mcp/market.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/mcp/personal.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/mcp/smoke_test.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/paths.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/__init__.py,reviewed,Empty package marker; no behavior
+finance/sources/documents.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/filings.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/fundamentals.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/funds.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/market.py,reviewed-fixed,Owns robust_pe_percentile; live/archive/breadth/macro/flow reviewed per 2026-09-28 entries
+finance/sources/news.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/prices.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/screener_screen.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/tickertape.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/sources/universe.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/spine.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/tests/__init__.py,reviewed,Empty package marker; no behavior.
+finance/tests/bridge_sessions.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/bridge_stub_broker.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/harness.py,reviewed,Full read; standalone assertion counting and nonzero summary match test runner contract.
+finance/tests/test_agent_plugin.py,reviewed,Full read; TA adjusted-history check added
+finance/tests/test_alerts.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_allocation.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_backtest.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_context.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_dcf.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_documents.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_filings.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_fund_scan.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_fundamentals.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_funds.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_governance.py,reviewed-fixed,Regressions added for every governance defect
+finance/tests/test_holdings.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_insurance_math.py,reviewed,Full read and 105 assertions rerun; explicit synthetic arithmetic and failure coverage inspected. This does not verify remaining insurance policy/legal reference guidance.
+finance/tests/test_lookthrough.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_market.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_mcp_bridge.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_news.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_paths.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_prices.py,reviewed-fixed,63 focused assertions pass; fake yfinance exercises real history path; session/exchange verification awaits implementation
+finance/tests/test_relval.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_rolling.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_screen.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_screener_screen.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_sector_scan.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_server.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_spine.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_stock_scan.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_ta.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_trade_check.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_transport.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_universe.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_wealth.py,reviewed-fixed,Unvalued-holding regression added
+finance/transport.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+hooks/hooks.json,reviewed-fixed,Both quoted hook commands executed through shell in path-with-spaces fixtures
+hooks/post-deep-analysis.sh,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+hooks/session-context.sh,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+mcp.json,reviewed,Servers/args identical to .mcp.json
+plugin.json,reviewed,Version matches .claude-plugin
+skills/_report/assets/deck.css,reviewed,Read shared tokens and disclosure rules; full open-disclosure visual QA remains with templates.
+skills/_report/assets/deck.js,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/assets/fonts.css,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/scripts/charts.py,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/scripts/fixtures/daily-brief.sample.json,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/scripts/fixtures/deep-analysis.sample.json,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/scripts/fixtures/mf-analysis.sample.json,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/scripts/fixtures/sector-analysis.sample.json,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/scripts/fixtures/wealth-report.sample.json,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/_report/scripts/render_report.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+skills/_report/scripts/test_render_report.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+skills/_report/templates/_partials/components.html,reviewed,Full shared macro read; caller data style values require template-level validation audit.
+skills/_report/templates/daily-brief.html,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/templates/deep-analysis.html,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/templates/mf-analysis.html,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/templates/sector-analysis.html,reviewed,Rendered from fixtures; 113 render assertions incl. headless-Chrome scroll/navigation/print check pass (2026-10-11)
+skills/_report/templates/wealth-report.html,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/alert-manager/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/alert-manager/scripts/manage.py,reviewed,Full CLI read; parsing/delegation and failure envelope printing traced to alerts.manage.
+skills/budget-tracker/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/budget-tracker/assets/budget-dashboard.html,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/budget-tracker/references/reference.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/budget-tracker/scripts/categorize.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+skills/budget-tracker/scripts/recurring.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+skills/budget-tracker/scripts/test_categorize.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+skills/budget-tracker/scripts/test_recurring.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+skills/daily-brief/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/daily-brief/assets/telegram-brief.md,reviewed,Format consistent with alert/trade contracts
+skills/daily-brief/references/reference.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/deep-analysis/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/deep-analysis/references/reference.md,reviewed,Full read; role ownership and bounded debate policy traced. Financial lens methods remain separately tracked.
+skills/deep-analysis/scripts/escalation.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+skills/deep-analysis/scripts/resolve_mode.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+skills/deep-analysis/scripts/test_escalation.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+skills/deep-analysis/scripts/test_resolve_mode.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+skills/discover/SKILL.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+skills/discover/assets/signal-report.html,reviewed-fixed,"Aligned to spec-driven discover: strategy, decision bar, regime, indicators, chart link, low-volume label"
+skills/discover/assets/special-situations-checklist.md,reviewed-fixed,Redundant corporate-actions call removed; buyback claims qualified
+skills/discover/references/reference.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+skills/filings-watch/SKILL.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+skills/filings-watch/references/reference.md,reviewed-fixed,Removed unsupported ownership/pledge predictions and generic entitlement/buyback promises; primary NSE category/denominator references linked. Event-specific legal terms still require sourced notices.
+skills/financial-analysis/SKILL.md,reviewed-fixed,"Financials NOT-APPLICABLE rule, varsity_score denominator, cfo_ebitda basis"
+skills/financial-analysis/references/reference.md,reviewed-fixed,Bank/NBFC/insurer carve-out; CFO vs EBITDA tax/other-income basis; NCI double-count and share-count fixed
+skills/insurance-advisor/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/insurance-advisor/references/health.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+skills/insurance-advisor/references/reference.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+skills/insurance-advisor/references/term.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+skills/insurance-advisor/references/vehicle.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/insurance-advisor/scripts/insurance_math.py,reviewed-fixed,Full CLI read; explicit examples and strict JSON decoding; subprocess tests verify valid delegation and malformed/nonfinite/duplicate input rejection
+skills/management-analysis/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/management-analysis/assets/management-scorecard.example.md,reviewed-fixed,NOT-CHECKED and partial PASS restored; s.197 and hurdle wording aligned
+skills/management-analysis/references/reference.md,reviewed-fixed,s.197 semantics; blog sources marked non-evidence; retained-earnings hurdle tied to cost of equity
+skills/market-analysis/SKILL.md,reviewed-fixed,Artifact ownership and executable alert call verified; runtime report integration pending
+skills/market-analysis/assets/market-read.md,reviewed-fixed,Read full template; corrected null/coverage and statistical-method language; rendered report integration pending
+skills/market-analysis/references/reference.md,reviewed-fixed,Replaced unsupported factual/causal claims and inverted-ranking error with implementation-aligned methodology limitations
+skills/mf-analysis/SKILL.md,reviewed-fixed,Gated-out fund instruction (no re-call loop); rolling-return claim scoped
+skills/mf-analysis/assets/fund-comparison.html,removed,Unreferenced legacy template superseded by the _report mf-analysis deck
+skills/mf-analysis/references/reference.md,reviewed-fixed,Coverage gate matches engine 60/85; no look-through growth metric; claim scoped
+skills/news-scan/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/news-scan/references/reference.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/portfolio-review/SKILL.md,reviewed-fixed,Full file read and allocation handoff revised; final integration review pending
+skills/portfolio-review/references/reference.md,reviewed-fixed,Full file read and allocation handoff revised; final integration review pending
+skills/portfolio-review/scripts/allocation.py,reviewed-fixed,Full file read and allocation handoff revised; final integration review pending
+skills/sector-analysis/SKILL.md,reviewed-fixed,Tailwind/headwind quota removed; uncovered-sector RS rule; adjusted history
+skills/sector-analysis/assets/sector-analysis.html,removed,Unreferenced legacy template superseded by the _report sector-analysis deck
+skills/sector-analysis/references/reference.md,reviewed-fixed,Screen coverage corrected to ten SECTOR_YF sectors; KPI bands labelled heuristics
+skills/strategy-manager/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/README.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/breakout-retest-swing.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/deep-value-recovery-invest.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/defensive-dividend-quality-invest.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/ema-pullback-swing.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/fibonacci-retracement-swing.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/flexicap-allweather-fund.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/garp-value-invest.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/inside-bar-nr7-swing.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/largecap-defensive-fund.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/midcap-growth-fund.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/quality-momentum-invest.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/rsi-trendline-reversal-swing.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/seed-strategies/soic-crossperiod-screener-in.yml,removed,"Retired unsupported saved-screen seed; migration documented, no automatic substitute."
+skills/strategy-manager/assets/seed-strategies/soic-quality-compounder-invest.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/assets/strategy-spec.example.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/references/backtesting.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+skills/strategy-manager/references/reference.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/strategy-manager/scripts/aggregate_performance.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+skills/strategy-manager/scripts/select_strategy.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+skills/strategy-manager/scripts/test_strategy_scripts.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+skills/technical-analysis/SKILL.md,reviewed-fixed,Adjusted candles for indicators/levels; sma200 vs 200-EMA clarified
+skills/technical-analysis/references/reference.md,reviewed-fixed,Adjusted-series rule added; method otherwise Varsity-attributed
+skills/trade-tracker/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/trade-tracker/assets/tracker-report.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/trade-tracker/references/reference.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/valuation-analysis/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/valuation-analysis/assets/dcf-inputs.example.yml,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/valuation-analysis/assets/dcf-report.example.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/valuation-analysis/references/reference.md,reviewed-fixed,Content re-read 2026-10-11 and corrected (see audit-status 'Live verification and content re-read')
+skills/wealth-manager/SKILL.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/wealth-manager/assets/wealth-report.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/wealth-manager/references/reference.md,reviewed,"Content re-read 2026-10-11; claims checked against code, live schemas and the cited sources"
+skills/wealth-manager/scripts/wealth.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/tests/test_runner.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_smoke.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_runtime.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+bin/ensure-mcp.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+bin/broker-login.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/publication.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/tests/test_publication.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/report_hook.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/telegram.py,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+bin/send-telegram.sh,final-reviewed,Final integrated diff read 2026-10-11 (see audit-status 'Final integrated review'); servers import under the real MCP SDK
+finance/tests/test_telegram.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_deps.py,reviewed-added,15 offline assertions pass; no real installer invoked
+skills/_report/scripts/check_report_layout.cjs,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"
+finance/tests/test_bridge_helpers.py,final-verified,"Final pass 2026-10-11: full suite green (3,700+ assertions) and offline proven by recording proxy (zero outbound requests); earlier per-file trace retained"

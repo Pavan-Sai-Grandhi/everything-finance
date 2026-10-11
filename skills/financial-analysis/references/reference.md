@@ -1,8 +1,12 @@
 # Varsity due-diligence checklist (self-contained method)
 
-Grounded in Zerodha Varsity — Fundamental Analysis (https://zerodha.com/varsity/module/fundamental-analysis/). The scorecard is **seven checks**, each PASS / FLAG / FAIL with the number that decided it; `varsity_score` is the count of PASS. A check you cannot source is a **data gap**, which is uncertainty — never a neutral PASS.
+Grounded in Zerodha Varsity — Fundamental Analysis (https://zerodha.com/varsity/module/fundamental-analysis/). The method follows Varsity's due-diligence approach; the scorecard is **seven checks**, each PASS / FLAG / FAIL with the number that decided it; `varsity_score` is the count of PASS. A check you cannot source is a **data gap**, which is uncertainty — never a neutral PASS.
 
 Every claim carries a number and the row or page it came from. "Strong fundamentals" without a metric is a defect.
+
+The numeric thresholds below are this plugin's adopted bars for a non-financial operating company, not Varsity's own figures and not universal facts. Varsity's equity-research checklist is stricter in places — ROE > 25% (> 20% in its prose), gross margin > 20%, revenue and PAT CAGR > 15%, positive operating cash flow, "not highly leveraged" — and its ratio chapters say only that D/E above 1 calls for care; it sets no interest-cover number. Quote a threshold as "the plugin's bar", and read each metric against the company's own history and its peers.
+
+**Banks, NBFCs and insurers are scored differently.** Borrowed money is their raw material and their cash flow statement mixes lending with operations, so D/E, interest coverage and CFO/EBITDA (checks 3 and 4) are **NOT-APPLICABLE** — never a FAIL. Score balance-sheet safety on capital adequacy and asset quality (GNPA/NNPA trend, provisioning) and returns on ROA/ROE, from the annual report and investor presentation; the `sector-analysis` reference lists the KPIs. `varsity_score` then counts PASS out of the checks that apply, and the denominator is stated.
 
 ## The seven checks
 
@@ -20,7 +24,7 @@ ROCE above the cost of capital is the moat signal: it is the one ratio that says
 
 ### 4. Cash reality — CFO tracking EBITDA over a cycle
 
-Profit without cash is accounting, not business. CFO/EBITDA ≈ 1 across a cycle; persistent divergence means the earnings are on paper. `cash_flow_10y` carries all three inputs: **`Cash from Operating Activities`** is CFO, **`Capital Expenditures`** is capex, and **`Free Cash Flow`** is a published line, not something you compute. It runs ten fiscal years — but the annual P&L appends an eleventh, trailing-twelve-month column that the cash flow does NOT, so the last cash-flow column (FY) is a different period from the last P&L column (TTM). Pair CFO to EBITDA by `period_kinds`, never by `[-1]`, or a fiscal-year CFO is silently divided by a TTM EBITDA. FCF positive across a cycle is the standard for a mature firm; a young firm burning cash is a different question, not automatically a fail. Read `Changes in Working Capital` beside them — CFO propped up by a working-capital release is the same finding the receivable-days check reaches from the other side.
+Profit without cash is accounting, not business. CFO is struck after tax and excludes treasury income (which sits in investing), while `EBITDA` here is pre-tax and includes other income — so compare CFO with EBITDA less tax paid and less material other income, summed across a cycle. A ratio near 1 on that basis is the standard; a raw CFO/EBITDA of 0.7–0.8 for a full taxpayer is not by itself a divergence. Persistent shortfall beyond working-capital and tax explanations means the earnings are on paper. `cash_flow_10y` carries all three inputs: **`Cash from Operating Activities`** is CFO, **`Capital Expenditures`** is capex, and **`Free Cash Flow`** is a published line, not something you compute. It runs ten fiscal years — but the annual P&L appends an eleventh, trailing-twelve-month column that the cash flow does NOT, so the last cash-flow column (FY) is a different period from the last P&L column (TTM). Pair CFO to EBITDA by `period_kinds`, never by `[-1]`, or a fiscal-year CFO is silently divided by a TTM EBITDA. FCF positive across a cycle is the standard for a mature firm; a young firm burning cash is a different question, not automatically a fail. Read `Changes in Working Capital` beside them — CFO propped up by a working-capital release is the same finding the receivable-days check reaches from the other side.
 
 ### 5. Promoter holding & pledge — stable or rising, pledging not increasing
 
@@ -36,9 +40,9 @@ The multiple every other leg quotes is struck on reported EPS, so a profit line 
 
 - **Other income.** `Total Revenue` includes it and there is no separable line, so read the quarterly series: a large, *recurring* other-income contribution — a mark-to-market gain on a listed investment, treasury income, a revaluation — is not operating profit even when it repeats every quarter. Management's own "clean"/"adjusted" PAT in the results release or concall is the primary source for the split when it exists.
 - **Exceptional items.** The `Add/(Less): Exceptional items` row: an asset-sale gain, an impairment, a one-time levy. Both directions matter — a charge that flatters the *next* year's comparison is the same distortion.
-- **Minority interest.** Where subsidiaries are consolidated but not wholly owned, the parent's shareholders own less than reported PAT. `Net Income` before the minority share overstates what accrues to the equity you are pricing.
+- **Minority interest.** Where subsidiaries are consolidated but not wholly owned, the parent's shareholders own less than consolidated profit. The feed's `Net Income` is already after the non-controlling share (it sits inside `Taxes & Other Items`); any reconstruction that starts from PBT must deduct it exactly once, using the annual report's NCI line.
 
-Compute **clean EPS**: strip recurring non-operating income and exceptional items from PBT, apply the effective tax rate from the annual report's tax note, deduct the minority share, divide by `Common Shares Outstanding`. State each step and its source; where a component is not disclosed at the granularity needed, give the clean figure as a **bracketed range** with the assumption named, not a point estimate.
+Compute **clean EPS**: strip recurring non-operating income and exceptional items from PBT, apply the effective tax rate from the annual report's tax note, deduct the minority share once, divide by the weighted-average share count from the annual report's EPS note (`Common Shares Outstanding` is a period-end count and misstates EPS in a year of issuance or buyback). State each step and its source; where a component is not disclosed at the granularity needed, give the clean figure as a **bracketed range** with the assumption named, not a point estimate.
 
 | Adjustment vs reported PAT | Verdict |
 |---|---|

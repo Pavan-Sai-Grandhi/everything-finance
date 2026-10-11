@@ -54,8 +54,16 @@ def test_rsi_bounds_and_extremes():
     down = pd.Series(np.linspace(200, 100, 60))
     check("rsi monotonic-down near 0", ta.rsi(down, 14).iloc[-1] < 5)
     flat = pd.Series([100.0] * 60)
-    check("rsi flat == 50", abs(ta.rsi(flat, 14).iloc[-1] - 50) < 1e-6)
+    check("rsi flat matches the TA-Lib reference", ta.rsi(flat, 14).iloc[-1] == ta.talib.RSI(flat.to_numpy(), timeperiod=14)[-1])
     check("rsi within [0,100]", r.dropna().between(0, 100).all())
+
+
+def test_rsi_preserves_wilder_history_after_flat_prices():
+    for history in (list(np.linspace(100, 150, 30)), list(np.linspace(150, 100, 30))):
+        close = pd.Series(history + [history[-1]] * 20, dtype=float)
+        expected = ta.talib.RSI(close.to_numpy(), timeperiod=14)
+        check('flat tail cannot erase Wilder trend history',
+              np.allclose(ta.rsi(close, 14).to_numpy(), expected, equal_nan=True))
 
 
 def test_atr():

@@ -5,7 +5,7 @@ Grounded in Zerodha Varsity — Personal Finance module (https://zerodha.com/var
 ## Returns: the Varsity hierarchy
 
 - **Point-to-point returns lie** — they depend entirely on the two endpoints. A fund can show a great 5Y CAGR purely because the start date was a crash bottom.
-- **Rolling returns are the standard**: roll a 1/3/5-year window daily across the full NAV history. Report mean, median and min — the distribution of what a holder actually earned, and how many windows it rests on. A fund whose *minimum* 5Y rolling return is positive has never lost money for any 5-year holder — that's the kind of statement this analysis should produce.
+- **Rolling returns are the standard**: roll a 1/3/5-year window daily across the full NAV history. Report mean, median and min — the distribution of what a holder actually earned, and how many windows it rests on. A fund whose *minimum* 5Y rolling return is positive has not lost money for any lump-sum 5-year holding **within the observed NAV history** — that's the kind of statement this analysis should produce, scoped to the windows it rests on (it says nothing about SIPs or future windows).
 - CAGR for periods > 1 year; absolute returns only for < 1 year.
 
 ## Risk & quality metrics (ch. 18–23)
@@ -38,8 +38,8 @@ Everything above measures the *past*. Trailing/rolling returns are backward-look
 
 A fund's portfolio P/E-P/B is published nowhere, so `get_fund_lookthrough` computes it from the underlying stocks' ratios over the **complete** holdings list.
 
-- **Aggregation is not averaging.** Portfolio P/E and P/B aggregate by the **weighted harmonic mean** — you sum earnings/book *yields* across holdings, then invert — because multiples don't add. ROE and earnings growth use the weighted arithmetic mean.
-- **Coverage is a gate.** Report the % of AUM priced and **withhold the ratio below ~85%** (see § Coverage is a gate).
+- **Aggregation is not averaging.** Portfolio P/E and P/B aggregate by the **weighted harmonic mean** — you sum earnings/book *yields* across holdings, then invert — because multiples don't add. ROE uses the weighted arithmetic mean. The look-through computes no earnings-growth figure; a growth lean needs a sourced per-holding series or is a labelled gap.
+- **Coverage is a gate.** Report the % of the equity book priced: below 60% the engine withholds the ratio, 60–85% is indicative only, 85%+ is decision-grade (see § Coverage is a gate).
 - **Read:** a flexicap trading at a large P/E premium to its category while carrying only average look-through ROE/growth is priced for perfection — a forward risk no trailing chart shows.
 
 ### Style & drift
@@ -66,11 +66,11 @@ SEBI defines the tiers by **market-cap rank**: top 100 large, 101-250 mid, 251+ 
 
 ### Coverage is a gate, not a footnote
 
-Report the % of the book priced — and **withhold the ratio below ~85%** rather than printing it with a caveat. A ratio computed on a fifth of a portfolio is not an approximation of the portfolio; it describes a different fund. Recomputed from 20% to 92% coverage, one fund's look-through P/E moved from ~46 to **27.75** and another's from 12.05 to 17.29. Both would have driven the wrong verdict. Never extrapolate the uncovered remainder; unlisted holdings carry weight but no ratios, and that weight is counted as unpriced, never dropped.
+Report the equity weight covered by each metric. The engine withholds values below 60% coverage, labels 60%–85% indicative, and labels at least 85% decision-grade. Indicative values must not decide a recommendation. Never extrapolate the uncovered remainder; distinguish missing ratios from a genuinely zero allocation.
 
-### P/B ÷ ROE — the metric that survives bad data
+### P/B ÷ ROE — compare only matched holdings
 
-Across three rounds of progressively better data on the same funds, **P/B ÷ ROE was the only valuation measure that stayed stable**. It answers "what am I paying per unit of profitability", which is the question a portfolio P/E cannot answer when earnings are depressed. Lower is cheaper. Use it as the tie-breaker whenever P/E and P/B disagree.
+The engine computes P/B and weighted ROE on the intersection of holdings with both inputs, then applies the coverage gate to that shared weight. Independent coverage percentages cannot establish the overlap. Treat the result as a descriptive cross-check; stability in a few past revisions does not prove robustness, and it must not automatically override conflicting valuation evidence. Explain differences in coverage, sectors, accounting and profitability before drawing a conclusion.
 
 ### Earnings-distress dispersion — and the cyclical/idiosyncratic split
 

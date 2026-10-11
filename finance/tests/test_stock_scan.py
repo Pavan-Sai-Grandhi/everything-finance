@@ -100,8 +100,86 @@ def test_report_envelope_and_file():
     env = stock_scan.report(_SPEC, out=out, screen_fn=_screen_fn, closes_fn=_closes_fn)
     check("report returns the spine envelope",
           set(env) == {"ok", "source", "fetched_at", "data", "gaps"}, sorted(env))
-    check("report writes the shortlist to file", env["data"]["report_path"] == out)
-    check("the file holds the shortlist", os.path.exists(out))
+    check("report writes the shortlist to file", env["data"]["report_path"].startswith(out[:-5]+"-"))
+    check("the file holds the shortlist", os.path.exists(env["data"]["report_path"]))
+
+
+def test_required_gates_cannot_be_bypassed():
+    from unittest import mock
+    from finance.sources import universe
+    with mock.patch.object(universe,'resolve_symbols',return_value=([],['fixture universe unavailable'])):
+        res = _scan()
+    check('missing named universe cannot widen to the full screen',not res['shortlist'] and any('universe' in g for g in res['gaps']),res)
+    res = stock_scan.scan(_SPEC,screen_fn=lambda *a:_envelope(False,'stub',{'candidates':['AAA']},['fixture rejected gate']),closes_fn=_closes_fn)
+    check('failed quality gate cannot use residual candidates',not res['shortlist'],res)
+    loader = mock.Mock(side_effect=_closes_fn)
+    screen = mock.Mock(side_effect=_screen_fn)
+    res = stock_scan.scan({**_SPEC,'ranking':{'metric':'typo'}},screen_fn=screen,closes_fn=loader)
+    check('invalid ranking refuses before fetching',not screen.called and not loader.called and not res['shortlist'],res)
+    res=stock_scan.scan(_SPEC,screen_fn=mock.Mock(side_effect=OSError('fixture outage')),closes_fn=_closes_fn)
+    check('gate exception degrades without a shortlist',not res['shortlist'] and bool(res['gaps']),res)
+    with mock.patch.object(universe,'resolve_symbols',return_value=(['AAA'],['fixture stale universe'])):
+        res=_scan()
+    check('usable degraded universe retains its source gap','fixture stale universe' in res['gaps'])
+
+
+def test_price_failure_does_not_abort_other_candidates():
+    def loader(symbol,fresh=False):
+        if symbol=='AAA': raise OSError('fixture history unavailable')
+        return _closes_fn(symbol,fresh)
+    try:
+        res=stock_scan.scan(_SPEC,screen_fn=_screen_fn,closes_fn=loader)
+        check('one history failure leaves other candidates usable',[r['symbol'] for r in res['shortlist']]==['BBB','CCC'] and any('AAA' in g for g in res['gaps']),res)
+    except Exception as exc:
+        check('one history failure leaves other candidates usable',False,type(exc).__name__)
+
+def test_dated_sources_preserve_gaps_and_refuse_misalignment():
+    from unittest import mock
+    from finance.sources import prices
+    from datetime import date,timedelta
+    days=[(date(2024,1,1)+timedelta(days=i)).isoformat() for i in range(300)]
+    def history(symbol,**kwargs):
+        selected=days[:-1] if symbol=='AAA' else days
+        return _envelope(True,'fixture',{'candles':[{'date':d,'close':100+i} for i,d in enumerate(selected)]},['fixture partial source'])
+    with mock.patch.object(prices,'history',side_effect=history):
+        res=stock_scan.scan(_SPEC,screen_fn=_screen_fn)
+    check('price source gaps survive scanning',any('fixture partial source' in gap for gap in res['gaps']),res)
+    check('stale stock endpoint cannot mix with later stock endpoints','AAA' not in [r['symbol'] for r in res['shortlist']])
+    check('shortlist carries actual price date',all(r['price_as_of']==days[-1] for r in res['shortlist']))
+
+
+def test_report_rerun_preserves_prior_evidence():
+    with tempfile.TemporaryDirectory() as work:
+        target=os.path.join(work,'scan.json')
+        first=stock_scan.report(_SPEC,top=1,out=target,screen_fn=_screen_fn,closes_fn=_closes_fn)
+        path=first['data']['report_path']
+        content=open(path,'rb').read()
+        second=stock_scan.report(_SPEC,top=2,out=target,screen_fn=_screen_fn,closes_fn=_closes_fn)
+        check('changed rerun cannot overwrite an earlier shortlist',second['data']['report_path']!=path and open(path,'rb').read()==content)
+
+def test_relative_windows_align_without_requiring_identical_history_lengths():
+    days=[str(i) for i in range(400)]
+    short, long = _series(20,300), _series(5,400)
+    context=stock_scan._context_row(short,long,days[-300:],days)
+    check('matching recent windows permit different total history lengths',context['rs_vs_nifty']['3m']==15,context)
+    mismatched=days[-300:].copy()
+    mismatched[-20]='different-session'
+    context=stock_scan._context_row(short,long,mismatched,days)
+    check('context cannot subtract returns over different sessions',context['rs_vs_nifty']['3m'] is None,context)
+
+
+def test_nonfinite_injected_prices_cannot_rank():
+    res=stock_scan.scan(_SPEC,screen_fn=_screen_fn,closes_fn=lambda *a:[float('nan')]*300)
+    check('invalid price series cannot produce a shortlist',res['shortlist']==[] and bool(res['gaps']),res)
+
+def test_unapproved_provider_is_rejected_before_fetch():
+    from unittest.mock import Mock
+    gate = Mock(side_effect=AssertionError('unapproved screen fetched'))
+    spec = dict(_SPEC, screening={'fundamental': {'provider': 'screener_in',
+                'screen_url': 'https://www.screener.in/screens/999/example/'}})
+    result = stock_scan.scan(spec, screen_fn=gate)
+    check('saved-screen spec fails before any fetching', not gate.called and not result['shortlist'])
+    check('source-policy gap is explicit', any('unapproved' in gap for gap in result['gaps']))
 
 
 if __name__ == "__main__":

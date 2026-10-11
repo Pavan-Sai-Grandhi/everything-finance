@@ -2,16 +2,20 @@
 
 ## Net worth
 - **Total net worth:** {{TOTAL_NETWORTH}}  <!-- ₹x.x Cr, Indian grouping -->
-- **Equity share:** {{EQUITY_SHARE_PCT}}% (equity + funds + US)  ·  **Liquid pool:** {{LIQUID}} (cash + FDs)
-- **Coverage:** {{COVERAGE}}  <!-- complete | tradeable-only (IndMoney not connected) -->
+- **Equity share:** {{EQUITY_SHARE_PCT_OR_UNAVAILABLE}} · **Known direct-equity share:** {{KNOWN_EQUITY_SHARE_PCT}}%  ·  **Liquid pool:** {{LIQUID_OR_UNAVAILABLE}} (confirmed accessible reserve, evidence {{RESERVE_AS_OF}} / {{RESERVE_SOURCE}}; observed cash + FDs: {{OBSERVED_LIQUID}})
+- **Coverage:** {{COVERAGE}}  <!-- complete | incomplete (reconciliation/data gap) | tradeable-only -->
+
+**Reported liabilities:** {{LIABILITIES_TOTAL_OR_UNAVAILABLE}} · {{LIABILITIES_SOURCE_AND_DATE}}
 
 ### Asset-class allocation
+
+*Denominator: {{ALLOCATION_BASIS}}. With sourced liabilities, percentages describe gross assets, not leveraged net worth.*
 <!-- One row per net-worth bucket, largest first. Full ₹ detail lives here in the artifact, not in chat. -->
-| Asset class | Value | % of net worth |
+| Asset class | Value | % of stated denominator |
 |---|---|---|
 | {{CLASS_LABEL}} | {{CLASS_VALUE}} | {{CLASS_PCT}}% |
 
-**Holdings XIRR:** {{XIRR_SUMMARY}}  <!-- avg across N holdings; best {{BEST}}, worst {{WORST}}; or "unavailable (broker/manual source)" -->
+**Holdings XIRR:** {{XIRR_SUMMARY}}  <!-- descriptive current-value-weighted mean over weighted_count holdings, NOT portfolio XIRR; best/worst can have different holding periods; or unavailable -->
 
 ## Financial-health scorecard
 <!-- Status ∈ strong | adequate | weak | critical | not assessed. One falsifiable line each. -->
@@ -23,13 +27,13 @@
 | Cashflow | {{CF_STATUS}} | {{CF_LINE}} |
 | Emergency fund | {{EF_STATUS}} | {{EF_LINE}} |
 
-**Overall:** {{OVERALL}}  <!-- the worst assessed domain -->
+**Overall:** {{OVERALL}} · assessed {{ASSESSED_DOMAINS}}/{{TOTAL_DOMAINS}} domains. <!-- The worst assessed domain; incomplete coverage is not a comprehensive health verdict. -->
 
 ## Cross-domain read
 <!-- The calls no single spoke can make. -->
-- **Emergency fund:** {{EF_MONTHS}} months of runway vs a 3-6 month target ({{EF_EXPENSE_BASIS}}).
+- **Emergency fund:** {{EF_LINE}} ({{EF_EXPENSE_BASIS}}). <!-- Recurring-only estimates are upper bounds, not assessed runway. -->
 - **Protection vs net worth:** {{PROT_CROSS_LINE}}
-- **Risk posture:** {{RISK_LINE}}  <!-- fix-foundation-first | balanced | can-add-risk | reduce-risk -->
+- **Risk posture:** {{RISK_LINE}}  <!-- unknown | fix-foundation-first | within-target | below-target | above-target; use the stated range, never an age-derived target -->
 
 ## Prioritized action plan
 <!-- Max ~5, ordered ACROSS domains (protection/emergency fund before fresh equity). Each: the move + the concrete next step + the spoke to run for depth. -->

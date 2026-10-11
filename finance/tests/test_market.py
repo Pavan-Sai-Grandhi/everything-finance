@@ -268,7 +268,7 @@ def test_indices_empty_payload_gap():
         env = market.indices(fresh=True)
     check("indices with no rows is ok:false", env["ok"] is False)
     check("indices with no rows names the gap",
-          env["gaps"] == ["NSE allIndices returned no index rows"], env["gaps"])
+          "NSE allIndices returned no index rows" in env["gaps"], env["gaps"])
 
 
 def _csv_server(requested, empty_days=()):
@@ -276,7 +276,8 @@ def _csv_server(requested, empty_days=()):
     def fake(url, timeout=25, referer=None, cookie_jar=None):
         stamp = url.rsplit("_", 1)[-1].replace(".csv", "")
         requested.append(stamp)
-        return ("" if stamp in empty_days else IND_CLOSE_CSV), None
+        day_text = date(int(stamp[4:]), int(stamp[2:4]), int(stamp[:2])).strftime("%d-%m-%Y")
+        return ("" if stamp in empty_days else IND_CLOSE_CSV.replace("16-08-2026", day_text)), None
     return fake
 
 
@@ -524,7 +525,7 @@ def test_macro_reduces_each_series_to_three_numbers():
           set(env["data"]["macro"]) == set(market._MACRO_TICKERS), sorted(env["data"]["macro"]))
     vix = env["data"]["macro"]["india_vix"]
     check("macro reduces a series to last/1m-change/percentile/as_of",
-          set(vix) == {"last", "chg_1m_pct", "percentile_5y", "as_of"}, sorted(vix))
+          {"last", "chg_1m_pct", "percentile_5y", "as_of"} <= set(vix), sorted(vix))
     check("macro last is the newest close", vix["last"] == 129.0, vix)
     check("macro 1m change is measured 22 sessions back", vix["chg_1m_pct"] == 19.44, vix)
     check("macro percentile comes from the same pure ranker",
@@ -599,7 +600,7 @@ def test_indices_cache_round_trip_through_the_public_rung():
     check("cached indices round-trip canonical keys and values",
           env["data"]["indices"]["NIFTY 50"]["pe"] == 22.45, env["data"]["indices"])
 
-    cache_file = os.path.join(paths.cache_dir("market"), "indices.json")
+    cache_file = os.path.join(paths.cache_dir("market"), "indices_validated.json")
     with open(cache_file) as fh:
         blob = json.load(fh)
     blob["data"]["date"] = (date.today() - timedelta(days=1)).isoformat()
@@ -645,8 +646,146 @@ def test_percentile_rejects_nan():
     check("None target still -> None", market.percentile(pool, None) is None)
 
 
+def test_index_identity_and_selection():
+    fresh_root('index-identity')
+    row = ALL_INDICES_PAYLOAD['data'][0]
+    with swap(market, '_nse_json', lambda *a, **k: ({'data': [row, dict(row, last=1)]}, None)):
+        env = market.indices(fresh=True)
+    check('duplicate index identity is withheld', not env['ok'] and not env['data']['indices'])
+    with swap(market, '_nse_json', lambda *a, **k: ({'data': [dict(row, pe=-10, pb=0)]}, None)):
+        env = market.indices(fresh=True)
+    check('nonpositive valuation multiples cannot create cheapness', env['data']['indices']['NIFTY 50']['pe'] is None and env['data']['indices']['NIFTY 50']['pb'] is None)
+    filtered = market._select_indices(env, ['NIFTY IT'])
+    check('missing selected index is unsuccessful with a gap', not filtered['ok'] and bool(filtered['gaps']))
+    check('index selection does not mutate the full snapshot', 'NIFTY 50' in env['data']['indices'])
+    check('single name is treated as a name, not characters', market._select_indices(env, 'NIFTY 50')['ok'])
+
+
+def test_breadth_macro_coverage():
+    fresh_root("coverage")
+    rows = [dict(BREADTH_ROWS[0]), dict(BREADTH_ROWS[0]),
+            dict(BREADTH_ROWS[1], close=-1), dict(BREADTH_ROWS[2], SMA50=float('inf'))]
+    captured = []
+    def screen(body, **kwargs):
+        captured.append(body)
+        return _breadth_env(rows)
+    with swap(prices, 'screen', screen):
+        env = market.breadth(universe=4, fresh=True)
+    check("duplicate stocks do not double-weight breadth", env['data']['universe'] == 2)
+    check("invalid prices do not enter breadth denominator", env['data']['counts']['above_sma50']['of'] == 0)
+    check("coverage retains requested universe", env['data']['requested_universe'] == 4 and bool(env['gaps']))
+    check("breadth has no hidden rupee market-cap cutoff", captured[0]['filter'][1]['right'] == 0)
+    with swap(prices, 'screen', lambda *a, **k: (_ for _ in ()).throw(AssertionError('unexpected fetch'))):
+        check("invalid breadth request fails before fetching", not market.breadth(universe=-1)['ok'])
+    candles = [{'date': '2026-08-01', 'close': 100}, {'date': '2026-08-02', 'close': 110}]
+    def history(*a, **k):
+        return {'data': {'candles': candles}, 'gaps': ['provider partial']}
+    with swap(prices, 'history', history):
+        env = market.macro(period='1y', fresh=True)
+    value = env['data']['macro']['india_vix']
+    check("two sessions cannot become a one-month change", value['chg_1m_pct'] is None)
+    check("one-year request is not labeled five-year percentile", value['percentile_5y'] is None and value['history_period'] == '1y')
+    check("macro source gaps survive", 'provider partial' in env['gaps'])
+    check("macro reports actual observation coverage", value['observations'] == 2 and value['first_observation'] == '2026-08-01')
+    candles.append(dict(candles[0]))
+    with swap(prices, 'history', history):
+        env = market.macro(fresh=True)
+    check("duplicate macro sessions cannot distort ranks", not env['ok'])
+
+
+def test_flow_evidence_integrity():
+    fresh_root("flow-integrity")
+    def read(rows):
+        with swap(market, "_nse_json", lambda *a, **k: (rows, None)):
+            return market.flows(fresh=True)
+    unknown = dict(FII_DII_PAYLOAD[0], category="UNCLASSIFIED")
+    env = read([unknown])
+    check("unknown flow category is not DII", not env['ok'] and not env['data']['flows'])
+    older = dict(FII_DII_PAYLOAD[1], date='15-Aug-2026')
+    env = read([FII_DII_PAYLOAD[0], older])
+    check("flows never merge sessions", env['data']['session'] == '2026-08-16' and set(env['data']['flows']) == {'DII'})
+    check("missing latest-session category is a gap", any('FII' in g for g in env['gaps']))
+    env = read([FII_DII_PAYLOAD[0], dict(FII_DII_PAYLOAD[0], netValue='999')])
+    check("inconsistent arithmetic is reported", any('inconsistent' in g for g in env['gaps']))
+    env = read([FII_DII_PAYLOAD[0], FII_DII_PAYLOAD[0]])
+    check("duplicate flow evidence is withheld", not env['ok'])
+    env = read([dict(FII_DII_PAYLOAD[0], date='01-Jan-2999')])
+    check("future flow date is rejected", not env['ok'])
+    env = read({'data': []})
+    check("malformed flow payload returns a gap", not env['ok'] and bool(env['gaps']))
+    with swap(market, "_nse_json", lambda *a, **k: ([], None)):
+        env = market.indices(fresh=True)
+    check("malformed index payload degrades without throwing", not env['ok'] and bool(env['gaps']))
+
+
+def test_archive_date_integrity():
+    fresh_root("archive-dates")
+    with swap(market, "_http_get", lambda *a, **k: (IND_CLOSE_CSV, None)):
+        snap, actual, gap = market.index_snapshot("2026-08-14", walk_back=0)
+    check("archive row date must agree with requested session", not snap and actual is None and gap)
+    duplicate = IND_CLOSE_CSV + IND_CLOSE_CSV.splitlines()[1] + "\n"
+    try:
+        market._parse_ind_close_csv(duplicate)
+        rejected_duplicate = False
+    except ValueError:
+        rejected_duplicate = True
+    check("duplicate archive identity is rejected rather than last-row-wins", rejected_duplicate)
+    fresh_root("archive-poisoned-cache")
+    cache = market._snapshot_cache_path("2026-08-14")
+    with open(cache, 'w') as stream:
+        json.dump({'day': '2099-01-01', 'indices': {'NIFTY 50': {'pe': 10}}}, stream)
+    with swap(market, "_http_get", _csv_server([])):
+        snap, actual, gap = market.index_snapshot("2026-08-14")
+    check("unvalidated permanent cache cannot supply future evidence", actual == '2026-08-14')
+    with swap(market, "_http_get", lambda *a, **k: (_ for _ in ()).throw(AssertionError('future fetch'))):
+        try:
+            snap, actual, gap = market.index_snapshot("2999-01-01")
+            rejected = not snap and bool(gap)
+        except AssertionError:
+            rejected = False
+    check("future archive requests stop before network", rejected)
+
+
+def test_history_sample_integrity():
+    fresh_root("history-integrity")
+    days = [date(2026, 8, 31), date(2026, 9, 1), date(2026, 9, 2)]
+    row = {"NIFTY 50": {"close": 100, "pe": 20, "pb": 3, "dy": 1}}
+    responses = iter([(row, "2026-08-31", None), (row, "2026-08-31", None),
+                      ({}, None, "archive blocked")])
+    with swap(market, "_month_ends", lambda years: days), \
+         swap(market, "index_snapshot", lambda *a, **k: next(responses)):
+        env = market.valuation_history("NIFTY 50", years=1)
+    check("holiday walkback cannot double-weight a session", env["data"]["samples"] == 1)
+    check("partial history preserves fetch failure", any("archive blocked" in g for g in env["gaps"]))
+    check("partial history exposes requested sample coverage", env["data"].get("requested_samples") == 3)
+    with swap(market, "_month_ends", lambda years: days[:1]), \
+         swap(market, "index_snapshot", lambda *a, **k: (row, "2026-09-01", None)):
+        env = market.valuation_history("NIFTY 50", years=1)
+    check("future-relative sample cannot enter historical distribution", not env["ok"])
+    check("infinite target has no rank", market.percentile([1, 2], float('inf')) is None)
+    check("invalid pool members do not change rank", market.percentile([1, 3, float('inf'), True], 3) == 75)
+
+
+
+def test_index_pe_percentile_matches_market_context_method():
+    from finance.compute import context
+    series = [{"date": f"2020-{m:02d}-28", "close": 1.0, "pe": pe, "pb": 3.0, "dy": 1.0}
+              for m, pe in enumerate([20, 21, 22, 23, 24, 90], 1)]
+    hist = {"ok": True, "source": "NSE archives", "fetched_at": "x",
+            "data": {"series": series}, "gaps": []}
+    live = {"ok": True, "source": "NSE", "fetched_at": "x",
+            "data": {"indices": {"NIFTY 50": {"pe": 23.5, "pb": 3.0, "dy": 1.0}}}, "gaps": []}
+    with swap(market, "valuation_history", lambda *a, **k: hist), \
+         swap(market, "indices", lambda *a, **k: live):
+        env = market.valuation_percentiles("NIFTY 50", years=1)
+    expected = context.robust_pe_percentile([r["pe"] for r in series], 23.5)
+    check("the index-valuation tool ranks P/E with the market-of-record method",
+          env["data"]["pe"]["percentile"] == expected[0], (env["data"]["pe"], expected))
+    check("the excluded outlier count is visible",
+          env["data"]["pe"].get("excluded") == 1, env["data"]["pe"])
+
 if __name__ == "__main__":
-    run((test_parse_ind_close_csv, test_parse_ind_close_blank_pe_is_none_not_zero,
+    run((test_index_pe_percentile_matches_market_context_method, test_index_identity_and_selection, test_breadth_macro_coverage, test_flow_evidence_integrity, test_archive_date_integrity, test_history_sample_integrity, test_parse_ind_close_csv, test_parse_ind_close_blank_pe_is_none_not_zero,
          test_parse_ind_close_empty, test_canon, test_month_ends,
          test_month_ends_ten_years, test_month_ends_on_the_first_of_a_month,
          test_percentile, test_indices_parses,

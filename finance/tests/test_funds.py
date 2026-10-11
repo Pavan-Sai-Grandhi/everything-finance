@@ -188,23 +188,19 @@ def cap_index(stocks=None, period="2026-06-30", gaps=()):
     """Pin the process-wide cap-list memo, so no test reaches AMFI for a rank."""
     stocks = {} if stocks is None else stocks
     by_isin = {r["isin"]: r for r in stocks.values() if r.get("isin")}
-    orig = funds._cap_index_memo
-    funds._cap_index_memo = (stocks, by_isin, period, list(gaps))
-    try:
+    with swap(funds, "_cap_index", lambda fresh=False: (stocks, by_isin, period, list(gaps))):
         yield
-    finally:
-        funds._cap_index_memo = orig
 
 
 @contextlib.contextmanager
 def cap_index_cold():
     """Clear the memo so a test exercises the real fetch-and-parse path."""
-    orig = funds._cap_index_memo
+    orig, context = funds._cap_index_memo, funds._cap_index_context
     funds._cap_index_memo = None
     try:
         yield
     finally:
-        funds._cap_index_memo = orig
+        funds._cap_index_memo, funds._cap_index_context = orig, context
 
 
 def cap_stocks():
@@ -216,7 +212,7 @@ def cap_stocks():
 
 def serve_cap(index_html=CAP_INDEX_HTML, xlsx=CAP_XLSX_PATH, calls=None):
     """A `transport.request` stand-in serving the index page, then the fixture to `dest`."""
-    def fake(url, payload=None, timeout=30, referer=None, dest=None):
+    def fake(url, payload=None, timeout=30, referer=None, dest=None, follow_redirects=True):
         if calls is not None:
             calls.append(url)
         if dest is None:
@@ -259,8 +255,12 @@ def test_score_name_requires_every_query_token():
     check("a hyphenated query is split into tokens",
           funds._score_name("parag-parikh flexi cap",
                             "Parag Parikh Flexi Cap Fund - Direct Plan - Growth") > 0)
-    check("an empty query matches anything (no token can be missing)",
-          funds._score_name("", DIRECT_GROWTH) > 0)
+    check("an empty query cannot identify a fund",
+          funds._score_name("", DIRECT_GROWTH) == -1)
+    check("ITI does not match inside MULTI",
+          funds._score_name("ITI", "Quant Multi Cap Fund - Direct Growth") == -1)
+    check("AMC word prefixes still resolve registered names",
+          funds._score_name("Trust Small Cap", "TRUSTMF Small Cap Fund - Direct Growth") > 0)
 
 
 def test_score_name_prefers_direct_growth():
@@ -374,11 +374,11 @@ def test_cap_link_discovery_takes_the_newest_period():
 
 def test_cap_link_discovery_handles_a_root_relative_href():
     url, period, gap = funds._cap_xlsx_link(
-        '<a href="/downloads/AverageMarketCapitalization31Dec2026.xlsx">latest</a>')
+        '<a href="/downloads/AverageMarketCapitalization30Jun2026.xlsx">latest</a>')
     check("a root-relative href is resolved against the AMFI host",
           url == "https://www.amfiindia.com/downloads/"
-                 "AverageMarketCapitalization31Dec2026.xlsx", url)
-    check("the later period wins even from a relative link", period == "2026-12-31", period)
+                 "AverageMarketCapitalization30Jun2026.xlsx", url)
+    check("the period survives relative-link resolution", period == "2026-06-30", period)
     check("a relative href is not a gap", gap is None, gap)
 
 
@@ -491,7 +491,7 @@ def test_amfi_cap_list_degrades_at_every_step():
 
     fresh_root("cap-list-nofile")
 
-    def index_ok_download_blocked(url, payload=None, timeout=30, referer=None, dest=None):
+    def index_ok_download_blocked(url, payload=None, timeout=30, referer=None, dest=None, follow_redirects=True):
         return (CAP_INDEX_HTML, None) if dest is None else (None, "HTTP 404")
 
     with cap_index_cold(), swap(transport, "request", index_ok_download_blocked):
@@ -702,8 +702,8 @@ def test_holdings_equity_weight_and_sectors():
     with swap(tickertape, "get_json", lambda url, payload=None, timeout=30: (HOLDINGS_BLOB, None)):
         env = funds.holdings("M_NIMS", fresh=True)
     d = env["data"]
-    check("equity_weight sums ONLY the equity legs",
-          d["equity_weight"] == 20.0, d["equity_weight"])
+    check("an incomplete disclosed book has unknown equity coverage",
+          d["equity_weight"] is None, d["equity_weight"])
     check("equity_weight excludes debt and cash",
           d["equity_weight"] != 24.0, d["equity_weight"])
     sw = d["sector_weights"]
@@ -711,8 +711,8 @@ def test_holdings_equity_weight_and_sectors():
     check("a sector row with no weight is dropped, not zeroed", "Unweighted Sector" not in sw, sw)
     check("allocation history is passed through",
           d["allocation_history"] == [{"date": "2026-07-31", "equity": 95.1}], d)
-    check("a cash-heavy book raises the low-equity gap",
-          any("equity weight only" in g for g in env["gaps"]), env["gaps"])
+    check("an incomplete book explains why coverage is unknown",
+          any("equity allocation is unknown" in g for g in env["gaps"]), env["gaps"])
 
 
 def test_holdings_normal_book_is_silent():
@@ -968,8 +968,9 @@ def test_nav_history_empty_series_degrades():
 def test_cache_round_trip_and_ageing():
     fresh_root("cache")
     p = funds._cache_path("meta", "probe key/with:junk")
-    check("cache_path sanitises the key into one file",
-          os.path.basename(p) == "probe_key_with_junk.json", p)
+    check("cache_path keeps arbitrary keys inside their cache namespace",
+          os.path.dirname(p) == funds.paths.cache_dir(os.path.join("mf", "meta"))
+          and os.path.basename(p).endswith(".json"), p)
     env = funds._envelope(True, "AMFI", {"schemes": [{"code": "118778"}]}, [])
     funds._write_cache(p, env)
     check("write_cache stamps today under the reserved key",
@@ -1012,7 +1013,7 @@ def test_holdings_cache_round_trip():
         env = funds.holdings("M_NIMS")
     check("holdings serves the cached book without refetching", env["ok"] is True)
     check("the cached book round-trips the parsed positions",
-          env["data"]["position_count"] == 5 and env["data"]["equity_weight"] == 20.0,
+          env["data"]["position_count"] == 5 and env["data"]["equity_weight"] is None,
           env["data"])
 
 
@@ -1036,8 +1037,374 @@ def test_f_coercion():
     check("_f keeps a negative", funds._f("-0.9") == -0.9)
 
 
+def test_tickertape_requires_every_identifying_token():
+    rows = [{"mf_id": "wrong", "name": "Alpha Mid Cap Fund - Direct Growth"}]
+    with swap(funds, "screen", lambda **kw: {"data": {"funds": rows}}):
+        hit, gap = funds._tickertape_fund("Alpha Small Cap")
+    check("different category is not a close-enough fund identity", hit is None and gap)
+
+
+def test_screen_projection_and_cache_identity():
+    fresh_root("projection-cache")
+    calls = []
+    def response(path, **kw):
+        project = kw["payload"]["project"]
+        calls.append(project)
+        blob = json.loads(json.dumps(SCREEN_BLOB))
+        for row in blob["data"]["result"]:
+            row["values"] = [v for v in row["values"] if v["filter"] in project]
+        return blob, None
+    with swap(tickertape, "get_json", response):
+        narrow = funds.screen(fields=["expRatio"], limit_pages=1)
+        wide = funds.screen(fields=["aum", "expRatio", "ret1y"], limit_pages=1)
+        funds.screen(fields=["aum", "expRatio", "ret1y"], limit_pages=2)
+    check("client filter columns are fetched even with a narrow projection",
+          narrow["data"]["count"] == 2, narrow)
+    check("different projections and page limits use independent caches", len(calls) == 3, calls)
+    check("wide request has its required columns", wide["data"]["funds"] and "aum" in wide["data"]["funds"][0])
+
+
+def test_nav_values_must_be_finite_positive():
+    fresh_root("invalid-nav")
+    rows = [{"date": f"{i+1:02d}-08-2026", "nav": value}
+            for i, value in enumerate(("nan", "inf", "-inf", "0", "-1", "10"))]
+    with swap(transport, "json_request", lambda *a, **kw: ({"data": rows}, None)):
+        env = funds.nav_history("100001", fresh=True)
+    check("invalid NAV values cannot enter returns math",
+          env["data"]["navs"] == [{"date": "2026-08-06", "nav": 10.0}], env)
+    check("discarded NAV rows are a reported data gap", bool(env["gaps"]))
+
+
+def test_equity_weight_keeps_precision_for_coverage():
+    fresh_root("equity-precision")
+    blob={"data":{"currentAllocation":[{"type":"Equity","latest":40.123,"sid":"FIXA"},{"type":"Equity","latest":40.124,"sid":"FIXB"}]}}
+    with swap(tickertape,"get_json",lambda *args,**kw:(blob,None)):
+        env=funds.holdings("FIXTURE",fresh=True)
+    import math
+    check("equity denominator retains position precision",env["data"]["equity_weight"]==math.fsum(p["weight"] for p in env["data"]["positions"]),env["data"])
+
+
+def test_holdings_invalid_rows_cannot_shrink_coverage_denominator():
+    good={"sid":"FIXA","type":"Equity","latest":60}
+    for bad in (None, {"sid":"BAD","type":"Equity","latest":None},
+                {"sid":"BAD","type":"Equity","latest":-5},
+                {"sid":"BAD","latest":10},dict(good)):
+        fresh_root("invalid-holding-row")
+        blob={"data":{"currentAllocation":[good,bad]}}
+        with swap(tickertape,"get_json",lambda *args,**kw:(blob,None)):
+            env=funds.holdings("FIXTURE",fresh=True)
+        check("invalid holding row leaves unknown total with a gap",env["data"].get("equity_weight") is None and bool(env["gaps"]),env)
+        check("valid holding remains available despite incomplete coverage",len(env["data"]["positions"])==1,env)
+
+
+def test_holdings_malformed_payloads_degrade():
+    for blob in ([], {"data": []}, {"data": {"currentAllocation": {"bad": 1}}}):
+        fresh_root("bad-holding-payload")
+        with swap(tickertape, "get_json", lambda *args, **kw: (blob, None)):
+            env = funds.holdings("FIXTURE", fresh=True)
+        check("malformed allocation returns a data gap", not env["ok"] and bool(env["gaps"]), env)
+    for sectors in (12, {"unexpected": 5}, [{"name": [], "latest": 10}],
+                    [{"name": "Financials", "latest": -10}]):
+        fresh_root("bad-holding-sectors")
+        blob = {"data": {"currentAllocation": [{"sid": "A", "type": "Equity", "latest": 100}],
+                         "sectorWeightage": sectors}}
+        with swap(tickertape, "get_json", lambda *args, **kw: (blob, None)):
+            env = funds.holdings("FIXTURE", fresh=True)
+        check("bad sector data preserves the valid book with a gap",
+              env["ok"] and env["data"]["equity_weight"] == 100
+              and env["data"]["sector_weights"] == {} and bool(env["gaps"]), env)
+
+
+def test_enrich_preserves_partial_gaps_and_fetches_unique_ids():
+    positions = [{"sid": "FIX", "weight": 20, "type": "equity"}] * 2
+    calls = []
+    def ratios(sid, fresh=False):
+        calls.append(sid)
+        return funds._envelope(True, "fixture", {"sid": sid, "pe": 10, "cap_rank": 1},
+                               ["fixture ratio period unavailable"])
+    with swap(funds, "stock_ratios", ratios), cap_index(cap_stocks()):
+        out, gaps = funds.enrich(positions)
+    check("enrichment fetches a security once even if repeated in input", calls == ["FIX"], calls)
+    check("enrichment preserves gaps from successful partial results",
+          "fixture ratio period unavailable" in gaps, gaps)
+    check("enrichment preserves input positions rather than changing allocation", len(out) == 2, out)
+
+
+def test_stock_ratios_malformed_response_is_local_gap():
+    for blob in ([1], {"data": [1]}, {"data": {"info": [1], "ratios": {"pe": 10}}},
+                 {"data": {"info": {}, "ratios": [10]}},
+                 {"data": {"info": {"ticker": "FIX"}, "isin": ["bad"], "ratios": {"pe": 10}}}):
+        fresh_root("ratios-malformed")
+        with swap(tickertape, "get_json", lambda *a, **kw: (blob, None)), cap_index(cap_stocks()):
+            env = funds.stock_ratios("FIX", fresh=True)
+        check("malformed ratio response degrades without raising", not env["ok"] and bool(env["gaps"]), env)
+
+
+def test_enrich_survives_one_malformed_provider_response():
+    fresh_root("enrich-malformed")
+    positions = [{"sid": "BAD", "type": "equity", "weight": 30},
+                 {"sid": "GOOD", "type": "equity", "weight": 70}]
+    def provider(url, **kwargs):
+        return ([1] if url.endswith("BAD") else STOCK_INFO_BLOB), None
+    with swap(tickertape, "get_json", provider), cap_index(cap_stocks()):
+        rows, gaps = funds.enrich(positions, fresh=True)
+    check("malformed response affects only its own holding",
+          not rows[0]["priced"] and rows[1]["priced"] and rows[1]["pe"] == 8.4, rows)
+    check("malformed holding retains its weight and an explanatory gap",
+          rows[0]["weight"] == 30 and any("BAD" in gap for gap in gaps), gaps)
+
+
+def test_stock_ratio_cache_preserves_exact_security_identity():
+    fresh_root("ratio-cache-identity")
+    calls = []
+    def provider(url, **kwargs):
+        calls.append(url)
+        return STOCK_INFO_BLOB, None
+    with swap(tickertape, "get_json", provider), cap_index(cap_stocks()):
+        funds.stock_ratios("A&B")
+        second = funds.stock_ratios("A_B")
+    check("distinct security IDs cannot alias in the ratio cache",
+          len(calls) == 2 and second["data"]["sid"] == "A_B", (calls, second))
+
+
+def test_cap_memo_rechecks_day_and_artifact_root():
+    fresh_root("cap-memo-expiry")
+    calls = []
+    def fake_list(fresh=False):
+        calls.append(fresh)
+        return funds._envelope(True, "fixture", {"stocks": cap_stocks(), "period": "2026-06-30"}, [])
+    class Clock:
+        day = "2026-09-25"
+        @classmethod
+        def now(cls):
+            class Now:
+                def date(self):
+                    return date.fromisoformat(Clock.day)
+            return Now()
+    with cap_index_cold(), swap(funds, "amfi_cap_list", fake_list), swap(funds, "datetime", Clock):
+        funds._cap_index()
+        funds._cap_index()
+        check("cap memo is reused within the day", len(calls) == 1, calls)
+        Clock.day = "2026-09-26"
+        funds._cap_index()
+        check("long-running server rechecks disk freshness on a new day", len(calls) == 2, calls)
+        fresh_root("cap-memo-other-session")
+        funds._cap_index()
+        check("cap memo does not cross artifact roots", len(calls) == 3, calls)
+
+
+def test_cap_downloads_have_independent_temporary_files():
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    fresh_root("cap-concurrent-download")
+    rendezvous = threading.Barrier(2)
+    destinations = []
+    def provider(url, dest=None, **kwargs):
+        if dest is None:
+            return CAP_INDEX_HTML, None
+        destinations.append(dest)
+        with open(dest, "wb") as stream:
+            stream.write(b"fixture")
+        rendezvous.wait(timeout=5)
+        return dest, None
+    with swap(transport, "request", provider), swap(funds, "_parse_cap_xlsx", lambda path: ({"FIX": {"rank": 1}}, None)):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: funds.amfi_cap_list(fresh=True), range(2)))
+    check("concurrent cap downloads cannot overwrite the same file", len(set(destinations)) == 2, destinations)
+    check("both cap requests complete and remove their temporary downloads",
+          all(result["ok"] for result in results) and all(not os.path.exists(p) for p in destinations), results)
+
+
+def test_cap_links_require_approved_amfi_origin():
+    filename = "AverageMarketCapitalization30Jun2026.xlsx"
+    for prefix in ("https://unapproved.invalid/", "https://www.amfiindia.com.unapproved.invalid/",
+                   "https://www.amfiindia.com@unapproved.invalid/", "http://www.amfiindia.com/",
+                   "https://www.amfiindia.com:8443/", "file:///tmp/"):
+        result = funds._cap_xlsx_link(f'<a href="{prefix}{filename}">workbook</a>')
+        check("unapproved workbook URL is not eligible for download", result[0] is None and bool(result[2]), result)
+    result = funds._cap_xlsx_link(f'<a href="downloads/{filename}">workbook</a>')
+    check("relative workbook link resolves against the index URL",
+          result[0] == "https://www.amfiindia.com/otherdata/downloads/" + filename, result)
+
+
+def test_cap_workbook_rejects_invalid_ranks_and_ambiguous_identities():
+    import openpyxl
+    header = CAP_XLSX_ROWS[1]
+    def row(rank, symbol, isin):
+        return (rank, "Fixture", isin, "-", None, symbol, None, "-", None, 1, "")
+    book = openpyxl.Workbook()
+    for item in [header, row(1, "GOOD", "ISIN-GOOD"), row(100.9, "FRACTION", "ISIN-F"),
+                 row(0, "ZERO", "ISIN-Z"), row(-2, "NEGATIVE", "ISIN-N"),
+                 row(10, "DUP", "ISIN-A"), row(300, "DUP", "ISIN-B"),
+                 row(20, "SAMEISIN1", "ISIN-C"), row(400, "SAMEISIN2", "ISIN-C")]:
+        book.active.append(item)
+    path = os.path.join(_TMP_ROOT, "cap-invalid-ranks.xlsx")
+    book.save(path)
+    book.close()
+    stocks, gap = funds._parse_cap_xlsx(path)
+    check("fractional or nonpositive ranks never become classifications",
+          not any(key in stocks for key in ("FRACTION", "ZERO", "NEGATIVE")), stocks)
+    check("duplicate symbols and ISINs cannot select an arbitrary rank",
+          not any(key in stocks for key in ("DUP", "SAMEISIN1", "SAMEISIN2")), stocks)
+    check("valid unrelated rank survives with a data-quality gap",
+          stocks.get("GOOD", {}).get("rank") == 1 and bool(gap), (stocks, gap))
+
+
+def test_cap_rank_rejects_conflicting_ticker_and_isin():
+    with cap_index(cap_stocks()):
+        rank, label, gaps = funds._cap_rank("RELIANCE", "INE020B01018")
+    check("conflicting ticker and ISIN cannot produce a rank",
+          rank is None and label is None and any("conflict" in gap for gap in gaps), (rank, label, gaps))
+
+
+def test_cap_period_cannot_be_in_the_future():
+    from datetime import datetime
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 25)
+    future = '<a href="/downloads/AverageMarketCapitalization31Dec2026.xlsx">future</a>'
+    with swap(funds, "datetime", FixedClock):
+        selected = funds._cap_xlsx_link(CAP_INDEX_HTML + future)
+        missing = funds._cap_xlsx_link(future)
+    check("future period cannot displace available historical release",
+          selected[0] == CAP_XLSX_URL and selected[1] == "2026-06-30", selected)
+    check("future-only workbook listing produces a data gap",
+          missing[0] is None and bool(missing[2]), missing)
+    fresh_root("cap-future-cache")
+    cache = funds._cache_path("meta", "amfi-cap-list-validated")
+    funds._write_cache(cache, funds._envelope(True, "AMFI", {
+        "period": "2026-12-31", "stocks": cap_stocks(), "count": 7}, []))
+    with swap(funds, "datetime", FixedClock), swap(transport, "request", lambda *a, **kw: (None, "fixture offline")):
+        cached = funds.amfi_cap_list()
+    check("future-period cache cannot bypass source-date validation",
+          not cached["ok"] and bool(cached["gaps"]), cached)
+
+
+
+def test_identifiers_cannot_steer_request_urls():
+    fresh_root("identifier-boundary")
+    calls = []
+    def record(*args, **kwargs):
+        calls.append(args[0] if args else kwargs)
+        return None, "should not be called"
+    with swap(tickertape, "get_json", record), swap(transport, "json_request", record):
+        for bad in ("../stocks/info/RECM", "M_X?x=1", "M/X", "", None, 7, " M_X"):
+            env = funds.holdings(bad, fresh=True)
+            check(f"holdings rejects id {bad!r}", env["ok"] is False
+                  and any("invalid" in g for g in env["gaps"]), env)
+            env = funds.stock_ratios(bad, fresh=True)
+            check(f"stock_ratios rejects sid {bad!r}", env["ok"] is False
+                  and any("invalid" in g for g in env["gaps"]), env)
+        for bad in ("118778/../x", "11877a", "", None, True, -5, "0"):
+            env = funds.nav_history(bad, fresh=True)
+            check(f"nav_history rejects scheme code {bad!r}", env["ok"] is False
+                  and any("invalid" in g for g in env["gaps"]), env)
+    check("rejected identifiers never reach the network", calls == [], calls)
+
+
+def test_screen_rejects_invalid_numeric_inputs():
+    fresh_root("screen-invalid")
+    calls = []
+    with swap(tickertape, "get_json", lambda *a, **k: calls.append(a) or (None, "x")):
+        for kw in ({"min_aum": float("nan")}, {"min_aum": "abc"}, {"min_aum": -1},
+                   {"min_aum": True}, {"limit_pages": 0}, {"limit_pages": 1.5}):
+            env = funds.screen(fresh=True, **kw)
+            check(f"screen rejects {kw}", env["ok"] is False
+                  and any("invalid" in g for g in env["gaps"]), env)
+    check("invalid screen inputs never reach the network", calls == [], calls)
+
+
+def _page_rows(n, start=0):
+    return [{"mfId": f"M_P{start + i}", "name": f"P{start + i} Small Cap Fund", "slug": "p",
+             "sector": "Equity", "values": [{"filter": "aum", "doubleVal": 1000.0 - i},
+                                            {"filter": "subsector", "strVal": "Small Cap Fund"},
+                                            {"filter": "option", "strVal": "Growth"}]}
+            for i in range(n)]
+
+
+def test_screen_reports_and_does_not_cache_incomplete_pagination():
+    fresh_root("screen-pages")
+    full = {"success": True, "data": {"result": _page_rows(500)}}
+    with swap(tickertape, "get_json", lambda *a, **k: (full, None)):
+        env = funds.screen(limit_pages=1, fresh=True)
+    check("a full final page at the page cap is a truncation gap",
+          any("truncated" in g for g in env["gaps"]), env["gaps"])
+    calls = []
+    def failing_second(url, payload=None, timeout=30):
+        calls.append(payload["offset"])
+        return (full, None) if payload["offset"] == 0 else (None, "HTTP 503")
+    with swap(tickertape, "get_json", failing_second):
+        env = funds.screen(limit_pages=3, fresh=True)
+    check("a failed later page is reported", any("page 1" in g for g in env["gaps"]), env["gaps"])
+    calls.clear()
+    with swap(tickertape, "get_json", failing_second):
+        env2 = funds.screen(limit_pages=3)
+    check("an incomplete universe is not served from cache", calls[:1] == [0], calls)
+
+
+def test_negative_net_receivables_do_not_invalidate_the_book():
+    fresh_root("holdings-net-payables")
+    blob = {"data": {"currentAllocation": [
+        {"sid": "RELI", "ticker": "RELIANCE", "title": "Reliance", "latest": 60.0, "type": "Equity"},
+        {"sid": "TCS", "ticker": "TCS", "title": "TCS", "latest": 40.72, "type": "Equity"},
+        {"sid": None, "ticker": None, "title": "Net Receivables/Payables", "latest": -0.72,
+         "type": "Others"}]}}
+    with swap(tickertape, "get_json", lambda *a, **k: (blob, None)):
+        env = funds.holdings("M_NETPAY", fresh=True)
+    check("a negative net-payables line keeps the book valid",
+          env["data"]["equity_weight"] is not None and abs(env["data"]["equity_weight"] - 100.72) < 1e-9,
+          env)
+    check("the negative line is retained, not dropped", env["data"]["position_count"] == 3, env["data"])
+    bad = {"data": {"currentAllocation": [
+        {"sid": "RELI", "ticker": "RELIANCE", "title": "Reliance", "latest": -5.0, "type": "Equity"}]}}
+    with swap(tickertape, "get_json", lambda *a, **k: (bad, None)):
+        env = funds.holdings("M_NEGEQ", fresh=True)
+    check("a negative equity weight is still invalid", env["data"]["equity_weight"] is None, env)
+
+
+def test_dated_sector_history_yields_latest_weights():
+    fresh_root("holdings-sector-history")
+    book = [{"sid": "RELI", "ticker": "RELIANCE", "title": "Reliance", "latest": 100.0, "type": "Equity"}]
+    blob = {"data": {"currentAllocation": book,
+        # Stray per-sector points (as served live) must not shape the snapshot.
+        "sectorWeightage": [{"sector": "Stray", "holdings": [{"date": 1790726400000, "value": 0.0}]}],
+        "sectorDistribution": [
+            {"date": 1751241600000, "holdings": [{"sector": "Pharmaceuticals", "value": 8.8}]},
+            {"date": 1788134400000, "holdings": [{"sector": "Pharmaceuticals", "value": 6.9},
+                                                 {"sector": "Private Banks", "value": 6.6}]}]}}
+    with swap(tickertape, "get_json", lambda *a, **k: (blob, None)):
+        env = funds.holdings("M_SECTORS", fresh=True)
+    d = env["data"]
+    check("the newest dated sector snapshot supplies the weights",
+          d["sector_weights"] == {"Pharmaceuticals": 6.9, "Private Banks": 6.6}, d)
+    check("the sector weights carry their snapshot date",
+          d.get("sector_weights_as_of") == "2026-08-31", d.get("sector_weights_as_of"))
+    check("no sector row is rejected", not any("sector" in g for g in env["gaps"]), env["gaps"])
+    dup = {"data": {"currentAllocation": book, "sectorDistribution": [
+        {"date": 1788134400000, "holdings": [{"sector": "A", "value": 5.0}]},
+        {"date": 1788134400000, "holdings": [{"sector": "B", "value": 5.0}]}]}}
+    with swap(tickertape, "get_json", lambda *a, **k: (dup, None)):
+        env = funds.holdings("M_SECTORDUP", fresh=True)
+    check("two snapshots for one date are not merged",
+          env["data"]["sector_weights"] == {} and any("duplicate snapshots" in g for g in env["gaps"]), env)
+
+
+def test_screen_subsector_match_ignores_case_and_spacing():
+    fresh_root("screen-casefold")
+    with swap(tickertape, "get_json", _screen_seam(SCREEN_BLOB, [])):
+        canonical = funds.screen(subsector="Small Cap Fund", option="Growth", fresh=True)
+        lowered = funds.screen(subsector="  small  cap fund ", option="growth", fresh=True)
+    check("a lowercase seed category matches the provider's subsector",
+          [f["mf_id"] for f in lowered["data"]["funds"]] == [f["mf_id"] for f in canonical["data"]["funds"]]
+          and lowered["ok"], lowered)
+
 if __name__ == "__main__":
-    run((test_score_name_requires_every_query_token, test_score_name_prefers_direct_growth,
+    run((test_screen_subsector_match_ignores_case_and_spacing, test_dated_sector_history_yields_latest_weights, test_negative_net_receivables_do_not_invalidate_the_book, test_identifiers_cannot_steer_request_urls, test_screen_rejects_invalid_numeric_inputs,
+         test_screen_reports_and_does_not_cache_incomplete_pagination,
+         test_tickertape_requires_every_identifying_token, test_screen_projection_and_cache_identity,
+         test_nav_values_must_be_finite_positive,
+         test_score_name_requires_every_query_token, test_score_name_prefers_direct_growth,
          test_score_name_penalises_payout_plans,
          test_score_name_prefers_the_tighter_name, test_amfi_index_parses,
          test_amfi_index_dash_isin_is_none, test_amfi_index_blocked_degrades,
@@ -1069,4 +1436,17 @@ if __name__ == "__main__":
          test_enrich_empty_input, test_nav_history_dates_and_order,
          test_nav_history_blocked_degrades, test_nav_history_empty_series_degrades,
          test_cache_round_trip_and_ageing, test_cache_max_age,
-         test_holdings_cache_round_trip, test_envelope_shape, test_f_coercion))
+         test_holdings_cache_round_trip, test_envelope_shape, test_f_coercion,
+         test_equity_weight_keeps_precision_for_coverage,
+         test_holdings_invalid_rows_cannot_shrink_coverage_denominator,
+         test_holdings_malformed_payloads_degrade,
+         test_enrich_preserves_partial_gaps_and_fetches_unique_ids,
+         test_stock_ratios_malformed_response_is_local_gap,
+         test_enrich_survives_one_malformed_provider_response,
+         test_stock_ratio_cache_preserves_exact_security_identity,
+         test_cap_memo_rechecks_day_and_artifact_root,
+         test_cap_downloads_have_independent_temporary_files,
+         test_cap_links_require_approved_amfi_origin,
+         test_cap_workbook_rejects_invalid_ranks_and_ambiguous_identities,
+         test_cap_rank_rejects_conflicting_ticker_and_isin,
+         test_cap_period_cannot_be_in_the_future))

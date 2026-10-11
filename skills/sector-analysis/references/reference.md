@@ -24,6 +24,8 @@ It is not a finding, and it never becomes a Tailwinds/Headwinds bullet on its ow
 
 ## Sector-specific KPIs (what "good" looks like per sector)
 
+The numeric bands below are unsourced rules of thumb (not verified against Varsity or any primary source), not current benchmarks. A finding compares the company's sourced KPI with the **sourced median of the constituent set** (step 2) and its own history; a band may be quoted only as a labelled heuristic, never as the evidence that settles a verdict.
+
 **Banking / NBFC** (Varsity: revenues, capital adequacy, asset quality)
 - NIM (net interest margin): >3.5% strong for private banks, ~3% PSU norm
 - GNPA/NNPA: falling trend matters more than level; GNPA <3% comfortable
@@ -88,7 +90,7 @@ That is the ranking table already computed — no candle series to fetch and no 
 
 ## Sectoral index ticker map
 
-Pass these to `get_history`: `^NSEI` (Nifty 50 benchmark), `^NSEBANK` (Bank), `NIFTY_FIN_SERVICE.NS` (Financial Services), `^CNXIT` (IT), `^CNXPHARMA` (Pharma), `^CNXAUTO` (Auto), `^CNXFMCG` (FMCG), `^CNXMETAL` (Metal), `^CNXREALTY` (Realty), `^CNXENERGY` (Energy), `^CNXPSUBANK` (PSU Bank), `^CNXMEDIA` (Media — thin index, flag it rather than calling it a leader). Known gaps: Consumer Durables & Healthcare have no Yahoo history (quote only), Oil & Gas has no ticker — list these as data gaps rather than hunting; the 11 covered indices are enough for the rotation read.
+Pass these to `get_history`: `^NSEI` (Nifty 50 benchmark), `^NSEBANK` (Bank), `NIFTY_FIN_SERVICE.NS` (Financial Services), `^CNXIT` (IT), `^CNXPHARMA` (Pharma), `^CNXAUTO` (Auto), `^CNXFMCG` (FMCG), `^CNXMETAL` (Metal), `^CNXREALTY` (Realty), `^CNXENERGY` (Energy), `^CNXPSUBANK` (PSU Bank) — the ten sectors in `sources/market.py::SECTOR_YF`, which is what `run_sector_screen` ranks. `^CNXMEDIA` (Media) can be fetched with `get_history` for a one-off read but is **not** in the screen, so it has no classification to quote; it is a thin index — flag it rather than calling it a leader. Known gaps: Consumer Durables & Healthcare have no Yahoo history (quote only), Oil & Gas has no ticker — list these as data gaps rather than hunting.
 
 Stock-level: `<SYMBOL>.NS` for OHLCV and price-vs-50-EMA. Indicator math is shared — run `<plugin>/finance/compute/ta.py` over the candles `get_history` wrote (a short Bash snippet: `sys.path.insert(0, "<plugin>")`, `from finance.compute import ta`) rather than reimplementing, so this read agrees with the screen and `technical-analysis`.
 

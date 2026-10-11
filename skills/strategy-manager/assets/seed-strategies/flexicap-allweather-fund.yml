@@ -16,7 +16,7 @@ source_references:
   - "Zerodha Varsity — Personal Finance / Mutual Funds (core-satellite; flexi cap as the all-weather core; judge on rolling returns + cost, not point-to-point). Official source."
   - "SOIC — let a proven manager handle cap-allocation across the cycle rather than timing caps yourself."
 
-status: draft                         # active on the completeness gate (category resolvable in get_fund_scan)
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-08-30
   validated_at: null

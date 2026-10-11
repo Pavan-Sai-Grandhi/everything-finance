@@ -8,7 +8,7 @@ goal: "Enter consolidation breakouts on the retest, not the breakout bar — mid
 source_references:
   - ".refs/swing-strategies.txt §3 Strategy 2 — Breakout and Retest"
 
-status: draft
+status: draft  # Research template; no activation or performance evidence supplied.
 lifecycle:
   generated_at: 2026-06-12
   validated_at: null
@@ -30,8 +30,8 @@ universe:
 screening:
   fundamental:
     provider: tickertape
-    # `1Y Historical EPS Growth` approximates the net-profit-growth cut this spec's
-    # backtested edge rests on; it is a different filter, so re-validate before trusting.
+    # `1Y Historical EPS Growth` approximates the net-profit-growth cut an older version's
+    # intended condition; it is a different filter, so re-validate before trusting.
     query: >
       Market Cap > 1000 AND ROCE > 12
       AND Debt to Equity < 1 AND 1Y Historical EPS Growth > 0
@@ -61,7 +61,7 @@ entry:
 
 exit:
   stop: range_low                                       # below the broken pivot / consolidation
-  target: "measured_move of the consolidation; else next_resistance"
+  target: measured_move  # 20-bar range height only; no automatic resistance fallback.
   min_rrr: 1.8
   time_stop_sessions: 20
 

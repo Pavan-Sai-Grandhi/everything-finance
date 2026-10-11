@@ -12,6 +12,8 @@ You are forked with no conversation context. Your input carries the **run facts*
 
 ## What you produce
 
+Use only the supplied bundle output path. Keep `meta.ticker`, `meta.date` and `meta.mode` identical to the run facts. Never mark the bundle ready; the orchestrator does that after rendering and verification.
+
 **One file: the deck's render projection**, a `.report.json` at the output path — the render input for the report deck. Its shape is `finance/contracts.md` → *Artifact: report projection*, and `skills/_report/scripts/fixtures/deep-analysis.sample.json` is a complete worked example to mirror slide-for-slide. There is **no markdown report** — the rendered deck is the deliverable, and this JSON is what the orchestrator renders it from. You already hold every figure from the papers; project them into the JSON.
 
 ## Author, don't paste
@@ -33,7 +35,7 @@ Every deck this plugin renders is read by a person deciding where their money go
 ## What the projection must carry
 
 - **Fill every field the fixture shows.** A lens the mode did not run is marked as a labelled gap in its slot (`not run (<mode>)`), never blank and never quietly omitted.
-- **It is a render input with no consumer** — nothing reads it back into a decision — so the data-integrity rule is absolute: **every value must trace to a work paper.** A figure a paper does not carry goes into that section's gap slot (a labelled gap the deck prints), **never invented to fill the slide**; an empty pledge list is `"unknown"`, not `"none"`; a chart series the run lacks is left absent so the slide renders its labelled gap rather than a fabricated chart.
+- **It is also a prior-run and trade-rationale record**, so the data-integrity rule is absolute: **every value must trace to a work paper.** A figure a paper does not carry goes into that section's gap slot (a labelled gap the deck prints), **never invented to fill the slide**; an empty pledge list is `"unknown"`, not `"none"`; a chart series the run lacks is left absent so the slide renders its labelled gap rather than a fabricated chart.
 - **Numbers keep their citation.** A figure that arrives in a work paper with its source keeps that source in the field the deck sources from; one that arrives without a source is a gap, not a number to launder into the deck.
 - **The gaps slide is the union** of every leg's gaps, the orchestrator's own, and the lenses the mode skipped. It is what makes the rest trustworthy — do not trim it for length.
 - Where two legs report the same quantity differently, name both and say which the verdict used.

@@ -20,10 +20,16 @@ get_stock_ratios.
 from __future__ import annotations
 
 import os
+import math
+import json
+import hashlib
 import re
 import threading
+import tempfile
+from urllib.parse import urljoin, urlsplit
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 
 from finance import caps
 from finance import deps
@@ -68,8 +74,24 @@ SCREEN_FIELDS = [
 PREMIUM_FIELDS = {"maxDrawdown", "avg3yRollingRet", "percTop10H", "percTop3H",
                   "percTop5H", "ret3yVsCat", "ret1yVsCat", "ret5yVsCat", "cashncasheq"}
 
+_PROVIDER_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9&_.-]*")
+
+
+def _provider_id(value):
+    """A Tickertape fund id or sid as one URL path segment, else None."""
+    return value if isinstance(value, str) and _PROVIDER_ID.fullmatch(value) else None
+
+
+def _scheme_code(value):
+    """An AMFI scheme code (positive integer) as text, else None."""
+    if isinstance(value, bool):
+        return None
+    text = str(value) if isinstance(value, (int, str)) else ""
+    return text if re.fullmatch(r"[1-9][0-9]*", text) else None
+
+
 def _cache_path(kind, key):
-    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(key))
+    safe = hashlib.sha256(str(key).encode()).hexdigest()
     return os.path.join(paths.cache_dir(os.path.join("mf", kind)), f"{safe}.json")
 
 def amfi_index(fresh=False):
@@ -126,23 +148,29 @@ def _cap_xlsx_link(html):
     the current one, in no dependable order.
     """
     best = None
+    today = datetime.now().date().isoformat()
     for hit in _CAP_XLSX_RE.findall(html or ""):
-        m = _CAP_PERIOD_RE.search(hit)
+        url = urljoin(_AMFI_CAP_INDEX, hit)
+        try:
+            parsed = urlsplit(url)
+            approved = (parsed.scheme == "https" and parsed.hostname in {"www.amfiindia.com", "portal.amfiindia.com"}
+                        and parsed.port in (None, 443) and parsed.username is None
+                        and parsed.password is None)
+        except ValueError:
+            approved = False
+        if not approved:
+            continue
+        m = _CAP_PERIOD_RE.search(parsed.path)
         if not m:
             continue
         day, month, year = m.groups()
         period = _iso_date(f"{day}-{month}-{year}")
-        if period and (best is None or period > best[1]):
-            best = (hit, period)
+        if period and period <= today and (best is None or period > best[1]):
+            best = (url, period)
     if not best:
         return None, None, ("AMFI categorisation page listed no dated "
-                            "AverageMarketCapitalization .xlsx link")
-    url = best[0]
-    if url.startswith("//"):
-        url = "https:" + url
-    elif url.startswith("/"):
-        url = _AMFI_HOST + url
-    return url, best[1], None
+                            "AverageMarketCapitalization .xlsx link with a non-future period on an approved HTTPS host")
+    return best[0], best[1], None
 
 
 def _parse_cap_xlsx(path):
@@ -157,7 +185,10 @@ def _parse_cap_xlsx(path):
         return {}, f"openpyxl unavailable, AMFI cap list unparsed ({exc})"
     try:
         book = openpyxl.load_workbook(path, read_only=True, data_only=True)
-        rows = list(book[book.sheetnames[0]].iter_rows(values_only=True))
+        try:
+            rows = list(book[book.sheetnames[0]].iter_rows(values_only=True))
+        finally:
+            book.close()
     except Exception as exc:  # noqa: BLE001
         return {}, f"AMFI cap workbook unreadable ({exc})"
 
@@ -166,7 +197,7 @@ def _parse_cap_xlsx(path):
         idx = cols[key]
         return row[idx] if idx is not None and idx < len(row) else None
 
-    cols, stocks = None, {}
+    cols, records, invalid = None, [], 0
     for row in rows:
         cells = [str(c).strip().lower() if c is not None else "" for c in row]
         if cols is None:
@@ -174,22 +205,42 @@ def _parse_cap_xlsx(path):
                 cols = {k: next((i for i, c in enumerate(cells) if c.startswith(v)), None)
                         for k, v in _CAP_COLUMNS.items()}
             continue
-        rank = _f(cell(row, cols, "rank"))
-        if rank is None:
+        raw_rank = cell(row, cols, "rank")
+        if raw_rank is None or raw_rank == "":
             continue
-        rec = {"rank": int(rank)}
+        if caps.cap_label(raw_rank) is None:
+            invalid += 1
+            continue
+        rec = {"rank": int(float(raw_rank))}
         for field in ("name", "isin", "symbol"):
             raw = cell(row, cols, field)
             val = str(raw).strip() if raw is not None else ""
             rec[field] = val if val and val != "-" else None
         rec["symbol"] = _norm_symbol(rec["symbol"]) or None
         rec["avg_mcap_cr"] = _f(cell(row, cols, "avg_mcap_cr"))
-        key = rec["symbol"] or rec["isin"]
-        if key:
-            stocks[key] = rec
+        if rec["symbol"] or rec["isin"]:
+            records.append(rec)
+        else:
+            invalid += 1
     if cols is None:
         return {}, "AMFI cap workbook carried no recognisable header row"
-    return stocks, None if stocks else "AMFI cap workbook carried no ranked rows"
+    identities = Counter((field, rec[field]) for rec in records
+                         for field in ("symbol", "isin") if rec[field])
+    stocks, ambiguous = {}, 0
+    for rec in records:
+        if any(identities[(field, rec[field])] > 1
+               for field in ("symbol", "isin") if rec[field]):
+            ambiguous += 1
+            continue
+        stocks[rec["symbol"] or rec["isin"]] = rec
+    issues = []
+    if invalid:
+        issues.append(f"excluded {invalid} rows with invalid ranks or missing identities")
+    if ambiguous:
+        issues.append(f"excluded {ambiguous} rows with duplicate symbols or ISINs")
+    if not stocks:
+        issues.append("carried no ranked rows")
+    return stocks, "AMFI cap workbook: " + "; ".join(issues) if issues else None
 
 
 def amfi_cap_list(fresh=False):
@@ -200,32 +251,30 @@ def amfi_cap_list(fresh=False):
     rank. Link discovery is dynamic because the filename encodes the period; a failed
     resolution is a labelled gap.
     """
-    cache = _cache_path("meta", "amfi-cap-list")
+    cache = _cache_path("meta", "amfi-cap-list-validated")
     cached = _read_cache(cache, fresh, max_age_days=_CAP_LIST_MAX_AGE_DAYS)
     if cached is not None:
-        return cached
+        period = cached["data"].get("period")
+        if (isinstance(period, str) and _iso_date(period) == period
+                and period <= datetime.now().date().isoformat()):
+            return cached
 
     empty = {"period": None, "url": None, "count": 0, "stocks": {}}
-    html, gap = transport.request(_AMFI_CAP_INDEX, timeout=40, referer=_AMFI_HOST)
+    html, gap = transport.request(_AMFI_CAP_INDEX, timeout=40, referer=_AMFI_HOST, follow_redirects=False)
     if gap:
         return _envelope(False, "AMFI", empty, [f"AMFI cap-list index: {gap}"])
     url, period, gap = _cap_xlsx_link(html)
     if gap:
         return _envelope(False, "AMFI", empty, [gap])
 
-    # pid-scoped: two sessions downloading the same period must not overwrite each
-    # other's file mid-parse.
-    dest = os.path.join(paths.tmp_dir("mf"), f"amfi-cap-list-{os.getpid()}.xlsx")
-    saved, gap = transport.request(url, timeout=120, referer=_AMFI_CAP_INDEX,
-                                   dest=dest)
-    if gap:
-        return _envelope(False, "AMFI", dict(empty, period=period, url=url),
-                         [f"AMFI cap workbook: {gap}"])
-    stocks, gap = _parse_cap_xlsx(saved)
-    try:
-        os.unlink(saved)
-    except OSError:
-        pass
+    with tempfile.TemporaryDirectory(prefix="amfi-cap-", dir=paths.tmp_dir("mf")) as work:
+        dest = os.path.join(work, "cap-list.xlsx")
+        saved, gap = transport.request(url, timeout=120, referer=_AMFI_CAP_INDEX,
+                                       dest=dest, follow_redirects=False)
+        if gap:
+            return _envelope(False, "AMFI", dict(empty, period=period, url=url),
+                             [f"AMFI cap workbook: {gap}"])
+        stocks, gap = _parse_cap_xlsx(saved)
 
     data = {"period": period, "url": url, "count": len(stocks), "stocks": stocks}
     env = _envelope(bool(stocks), "AMFI", data, [gap] if gap else [])
@@ -236,22 +285,26 @@ def amfi_cap_list(fresh=False):
 
 _cap_lock = threading.Lock()
 _cap_index_memo = None
+_cap_index_context = None
 
 
 def _cap_index(fresh=False):
     """Process-wide `(by_key, by_isin, period, gaps)` view of the cap list.
 
-    Memoised because `enrich` prices up to 278 holdings in a thread pool: without this
-    every position would reload — and on a cold cache refetch — the same workbook.
+    Reused within one day and artifact root so enrichment loads the workbook once.
+    A new day rechecks the disk cache's existing freshness policy, including recovery
+    from a failed fetch cached in memory on the previous day.
     """
-    global _cap_index_memo  # noqa: PLW0603 — one memo for the process, guarded by the lock
+    global _cap_index_memo, _cap_index_context
     with _cap_lock:
-        if _cap_index_memo is None or fresh:
+        context = (datetime.now().date(), paths.root())
+        if _cap_index_memo is None or fresh or _cap_index_context != context:
             env = amfi_cap_list(fresh=fresh)
             stocks = (env.get("data") or {}).get("stocks") or {}
             by_isin = {r["isin"]: r for r in stocks.values() if r.get("isin")}
             _cap_index_memo = (stocks, by_isin, (env.get("data") or {}).get("period"),
                                list(env.get("gaps") or []))
+            _cap_index_context = context
         return _cap_index_memo
 
 
@@ -262,7 +315,11 @@ def _cap_rank(ticker, isin=None):
     is republished twice a year.
     """
     by_key, by_isin, period, gaps = _cap_index()
-    rec = by_key.get(_norm_symbol(ticker)) or (by_isin.get(isin) if isin else None)
+    symbol_match = by_key.get(_norm_symbol(ticker))
+    isin_match = by_isin.get(isin) if isin else None
+    if symbol_match and isin and symbol_match.get("isin") and symbol_match["isin"] != isin:
+        return None, None, list(gaps) + ["AMFI cap identity conflict: ticker and ISIN disagree; rank withheld"]
+    rec = symbol_match or isin_match
     if rec:
         return float(rec["rank"]), caps.cap_label(rec["rank"]), list(gaps)
     unranked = (f"{ticker or isin or 'holding'} is unranked in the AMFI cap list for "
@@ -277,15 +334,17 @@ def _token_hit(token, name_lower, name_words):
     "TRUST Small Cap" is registered as "TRUSTMF SMALL CAP FUND". A plain substring test
     over the whole name would also let "iti" match inside "MULTI", so the prefix match is
     anchored to word boundaries."""
-    return token in name_lower or any(w.startswith(token) for w in name_words)
+    return any(w.startswith(token) for w in name_words)
 
 
 def _score_name(query, name):
     """Token-overlap score of a query against an AMFI scheme name. Direct+Growth is
     preferred because that is the only plan this plugin ever recommends."""
-    q = {t for t in query.lower().replace("-", " ").split() if t}
+    q = set(re.findall(r"[a-z0-9]+", query.lower()))
+    if not q:
+        return -1
     n = name.lower()
-    words = n.replace("-", " ").replace("(", " ").replace(")", " ").split()
+    words = re.findall(r"[a-z0-9]+", n)
     hits = sum(1 for t in q if _token_hit(t, n, words))
     if hits < len(q):
         return -1
@@ -348,18 +407,17 @@ def _tickertape_fund(name):
     rows = (env.get("data") or {}).get("funds") or []
     if not rows:
         return None, "Tickertape fund list unavailable"
-    want = {t for t in name.lower().replace("-", " ").split() if t
-            and t not in {"fund", "direct", "growth", "plan"}}
-    best, best_hits = None, 0
-    for r in rows:
-        n = r["name"].lower()
-        hits = sum(1 for t in want if t in n)
-        if hits > best_hits or (hits == best_hits and best and hits > 0
-                                and len(r["name"]) < len(best["name"])):
-            best, best_hits = r, hits
-    if not best or best_hits < max(1, len(want) - 1):
+    want = set(re.findall(r"[a-z0-9]+", name.lower())) - {"fund", "direct", "growth", "plan"}
+    matches = []
+    for row in rows:
+        registered = row.get("name") or ""
+        words = re.findall(r"[a-z0-9]+", registered.lower())
+        if want and all(_token_hit(token, registered.lower(), words) for token in want):
+            matches.append(row)
+    if not matches:
         return None, f"no confident Tickertape match for {name!r}"
-    return best, None
+    # All identifying tokens must match before the existing tighter-name preference.
+    return min(matches, key=lambda row: len(row["name"])), None
 
 
 def screen(subsector="Small Cap Fund", option="Growth", min_aum=100,
@@ -373,7 +431,14 @@ def screen(subsector="Small Cap Fund", option="Growth", min_aum=100,
     `subsector=None` returns the whole universe (used by name resolution).
     Returns `data.funds = [{mf_id, name, slug, <metric fields>}]`.
     """
-    fields = list(fields or SCREEN_FIELDS)
+    if (isinstance(min_aum, bool) or not isinstance(min_aum, (int, float))
+            or not math.isfinite(min_aum) or min_aum < 0
+            or type(limit_pages) is not int or limit_pages <= 0):
+        return _envelope(False, "Tickertape", {"funds": []},
+                         ["invalid fund screen inputs: min_aum must be a finite non-negative "
+                          "number and limit_pages a positive integer"])
+    requested_fields = list(SCREEN_FIELDS if fields is None else fields)
+    fields = list(dict.fromkeys(requested_fields + ["aum", "subsector", "option"]))
     bad = sorted(set(fields) & PREMIUM_FIELDS)
     gaps = []
     if bad:
@@ -381,12 +446,13 @@ def screen(subsector="Small Cap Fund", option="Growth", min_aum=100,
         gaps.append(f"dropped premium-gated Tickertape fields {bad} (computed from NAV "
                     f"history instead where needed)")
 
-    cache = _cache_path("screen", f"{subsector or 'ALL'}-{option}-{min_aum}")
+    identity = json.dumps([subsector, option, min_aum, sorted(requested_fields), limit_pages])
+    cache = _cache_path("screen", hashlib.sha256(identity.encode()).hexdigest())
     cached = _read_cache(cache, fresh)
     if cached is not None:
         return cached
 
-    funds, page = [], 0
+    funds, page, page_gaps = [], 0, len(gaps)
     while page < limit_pages:
         payload = {"match": {"aum": {"g": float(min_aum)}},
                    "sortBy": "aum", "sortOrder": -1,
@@ -405,16 +471,23 @@ def screen(subsector="Small Cap Fund", option="Growth", min_aum=100,
             rec = {"mf_id": r.get("mfId"), "name": r.get("name"),
                    "slug": r.get("slug"), "category": r.get("sector")}
             for v in r.get("values", []):
-                rec[v.get("filter")] = v.get("doubleVal", v.get("strVal"))
+                rec[v.get("filter")] = (v["doubleVal"] if v.get("doubleVal") is not None
+                                         else v.get("strVal"))
             funds.append(rec)
         if len(rows) < 500:
             break
         page += 1
+    else:
+        gaps.append(f"Tickertape screener truncated at {limit_pages} pages of 500 — the "
+                    f"universe may be incomplete")
+    complete = len(gaps) == page_gaps
 
+    # Category names arrive from users and seeds in any case/spacing; compare normalised.
+    norm = lambda value: " ".join(value.split()).casefold() if isinstance(value, str) else None
     if subsector:
-        funds = [f for f in funds if f.get("subsector") == subsector]
+        funds = [f for f in funds if norm(f.get("subsector")) == norm(subsector)]
     if option:
-        funds = [f for f in funds if f.get("option") == option]
+        funds = [f for f in funds if norm(f.get("option")) == norm(option)]
     funds.sort(key=lambda f: -(f.get("aum") or 0))
 
     if not funds and not gaps:
@@ -422,7 +495,7 @@ def screen(subsector="Small Cap Fund", option="Growth", min_aum=100,
     env = _envelope(bool(funds), "Tickertape",
                     {"subsector": subsector, "option": option, "min_aum": min_aum,
                      "count": len(funds), "funds": funds}, gaps)
-    if funds:
+    if funds and complete:
         _write_cache(cache, env)
     return env
 
@@ -438,7 +511,10 @@ def holdings(mf_id, fresh=False):
     with a weight but will carry no ratios; their weight must be counted as unpriced, never
     dropped, or coverage silently overstates itself.
     """
-    cache = _cache_path("holdings", mf_id)
+    if _provider_id(mf_id) is None:
+        return _envelope(False, "Tickertape", {"mf_id": mf_id, "positions": []},
+                         [f"invalid Tickertape fund id {mf_id!r}"])
+    cache = _cache_path("holdings_validated_v3", mf_id)  # v3: net-payables rows and dated sector history
     cached = _read_cache(cache, fresh, max_age_days=7)
     if cached is not None:
         return cached
@@ -447,44 +523,105 @@ def holdings(mf_id, fresh=False):
     if gap:
         return _envelope(False, "Tickertape", {"mf_id": mf_id, "positions": []},
                          [f"Tickertape holdings for {mf_id}: {gap}"])
-    d = (blob or {}).get("data") or blob or {}
-    alloc = d.get("currentAllocation") or []
-    if not alloc:
+    d = blob.get("data", blob) if isinstance(blob, dict) else None
+    alloc = d.get("currentAllocation") if isinstance(d, dict) else None
+    if not isinstance(alloc, list) or not alloc:
         return _envelope(False, "Tickertape", {"mf_id": mf_id, "positions": []},
                          [f"Tickertape returned no currentAllocation for {mf_id}"])
 
-    positions, equity_w = [], 0.0
-    for row in alloc:
-        w = _f(row.get("latest"))
-        if w is None:
+    positions, gaps, seen = [], [], set()
+    for index, row in enumerate(alloc):
+        if not isinstance(row, dict):
+            gaps.append(f"holding row {index + 1}: expected an object")
             continue
-        rec = {"sid": row.get("sid"), "ticker": row.get("ticker"),
+        w = _f(row.get("latest"))
+        kind = row.get("type")
+        # Net receivables/payables and cash lines are legitimately negative in Indian
+        # fund disclosures; a security holding is not.
+        floor = 0 if isinstance(kind, str) and kind.strip().lower() == "equity" else -100
+        if w is None or not floor <= w <= 100 or not isinstance(kind, str) or not kind.strip():
+            gaps.append(f"holding row {index + 1}: invalid weight or missing asset type")
+            continue
+        sid = row.get("sid")
+        if sid is not None and (not isinstance(sid, str) or not sid.strip()):
+            gaps.append(f"holding row {index + 1}: invalid security identity")
+            continue
+        identity = sid.strip() if sid else None
+        if identity is not None and identity in seen:
+            gaps.append(f"holding row {index + 1}: duplicate security identity")
+            continue
+        if identity is not None:
+            seen.add(identity)
+        rec = {"sid": sid.strip() if sid else None, "ticker": row.get("ticker"),
                "name": row.get("title"), "weight": w,
-               "change3m": _f(row.get("change3m")), "type": row.get("type")}
+               "change3m": _f(row.get("change3m")), "type": kind.strip()}
         positions.append(rec)
-        if str(row.get("type", "")).lower() == "equity":
-            equity_w += w
+    if math.fsum(p["weight"] for p in positions) > 100 + 1e-8:
+        gaps.append("disclosed holding weights exceed 100%")
+    equity_w = None if gaps else math.fsum(
+        p["weight"] for p in positions if p["type"].lower() == "equity")
+    if gaps:
+        gaps.append("equity allocation is unknown because the disclosed book is invalid or incomplete")
 
-    sector_w = {}
-    for row in (d.get("sectorWeightage") or d.get("sectorDistribution") or []):
-        if isinstance(row, dict):
-            key = row.get("name") or row.get("title") or row.get("sector")
-            val = _f(row.get("latest") if row.get("latest") is not None else row.get("value"))
-            if key and val is not None:
-                sector_w[key] = val
+    sector_w, sector_as_of = {}, None
+    sectors = d.get("sectorWeightage")
+    snapshots = d.get("sectorDistribution")
+    if isinstance(snapshots, list) and snapshots:
+        # Tickertape's coherent form: dated snapshots of {sector, value}. The per-sector
+        # `sectorWeightage` history carries stray points, so it is not combined by date.
+        dated = [x for x in snapshots if isinstance(x, dict) and isinstance(x.get("holdings"), list)
+                 and isinstance(x.get("date"), (int, float)) and not isinstance(x.get("date"), bool)
+                 and 0 < x["date"] < 4e12]
+        if len(dated) != len(snapshots):
+            gaps.append("sector distribution: malformed dated snapshots skipped")
+        if dated:
+            latest = max(dated, key=lambda x: x["date"])
+            if sum(x["date"] == latest["date"] for x in dated) > 1:
+                gaps.append("sector distribution: duplicate snapshots for one date; distribution withheld")
+                sectors = []
+            else:
+                sectors = latest["holdings"]
+                sector_as_of = datetime.fromtimestamp(latest["date"] / 1000, timezone.utc).date().isoformat()
+    if sectors is None:
+        sectors = []
+    if not isinstance(sectors, list):
+        gaps.append("sector weights: expected a list")
+        sectors = []
+    for index, row in enumerate(sectors):
+        if not isinstance(row, dict):
+            gaps.append(f"sector row {index + 1}: expected an object")
+            continue
+        key = row.get("name") or row.get("title") or row.get("sector")
+        val = _f(row.get("latest") if row.get("latest") is not None else row.get("value"))
+        if not isinstance(key, str) or not key.strip() or val is None or not 0 <= val <= 100:
+            gaps.append(f"sector row {index + 1}: invalid name or weight")
+            continue
+        key = key.strip()
+        if key in sector_w:
+            gaps.append(f"sector row {index + 1}: duplicate sector; distribution withheld")
+            sector_w = {}
+            break
+        sector_w[key] = val
+    if math.fsum(sector_w.values()) > 100 + 1e-8:
+        gaps.append("sector weights exceed 100%; distribution withheld")
+        sector_w = {}
+    history = d.get("assetAllocationHistory", [])
+    if not isinstance(history, list):
+        gaps.append("allocation history: expected a list")
+        history = []
 
     data = {
         "mf_id": mf_id,
         "position_count": len(positions),
-        "equity_weight": round(equity_w, 2),
+        "equity_weight": equity_w,
         "positions": positions,
         "sector_weights": sector_w,
-        "allocation_history": d.get("assetAllocationHistory") or [],
+        "sector_weights_as_of": sector_as_of,
+        "allocation_history": history,
     }
-    gaps = []
     if equity_w and equity_w < 60:
         gaps.append(f"equity weight only {equity_w:.1f}% — treat as a hybrid/cash-heavy book")
-    env = _envelope(True, "Tickertape", data, gaps)
+    env = _envelope(bool(positions), "Tickertape", data, gaps)
     _write_cache(cache, env)
     return env
 
@@ -497,7 +634,9 @@ def stock_ratios(sid, fresh=False):
     caps by, so a downstream cap-tilt is a fact rather than an inference from ₹Cr bands.
     Everything else is Tickertape's sid-joined ratio feed.
     """
-    cache = _cache_path("stocks", sid)
+    if _provider_id(sid) is None:
+        return _envelope(False, "Tickertape", {"sid": sid}, [f"invalid Tickertape sid {sid!r}"])
+    cache = _cache_path("stocks_validated", sid)
     cached = _read_cache(cache, fresh, max_age_days=5)
     if cached is not None:
         return cached
@@ -505,11 +644,20 @@ def stock_ratios(sid, fresh=False):
     blob, gap = tickertape.get_json(f"/stocks/info/{sid}", timeout=25)
     if gap:
         return _envelope(False, "Tickertape", {"sid": sid}, [f"ratios for {sid}: {gap}"])
-    d = (blob or {}).get("data") or {}
-    info, rat = d.get("info") or {}, d.get("ratios") or {}
+    d = blob.get("data") if isinstance(blob, dict) else None
+    info = d.get("info", {}) if isinstance(d, dict) else None
+    rat = d.get("ratios", {}) if isinstance(d, dict) else None
+    if not isinstance(info, dict) or not isinstance(rat, dict):
+        return _envelope(False, "Tickertape", {"sid": sid},
+                         [f"ratios for {sid}: malformed company info or ratios"])
+    text_fields = [info.get(key) for key in ("ticker", "name", "sector")]
+    text_fields += [d.get("isin"), rat.get("marketCapLabel")]
+    if any(value is not None and not isinstance(value, str) for value in text_fields):
+        return _envelope(False, "Tickertape", {"sid": sid},
+                         [f"ratios for {sid}: malformed company identity or classification"])
     if not rat:
         return _envelope(False, "Tickertape", {"sid": sid},
-                         [f"no ratios published for {sid} (unlisted or newly listed)"])
+                         [f"no ratios published for {sid} in this response"])
     rank, label, gaps = _cap_rank(info.get("ticker"), d.get("isin"))
     data = {
         "sid": sid,
@@ -543,7 +691,7 @@ def enrich(positions, workers=10, fresh=False):
     Returns (enriched_positions, gaps).
     """
     equity = [p for p in positions if str(p.get("type", "")).lower() == "equity"]
-    sids = [p["sid"] for p in equity if p.get("sid")]
+    sids = list(dict.fromkeys(p["sid"] for p in equity if p.get("sid")))
     ratios, gaps, cap_period = {}, [], None
     if sids:
         # Prime the cap list before the pool: one workbook fetch for the whole book.
@@ -551,10 +699,9 @@ def enrich(positions, workers=10, fresh=False):
         gaps += cap_gaps
         with ThreadPoolExecutor(max_workers=workers) as pool:
             for sid, env in zip(sids, pool.map(lambda s: stock_ratios(s, fresh=fresh), sids)):
+                gaps += env.get("gaps", [])
                 if env.get("ok"):
                     ratios[sid] = env["data"]
-                else:
-                    gaps += env.get("gaps", [])
 
     out = []
     for p in equity:
@@ -564,8 +711,8 @@ def enrich(positions, workers=10, fresh=False):
         out.append(rec)
     unpriced_w = round(sum(p["weight"] for p in out if not p["priced"]), 2)
     if unpriced_w:
-        gaps.append(f"{unpriced_w}% of the book is unpriced (unlisted/newly-listed "
-                    f"holdings) — excluded from ratios, never extrapolated")
+        gaps.append(f"{unpriced_w}% of the book is unpriced (ratios unavailable) "
+                    f"— excluded from ratios, never extrapolated")
     unranked_w = round(sum(p["weight"] for p in out
                            if p["priced"] and p.get("cap_rank") is None), 2)
     if unranked_w:
@@ -578,6 +725,10 @@ def enrich(positions, workers=10, fresh=False):
 def nav_history(scheme_code, fresh=False):
     """Full daily NAV series for a scheme. `data = {code, meta, navs:[{date, nav}]}`
     with dates as ISO and OLDEST FIRST (mfapi serves newest-first)."""
+    if _scheme_code(scheme_code) is None:
+        return _envelope(False, "mfapi.in", {"code": scheme_code, "navs": []},
+                         [f"invalid AMFI scheme code {scheme_code!r}"])
+    scheme_code = _scheme_code(scheme_code)
     cache = _cache_path("nav", scheme_code)
     cached = _read_cache(cache, fresh)
     if cached is not None:
@@ -588,7 +739,7 @@ def nav_history(scheme_code, fresh=False):
         return _envelope(False, "mfapi.in", {"code": scheme_code, "navs": []},
                          [f"mfapi {scheme_code}: {gap}"])
     rows = (blob or {}).get("data") or []
-    navs = []
+    navs, dropped = [], 0
     for r in rows:
         # strptime, not split("-"): "not-a-date" splits into three parts just as happily
         # as a real date does and would be silently reassembled into "date-a-not",
@@ -596,11 +747,16 @@ def nav_history(scheme_code, fresh=False):
         # NAV. A NAV series feeds every return calculation — it has to be parsed strictly.
         try:
             iso = datetime.strptime(str(r.get("date", "")).strip(), "%d-%m-%Y").date()
-            navs.append({"date": iso.isoformat(), "nav": float(r["nav"])})
-        except (ValueError, TypeError, KeyError):  # a bad row never kills the series
-            continue
+            nav = _f(r["nav"])
+            if nav is None or nav <= 0:
+                raise ValueError("invalid NAV")
+            navs.append({"date": iso.isoformat(), "nav": nav})
+        except (ValueError, TypeError, KeyError, AttributeError):  # a bad row never kills the series
+            dropped += 1
     navs.sort(key=lambda x: x["date"])
     gaps = [] if navs else [f"mfapi returned no NAV rows for {scheme_code}"]
+    if dropped:
+        gaps.append(f"mfapi {scheme_code}: dropped {dropped} rows with invalid dates or NAVs")
     env = _envelope(bool(navs), "mfapi.in",
                     {"code": scheme_code, "meta": (blob or {}).get("meta") or {},
                      "count": len(navs), "navs": navs}, gaps)

@@ -14,7 +14,7 @@ is the plugin's.
 | Event | Why it can create value | The signal that matters |
 |---|---|---|
 | **Demerger / spin-off** | Splits a conglomerate so each division's true value shows; often cleaner governance and debt reduction | Focus on core competency, transparency of the parts, post-split debt path — the sum-of-parts vs the pre-split price |
-| **Buyback** | Management signalling the stock is undervalued; EPS accretive | Backed by real cash flow (not debt); tender vs open-market; buyback price vs market |
+| **Buyback** | Management's stated view that the stock is undervalued (a claim, not evidence); EPS-accretive only when the after-tax return the cash was earning is below the earnings yield at the buyback price | Backed by real cash flow (not debt); tender vs open-market; buyback price vs market |
 | **Merger / acquisition** | Scale, market share, synergy | Who gets the synergy — acquirer or target; price paid; integration risk |
 | **Delisting** | Promoter buying out minorities, usually at a premium | Floor price vs market; promoter intent and cash; reverse-book-building dynamics |
 | **Open offer** | Triggered acquirer bid to minorities | Offer price vs market; acceptance ratio |
@@ -31,12 +31,11 @@ mediocre businesses. Bonus/split carry no value on their own.
 1. **Candidate set.** Default to the watchlist (`artifacts/state/watchlist.json`) plus any
    `--universe` the user names. A full nifty500 per-name sweep is expensive (one filings call each) —
    scope it, and say so.
-2. **Pull events per name.**
-   - `get_corporate_actions(symbol)` → dividends / splits / bonuses with ex- and record-dates
-     (catches split, bonus, special dividend).
-   - `get_filings(symbol, days=90)` → NSE announcements pre-classified act-on / monitor / routine
-     (catches buyback, demerger, merger, delisting, open offer, rights, preferential — they land as
-     `act-on` board-meeting / scheme filings).
+2. **Pull events per name — one call.** `get_filings(symbol, days=90)` returns NSE announcements
+   pre-classified act-on / monitor / routine (buyback, demerger, merger, delisting, open offer,
+   rights, preferential land as `act-on` board-meeting / scheme filings) **and** its
+   `corporate_actions` list (dividends, splits, bonuses with ex- and record-dates). Do not call
+   `get_corporate_actions` as well; it returns the same rows.
 3. **Classify** each hit into the taxonomy above; drop the no-signal ones (routine bonus/split with
    no other thesis).
 4. **Judge value creation**, not the event — hand any survivor with a real case to

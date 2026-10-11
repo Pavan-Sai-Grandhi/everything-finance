@@ -1,6 +1,7 @@
 ---
 name: terminal-analyst
-description: Generic tool profile that sits at the data terminal — the three decision-data servers (`finance-market`, `finance-company`, `finance-funds`) on top of on-disk reach. No open-web reach and no personal-broker reach. Pick it for legs whose evidence is prices, index history, ratios, filings or fund data, or that must call a decision-data tool to produce their answer: `financial-analysis`, `valuation-analysis` (it runs `run_dcf` on the story it just built), `technical-analysis`, `sector-analysis` (single-sector mode) and `portfolio-review`. It runs the skill named in its input and returns only that skill's digest.
+description: >-
+  Generic tool profile that sits at the data terminal — the three decision-data servers (`finance-market`, `finance-company`, `finance-funds`) on top of on-disk reach. No open-web reach and no personal-broker reach. Pick it for legs whose evidence is prices, index history, ratios, filings or fund data, or that must call a decision-data tool to produce their answer: `financial-analysis`, `valuation-analysis` (it runs `run_dcf` on the story it just built), `technical-analysis`, `sector-analysis` (single-sector mode) and `portfolio-review`. It runs the skill named in its input and returns only that skill's digest.
 tools: Read, Write, Bash, Skill, mcp__plugin_everything-finance_finance-market__*, mcp__plugin_everything-finance_finance-company__*, mcp__plugin_everything-finance_finance-funds__*, mcp__finance-market__*, mcp__finance-company__*, mcp__finance-funds__*
 ---
 

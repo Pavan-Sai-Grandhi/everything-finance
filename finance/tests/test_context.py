@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import tempfile
+from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import context as mc
@@ -78,7 +79,8 @@ check("_pct is None when nothing was priced (never 0%, which reads as a real fin
 check("_pct is None on a missing block", mc._pct(None) is None)
 
 ctx = {
-    "as_of": "2026-08-14", "generated": "2026-08-16",
+    "as_of": "2026-08-14", "generated": str(date.today()), "history_years": 10,
+    "context_version": mc._CONTEXT_VERSION, "mode": "standard",
     "market_trend": "range", "market_posture": "neutral", "rationale": "why",
     "trend_detail": {"close": 24366.0, "above_ema50": True, "above_ema200": False,
                      "pct_from_52w_high": -7.5},
@@ -181,10 +183,11 @@ import json  # noqa: E402
 tmp = tempfile.mkdtemp()
 calls = []
 
+fixture_context = ctx.copy()
+
 def fake_compute(mode="standard", years=10):
     calls.append(mode)
-    return {"as_of": "2026-08-18", "mode": mode, "market_trend": "uptrend",
-            "market_posture": "risk-on", "rationale": "synthetic", "gaps": []}
+    return dict(fixture_context, as_of="2026-08-18", mode=mode, history_years=years, gaps=[])
 
 orig_compute = mc.compute
 orig_path = mc.artifact_path
@@ -221,5 +224,110 @@ finally:
     mc.compute = orig_compute
     mc.artifact_path = orig_path
     shutil.rmtree(tmp, ignore_errors=True)
+
+# Missing evidence must not turn into a favourable trading gate.
+from unittest.mock import patch
+import pandas as pd
+
+check("missing trend comparisons stay unknown", mc.classify_trend(None, None, None) == "unknown")
+check("invalid VIX stays unknown", all(mc.classify_vol_band(v) == "unknown"
+      for v in (float('nan'), float('inf'), -1, True)))
+check("missing VIX cannot authorize risk-on", mc.classify_posture("up", "unknown", 70)[0] == "neutral")
+check("missing breadth cannot authorize risk-on", mc.classify_posture("up", "normal", None)[0] == "neutral")
+check("invalid breadth cannot authorize risk-on", mc.classify_posture("up", "normal", 101)[0] == "neutral")
+check("impossible participation counts are unavailable", mc._pct({'count': 11, 'of': 10}) is None)
+with patch.object(mc.prices, 'history_df', return_value=(None, ['upstream unavailable'])):
+    gaps = []
+    vol = mc._volatility(gaps)
+    check("missing volatility remains unknown in fetched context", vol['band'] == 'unknown')
+    check("volatility preserves source gaps", 'upstream unavailable' in gaps)
+frame = pd.DataFrame({'Close': [100.] * 199 + [float('nan')]},
+                     index=pd.date_range('2025-01-01', periods=200))
+with patch.object(mc.prices, 'history_df', return_value=(frame, [])):
+    check("EMA warmup counts usable observations", mc._trend([])[0] == 'unknown')
+sector_frame = pd.DataFrame({'Close': range(1, 61)}, index=pd.date_range('2025-01-01', periods=60))
+with patch.object(mc.market, 'SECTOR_YF', {'A': 'A', 'B': 'B'}), \
+     patch.object(mc.market, 'breadth', return_value={'data': {}, 'gaps': []}), \
+     patch.object(mc.prices, 'history_df', side_effect=[(sector_frame, []), (None, ['B unavailable'])]):
+    gaps = []
+    breadth = mc._breadth(gaps)
+    check("partial sector coverage cannot pass a full-universe gate", breadth['pct_sectors_above_ema50'] is None)
+    check("sector source gaps survive", 'B unavailable' in gaps)
+check("relative history unavailable is not similar valuation", 'unavailable' in mc._relative({
+    'NIFTY 50': {'pb': 3}, 'NIFTY SMALLCAP 250': {'pb': 4}})['read'])
+
+# Cache correctness, interrupted publication, and simultaneous consumers.
+from concurrent.futures import ThreadPoolExecutor
+with tempfile.TemporaryDirectory() as tmp:
+    target = os.path.join(tmp, 'market.json')
+    with patch.object(mc, 'artifact_path', return_value=target):
+        valid = dict(fixture_context, gaps=[])
+        for bad in ([], dict(valid, history_years=5), dict(valid, generated='2000-01-01'),
+                    dict(valid, context_version=0), dict(valid, volatility=[]),
+                    dict(valid, as_of='2999-01-01'), dict(valid, breadth={'value': float('nan')})):
+            with open(target, 'w') as stream:
+                json.dump(bad, stream)
+            check('incompatible or invalid context is not reused', mc.load_today() is None)
+        mc.persist(valid)
+        original = open(target).read()
+        with patch.object(mc.os, 'replace', side_effect=OSError('simulated interrupted replacement')):
+            try:
+                mc.persist(dict(valid, rationale='replacement'))
+            except OSError:
+                pass
+        check('failed replacement preserves complete prior snapshot', open(target).read() == original)
+        check('failed replacement cleans its temporary file', os.listdir(tmp) == ['market.json'])
+        try:
+            mc.persist(dict(valid, volatility={'vix': float('nan')}))
+        except ValueError:
+            pass
+        check('nonfinite publication cannot overwrite prior snapshot', open(target).read() == original)
+        os.unlink(target)
+        def compute_fixture(mode='standard', years=10):
+            return dict(valid, mode=mode, history_years=years, gaps=[])
+        with patch.object(mc, 'compute', side_effect=compute_fixture) as compute_mock:
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                contexts = list(pool.map(lambda _: mc.resolve(mode='quick'), range(4)))
+            check('concurrent quick consumers compute once', compute_mock.call_count == 1)
+            check('concurrent consumers share the same snapshot', all(c == contexts[0] for c in contexts))
+            mc.resolve(mode='quick', years=5)
+            check('changed history window triggers recomputation', compute_mock.call_count == 2)
+            custom = os.path.join(tmp, 'copy.json')
+            mc.resolve(mode='quick', years=5, out=custom)
+            check('cached result still honors requested output', json.load(open(custom)) == json.load(open(target)))
+        with patch.object(mc, 'compute', side_effect=compute_fixture), \
+             patch.object(mc, 'persist', side_effect=OSError('read-only directory')):
+            degraded = mc.resolve(fresh=True)
+            check('persistence failure returns computed evidence with a gap',
+                  degraded['market_trend'] == valid['market_trend'] and
+                  any('persistence unavailable' in g for g in degraded['gaps']))
+
+check("invalid percentiles do not create valuation stances",
+      mc.classify_stance(float('nan'), 101, True) == ('unknown', None))
+check("nonpositive and nonfinite PE observations cannot skew ranking",
+      mc.robust_pe_percentile([20, 22, 24, -10, float('nan'), True], 22) ==
+      mc.robust_pe_percentile([20, 22, 24], 22))
+with tempfile.TemporaryDirectory() as tmp:
+    with patch.object(mc.paths, 'report_dir', return_value=tmp):
+        for name, value in [('2020-01-01.json', dict(fixture_context, as_of='2020-01-01')),
+                            ('2020-01-02.json', []),
+                            (str(date.today()) + '.json', fixture_context)]:
+            with open(os.path.join(tmp, name), 'w') as stream:
+                json.dump(value, stream)
+        for suffix in ('md', 'html', 'lock'):
+            open(os.path.join(tmp, '2999-01-01.' + suffix), 'w').close()
+        check("history filters current, malformed and non-JSON files before limiting",
+              mc._transitions(limit=1) == [{'date': '2020-01-01', 'trend': 'range', 'posture': 'neutral'}])
+
+with patch.object(mc.prices, 'history_df', return_value=(sector_frame, [])):
+    gaps = []
+    vol = mc._volatility(gaps, expected_as_of='2026-09-01')
+    check("stale VIX cannot satisfy current-session risk gate", vol['vix'] is None and vol['band'] == 'unknown' and bool(gaps))
+with patch.object(mc.market, 'SECTOR_YF', {'A': 'A'}), \
+     patch.object(mc.market, 'breadth', return_value={'data': {}, 'gaps': []}), \
+     patch.object(mc.prices, 'history_df', return_value=(sector_frame, [])):
+    gaps = []
+    br = mc._breadth(gaps, expected_as_of='2026-09-01')
+    check("stale sector history cannot satisfy current-session breadth gate", br['pct_sectors_above_ema50'] is None and br['sectors_available'] == 0 and bool(gaps))
 
 summary()
