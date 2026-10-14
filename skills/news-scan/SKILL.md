@@ -10,13 +10,13 @@ allowed-tools: Read, Write, mcp__finance-company__*, mcp__plugin_everything-fina
 
 Read `references/reference.md` first — it owns the method: the window rule, the fact-vs-narrative standard, how publisher tier weighs a claim, the four sentiment traps, and the −2…+2 scale with its confidence rubric. This SKILL is the workflow.
 
-**Sources for this skill only:** `finance-company` — `get_news(company, ticker, days=60)` and `get_filings(symbol, days)`. No article scraping: `get_news` already returns each item **dated, deduped, classified** (`company` | `sector` | `noise`), tagged **reported | narrative** (title-only triage, never verification), and carrying its `source` and `publisher_tier`, with noise filtered from the default view and a blocked feed as a labelled `gap`. `get_filings` returns **no items inline** — its whole list goes to `data.items_path`, so `Read` that file rather than re-calling the tool.
+**Sources for this skill only:** `finance-company` — `get_news(company, ticker, days=60)` and `get_filings(symbol, days)`. No article scraping: `get_news` already returns each item **dated, deduped, classified** (`company` | `sector` | `noise`), tagged **reported | narrative** from the headline alone (not verified), and carrying its `source` and `publisher_tier`, with noise filtered from the default view and a blocked feed as a labelled `gap`. `get_filings` returns **no items inline** — its whole list goes to `data.items_path`, so `Read` that file rather than re-calling the tool.
 
 ## Workflow
 
 1. **Inputs**: the ticker and the company name, and — where an orchestrator has one — an output path.
 2. **Fetch once.** `get_news` over the window, `get_filings` over the same span, then `Read` the filings file. The work here is judgement, not plumbing; widen the window only for the reason the reference gives.
-3. **Sort the items** into verified fact, reported claim/allegation and narrative, weighing each by publisher tier and by whether a filing stands behind it. Where two outlets carry **different numbers for the same reported figure**, the disagreement is usually standalone-vs-consolidated or a restated comparative — resolve it against the filing in `get_filings`, which is the primary source, and report the filed figure with the discrepancy named. Leaving both numbers in as a gap passes a resolvable conflict downstream.
+3. **Sort the items** into verified fact, reported claim/allegation and narrative, weighing each by publisher tier and by whether a filing stands behind it. Where two outlets carry **different numbers for the same reported figure**, the disagreement is usually standalone-vs-consolidated or a restated comparative — resolve it against the filing in `get_filings`, which is the primary source, and report the filed figure with the discrepancy named. Do not leave both numbers in as a gap when the filing settles it.
 4. **Find the storyline** the coverage keeps returning to, and the filing it has *not* picked up.
 5. **Score and grade confidence** on the reference's scale, then check the read against each of the four traps before you commit to it.
 

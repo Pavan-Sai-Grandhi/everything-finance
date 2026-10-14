@@ -14,7 +14,7 @@ is the plugin's.
 | Event | Why it can create value | The signal that matters |
 |---|---|---|
 | **Demerger / spin-off** | Splits a conglomerate so each division's true value shows; often cleaner governance and debt reduction | Focus on core competency, transparency of the parts, post-split debt path — the sum-of-parts vs the pre-split price |
-| **Buyback** | Management's stated view that the stock is undervalued (a claim, not evidence); EPS-accretive only when the after-tax return the cash was earning is below the earnings yield at the buyback price | Backed by real cash flow (not debt); tender vs open-market; buyback price vs market |
+| **Buyback** | Management says the stock is undervalued (a claim, not evidence); EPS-accretive only when the cash was earning less after tax than the earnings yield at the buyback price | Backed by real cash flow (not debt); tender vs open-market; buyback price vs market |
 | **Merger / acquisition** | Scale, market share, synergy | Who gets the synergy — acquirer or target; price paid; integration risk |
 | **Delisting** | Promoter buying out minorities, usually at a premium | Floor price vs market; promoter intent and cash; reverse-book-building dynamics |
 | **Open offer** | Triggered acquirer bid to minorities | Offer price vs market; acceptance ratio |

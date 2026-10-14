@@ -38,7 +38,7 @@ def run(url, version, store, args):
         signal.signal(signal.SIGTERM, forward)
         signal.signal(signal.SIGINT, forward)
         try:
-            # A slow login remains the owner; elapsed time never authorizes a rival.
+            # A slow login keeps ownership; waiting longer never lets a second login start.
             while child.poll() is None and not token.is_file():
                 time.sleep(.2)
             fcntl.flock(lock, fcntl.LOCK_UN)

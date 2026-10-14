@@ -7,6 +7,7 @@ rather than carrying its own copy, so the envelope contract and the cache-freshn
 have exactly one definition. See `finance/contracts.md`.
 """
 import json
+import math
 import hashlib
 import os
 import tempfile
@@ -137,6 +138,11 @@ def read_cache(path, fresh, stamp_key=CACHE_STAMP, max_age_days=0):
     return blob if 0 <= age <= max_age_days else None
 
 
+def is_finite(value):
+    """A real int/float that is finite. Strings and booleans are not numbers."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def write_cache(path, env, stamp_key=CACHE_STAMP):
     """Stamp the envelope with our fetch date and persist it. A failed write is ignored.
 
@@ -146,35 +152,63 @@ def write_cache(path, env, stamp_key=CACHE_STAMP):
     when we fetched. The source's own date field is left untouched.
     """
     env.setdefault("data", {})[stamp_key] = today()
-    pending = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=os.path.dirname(os.path.abspath(path)),
-                                         delete=False, encoding="utf-8") as fh:
-            pending = fh.name
-            json.dump(env, fh, ensure_ascii=False)
-        os.replace(pending, path)
+        atomic_write(path, lambda fh: json.dump(env, fh, ensure_ascii=False))
     except Exception:  # noqa: BLE001
         pass
+
+
+def _write_temp(directory, write, fsync, newline):
+    """Write a complete temporary file beside its destination and return its name."""
+    with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8",
+                                     newline=newline, delete=False) as stream:
+        try:
+            write(stream)
+            if fsync:
+                stream.flush()
+                os.fsync(stream.fileno())
+        except BaseException:
+            stream.close()
+            os.unlink(stream.name)
+            raise
+        return stream.name
+
+
+def atomic_write(path, write, fsync=False, mode=None, newline=None):
+    """Replace `path` with what `write(stream)` produces; a failure leaves the old file.
+
+    `write` is a string or a callable taking the open text stream. `mode` sets the file
+    permissions (default: the temp file's owner-only mode). Errors propagate.
+    """
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    writer = (lambda s: s.write(write)) if isinstance(write, str) else write
+    temporary = _write_temp(directory, writer, fsync, newline)
+    try:
+        if mode is not None:
+            os.chmod(temporary, mode)
+        os.replace(temporary, path)
     finally:
-        if pending and os.path.exists(pending):
-            os.unlink(pending)
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return path
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def publish_evidence(prefix, suffix, write):
     """Publish immutable evidence for both CSV and JSON, after a complete write."""
-    temporary = None
+    temporary = _write_temp(os.path.dirname(os.path.abspath(prefix)), write, False, "")
     try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=os.path.dirname(os.path.abspath(prefix)),
-                                         encoding="utf-8", newline="", delete=False) as stream:
-            temporary = stream.name
-            write(stream)
-        digest = hashlib.sha256()
-        with open(temporary, "rb") as stream:
-            for block in iter(lambda: stream.read(65536), b""):
-                digest.update(block)
-        path = f"{prefix}-{digest.hexdigest()}{suffix}"
+        path = f"{prefix}-{file_sha256(temporary)}{suffix}"
         os.replace(temporary, path)
         return path
     finally:
-        if temporary and os.path.exists(temporary):
+        if os.path.exists(temporary):
             os.unlink(temporary)

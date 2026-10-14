@@ -30,8 +30,7 @@ def main(argv=None):
     except (OSError, ValueError, TypeError) as exc:
         print(json.dumps({"ok": False, "gaps": [str(exc)]}), file=sys.stderr)
         return 1
-    print(output, end="")
-    print()
+    print(output)
     return 0
 
 

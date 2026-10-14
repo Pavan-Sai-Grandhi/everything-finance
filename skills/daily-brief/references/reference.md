@@ -21,14 +21,14 @@ Self-contained: everything the brief needs is here. The deeper versions of the s
 - No reliable markdown tables in Telegram — the telegram-brief template uses emoji + line items instead.
 - Use `parse_mode=HTML` if formatting is needed (`<b>`, `<i>`); plain text is safer. Escape user-uncontrolled text.
 
-Use the shared Telegram sender, only after user authorization. No automatic retry after an uncertain response.
+Send to Telegram only when the user asks, through `bin/send-telegram.sh`, and do not retry a send whose result is unclear.
 
 ## Position-state thresholds
 
 - NEAR-SL: CMP within 2% of stoploss → user should be at the screen today.
 - TARGET-ZONE: CMP within 2% of target → decide book/trail today.
-- SL-HIT / TARGET-HIT: the latest verified completed-session close crossed the level; name its absolute date. This is a price-condition event, not proof of a broker execution. A position remains open until actual fills establish an exit. Intraday crossings must be labelled intraday.
-- Time-stop note: use the matched strategy/trade artifact’s actual time-stop and confirmed entry date. Missing rationale or timing rules means unassessed; do not invent a universal four-week expiry.
+- SL-HIT / TARGET-HIT: the latest completed-session close crossed the level; give its date. This is a price event, not an execution, and the position stays open until broker fills show an exit. Label an intraday cross as intraday.
+- Time-stop note: use the time stop from the matched strategy or trade artifact and the confirmed entry date. Without them, the time stop is unassessed.
 - **State precedence** (report the first that applies): SL-HIT / TARGET-HIT → NEAR-SL / TARGET-ZONE → STALE → ON-TRACK. A stopped-out position outranks a merely stale one, so STALE only surfaces on a position that is old *and* still sitting between its stop and target with no progress.
 
 ## Tone

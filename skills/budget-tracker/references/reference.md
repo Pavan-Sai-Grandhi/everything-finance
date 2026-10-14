@@ -1,6 +1,6 @@
 # Budget framework reference
 
-The user's `Monthly Budget Planning.xlsx`, when supplied, is the authority for their targets. Do not assume a private Downloads file exists, is blank, or has particular sheet names. The bands below are optional planning heuristics bundled with this plugin; label them as framework comparisons when no user targets are available. They are not lender rules or a universal measure of financial health.
+The user's `Monthly Budget Planning.xlsx`, when supplied, sets their targets. Do not assume the file exists or has particular sheet names. The bands below are this plugin's planning heuristics, not lender rules; label them as framework comparisons when the user gives no targets.
 
 ## The five buckets (from the Monthly Budget sheet)
 
@@ -10,11 +10,11 @@ The sheet computes each bucket as a % of TOTAL MONTHLY INFLOW (income + addition
 |---|---|---|
 | **Essential expenses** | House rent & maintenance, property tax, utilities, groceries, transportation, medical, children school fees, insurance premiums | ≤ 50% |
 | **Lifestyle expenses** | Maid, shopping, travel, dine & entertainment | ≤ 10–15% |
-| **EMIs** | Home loan, car loan, personal loan, other EMIs | ≤ 20–25% (framework comparison only; no universal lender ceiling implied) |
+| **EMIs** | Home loan, car loan, personal loan, other EMIs | ≤ 20–25% (framework heuristic, not a lender limit) |
 | **Investments** | Mutual funds, stocks, fixed deposits, others | ≥ 20% (treat as a fixed bill — pay yourself first) |
-| **Leftout** | Inflow − all outflows | ≥ 0; reconcile unassigned cash against reserves, upcoming bills and goals before proposing a use |
+| **Leftout** | Inflow − all outflows | ≥ 0; check it against reserves, upcoming bills and goals before proposing a use |
 
-Compare actual percentages with the user's populated targets when available, and label the fallback bands otherwise. Missing statements or unclear inflows prevent a reliable adherence verdict.
+Compare actual percentages with the user's targets when available, and label the fallback bands otherwise. With missing statements or unclear inflows, give no adherence verdict.
 
 ## Category mapping taxonomy
 
@@ -43,7 +43,7 @@ The taxonomy above is the fallback, not the first authority. `scripts/categorize
 2. **Taxonomy tokens** — match complete narration tokens, never substrings inside another merchant name; the category→token table above, scanned most-specific-first (`SWIGGY INSTAMART` → Groceries, not Dine, because `INSTAMART` is matched before `SWIGGY`).
 3. **UNCATEGORIZED** — no match.
 
-The **same tokenizer** keys both lookup and write, so a correction always resolves the merchant it was made against. When the user classifies an UNCATEGORIZED merchant (or overrides a taxonomy guess), `--learn` writes `token → category` back to the map; next month that merchant resolves in step 1 and UNCATEGORIZED shrinks. The map stores tokens, never raw narrations. A missing map starts empty. An unreadable or invalid map is preserved: categorization continues with taxonomy and an explicit gap, while learning refuses to overwrite it. Restore or repair the saved file before learning again. Corrections are validated against the supported categories; the CLI locks the full read–modify–write operation and publishes atomically.
+The **same tokenizer** keys both lookup and write, so a correction always resolves the merchant it was made against. When the user classifies an UNCATEGORIZED merchant (or overrides a taxonomy guess), `--learn` writes `token → category` back to the map; next month that merchant resolves in step 1 and UNCATEGORIZED shrinks. The map stores tokens, never raw narrations. A missing map starts empty. An unreadable map is left alone: categorization uses the taxonomy with a gap, and `--learn` refuses to write until the file is repaired. Corrections must name a supported category; the CLI locks the file and writes it atomically.
 
 ## Recurring-detection rules
 
@@ -51,10 +51,10 @@ The **same tokenizer** keys both lookup and write, so a correction always resolv
 
 - **Cadence** requires every inter-charge gap to fall in the same band (the median describes the observed interval): monthly (24–38 days), quarterly (80–100), annual (350–400). `monthly_equivalent` = amount ÷ months-per-charge (monthly = amount, quarterly = amount/3, annual = amount/12).
 - **Roughly stable amount** — recurring only if the relative spread stays within tolerance (a modest rise is allowed and flagged as creep, not disqualified); genuinely variable spend (groceries) is *not* called recurring even at a regular cadence.
-- **Confidence**: high (≥3 regular charges), medium (2), low (single charge — candidate only). An observed pattern is still not proof of a contractual obligation.
+- **Confidence**: high (≥3 regular charges), medium (2), low (single charge, candidate only).
 - **Flags**: `new` (first appearance is the current month), `price_creep` (latest amount rose vs the prior cadence — cite prior→now), `dormant` (an established recurring charge overdue by >1.6× its cadence — possibly a missed cancellation worth confirming; **excluded** from the committed monthly total).
-- **Single period** (no prior months): surface a familiar subscription merchant as a low-confidence candidate, with `cadence` and `monthly_equivalent` null. Exclude it from `total_committed_monthly` until recurrence is observed or independently confirmed; an Apple/Google charge may be a one-off purchase.
-- **Coverage**: exclude transactions after `as_of`, invalid dates/amounts, investments, ATM withdrawals and card-bill settlements. Carry returned `gaps` into the report. Separate accounts are separate series. Repeated imports must be deduplicated by statement transaction identity before this script; identical amounts alone do not prove duplicates.
+- **Single period** (no prior months): list a known subscription merchant as a low-confidence candidate with `cadence` and `monthly_equivalent` null, and leave it out of `total_committed_monthly` until it recurs. An Apple or Google charge may be a one-off purchase.
+- **Coverage**: the script skips transactions after `as_of`, invalid dates or amounts, investments, ATM withdrawals and card-bill payments, and reports them in `gaps`. Each account is its own series. Remove duplicate imports by transaction ID before running it; equal amounts alone are not duplicates.
 
 Deterministic and reproducible from the artifacts — every cited amount carries the months it was observed in.
 

@@ -49,7 +49,6 @@ import json
 import math
 import os
 import sys
-import tempfile
 
 from finance import paths, spine
 from finance.compute import relval
@@ -997,28 +996,15 @@ def main():
         print(f"MODEL-INVALID: {e}", file=sys.stderr)
         sys.exit(3)
 
-    pending = None
     try:
         out = json.dumps(result, indent=2, allow_nan=False)
         if args.out:
-            directory = os.path.dirname(os.path.abspath(args.out))
-            os.makedirs(directory, exist_ok=True)
-            with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8",
-                                             delete=False) as stream:
-                pending = stream.name
-                stream.write(out + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(pending, args.out)
-            pending = None
+            spine.atomic_write(args.out, out + "\n", fsync=True)
             print(f"wrote {args.out}")
         else:
             print(out)
     except (OSError, ValueError, TypeError) as exc:
         ap.error(f"could not publish result: {exc}")
-    finally:
-        if pending and os.path.exists(pending):
-            os.unlink(pending)
 
     ps = result["intrinsic_value_per_share"]
     for gap in result.get("gaps", []):

@@ -44,7 +44,7 @@ focus_position: leader | laggard | n/a
 **RS vs Nifty**: 1M <±x.x%> / 3M <±x.x%> / 6M <±x.x%> → classification (Leading/Improving/Weakening/Lagging)
 **Cycle position**: one line — where this sector sits in the rotation cycle and why now
 **KPI snapshot**: the sector's signature KPIs, current reading + trend, each sourced (NIM/GNPA/CASA, EBITDA/tonne, VNB margin/combined ratio, SSSG, ARR/RevPAR, etc.)
-**Tailwinds**: up to 3 bullets, each carrying its source — "none sourced" is a valid answer, never a reason to fill the slot
+**Tailwinds**: up to 3 bullets, each with its source; "none sourced" is a valid answer
 **Headwinds**: up to 3 bullets, each carrying its source — same rule
 **Leaders / laggards**: 3 leaders + the weakest name, one KPI each
 **<FOCUS TICKER> within the sector**: [only if a focus stock was given] RS vs the sector index, KPI vs sector median, leader-or-laggard, does the sector tail/headwind help or hurt it

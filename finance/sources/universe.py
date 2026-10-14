@@ -171,8 +171,8 @@ def resolve(name, fresh=False):
         digest = hashlib.sha256("\n".join(symbols).encode()).hexdigest()[:16]
         path = _cache_path(f"custom-{digest}")
     else:
-        # A failed refresh returns the original snapshot. Never write those old
-        # constituents under today's name, which would erase their provenance.
+        # A failed refresh returns the original snapshot. Do not copy it into today's
+        # file, or the list would look newer than it is.
         path = _newest_cached(key) if gaps else _cache_path(key)
     if symbols and key == "custom":
         _write_list(path, symbols)

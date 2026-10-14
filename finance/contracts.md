@@ -24,7 +24,7 @@ data, gaps}`. No name appears on two servers.
 **Layering rule:** anything that fetches, or computes over fetched data, is a **tool** — leaving a skill's
 `scripts/` pure compute over user-supplied files. Bulk lists (`candles`, `positions`, `navs`, `items`,
 `funds`) **spill to disk**: the tool writes the full list to cache and returns `data[<key>]` truncated plus
-`data[<key>_total]` and `data[<key>_path]`. Spill files are immutable content-addressed snapshots: later calls cannot replace the evidence at an earlier returned path. Documents are *only* ever a path (*Artifact: document cache*).
+`data[<key>_total]` and `data[<key>_path]`. Spill files are named by content hash, so a later call cannot replace a file an earlier call returned. Documents are *only* ever a path (*Artifact: document cache*).
 
 **`finance/spine.py` — shared fetcher primitives.** The envelope builder, float coercion, vendor-row key
 picker, symbol/date normalizers, and the day-stamped disk cache. Imported by every source, compute module and
@@ -60,7 +60,7 @@ Callers ask this module where to read/write instead of hardcoding, so the layout
 `$EVERYTHING_FINANCE_ARTIFACTS` or `./artifacts`. Three tiers: **dated output** (`stocks/<TICKER>/<date>/`,
 `funds/<SCHEME>/<date>/`, skill-first singletons like `daily-brief/<date>.report.{json,html}`), **durable state**
 (`state/{strategies,trades,alerts,sectors}/`, `state/watchlist.json`), **disposable** (`cache/`, `tmp/`);
-helpers create dirs on demand. Entity components cannot contain traversal or separators; cache namespaces may nest within their tier. Dates are validated calendar days (monthly singleton reports also accept YYYY-MM). Existing symlinks cannot redirect paths outside the configured root. **`latest_prior(skill, subject, before=None)`** / **tool `get_prior_run`**
+helpers create dirs on demand. Ticker and scheme components reject `..` and path separators; cache namespaces may nest. Dates must be real calendar days (monthly reports also accept YYYY-MM). A symlink cannot point a path outside the root. **`latest_prior(skill, subject, before=None)`** / **tool `get_prior_run`**
 (envelope `data:{skill, subject, before, path, date}`, the only reach for `valuation-analysis`/
 `management-analysis`/`filings-watch`, which carry no `Bash`) power "refer the earlier run"; `skill` keys are
 exactly `deep-analysis, fundamentals, dcf, management, filings` (stocks) + `mf-analysis` (funds), else
@@ -80,10 +80,9 @@ Everything else a spec names is attached on demand by **`ta.materialize(df, name
 registered patterns/signals in **`ta.FEATURES`** (`inside_bar, outside_bar, engulfing, hammer, doji,
 coil_breakout, golden_cross, macd_bullish_cross, rsi_oversold, bb_squeeze, volume_surge, new_high_20, …`);
 `ta.is_feature(name)` tests resolution. A new period/signal needs no code change; only a new primitive is
-registered once. `sources/prices.history_df` owns price loading and the dated source cache for both
-backtesting and live screening. The old undated `<symbol>_<years>y.csv` cache and fetcher inside `ta.py`
-are removed; existing legacy CSVs are left untouched and ignored. TA-Lib needs the native lib
-(`brew install ta-lib`), bootstrapped by `ta._need_talib()`; ordinary Python dependencies use `deps.need`.
+registered once. `sources/prices.history_df` loads and caches prices for both backtesting and live
+screening. TA-Lib needs the native lib (`brew install ta-lib`), bootstrapped by `ta._need_talib()`; other
+Python dependencies use `deps.need`.
 `test_ta.py`.
 
 ### `finance/compute/strategy.py` — spec → signal engine
@@ -107,12 +106,12 @@ never re-implemented in a skill:
 | `sector_scan.py` | `run_sector_screen` | sectoral indices → RS-vs-Nifty ranked + classified → top-N (see *Artifact: sector-scan shortlist*) |
 | `relative_strength.py` | *(internal to `stock_scan`/`sector_scan`)* | windowed returns + Leading/Improving/Weakening/Lagging classification — the one RS definition |
 | `backtest.py` | `run_backtest` | trading spec → historical expectancy, profit factor, drawdown vs buy-and-hold |
-| `trade_check.py` | `check_trade` | a trade-idea artifact + decision prices → recommendation and unrealized position metrics; never execution evidence |
+| `trade_check.py` | `check_trade` | a trade-idea artifact + decision prices → recommendation and unrealized position metrics. It is not proof of an execution |
 | `fund_scan.py` | `get_fund_scan` | a whole SEBI sub-category → gated, scored shortlist (rolling-return math from `rolling.py`) |
 | `lookthrough.py` | `get_fund_lookthrough` | complete holdings + per-stock ratios → weighted portfolio valuation, cap tilt, concentration |
 | `rolling.py` | *(internal to `fund_scan`)* | rolling returns, drawdown, risk-adjusted ratios from a NAV series |
-| `dcf.py` + `relval.py` | `run_dcf` | sourced inputs → intrinsic value/share (+ optional grids) and the relative-multiples read, one answer; full JSON and exact supplied inputs spilled immutably to `stocks/<TICKER>/<date>/dcf-<hash>.json` |
-| `governance.py` | `run_governance_checks` | annual-report figures → `remuneration` (`ratio_pct` vs the 11% total cap; `executive_ratio_pct` vs the 5%/10% MD/WTD cap only when `executive_remuneration` and `managing_directors` are given) and `auditor_fee` (fee YoY vs aligned revenue/profit series); PASS/FLAG/FAIL/NOT-CHECKED, and invalid or unbenchmarked inputs are NOT-CHECKED, never PASS. Consumed by `management-analysis` checks 1 and 5 |
+| `dcf.py` + `relval.py` | `run_dcf` | sourced inputs → intrinsic value/share (+ optional grids) and the relative-multiples read, one answer; full JSON and the supplied inputs written to `stocks/<TICKER>/<date>/dcf-<hash>.json` |
+| `governance.py` | `run_governance_checks` | annual-report figures → `remuneration` (`ratio_pct` vs the 11% total cap; `executive_ratio_pct` vs the 5%/10% MD/WTD cap only when `executive_remuneration` and `managing_directors` are given) and `auditor_fee` (fee YoY vs aligned revenue/profit series); PASS/FLAG/FAIL/NOT-CHECKED. Invalid inputs, or a fee with no revenue/profit series, are NOT-CHECKED. Read by `management-analysis` checks 1 and 5 |
 | `alerts.py` | `manage_alerts` | the alert inbox: list / add / dismiss / snooze / sweep (see *Artifact: alert*) |
 | `insurance_math.py` | `run_insurance_math` | user-supplied figures → term cover need, health sum insured, IDV/NCB sanity, marginal IRR of continuing a policy |
 
@@ -128,22 +127,19 @@ material_count, act_on:[…], monitor:[…], routine_count, items:[…], corpora
 the NSE symbol** — BSE-only is a labelled gap. Also `shareholding(symbol, quarters)` → `data:{symbol,
 quarters:[{quarter, promoter_pct, public_pct, employee_trusts_pct, filed_on, xbrl}], pledge:[…],
 pledge_summary:{declared, pledged_pct, pledged_shares, encumbered_pct, encumbered_shares, source, gaps}|null}` and
-`corporate_actions(symbol)` → `data:{symbol, corporate_actions:[…]}`. `quarters` must be a positive integer (rejected before fetch); rows are ordered newest-first by their own period date and the pledge summary reads the newest filing's XBRL, fetched only from an HTTPS `nseindia.com` host. **Absent readable pledge evidence is a labelled gap meaning UNKNOWN, never "no pledge".**
-Announcement items in `summarize` carry `filing_id`, a stable SHA-256 of date, attachment
-URL and complete, untruncated source headline. Exact repeats collapse; distinct attachments or
-headlines remain separate. Alert producers use `filing-<TICKER>-<filing_id>`, never a
-date-only key. Version-3 filing caches exclude legacy snapshots that may have lost rows
-through headline truncation or prefix deduplication. Long headlines retain full evidence;
-reports may shorten their displayed summary without changing identity. IDs distinguish returned evidence, not a guaranteed
-exchange event lineage; corrected or differently indexed disclosures may have new IDs.
-An explicit XBRL `false`/`0` can establish zero pledged shares, but cannot establish zero other
-encumbrances. Unknown/nil values remain unknown; invalid ranges, conflicting contexts and
-contradictory declaration/figures produce gaps, also forwarded to the outer envelope.
-All four exchange lists re-check issuer identity before selecting rows; missing/foreign symbols
-are excluded with a gap. Shareholding filters before the quarter limit and XBRL fetch, and
-symbols such as `M&M` are query-encoded. The endpoint has returned the whole market when its
-filter is not honoured; `ok:false` + `gap` means "unknown", not "nothing
-filed". `test_filings.py` (offline exchange/XBRL fixtures).
+`corporate_actions(symbol)` → `data:{symbol, corporate_actions:[…]}`. `quarters` must be a positive integer.
+Rows are sorted newest-first by their own period date, and the pledge summary reads the newest filing's XBRL,
+fetched only from an HTTPS `nseindia.com` host. **Missing pledge evidence is a labelled gap meaning UNKNOWN,
+never "no pledge".** An XBRL `false`/`0` shows zero pledged shares but says nothing about other encumbrances.
+Invalid ranges and contradictory figures are gaps.
+
+Each announcement in `summarize` carries `filing_id`, a SHA-256 of date, attachment URL and full headline.
+Exact repeats collapse into one item. Alert producers key on `filing-<TICKER>-<filing_id>`, never on the date
+alone. A corrected or re-indexed disclosure can get a new ID.
+
+All four exchange lists re-check the issuer before using a row, because the endpoint has returned the whole
+market when it ignores its filter. Rows for other symbols are dropped with a gap. Symbols such as `M&M` are
+URL-encoded. `ok:false` + `gap` means "unknown", not "nothing filed". `test_filings.py`.
 
 ### `finance/sources/prices.py` — price fetch (live + history + reconcile)
 Consumers: `get_quote` / `get_history` / `run_technical_screen`, plus `compute/{screen,trade_check,context}.py`
@@ -154,20 +150,14 @@ is live/screening truth; **yfinance** is EOD-history truth. Envelope forms:
 - `history_df(symbol, period="1y", adjusted=True)` → `(pandas OHLCV frame, gaps)` — fed straight to `ta.add_indicators`.
 - `screen(filters, columns=None, limit=50)` → `data:{filters, count, candidates:[…], rows:[…]}`.
 - `reconcile(symbol, tolerance=0.01)` → `data:{symbol, tv_close, yf_close, divergence_pct, tolerance, agree}`; a divergence beyond tolerance is a `gap`.
-Technical screens require a positive integer limit and distinct nonempty column names.
-The request enforces NSE and range `[0, limit]`; malformed responses and excluded rows
-produce gaps. Returned candidates are unique NSE symbols; requested close values must be
-finite and positive, and the limit is re-applied locally. A partial screen remains usable
-with its gaps; market breadth forwards those gaps with its actual per-metric denominators.
+`screen` needs a positive integer limit and distinct column names. It requests NSE rows only and returns
+unique NSE symbols with a positive close. Malformed or excluded rows are gaps; the rest of the screen is
+still usable.
 
-History validates calendar dates, finite positive OHLC, nonnegative volume and consistent
-low/open/close/high ranges, and sorts unique sessions. Invalid or duplicate sessions are
-excluded with gaps and `bars_dropped_invalid`; a missing close does not establish why the
-bar is missing. The old `bars_dropped_unsettled` field is removed because it asserted an
-unverified cause. A bar dated today carries a completion-unverified gap; consumers must
-not use that bar as proof of a completed-close event. Cache hits verify symbol, period,
-adjustment, candle validity and summary identity before reuse. Current-day completion
-verification still requires exchange/session evidence, not just a finite close.
+`history` drops bars with a bad date, a nonpositive price, negative volume, impossible OHLC geometry or a
+duplicate session, counts them in `bars_dropped_invalid` and adds a gap. A bar dated today carries a gap
+saying the session may not be complete, so do not treat it as a completed close. A cache hit must match
+symbol, period and adjustment.
 
 **No indicators computed here** — callers pass `candles` to `ta.add_indicators`, so a screen and its backtest
 share one indicator-of-record; no TV indicator ingestion or library. `test_prices.py` (offline parser + reconcile fixtures).
@@ -178,7 +168,7 @@ its universe here — the one resolver). `resolve_symbols(name, fresh=False)` �
 resolver; `resolve(name, fresh=False)` → the envelope (`data:{name, symbols_count, universe_path, as_of}`; see
 *Artifact: universe*). Named universes (`nifty50|nifty100|nifty200|nifty500`, `microcap`, `fno`, `largecap20`)
 come from NSE's published constituent CSVs via `transport.py`, cached dated with a stale-cache fallback; a list,
-comma-string or file path is resolved locally. Holds `LARGECAP20_BASKET`. Symbol normalization belongs to the price source; no unverified demerger alias is applied.
+comma-string or file path is resolved locally. Holds `LARGECAP20_BASKET`.
 `test_universe.py` (stubbed transport).
 
 ### `finance/sources/news.py` — company news (Google News RSS)
@@ -189,26 +179,23 @@ Each item is **dated** (ISO or `null`), **deduped**, **classified** `kind ∈ {c
 `tag ∈ {reported, narrative}`, and carries `publisher_tier ∈ {established, aggregator, unknown}` (never dropped —
 weigh a single-sourced `aggregator` claim accordingly). **Noise is filtered from the default `items` view**
 (pass `include_noise` to keep it). A block returns `ok:false` + labelled `gap`, never an empty crash.
-The tag is title-only triage: `reported` is an unverified claim, never a verified fact.
-Publisher tiers match known display labels exactly; they do not authenticate the publisher or
-prove a claim. Material figures still need primary-source corroboration. Raw feeds are cached
-once per company/query window/day using the shared atomic cache; ticker classification, noise
-filtering and reference-date windows are derived per call. `fetched_at` retains the feed acquisition
-time. `noise_filtered` counts only items actually removed. Invalid/unknown dates are `null` and
-visible undated items produce a recency gap. Old processed caches are ignored.
-`test_news.py` (offline parser/classifier/cache fixtures).
+The tag is read from the title only, so `reported` means an unverified claim. `publisher_tier` matches the
+publisher's display name exactly and does not authenticate it. A material figure still needs a primary
+source. The raw feed is cached once per company per day; classification and filtering run on each call.
+Undated items add a recency gap. `test_news.py`.
 
 ### `finance/sources/tickertape.py` — the one Tickertape client
 Consumers: `sources/fundamentals.py`, `sources/funds.py`. Holds the `tickertape.in` Referer every path 403s
 without; `resolve_sid(symbol)` → `({sid, ticker, name, sector, slug}, gap)`, the only NSE-symbol→Tickertape-sid
 map (sid differs from ticker — REC is `RECLTD`/`RECM`). Only exact ticker equality is accepted (a near-miss
-misattributes financials). Cached 90 days, with exact ticker/security-id validation on read; conflicting exact-match IDs are unresolved. Cache keys are content-hashed to avoid punctuation collisions, and the shared client rejects provider-declared failures/malformed responses.
+misattributes financials); two exact matches with different sids leave the symbol unresolved. Cached 90 days
+under a hashed key. Responses the provider marks as failed, or that are malformed, are gaps.
 
 ### `finance/sources/fundamentals.py` — Tickertape financials + the screener.in document index
 Consumers: `get_company_fundamentals` / `run_fundamental_screen`, read by `financial-analysis`,
 `valuation-analysis`, and `discover` / `strategy-manager` (fundamental cut). Envelope forms:
-- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,period_kinds,rows}, balance_sheet_10y:{…}, cash_flow_10y:{…}, quarters:{…}, shareholding:{columns,rows}, peers:[{symbol,name,sid,ttm_pe,pb}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `period_kinds` parallels `columns` (`FY`/`TTM`/`interim`). Each peer row carries its own **trailing** multiples from the same response, so the relative read needs no per-peer call; an unpublished multiple is `None`. `sections` narrows both answer and **work** (only those endpoints are called — what keeps `get_documents` to one screener fetch); a narrowed read does not populate the day cache, only a full one does. Unknown/malformed section requests refuse the whole request before fetching; cached projections list only returned sections and recompute `ok` for them. Full caches are keyed by NSE symbol plus any explicit security-id override; legacy symbol-only caches are ignored. Each source section degrades independently to its typed empty value and a gap on malformed data; empty table metadata is not usable evidence.
-- `screen(query, limit=1000)` → `data:{query, count, candidates:[…]}`, biggest market cap first. `query` is `FIELD >/< VALUE` clauses joined by `AND` over Tickertape's screener field names; `>=`/`<=` and an unresolvable name **refuse the whole query** (a half-resolved query returns companies that never passed the cut). Repeated lower/upper bounds combine using the strongest constraint, independent of clause order; contradictory strict bounds and nonfinite/malformed thresholds refuse the query. Returned numeric projections are checked against every bound client-side; missing or failing rows are excluded with gaps. The limit must be a positive integer. Old unverified candidate caches are ignored.
+- `fetch(symbol, sections=None)` → `data:{symbol, name, sid, ratios:{name:value}, pnl_10y:{columns,period_kinds,rows}, balance_sheet_10y:{…}, cash_flow_10y:{…}, quarters:{…}, shareholding:{columns,rows}, peers:[{symbol,name,sid,ttm_pe,pb}], documents:{annual_reports:[{label,url}], concalls:[{label,url}]}}`. `period_kinds` parallels `columns` (`FY`/`TTM`/`interim`). Each peer row carries its own **trailing** multiples from the same response, so the relative read needs no per-peer call; an unpublished multiple is `None`. `sections` narrows both answer and **work** (only those endpoints are called — what keeps `get_documents` to one screener fetch); a narrowed read does not populate the day cache, only a full one does. An unknown section name refuses the request before any fetch. A malformed section returns its empty value and a gap; the other sections are unaffected. The cache key includes any explicit sid override.
+- `screen(query, limit=1000)` → `data:{query, count, candidates:[…]}`, biggest market cap first. `query` is `FIELD >/< VALUE` clauses joined by `AND` over Tickertape's screener field names; `>=`/`<=` and an unresolvable name **refuse the whole query** (a half-resolved query returns companies that never passed the cut). Repeated bounds on one field keep the tightest; contradictory bounds or a non-numeric threshold refuse the query. Each returned row is re-checked against every bound, and rows that fail or lack the field are dropped with a gap.
 
 Line-item labels are **Tickertape's own vocabulary**, and three mean less than their name suggests:
 - `Taxes & Other Items` (`incToi`) lumps tax with the non-controlling interest — no effective tax rate is
@@ -235,17 +222,25 @@ holding and a per-quarter shareholder count are not published (current count is 
 reports itself rather than reading as a company that has filed nothing. Covered by
 `finance/tests/test_fundamentals.py` (offline parser fixtures).
 
-### `finance/sources/screener_screen.py` — retired compatibility endpoint
-`run_saved_screen` remains callable for legacy clients but always returns `ok:false`, an empty candidate list and a source-policy gap. It performs no network or cache access. Repository policy approves screener.in only for document discovery, not screening or financial inputs. Investment specs accept Tickertape only and must name a universe. Re-author unsupported saved-screen specs explicitly; do not weaken or substitute criteria automatically. `test_screener_screen.py` and `test_stock_scan.py` enforce refusal before fetching.
+### `finance/sources/screener_screen.py` — retired
+`run_saved_screen` still exists for old clients. It always returns `ok:false`, no candidates and a
+source-policy gap, and makes no request: screener.in is approved for documents only. Investment specs use
+Tickertape and must name a universe. A spec written for a saved screen must be rewritten by its author;
+the engine does not substitute criteria. `test_screener_screen.py`, `test_stock_scan.py`.
 
 ### `finance/sources/documents.py` — primary documents as cached local text
 Consumer: `get_documents` (envelope, cache layout, reading legs in *Artifact: document cache*).
-`fetch(symbol, annual_reports=1, concalls=1, fresh=False)` → envelope. Counts must be nonnegative integers; zero disables a section. Malformed index rows are gaps, URLs are deduplicated per section before applying the count, and individual document failures preserve other results. Takes the index from
+`fetch(symbol, annual_reports=1, concalls=1, fresh=False)` → envelope. Counts are nonnegative integers; zero
+skips that section. Duplicate URLs are removed before the count applies, and one failed document does not
+affect the others. Takes the index from
 `fundamentals.fetch(symbol, sections=["documents"])` (one screener fetch) and downloads each link via
-`transport.request(url, dest=…)` (the one socket). Index links are untrusted: an IP-literal, loopback or local-network host is refused with a gap before download (a redirect from a public host is not re-checked). Each section is newest-first by year (and quarter) parsed
+`transport.request(url, dest=…)` (the one socket). A link to an IP literal, loopback or local-network host
+is refused with a gap; a public host that redirects to one is not caught. Each section is newest-first by year (and quarter) parsed
 from the label; a label with no parseable year falls back to list position + a labelled gap. Conversion is
 `pdftotext -layout` for PDFs (keeps table column alignment) and an in-process strip for text/HTML;
-`extracted_by` records which ran. PDF URLs must return PDF bytes; non-PDF text must decode as UTF-8 and contain no binary controls. Known access/error page titles are rejected. These format checks do not prove publisher trust or document authenticity. Older metadata without format-validation status is re-extracted. A zero-char PDF extraction (cause unverified) and a missing `pdftotext` (`brew install
+`extracted_by` records which ran. A PDF URL must return PDF bytes; other text must be valid UTF-8 with no
+binary bytes, and known error-page titles are rejected. These checks do not prove the document is
+authentic. A PDF that extracts to zero characters and a missing `pdftotext` (`brew install
 poppler`) are labelled gaps, never crashes. `test_documents.py`.
 
 ### `finance/sources/market.py` — market-wide fetch (indices, valuation history, breadth, flows, macro)
@@ -253,12 +248,11 @@ Consumers: `get_indices` / `get_index_valuation_history` / `get_breadth` / `get_
 `compute/context.py`. **No skill reads this for a market view** — every skill reads the market-context artifact.
 Envelope forms:
 - `indices()` → `data.indices:{<CANONICAL NAME>:{last, pe, pb, dy, pct_change, pct_change_1y}}` for ~139 NSE indices in one call (NSE `allIndices`). `index_levels(names=None)` is the budgeted form (`None` = `BROAD_INDICES`; ~139 are too many inline).
-- `breadth()` ranks NSE rows with positive market capitalization without a fixed rupee floor. `requested_universe` records the request; `universe` counts unique usable identities and each `counts.<metric>.of` is that metric's priced denominator. Missing coverage is a gap. Context preserves these counts; percentages must not be described as percentages of a larger requested universe.
-- `macro()` retains source gaps and validates unique dated observations. Its `chg_1m_pct` is a 21-observation-interval proxy requiring 22 closes and a positive base, with `chg_1m_from` identifying that base date; otherwise null. `history_period`, `observations` and `first_observation` disclose the actual sample. `percentile` ranks available observations; legacy `percentile_5y` is only populated for a `5y` request and does not guarantee complete five-year coverage. Cache keys hash the period instead of interpolating it into a path.
-- `flows()` returns only recognized FII/FPI and DII categories from one latest available session. Unknown categories, invalid/future dates, duplicate session/category rows and inconsistent buy-minus-sell versus net values are labelled gaps; an older category is never merged into the newer session. Net arithmetic allows ₹0.02 Cr of source rounding. Missing categories remain absent. Daily market caches use the shared atomic spine implementation.
-- `index_snapshot(day)` / `valuation_history(index, years)` → month-end `{date, close, pe, pb, dy}` from NSE archive CSVs. **One fetch per sampled DATE serves every index**. Named CSV rows must match the requested archive session; duplicate index identities reject the snapshot. Permanent caches require a validated format version, numeric shape and a date within the requested fallback window; old caches are refetched. Snapshots are published atomically and future requests are rejected before transport. Validated snapshots are cached permanently (what makes a 10y multi-index percentile affordable). History de-duplicates actual trading dates after holiday fallback, forwards failed-sample gaps, and reports `requested_samples`, `first_observation` and `last_observation` alongside the unique `samples`. Nonpositive P/E/P/B and negative yields are unavailable for ranking. `max_fetches` bounds uncached or forced snapshot requests (a snapshot may try several holiday fallback dates). `valuation_percentiles(index, years)` → ranks only `{index, years, samples, pe|pb|dy:{current, percentile, n}}`; `pe` also carries `excluded` — P/E is ranked by `robust_pe_percentile` (samples ≥ 3× median dropped), the same method `get_market_context` uses, so the two cannot disagree.
-- `breadth(universe)` → `data.counts:{above_sma50, above_sma200, advancing, near_52w_high, near_52w_low}`, each `{count, of}`.
-- `flows()` → `data.flows:{FII,DII}:{buy_cr, sell_cr, net_cr}`; `macro(period)` → `{last, chg_1m_pct, percentile_5y, as_of}` per series.
+- `index_snapshot(day)` / `valuation_history(index, years)` → month-end `{date, close, pe, pb, dy}` from NSE archive CSVs. **One fetch per sampled DATE serves every index**, and a validated snapshot is cached permanently (what makes a 10y multi-index percentile affordable). A row must match the requested session. When a holiday pushes two samples onto one trading date, it counts once; the result reports `requested_samples`, `samples`, `first_observation` and `last_observation`. `max_fetches` caps uncached requests. Nonpositive P/E or P/B is not ranked.
+- `valuation_percentiles(index, years)` → ranks only `{index, years, samples, pe|pb|dy:{current, percentile, n}}`. P/E is ranked by `robust_pe_percentile`, which drops samples at or above 3× the median and reports them in `pe.excluded`. `get_market_context` uses the same function.
+- `breadth(universe)` → `data.counts:{above_sma50, above_sma200, advancing, near_52w_high, near_52w_low}`, each `{count, of}`. Each `of` is the number of stocks priced for that metric, which can be smaller than `requested_universe`.
+- `flows()` → `data.flows:{FII,DII}:{buy_cr, sell_cr, net_cr}` for the latest session only. Unknown categories, bad dates, duplicates and a net that differs from buy minus sell by more than ₹0.02 Cr are gaps.
+- `macro(period)` → `{last, chg_1m_pct, chg_1m_from, percentile, percentile_5y, observations, first_observation, as_of}` per series. `chg_1m_pct` is the change over 21 sessions and is null with fewer than 22 closes. `percentile_5y` is filled only for a `5y` request.
 - `percentile(values, value)` — the one pure primitive; ranks, does not judge.
 `SECTOR_YF` is the **single** NSE-sectoral yfinance ticker map (which sectors exist). Fetches only — no regime
 label, stance or score. `test_market.py`.
@@ -267,86 +261,61 @@ label, stance or score. `test_market.py`.
 Consumers: `resolve_fund` / `screen_funds` / `get_fund_holdings` / `get_nav_history` / `get_stock_ratios`, plus
 `compute/{fund_scan,lookthrough}.py`. Envelope forms:
 - `resolve(name)` → `{scheme_code, isin, amfi_name, plan, mf_id, tickertape_name}`; AMFI `NAVAll.txt` is the scheme-code/ISIN authority (mfapi's search misses funds).
-- `screen(subsector, option, min_aum)` → `data.funds:[{mf_id, name, aum, expRatio, ret1y/3y/5y, sharpe, sortino, alpha, stdDevAnn, percSmallcap/Midcap/Largecap, ageInMon, …}]`. Vendor `match` string filters are ignored, so filtering is client-side; `PREMIUM_FIELDS` are stripped (one gated field 403s the whole call). `min_aum` must be finite and nonnegative, `limit_pages` a positive integer. A full final page at the page cap is a truncation gap, and a universe with any pagination gap is never cached.
-- `holdings(mf_id)` → `data.positions:[{sid, ticker, name, weight, change3m, type}]` — the **complete** book (64-278 positions, 90-99% coverage), plus `equity_weight`, `sector_weights` (from the newest dated `sectorDistribution` snapshot), `sector_weights_as_of`, `allocation_history`. `sid` is the join key (differs from `ticker`). Equity rows must weigh 0–100%; non-equity lines such as net receivables/payables may be negative.
+- `screen(subsector, option, min_aum)` → `data.funds:[{mf_id, name, aum, expRatio, ret1y/3y/5y, sharpe, sortino, alpha, stdDevAnn, percSmallcap/Midcap/Largecap, ageInMon, …}]`. Vendor `match` string filters are ignored, so filtering is client-side; `PREMIUM_FIELDS` are stripped (one gated field 403s the whole call). Subsector matching ignores case. If the last page allowed by `limit_pages` is full, the list may be truncated: that is a gap, and an incomplete list is not cached.
+- `holdings(mf_id)` → `data.positions:[{sid, ticker, name, weight, change3m, type}]` — the **complete** book (64-278 positions, 90-99% coverage), plus `equity_weight`, `sector_weights` (from the newest dated `sectorDistribution` snapshot), `sector_weights_as_of`, `allocation_history`. `sid` is the join key (differs from `ticker`). Equity rows weigh 0–100%; a non-equity line such as net receivables can be negative.
 - `stock_ratios(sid)` / `enrich(positions)` → per-holding `{pe, ttm_pe, pb, roe, market_cap_cr, cap_rank, cap_label, sector, …}`, threaded + cached. **`pe` is annualised, `ttm_pe` is TTM** — for a peer comparison against a company's own `Stock P/E` (TTM) use `ttm_pe` (else ~8% skew). **`cap_rank`/`cap_label` from `amfi_cap_list()`** — AMFI's half-yearly `AverageMarketCapitalization*.xlsx` (link resolved from the categorisation index), whose `Sr. No.` **is** the SEBI rank (`caps.py`), joined on NSE symbol (ISIN fallback). A symbol absent from the period gets `cap_rank: None` + gap, `cap_label` falls back to the provider label. The rest of the row is Tickertape's sid-joined ratios.
 - `nav_history(code)` → `data.navs:[{date ISO, nav}]` oldest-first.
-- Identifiers are validated before cache or transport: `mf_id`/`sid` must be one URL path segment (`[A-Za-z0-9][A-Za-z0-9&_.-]*`), `scheme_code` a positive integer. `lookthrough.report(workers=…)` requires a positive integer.
+- `mf_id`/`sid` must match `[A-Za-z0-9][A-Za-z0-9&_.-]*` and `scheme_code` must be a positive integer, checked before any request.
 **Fund holdings never come from the IndMoney feed** — it caps at 20 rows, misreports coverage, can be months
 stale. `test_funds.py`.
 
-AMFI workbook discovery accepts HTTPS URLs on `www.amfiindia.com` and
-`portal.amfiindia.com`, without credentials or nonstandard ports. Relative links resolve
-against the index URL. Both index and workbook requests refuse redirects; a changed
-endpoint therefore produces a gap rather than an unchecked fetch. Future-dated periods
-are ineligible both during discovery and when reading the workbook cache. Pre-validation AMFI
-workbook caches are bypassed.
+AMFI workbook links are fetched only over HTTPS from `www.amfiindia.com` or `portal.amfiindia.com`, with no
+redirects, so a moved endpoint gives a gap instead of an unchecked download. Future-dated periods are skipped.
+A rank must be a positive integer. Rows that share a symbol or ISIN are dropped with a gap, and a ticker match
+that contradicts the ISIN supplies no rank. The parsed cap index is kept in memory for one calendar day.
 
-AMFI workbook ranks must be finite positive integers under the shared cap rules.
-Invalid ranks and all rows sharing duplicate symbols or ISINs are excluded with a gap;
-valid unrelated rows remain available. A ticker match that contradicts the supplied
-ISIN cannot supply a rank. Pre-validation workbook and stock-ratio caches are bypassed.
+Cache keys are hashes of the full identifier. One holding with a malformed ratio payload gets a gap; the rest
+are still enriched. A missing ratio does not mean the holding is unlisted.
 
-The in-memory AMFI cap index is reused within one calendar day and artifact root.
-A new day rechecks the disk cache's 30-day freshness policy; failed in-memory reads
-therefore do not persist for the server's entire lifetime. Workbook downloads use
-per-request temporary directories and the parser closes its workbook before cleanup.
+Look-through needs an explicit equity allocation. Without it, enrichment is skipped, because summing the rows
+that arrived cannot stand in for the coverage denominator. Holding weights must be 0–100, sum to at most 100,
+and none may exceed the equity allocation. Malformed rows, duplicate sids or a total above 100 set
+`equity_weight:null` with gaps; the result is `ok:false`, `confidence: unusable`, `ratios_publishable:false`,
+with no metrics. `pb_over_roe` is computed on the holdings that have both P/B and ROE, and the 60% coverage
+gate applies to that shared set. Coverage counts disclosed positions; it cannot prove the provider omitted
+nothing.
 
-Fund-source caches use hashes of complete keys, so punctuation in distinct fund/security
-identities cannot collapse to the same cache entry. Existing disposable caches using
-sanitized filenames are ignored and repopulated on demand. Malformed company-info,
-ratio or classification payloads return a source gap for that holding; they do not abort
-the other holdings' enrichment.
+Fund-scan reports are written to `paths.fund_dir("<category> scan")/fund-scan-<content-hash>.json` and
+`report_path` returns that path. `out` is only a filename prefix; read the returned path. A failed write
+returns the shortlist with a gap and `report_path: null`.
 
-Enrichment fetches each distinct security ID once and preserves gaps from both successful
-partial responses and failed responses. A missing ratio is not evidence that a holding
-is unlisted. Look-through skips per-stock enrichment when the equity allocation is unknown:
-additional ratio requests cannot repair the missing coverage denominator. Available
-position counts and upstream gaps remain in the unusable report.
-
-The look-through `pb_over_roe` uses P/B and ROE recomputed on their common holding set,
-with coverage measured on that intersection. It may differ from dividing the separately
-reported portfolio ratios, which can cover different holdings. The same coverage gate
-applies; separate 60% coverage does not imply 60% shared coverage.
-
-Look-through portfolio metrics require finite holding-weight percentages in [0,100],
-a total no greater than 100%, and no listed weight above the supplied equity allocation
-(apart from floating-point roundoff). Explicit zero allocation is not treated as missing. A nonempty holdings list requires
-an explicit equity allocation; summing whatever rows arrived cannot substitute for a
-missing coverage denominator. Tickertape holdings retain the full precision of the sum
-of disclosed equity positions; this is disclosed-position coverage, not independent
-verification that a provider omitted no positions. Malformed rows, invalid weights or
-asset types, duplicate security IDs, and disclosed totals above 100% leave
-`equity_weight:null` with gaps; valid positions remain available for inspection, but
-cannot support coverage claims. Malformed optional sector data is separately labelled
-and does not invalidate otherwise usable position weights. Legacy holdings caches are
-bypassed by the validated cache namespace.
-Invalid weights return `ok:false`, empty `metrics`, `confidence: unusable`, and
-`ratios_publishable:false` with source and validation gaps; they cannot yield coverage
-or valuation conclusions.
-
-Fund-scan reports are immutable JSON snapshots under `paths.fund_dir("<category> scan")`.
-`report_path` points to `fund-scan-<content-hash>.json`. An optional `out` is a filename
-prefix hint, not an overwrite destination; consumers must use the returned path. A later
-scan cannot replace an earlier shortlist, and identical content reuses its address.
-Write failures return the computed shortlist with a gap and null `report_path`.
-
-For cross-provider fund-scan ranking, `compute/fund_scan.match_amfi_scheme` requires
-identifying-name token equality after plan/noise terms, Direct and Growth markers,
-no excluded distribution-plan marker, and exactly one distinct AMFI scheme code.
-Multiple candidates are a gap; shortest-name selection is not identity evidence.
-Duplicate registry rows for the same code do not create ambiguity.
-
-Fund identity matching requires every identifying query token at a word boundary (AMC word prefixes are allowed); an empty query cannot pick an arbitrary scheme. NAV parsing rejects invalid dates and nonfinite/nonpositive values with a labelled gap. Fund-screen caches include requested fields and page limits, and always project columns needed by client-side filters.
+`compute/fund_scan.match_amfi_scheme` joins a Tickertape fund to an AMFI scheme only when the name tokens
+match after dropping plan words, the scheme is Direct Growth, and exactly one scheme code fits. More than one
+candidate is a gap. `resolve` needs every query token to match at a word boundary. NAV rows with a bad date
+or a nonpositive value are dropped with a gap.
 
 ### `finance/compute/holdings.py` — holdings source-resolver + normalizer
 Consumers: `daily-brief`, `trade-tracker`, and the personal-finance cluster (`wealth-manager`,
 `portfolio-review`, `mf-analysis`). Turns whichever read source is connected into ONE canonical position shape
 under a fixed precedence.
 - **Envelope:** `resolve(…)` → `{ok, source, fetched_at, data:{positions:[…]}, gaps:[…]}`.
-- **Canonical position:** `{ticker, qty, avg, ltp, pnl, xirr, broker, asset_class, invested, value, unsettled_qty, source, as_of}`. For Kite, `qty` = settled `quantity` + `t1_quantity` (Kite documents `quantity` as the T+2 settled amount, so a T+1 purchase has quantity 0 and is still held). Upstox documents `quantity` as the total holding, so `qty` = `quantity` there, unless `quantity` < `t1_quantity` proves T+1 was excluded. `unsettled_qty` names the T+1 part either way. Broker rows also carry `broker_symbol` (raw), `exchange` and `isin`; `ticker` drops an NSE series suffix (`-BE`, `-RR`, `-IV`, `-SM`…), and `asset_class` is set only from published identifiers — ISIN `INF…` → `etf`, `IN0…` → `sovereign gold bond`/`government security`, series RR/IV → `reit`/`invit` — so the equity slice excludes them (verified on a live Kite payload 2026-10-12). Neither broker documents a total formula; these are the plugin's stated readings of each broker's field definitions.
-  `broker`/`invested`/`asset_class` populate from **IndMoney**, `None` when only broker/portfolio data. The live IndMoney `networth_holdings` (verified 2026-10-11) is a JSON string under `result`, one `asset_type` per call (the CLI takes `--indmoney` repeatedly), with `total_units`/`unit_price`/`total_pnl`/`investment`/`investment_code` and **no XIRR**; `investment_code` is an internal id kept as `instrument_code`, never a ticker. Linked-broker stock rows report cost equal to value with zero P&L; they normalize to unknown cost with `cost_basis: unreported_by_linked_broker`, and the resolver's gap names the connected broker to `--prefer` for their cost.
-  exists. `value` retains a reported current value, including zero. The shared `market_value` helper used by allocation and wealth resolves reported value → invested plus P&L → quantity times current price; cost alone stays unavailable. `source` labels the winning source per position (`indmoney`, `kite`/`upstox`, `portfolio`).
+- **Canonical position:** `{ticker, qty, avg, ltp, pnl, xirr, broker, asset_class, invested, value, unsettled_qty, source, as_of}`.
+  `source` names the winning source per position (`indmoney`, `kite`/`upstox`, `portfolio`). `value` keeps a
+  reported current value, including zero. `market_value`, shared by allocation and wealth, takes the reported
+  value, else invested plus P&L, else quantity times price. Cost alone is never a market value.
+- **Kite and Upstox quantity.** Kite's `quantity` is the settled (T+2) amount, so `qty` = `quantity` +
+  `t1_quantity`. Upstox's `quantity` is already the total, so `qty` = `quantity` unless it is smaller than
+  `t1_quantity`. `unsettled_qty` is the T+1 part for both. Neither broker documents a total; this is the
+  plugin's reading of their field definitions.
+- **Broker identifiers.** Rows carry the raw `broker_symbol`, `exchange` and `isin`. `ticker` drops the series
+  suffix (`-BE`, `-RR`, `-IV`, `-SM`). `asset_class` comes only from ISIN and series: `INF…` is `etf`, `IN0…` is
+  `sovereign gold bond` or `government security`, series RR/IV is `reit`/`invit`. The equity slice excludes these.
+- **IndMoney.** `broker`, `invested` and `asset_class` come from IndMoney and are `None` otherwise.
+  `networth_holdings` returns a JSON string under `result`, one `asset_type` per call (pass `--indmoney` once per
+  type), with `total_units`, `unit_price`, `total_pnl`, `investment` and `investment_code`, and no XIRR.
+  `investment_code` is IndMoney's internal id, kept as `instrument_code` and never used as a ticker. Stocks held
+  through a linked broker report cost equal to value; they get unknown cost with
+  `cost_basis: unreported_by_linked_broker`, and the gap names the broker to `--prefer` for cost.
 - **`normalize(payload, source)`** maps an IndMoney `networth_holdings`, a Kite/Upstox holdings+positions, or a
   hand-maintained positions block (`watchlist.json` `positions` or equivalent) to canonical positions. **Keeps
   all asset classes** (wealth-manager reuses this); consumers filter.
@@ -385,68 +354,53 @@ Key blocks and who reads them:
 | `regime_required` | generate | select_strategy.py, trade-tracker | conditions checked against the live **market-context** artifact at PICK time |
 | `screening.fundamental` | generate | discover Stage 1 | `provider: tickertape` + `query` (Tickertape catalogue field names, `>`/`<` only) + `max_survivors` |
 | `screening.technical` | generate | discover Stage 2 | `provider: tradingview` (+`tradingview_filters`) or `compute` (+`compute_filters` naming `ta` features) |
-| `entry`/`exit`/`sizing` | generate | `run_strategy_screen`, `run_backtest` (both via `compute/strategy.py`) | `entry.signal` (required explicit machine trigger; no screening-filter fallback); `exit`: stop (auto-floored at max(0.5·ATR, 1% price)) / target (exact `measured_move`\|`min_rrr`\|`next_resistance`\|`trailing`\|`signal`\|`none`) / min_rrr (finite, at least 1.5) / time_stop / **`trail_atr`** (ATR trailing stop) / **`exit_signal`** (close-on-condition, entry grammar); %-risk |
+| `entry`/`exit`/`sizing` | generate | `run_strategy_screen`, `run_backtest` (both via `compute/strategy.py`) | `entry.signal` (required machine trigger); `exit`: stop (auto-floored at max(0.5·ATR, 1% price)) / target (`measured_move`\|`min_rrr`\|`next_resistance`\|`trailing`\|`signal`\|`none`) / min_rrr (at least 1.5) / time_stop / **`trail_atr`** (ATR trailing stop) / **`exit_signal`** (close-on-condition, entry grammar); %-risk |
 | `expectancy_assumptions` | **`run_backtest`** results, written back by strategy-manager | strategy-manager validate, select_strategy.py | `{win_rate, expectancy_R, profit_factor, n_trades, validated_by}`. strategy-manager applies the activation gate — `active` only on `expectancy_R > 0.2` over ≥~30 trades; select_strategy.py uses `expectancy_R` to rank |
-| `live_performance` | trade-tracker → optimize | select_strategy.py | realized edge; `expectancy_R` overrides backtest only when the aggregator sets `eligible_for_selection: true` (≥10 execution-backed closes, no excluded/unattributed outcomes). Legacy scores lack this flag and are ignored |
+| `live_performance` | trade-tracker → optimize | select_strategy.py | realized edge; its `expectancy_R` replaces the backtest's only when the aggregator sets `eligible_for_selection: true` (at least 10 closes backed by executions, none excluded or unattributed) |
 
-Target names are exact machine values; free-text alternatives are rejected. `measured_move`
-uses the prior 20-bar range height. `min_rrr` is a risk-multiple objective;
-`next_resistance` is a legacy alias for that proxy, not detected chart resistance.
-`trailing` requires positive `trail_atr`; `signal` requires `exit_signal`; `none`
-requires either. If target is omitted, the engine selects trailing/signal when configured,
-otherwise min_rrr. Dynamic exits remain backtestable, but the live screen returns a skip:
-it cannot invent a fixed objective to satisfy the plugin's entry/stop/target discipline.
-A fixed target can coexist with trailing or signal exits; those may close the trade earlier.
-Unknown stop rules, nonpositive/noninteger holding periods and negative/nonfinite trailing
-multipliers are rejected before source requests. Existing free-text specs need an explicit
-rule chosen by their author; their prose is not silently migrated.
+Target names must be one of the values above. `measured_move` uses the prior 20-bar range. `min_rrr` sets the
+target at the minimum reward:risk; `next_resistance` is an old name for the same rule and does not detect
+resistance. `trailing` needs a positive `trail_atr`, `signal` needs `exit_signal`, and `none` needs one of them.
+With no target, the engine uses trailing or signal when configured, else `min_rrr`. A fixed target can sit
+alongside a trailing or signal exit, which may close the trade first. Trailing and signal exits can be
+backtested, but the live screen skips them because a live entry needs a fixed target. Unknown stop rules,
+nonpositive holding periods and negative trail multipliers fail validation before any fetch.
 
-Machine condition fields (`entry.signal`, `compute_filters`, `exit_signal`) accept either
-one nonempty expression or a list of nonempty expressions. Strings remain whole when extracting
-features. AND/OR/BETWEEN keywords are case-insensitive; column names retain their case. Constants
-must be finite and scalar comparisons produce an aligned boolean series. AND is used within BETWEEN;
-conjunction across conditions is expressed as a list. A trading entry requires
-at least one explicit `entry.signal`; coarse screening filters cannot substitute for it. A missing/empty/malformed trigger cannot become an all-bars entry or a backtest of a different setup. Legacy specs without a signal remain research drafts until their author explicitly encodes the intended entry and revalidates; no automatic migration copies screening filters into a trade trigger. Invalid specs become labelled gaps before the price loader runs. Source price gaps survive screening
-and backtesting. Each live candidate carries its decision bar `as_of`; screen config separates
-`generated_on` from `as_of` (the shared candidate date, or null for mixed/unknown dates) and lists
-`price_dates`. Generation time cannot make old prices appear current.
+`entry.signal`, `compute_filters` and `exit_signal` take one expression or a list of them; a list means AND.
+AND/OR/BETWEEN are case-insensitive and column names are case-sensitive. A trading spec must have an
+`entry.signal`; screening filters never stand in for it. An invalid spec is a gap before any price is loaded.
+Each live candidate carries the date of its decision bar in `as_of`. The screen config reports `generated_on`
+separately, plus `as_of` (null when candidates have different dates) and `price_dates`.
+Live quantity is sized from the entry and stop rounded to two decimals: entry to nearest, stop down, target up,
+so rounding never raises the risk or lowers the reward:risk below the minimum.
 
 **Invariant:** discover runs a spec **only** when `status: active` AND its
-`regime_required` fits the live regime, with evidence for every required trend/EMA/VIX/breadth condition; missing evidence fails selection. It has no default — no fitting active spec ⇒ no trade.
+`regime_required` fits the live regime. A required condition with no market evidence fails. It has no default — no fitting active spec ⇒ no trade.
 
 ## Artifact: backtest evidence
 **Producer:** `run_backtest` (`compute/backtest.py`, with `compute/strategy.py` interpreting rules).
 **Consumers:** `strategy-manager validate` and its saved `expectancy_assumptions.validated_by` reference.
-`out` is a path prefix, default `paths.backtest_dir(spec)/report`. The tool returns `summary_path`,
-`trades_path` and `equity_path`: content-addressed JSON/CSV filenames under that prefix. Identical
-evidence can reuse a file; changed reruns cannot overwrite prior evidence. Writes publish only after
-complete serialization. A persistence failure returns the available metrics/paths and a labelled gap.
+`out` is a path prefix, default `paths.backtest_dir(spec)/report`. The tool returns `summary_path`, `trades_path`
+and `equity_path`, named by content hash, so a rerun with different results writes new files. A failed write
+returns the metrics with a gap.
 
-The JSON contains config, summary, buy-and-hold comparisons, caveats and data gaps. The trades CSV
-contains actual simulated fill/exit prices, `initial_stop` (preserved through trailing), final `sl`
-and `target`, quantity, net P&L, R and dates at full numeric precision. **R uses actual fill minus
-original stop**, not the preceding signal close. Unknown/nonpositive initial risk leaves R null
-and expectancy unassessed. `year`, `by_year_pnl` and `by_year_expectancy_R` use the realized **exit**
-year; the current year is labelled partial. No observations produce null means/profit factor,
-never fabricated zeros or JSON Infinity.
+The JSON holds config, summary, buy-and-hold comparison, caveats and gaps. The trades CSV holds fill and exit
+prices, `initial_stop`, final `sl` and `target`, quantity, net P&L, R and dates. **R is measured from the actual
+fill to the original stop**, not from the signal close; with no positive initial risk, R is null. Per-year
+figures (`by_year_pnl`, `by_year_expectancy_R`) group by exit year, and the current year is marked partial.
+With no trades, means and profit factor are null.
 
-The equity CSV has a date column and one independent account per successful symbol, using the
-engine's daily marked equity. `return_on_capital_pct` divides aggregate account gains by
-`capital_per_symbol × symbols_tested`, including successful zero-trade accounts. Failed tests
-are excluded and named in gaps. `max_dd_on_equity_pct` is the **worst individual account** drawdown,
-including initial capital as a peak; `max_drawdown_symbol` identifies its matching benchmark.
-It is not a combined portfolio simulation. Forced finalization is disabled: a final-bar signal
-cannot execute without a following bar. `open_trades_at_end` counts still-open simulated positions;
-`total_account_pnl`/account returns include their marked value, while `total_pnl`, win rate and
-expectancy include closed trades only. Unpaid exit charges are not deducted from open marks.
-Review remaining open positions before treating the closed sample as representative. Entry-time sizing uses the prior signal close, so
-next-open gaps can exceed the planned risk budget. Every account may have a different available
-price window. Report these bases and compare corresponding symbols/dates, not a concatenated trade curve.
+The equity CSV has one column per symbol, each an independent account. `return_on_capital_pct` divides total
+account gains by `capital_per_symbol × symbols_tested`, counting accounts that never traded. Symbols that
+failed are listed in gaps. `max_dd_on_equity_pct` is the worst single account's drawdown, and
+`max_drawdown_symbol` names it; this is not a combined portfolio. A signal on the last bar does not execute.
+`open_trades_at_end` counts positions still open: their marked value is in `total_account_pnl`, but `total_pnl`,
+win rate and expectancy use closed trades only. Sizing uses the signal close, so a gap at the next open can
+exceed the planned risk.
 
-Shared `strategy.risk_parameters` rejects nonfinite/nonpositive capital and risk outside `(0, 1]%`
-for both live signal sizing and historical runs. Backtests require positive integer years and
-long-only trading specs. They validate these inputs before fetching data, preserve universe gaps,
-and continue past individual failed price histories/tests.
+`strategy.risk_parameters` rejects nonpositive capital and risk outside `(0, 1]%`, for both live sizing and
+backtests. Backtests need a positive integer `years` and a long-only trading spec. A symbol whose history fails
+is skipped with a gap.
 
 ## Artifact: universe
 **Producer:** `get_universe` (on `sources/universe.py`). **Consumers:** `compute/{screen,stock_scan,sector_scan,
@@ -454,7 +408,7 @@ backtest}.py` (via `resolve_symbols`). **Location:** `paths.cache_dir("universe"
 symbol per line. The symbol list is **only ever a file** — the envelope carries `symbols_count` and
 `universe_path`, never the list inline (the holdings/NAV/candles rule). Named universes come from NSE's
 published constituent CSVs, cached dated; a failed fetch falls back to the newest cached copy as a labelled gap,
-never a fabricated list. A fallback preserves the original snapshot path and `as_of` date; it is never copied into today’s cache. Custom universe paths include a content hash so one custom basket cannot overwrite another.
+never a fabricated list. The fallback keeps its original path and `as_of` date. A custom basket's path includes a content hash.
 
 ## Artifact: stock-scan shortlist
 **Producer:** `run_stock_scan` (on `compute/stock_scan.py`). **Consumer:** `discover` (`stocks --invest`).
@@ -467,7 +421,7 @@ The screen ∩ universe is ranked by `ranking.metric` (`return_12m|return_6m|rs_
 ## Artifact: sector-scan shortlist
 **Producer:** `run_sector_screen` (on `compute/sector_scan.py`). **Consumer:** `discover` (`sectors --invest`),
 `sector-analysis` (reads a sector's classified RS row instead of re-deriving it). **Location:**
-`paths.report_dir("discover")/sector-scan-<hash>.json` (`out` supplies a filename/prefix hint; use the returned path). **Shape:** `{as_of, generated_on, metric, ranking_rule,
+`paths.report_dir("discover")/sector-scan-<hash>.json` (`out` is a filename prefix; read the returned path). **Shape:** `{as_of, generated_on, metric, ranking_rule,
 shortlist:[{rank, sector, ticker, rs_vs_nifty:{1m,3m,6m}, rs_class, returns}], report_path}` for `rs_vs_nifty`
 (the default), or `[{rank, sector, pe, pe_percentile}]` for `index_valuation_percentile`. RS is the shared
 `compute/relative_strength.py` primitive, so a sector's RS and a stock's RS agree.
@@ -481,13 +435,21 @@ market view. Read-only callers pass `mode="quick"`; direct invocation uses `deep
 not a tool return — is what `select_strategy.py`, `get_fund_scan(market_context=…)` and the next run's
 transition history read, so the day's artifact is the shared market-of-record.
 
-Quick reuse requires today's `generated` date, the requested `history_years`, a compatible `context_version`, valid structure and finite JSON values. Older artifacts are recomputed. Publication atomically replaces the daily snapshot; simultaneous quick callers serialize cache lookup and computation. A requested extra output also receives cached results, and freshly computed results always update the canonical daily artifact. Filesystem failures return available evidence with a labelled persistence/locking gap.
+`mode="quick"` reuses today's artifact only if `generated` is today, `history_years` and `context_version`
+match, and the JSON is valid; otherwise it recomputes. The daily file is replaced atomically under a lock. A
+write failure returns the context with a gap.
 
-`as_of` is the **last trading bar**, not the generation date — on a weekend the context is legitimately Friday's. It is null when the Nifty trend history is unavailable; generation time must never substitute for missing market evidence.
+`as_of` is the **last trading bar**, not the generation date — on a weekend the context is legitimately Friday's.
+It is null when Nifty history is unavailable.
 
-VIX records its actual `as_of`, observation count and first observation. VIX and sector-history gates must use the same session as Nifty; mismatches preserve dated evidence but withhold the gate. Sector dates are in `breadth.sector_observation_dates`. Live-index `source_timestamp` is preserved as supplied and a missing timestamp is a gap; it must not be replaced by fetch time. Duplicate canonical live-index identities are withheld, invalid nonpositive price/multiple fields are null, and missing requested indices produce an unsuccessful filtered response. Selecting indices does not mutate the full snapshot.
+VIX carries its own `as_of`. VIX and sector gates are withheld when their date differs from Nifty's; sector
+dates are in `breadth.sector_observation_dates`. A missing live-index `source_timestamp` is a gap, not fetch
+time.
 
-Missing or invalid VIX has band `unknown`. `risk_on` requires a known trend, valid VIX band and complete sector breadth; missing evidence yields a neutral posture with an explicit rationale unless available evidence already warrants `risk_off`. Sector breadth retains per-sector detail and `sectors_available` / `sectors_expected`, but its frozen gate percentage is null when coverage is incomplete. Consumers must not turn these null gates into passing defaults.
+Missing VIX has band `unknown`. `risk_on` needs a known trend, a VIX band and complete sector breadth; missing
+evidence gives `neutral` unless what is present already says `risk_off`. With incomplete sector coverage,
+`pct_sectors_above_ema50` is null and `sectors_available`/`sectors_expected` show the shortfall. Consumers must
+treat a null gate as failing.
 
 | Field | Meaning | Read by |
 |---|---|---|
@@ -545,71 +507,60 @@ sizing: {capital: 500000, risk_per_trade_pct: 1.0, qty: 50}
 regime_at_creation: {...}      # the market-context read the screen ran under (trend + posture)
 ```
 
-`status` lifecycle: `idea` → (matched broker fill) `open` → (fully executed matched exit) `closed`.
-On promotion `trade-tracker` adds **`fill_avg`** and **`entry_date`** from broker order history,
-records original actual entry quantity in `sizing.qty`, and preserves `plan.entry` and the original
-`plan.stop`. Append a dated `tracker_log` each run. Partial exits, missing broker positions and
-accepted recommendations do not close an artifact; reconcile actual execution history first.
+`status` lifecycle: `idea` → (matched broker fill) `open` → (fully executed exit) `closed`. On promotion
+`trade-tracker` adds **`fill_avg`** and **`entry_date`** from broker order history, sets `sizing.qty` to the
+filled quantity, and keeps `plan.entry` and the original `plan.stop`. It appends a dated `tracker_log` each run.
+A partial exit, a position missing from the broker, or the user agreeing to an exit does not close the
+artifact; only broker exit executions do.
 
-On confirmed close, `result` carries `{exit_date, exit_reason, exit_price, exit_qty, charges,
-realized_R, realized_pnl, holding_sessions, execution: {source, exit_trade_ids}}`.
-`exit_reason` is `EXIT_STOP|EXIT_THESIS|EXIT_TARGET|EXIT_TIME|MANUAL`; `execution.source` is
-`kite|upstox`, with distinct nonempty broker trade IDs. `exit_qty` accounts for the entire original
-`sizing.qty`, and `exit_price` is the quantity-weighted actual price across those exits. Charges
-are actual total entry/exit charges. Net P&L = signed (exit − fill) × quantity − charges;
-realized R = net P&L / (signed initial fill-to-stop distance × quantity). Preserve full fill
-precision; reported P&L/R may be rounded to two decimals. Missing inputs leave derived metrics
-null with a gap, never inferred from a quote or an accepted recommendation.
+On close, `result` carries `{exit_date, exit_reason, exit_price, exit_qty, charges, realized_R, realized_pnl,
+holding_sessions, execution: {source, exit_trade_ids}}`. `exit_reason` is
+`EXIT_STOP|EXIT_THESIS|EXIT_TARGET|EXIT_TIME|MANUAL`; `execution.source` is `kite|upstox` with the broker's
+trade IDs. `exit_qty` must cover the whole `sizing.qty`, and `exit_price` is the quantity-weighted exit price.
+`charges` are the actual entry and exit charges. Net P&L = (exit − fill) × qty − charges, signed for direction;
+realized R = net P&L / ((fill − stop) × qty). A missing input leaves the derived figures null with a gap; they
+are never filled from a quote.
 
-`aggregate_performance.py` validates execution references, dates, quantities, finite values and
-reconciles the reported arithmetic. Reused exit IDs require reconciliation. It reports excluded
-closed artifacts in `gaps` and returns `REVIEW` for incomplete strategy samples, preventing
-automatic lifecycle changes. Its `profit_factor` is explicitly R-weighted, not a rupee profit
-factor when trade risk sizes differ. `--update-spec` writes atomically under a command-level lock,
-rejects strategy traversal/symlink escapes, and sets `live_performance.eligible_for_selection` only
-for complete samples of at least ten verified closes. **Migration:** legacy closed artifacts
-without execution references/charges remain untouched and excluded until reconciled with broker
-records; legacy cached live scores are ineligible. Never invent missing evidence to migrate them.
+`aggregate_performance.py` checks execution IDs, dates, quantities and the P&L arithmetic. A closed artifact
+that fails is listed in `gaps` and the strategy gets `REVIEW`, so its status does not change automatically.
+`profit_factor` is computed in R, not rupees. `--update-spec` writes under a lock and sets
+`live_performance.eligible_for_selection` only for at least ten verified closes. Closed artifacts without
+execution IDs or charges stay excluded until the user reconciles them with broker records.
 
-`check_trade` reads `plan, direction, thesis_invalidation, strategy, fill_avg, entry_date, sizing`.
-An explicit `entry` overrides `fill_avg`; it never falls back to `plan.entry`. `qty` overrides the
-actual original quantity on an open artifact. Sessions are observed bars strictly after the fill
-session; history not covering entry leaves the count unknown unless `sessions_held` is supplied.
-The tool uses shared TA-Lib averages and only parses complete, unambiguous price conditions.
-Qualitative/compound conditions remain `manual_review`; no evaluable conditions cannot certify HOLD.
+`check_trade` reads `plan, direction, thesis_invalidation, strategy, fill_avg, entry_date, sizing`. An explicit
+`entry` argument overrides `fill_avg`; it never falls back to `plan.entry`. Sessions held counts bars after the
+fill session, and is unknown when history does not reach the entry unless `sessions_held` is passed. Only
+complete price conditions are evaluated; qualitative or compound ones go to `manual_review`, and a trade with
+no evaluable condition cannot be certified HOLD.
 
-Decision prices come from `prices.history` or the supplied OHLCV file. `data.as_of` is the latest
-valid decision bar's date and `metrics.price` its close. Personal `ltp` is used only as
-`metrics.mark_price` for unrealized P&L/R (`mark_source: personal_ltp|decision_close`). It never
-triggers a stop, target or thesis decision. Daily high/low are usable only after the recorded fill
-date; same-day/unknown-fill-date checks use close and label the intrabar limitation. Every full
-session after the fill is scanned, so a breach followed by a recovery still exits; the reason names
-the first breaching session. Nominal plan levels are compared with unadjusted bars
-(`prices.history(adjusted=False)`); moving-average conditions use the adjusted series and go to
-`manual_review` when it does not end on the decision bar. Source and
-input gaps survive into the envelope. Recommendations contain no realized exit data. The skill
-defers regime/qualitative checks and raises time-stop **revalidation** alerts, never adds a number
-of trading sessions to a calendar date.
+Decision prices come from `prices.history` or a supplied OHLCV file. `data.as_of` is the last valid bar and
+`metrics.price` its close. The personal `ltp` is used only as `metrics.mark_price` for unrealized P&L
+(`mark_source: personal_ltp|decision_close`) and never triggers an exit. Every session after the fill is
+checked against the stop, so a breach followed by a recovery still exits, and the reason names the breaching
+session. On the fill day, or with no fill date, only the close is used. Plan levels are compared with
+unadjusted bars; moving-average conditions use adjusted bars and go to `manual_review` if those do not end on
+the decision bar. The skill raises time-stop alerts as revalidation reminders and does not convert sessions to
+calendar dates.
 
 ## Artifact: document cache
 **Producer:** `get_documents` (on `sources/documents.py`) → one `.txt` per document under
-`paths.cache_dir("documents")`, named with hashes of the source URL and extracted text. **Consumers:** `financial-analysis`,
+`paths.cache_dir("documents")`, named by hashes of the source URL and the extracted text. **Consumers:** `financial-analysis`,
 `management-analysis`, `valuation-analysis` — every leg that cites a primary document. The envelope carries
 **paths, never body text**: `data:{symbol, documents:[{kind ∈ annual_report|concall, label, url, publisher,
 text_path, text_chars, text_lines, extracted_by, cached, outline}], documents_total, annual_reports_available,
-concalls_available}`. The URL identifies a mutable metadata pointer to an immutable text snapshot. A refresh
-can detect changed content without overwriting earlier citations. Each download/conversion
-uses a private temporary directory; metadata is atomically replaced only after successful
-nonempty extraction. Cache hits verify the snapshot SHA-256 as well as file counts;
-corrupt text is not served when a replacement download fails. The cache has **no automatic expiry** (`fresh=True` requests a re-download); a document that will not download/convert is a labelled gap, the others still come back.
+concalls_available}`. A refresh that finds different text writes a new file, so earlier citations still
+resolve. A cache hit checks the file's SHA-256. The cache has **no expiry** (`fresh=True` re-downloads); a
+document that will not download or convert is a labelled gap, and the others still come back.
+
+Annual reports are ordered by the reporting year in the label (the end year of a fiscal range), not a later
+filing date. A label with several years and no clear reporting year falls back to list position with a gap.
 
 `outline` is `{section_key: [{line, text}]}` — the notes a leg must cite, mapped to best-first candidate line
 numbers in `text_path`. Keys: `auditors_report, emphasis_of_matter, auditor_remuneration, mdna,
 directors_report, corporate_governance, related_party, contingent_liabilities, remuneration, tax_note, segment,
 cash_flow, esop, shareholding, qna`. Ranked so the first is the section not its contents-page entry, capped at
-four. **An absent key means the heading matcher found no candidate**, not that the section
-is absent. Search the saved text for alternate wording when the check needs it; if still
-unresolved, report a data gap. Built once at conversion and cached with the document.
+four. **An absent key means the heading matcher found nothing**, not that the section is missing. Search the
+text for other wording before reporting a data gap. Built once at conversion and cached with the document.
 
 An orchestrator calls `get_documents` once and hands each leg the `text_path`s, so several legs land on the same
 bytes; a leg given no paths calls the tool itself and gets the same cached file. **Extraction only** — nothing
@@ -631,23 +582,23 @@ their own blocks.
 | `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, **`pe_basis`**, **`eps_adjustments`**, `peg`, `peer_median_pe`, **`peers_priced`**, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
 | `news-scan` | `news-block` | `sentiment_score` (−2…+2), `confidence`, `recurring_theme`, `next_event`, `axis: growth_durability` |
 | `sector-analysis` | `sector-block` | `sector`, `rs_class`, `stance`, `confidence`, `focus_position` |
-| `deep-analysis` (`quick` mode) | `quick-block` | `verdict ∈ {keep, reject, review}`, `lean` (one line), `flags`, `reasons` (cited criteria/evidence), `gaps` — a screening review from structured data only, executed in the current context without nested dispatch. Discovery’s Stage B retains the deterministic scan order among keeps, separates review cases, and ignores legacy `score` fields. Keep is not BUY or an integrity pass. |
+| `deep-analysis` (`quick` mode) | `quick-block` | `verdict ∈ {keep, reject, review}`, `lean` (one line), `flags`, `reasons`, `gaps`. A screen from structured data only, run in the current context with no sub-agents. Discover's Stage B keeps the scan order among keeps and lists `review` separately. `keep` is not a BUY or an integrity pass. |
 | `contest-researcher` | `contest-block` | `lean ∈ {bull, bear, genuinely split}`, `axis`, one-line `bull`, one-line `bear` |
 | `bull-researcher` / `bear-researcher` | `debate-block` | `axis`, `claim`, `conceded`, `new_evidence` |
 | `portfolio-manager` | `verdict-block` | `call`, `conviction`, **`value_stance`**, **`action_driver`**, `invalidation`, `review`, `integrity_gate`, `integrity_partial`, **`evidence`**, **`weakest_load_bearing_input`** |
 
-An **integrity FAIL** in `management-block` overrides every other lens; an `integrity` of
-`FLAG` is a live concern short of disqualifying, and `PASS (partial, k of 7)` is uncertainty; neither is a cleared gate, and neither may reach `verdict-block` as `PASS`.
+An **integrity FAIL** in `management-block` overrides every other lens. `FLAG` is a concern short of
+disqualifying, and `PASS (partial, k of 7)` means some checks could not run; neither may reach `verdict-block` as `PASS`.
 
 `deep-analysis/scripts/escalation.py` reads the `debate-block`'s `axis` + `claim` + `conceded` +
 `new_evidence` to decide the next round in `deep`: it escalates when the sides still have something to
 test — **different** axes (cross-examination) or the **same** axis with distinct unconceded claims (rebuttal). A
-concession, an identical claim, `new_evidence: false` on both sides after round 1, or the round cap (deep 3; standard is one contest pass, never another round) ends it. `axis` must come from `VALID_AXES` (`valuation, growth_durability, balance_sheet_risk,
+concession, an identical claim, `new_evidence: false` on both sides after round 1, or the round cap (3 in
+`deep`; `standard` has one contest pass) ends it. `axis` must come from `VALID_AXES` (`valuation, growth_durability, balance_sheet_risk,
 governance, technical_structure`); anything else is a broken contract, not a converged debate. A `contest-block`
-lean of `genuinely split` makes the synthesis suggest a deep re-run; it never auto-escalates.
-The helper defaults to deep, validates modes/rounds and all digest field types before any stopping
-rule, and preserves comparison operators, signs and decimals when comparing claims. A JSON string
-`"false"` is not a boolean concession. Invalid files/digests stop with gaps, not claimed convergence.
+lean of `genuinely split` makes the synthesis suggest a deep re-run; it never auto-escalates. The helper
+checks every digest field's type before applying any rule (the string `"false"` is not a concession), and an
+invalid digest stops the debate with a gap.
 
 `financials-block.clean_eps` is the earnings base `valuation-analysis` strikes multiples on: where
 `eps_adjustments` is not `none`, the valuation leg's `pe_basis` is `adjusted` and its peer P/Es must be struck
@@ -661,49 +612,41 @@ sentences), then **`## Detail`** (the workings). Debaters and the portfolio-mana
 into Detail only for a load-bearing finding's evidence; the `report-writer` alone reads every paper in full.
 A finding that never made the section is one the leg failed to surface.
 
-The mode resolver reads only matching, contained trade records with parsed top-level `symbol` and
-`status` (`idea|open|closed`), using `paths.state_dir("trades", create=False)`. Nested or quoted notes
-cannot establish an open trade; malformed/unreadable records leave a gap and cannot prove no holding.
-Broker `no` requires complete coverage of every connected account; any observed holding establishes
-`yes`, and incomplete unmatched coverage is `unknown`. Keep overlapping aggregator/broker snapshots
-separate until reconciled so quantities are not counted twice.
+The mode resolver decides whether the user holds the stock. It reads trade records under
+`paths.state_dir("trades")` by their top-level `symbol` and `status`; an unreadable record is a gap. Any
+observed holding means `yes`. `no` needs every connected broker account checked; otherwise the answer is
+`unknown`. IndMoney and broker snapshots of the same account are not added together.
 
 ## Artifact: deep-analysis report
-**Producer:** `deep-analysis` → an immutable bundle at `artifacts/stocks/<TICKER>/<date>/runs/<run-id>/`.
-The deck (`report.html`) is the deliverable, with its readable projection (`report.json`) and `agents/`
-work papers beside it. Publication moves the whole ready bundle at once and never overwrites a prior run.
-`get_prior_run(skill="deep-analysis"|"fundamentals")` resolves the latest earlier matching projection,
-with separate mode histories and legacy report-file support. **Consumer:** `trade-tracker` may read the
-projection as rationale when there is no trade-idea artifact; decision numbers must be refreshed from
-approved sources. See *Report bundle publication* for preparation, identity and delivery rules.
+**Producer:** `deep-analysis` → a bundle at `artifacts/stocks/<TICKER>/<date>/runs/<run-id>/` holding the deck
+(`report.html`), its projection (`report.json`) and the `agents/` work papers. A new run never overwrites an
+earlier one. `get_prior_run(skill="deep-analysis"|"fundamentals")` returns the latest earlier projection for
+that mode. **Consumer:** `trade-tracker` may read the projection as rationale when there is no trade-idea
+artifact; any number it acts on must be fetched again. See *Report bundle publication*.
 
-The modes differ by **amount of judgment**: `quick` is one consolidated pass in the context already running the skill (structured
-data only, no nested agent or skill dispatch) → one `quick.md` under the run-day folder, **no deck**; `standard` → four legs (financials,
-management, valuation, news) + one contest pass → verdict; `deep` → all six legs + multi-round bull/bear →
-verdict; `fundamentals` → financials, management, valuation, no debate. Work papers use the bundle's
-returned `agents_dir`. Standard has financials, news, contest and verdict; deep also has technical,
-sector and bull/bear rounds. Quick produces no deck or publication bundle.
+The modes differ by **amount of judgment**: `quick` is one pass in the current context (structured data only,
+no sub-agents) → one `quick.md` under the run-day folder, **no deck and no bundle**; `standard` → four legs
+(financials, management, valuation, news) + one contest pass → verdict; `deep` → all six legs + multi-round
+bull/bear → verdict; `fundamentals` → financials, management, valuation, no debate. Work papers go to the
+bundle's `agents_dir`.
 
-Valuation and management write directly to the bundle's supplied `agents/dcf.md`,
-`agents/dcf-inputs.yml` and `agents/management.md`. Standalone runs retain dated report defaults.
-The DCF engine returns immutable content-addressed `dcf_path` evidence in the stock's run-day folder;
-every input, result and relative read is retained together. Identical calls reuse that path; changed
-calls cannot overwrite it. `revisions` remains an empty compatibility field: authors explicitly cite
-old/new evidence paths and changed assumptions rather than inferring revision lineage from a shared
-filename. `get_prior_run` finds dcf/management work papers in published bundles as well as legacy
-standalone reports. Sector context still uses the shared sector cache contract below.
+Valuation and management write to the bundle's `agents/dcf.md`, `agents/dcf-inputs.yml` and
+`agents/management.md`; run on their own, they write to the dated stock folder. `run_dcf` writes its full
+result to a `dcf_path` named by content hash, so the same inputs reuse the file and different inputs get a new
+one. To revise a valuation, cite both paths and say which assumptions changed. `revisions` is always empty and
+kept only for compatibility. `get_prior_run` finds dcf and management papers inside bundles too.
 
 ## Artifact: report projection — **render input only**
-The renderer requires an object projection with unique JSON keys and finite numeric literals. Template names are simple bundled names. It renders fully before atomically replacing the HTML output, rejects an output path resolving to its JSON source, and preserves any existing report if rendering/publication fails. CLI input/template/storage errors produce a nonzero status and structured stderr gap; no partial HTML is published.
+**Producer:** `report-writer` writes the bundle's `report_json` path and nothing else. **Consumers:**
+`render_report.py` renders it to the bundle's `report_html`; `get_prior_run` and trade-tracker read it as prior
+reasoning. Nothing reads it back into a live decision. `coverage.brief` is the Telegram caption, sent only when
+the user authorized delivery and only after archiving.
 
-Report-authored rich prose passes through the renderer's `rich_text` filter: emphasis, line breaks, code and HTTP(S) anchors are preserved; scripts, event attributes, embedded media and arbitrary styling are not trusted. Generated chart/runtime markup remains separate. Percentage allocation charts retain absolute supplied shares and show an unclassified remainder; they never renormalize partial coverage to 100%. Invalid/over-total allocation data renders a labelled gap.
-
-**Producer:** `report-writer` writes only the prepared bundle's returned `report_json` path.
-**Consumers:** `render_report.py` renders to that bundle's `report_html`; publication requires matching
-`meta.ticker`, `meta.date`, `meta.mode`, a complete deck and readiness marker. `get_prior_run` and
-trade-tracker read the archived projection as prior reasoning, with source attribution and gaps retained.
-Use current source data for a new decision. `coverage.brief` is the caption for explicitly authorized
-Telegram delivery, performed only after archiving. No individual staged file is moved separately.
+The renderer rejects JSON that is not an object, has duplicate keys or non-finite numbers. It writes the HTML
+to a temporary file and renames it, so a failed render leaves the previous report in place, and it exits
+nonzero with the error on stderr. Authored prose goes through the `rich_text` filter, which keeps emphasis,
+line breaks, code and HTTP(S) links and strips everything else. Allocation charts show supplied shares as given
+plus an unclassified remainder; they do not scale partial data up to 100%.
 
 **Every value traces to a work paper.** A figure a paper does not carry is omitted so the deck renders that
 slot's **labelled gap** — never a fabricated number, zero or blank; an empty pledge list is `"unknown"`, not
@@ -767,7 +710,9 @@ token `categorize.normalize_token` produces (uppercased; narration plumbing / ma
 suffixes / short+numeric words stripped; first significant word) so UPI/POS/handle variants collapse to one
 rule. **Category** is a reference.md workbook category (Groceries, Dine & Entertainment, EMIs, Investments, …).
 Resolution in `categorize.py`: **map → reference.md taxonomy → UNCATEGORIZED** (map wins, so a correction
-overrides). The **same tokenizer** keys lookup and the `--learn` write. Missing map ⇒ empty initial rules. Invalid/unreadable map ⇒ taxonomy-only with a reported gap for reads; learning refuses to overwrite existing state. CLI corrections validate category/key shape, lock the full read–modify–write operation and publish atomically. `test_categorize.py`.
+overrides). The **same tokenizer** keys lookup and the `--learn` write. A missing map starts empty. An unreadable or
+invalid map gives taxonomy-only results with a gap, and `--learn` refuses to overwrite it. `--learn` validates
+the category, locks the file and writes it atomically. `test_categorize.py`.
 
 ## Convention: cashflow-leg digest (budget-tracker `quick`)
 **Producer:** `budget-tracker` `quick`. **Consumer:** `wealth-manager` — the cheap cashflow read (same digest
@@ -778,7 +723,7 @@ hygiene as the deep-analysis agents). `quick` writes **no HTML** and no transact
 savings_rate: <pct>            # (investments + leftout) / total inflow
 buckets: { Essential:{actual_pct,target,status}, Lifestyle:{...}, EMIs:{...}, Investments:{...} }
 biggest_leak: <category> ₹<amount>
-recurring_monthly: ₹<observed active recurring/month> # excludes dormant and unconfirmed single charges
+recurring_monthly: ₹<observed active recurring/month> # excludes dormant and single charges
 monthly_outflow: ₹<total spend/month>             # wealth-manager's emergency-fund runway denominator
 target_source: workbook | framework
 gaps: [ ... ]                 # "UNCATEGORIZED ₹X across N txns", "no prior months", ...
@@ -786,13 +731,24 @@ month: <YYYY-MM>
 -->
 ```
 
-`recurring.py` returns `gaps` for excluded malformed/post-as-of debit rows. Carry these into the digest. Its subscription rows include `account`; a single familiar-merchant charge is a low-confidence candidate with null `cadence` and `monthly_equivalent`, not a monthly obligation. `total_committed_monthly` is the historical field name for the sum of observed active patterns; it does not certify contractual commitments. Merchant/account series must satisfy the cadence band at every interval. Normalized imports must be deduplicated by source transaction identity before detection.
+`recurring.py` lists malformed or post-as-of rows it skipped in `gaps`; carry them into the digest. A charge is
+recurring only when every interval for that merchant and account falls in the cadence band. A single charge
+from a known merchant is a candidate with null `cadence` and `monthly_equivalent`. `total_committed_monthly`
+sums observed recurring charges; despite the name, it does not prove a contract. Deduplicate imported
+transactions before detection.
 
 `target_source` names whether the bands came from the workbook or framework percentages (labelled, never
 silently defaulted). Transaction-level data stays in the artifact.
 
-## Allocation computation input constraints
-`compute/allocation.py` accepts a long-only valued holdings book. Missing, malformed or negative-valued positions are excluded with gaps; reported totals and percentages cover only the valued subset. Stock concentration combines matching case-normalized ticker rows across accounts. AMC concentration flags use the valued fund sleeve and declare `denominator: fund_sleeve`; descriptive whole-book allocation breakdowns retain their book denominator. Supplied cap/style breakdowns represent disjoint categories: values must be finite and nonnegative, explicit percentages require the book total, and combined amounts cannot exceed that total. If both value and percentage are supplied they must agree. Normalized category aliases are summed rather than overwritten. Partial coverage is not scaled to 100%. Invalid breakdowns raise an input error; the allocation CLI reports that error without emitting a partial JSON result. Targets must name unique normalized asset classes and total 100%; thresholds must be recognized finite percentages between 0 and 100. `asset_drift.coverage_complete` requires usable values for every supplied holding and no valued unknown asset class. Without that coverage, `move_value` is null and `rebalance` is empty, with a labelled gap. Concentration flags on a partially valued book request review instead of prescribing a trim amount. Exact rupee values, not rounded displayed percentages, drive complete-book rebalancing amounts. These checks do not prove complete portfolio coverage or authorize a transaction.
+## Allocation engine (`compute/allocation.py`)
+Takes a long-only book. Positions with no value or a negative value are dropped with a gap, and totals cover
+only valued positions. The same ticker across accounts is combined before the single-stock check. AMC
+concentration is measured against the fund sleeve (`denominator: fund_sleeve`). A supplied cap or style
+breakdown must be nonnegative, sum to no more than the book, and match where both value and percentage are
+given; an invalid one is an input error and the CLI prints no partial result. Targets must name distinct asset
+classes and sum to 100%. Rebalancing amounts are computed only when every holding is valued and classified
+(`asset_drift.coverage_complete`); otherwise `move_value` is null, `rebalance` is empty, and concentration flags
+ask for review instead of a trim amount.
 
 ## Convention: investments-leg digest (portfolio-review `quick`)
 **Producer:** `portfolio-review` `quick`. **Consumer:** `wealth-manager` — the cheap investments read, sibling
@@ -821,7 +777,9 @@ personal source's breakdown. `laggard_funds` rows come from `mf-analysis quick` 
 key_numbers, path}`, descriptive only). Holdings-value detail (the KEEP/TRIM/EXIT table) stays in the artifact —
 values are sensitive; the digest carries verdicts and percentages only.
 
-Wealth-manager does not interpret an investments digest containing only gaps or omitted checks as a strong book. Confirmed severe findings may still be reported from partial evidence. For emergency-fund calculations, recurring spending alone is an expense floor: the derived `months_upper_bound` is not `months`, status stays `not_assessed`, and it cannot authorize extra risk. Invalid liquid balances or nonpositive/missing expenses also remain unassessed.
+An investments digest made only of gaps is `not_assessed`, not strong; a severe finding from partial data is
+still reported. Recurring spending alone is a floor on expenses: it yields `months_upper_bound`, not `months`,
+and the emergency fund stays `not_assessed`.
 
 ## Convention: protection-leg digest (insurance-advisor Audit)
 **Producer:** `insurance-advisor` Audit — opens its report with this block, transcribing the need-vs-have gap
@@ -841,260 +799,140 @@ as_of: <YYYY-MM-DD>
 ```
 
 `adequacy` is `absent` (no cover on that line), `short` (have < need), or `adequate` (have ≥ need).
-An un-sizable line is a labelled gap, never a fabricated sum-assured or need. Missing term or health assessment cannot yield strong overall protection or permission to add investment risk; an assessed weak/critical line still retains its adverse status.
+An un-sizable line is a labelled gap, never a fabricated sum-assured or need. Without both term and health
+assessed, protection cannot be strong.
 
 ## Artifact: net-worth spine + financial-health scorecard (wealth-manager)
 **Producer:** `compute/wealth.py` (deterministic engine). **Consumer:** the `wealth-manager` orchestrator, whose
 artifact is `artifacts/wealth/YYYY-MM-DD.md` (`paths.report_path("wealth")`) plus a rendered deck. The engine
 reads a **picture JSON** — raw IndMoney `networth_snapshot` +
 `networth_allocation_breakdown`, the `compute/holdings.py` positions envelope, the three leg digests above, and
-an optional `profile` (age/dependents/monthly_expenses/equity_band:{min_pct,max_pct}/emergency_reserve:{available_value,as_of,source}) — and owns every number.
+an optional `profile` (`age`, `dependents`, `monthly_expenses`, `equity_band:{min_pct,max_pct}`,
+`emergency_reserve:{available_value,as_of,source}`) — and owns every number.
 
 - **Net-worth spine** (`build_spine`): `{ total_networth, as_of, allocation:{<bucket>:{label,value,pct}},
-  liquid, equity_share_pct, holdings_xirr:{count,avg (descriptive value-weighted mean),weighted_count,method,portfolio_xirr:null,best,worst}, source, coverage:
+  liquid, observed_liquid, equity_share_pct, known_equity_share_pct, unclassified_equity_value,
+  holdings_xirr:{count,avg,weighted_count,method,portfolio_xirr:null,best,worst}, source, coverage:
   complete|incomplete|tradeable-only, gaps:[…] }`. Allocation precedence: IndMoney breakdown (sees every class)
-  → else aggregate tradeable positions by class (labelled `tradeable-only`). Malformed/missing/negative asset rows or a breakdown sum differing from reported net worth produce `incomplete` coverage and a reconciliation gap. Reported nonpositive net worth never supplies a percentage denominator. `allocation_total` retains the observed asset sum; it is not an inferred liability adjustment. `observed_liquid` retains observed cash/FD amounts without asserting availability. `liquid` is null until `run` validates an explicit `profile.emergency_reserve` (nonnegative available_value, nonfuture ISO as_of, nonempty source); reserve evidence is passed through to the spine/cross-domain output. This independently verified reserve can be assessed despite incomplete net worth;
-  `known_equity_share_pct` reports direct Indian/US equity only; crypto is excluded. `unclassified_equity_value` records unresolved fund/other/retirement/insurance composition. Total `equity_share_pct` is null while such exposure exists or coverage is incomplete, so the risk comparison cannot assume all funds are equity. Buckets are the fixed `canonical_class` set (equity,
-  mutual_funds, us_equity, debt, fd, epf, real_estate, gold, cash, insurance, crypto, other).
-Picture may include `liabilities:{total,as_of,source}`: a nonnegative outstanding balance with nonfuture ISO date and first-party/user evidence. Never infer this input as a balancing difference. With valid liability evidence, the engine compares reported net worth to `allocation_total - liabilities_total`, or calculates that net amount when no snapshot total exists. `allocation_basis: gross_assets` then uses the asset subtotal for composition percentages; without this input, legacy reported-total percentages remain labelled `reported_total`. Missing snapshot plus missing liabilities produces an incomplete asset-subtotal view, not certified net worth. Liability evidence and any reconciliation gap survive into the report.
-
-Holding XIRRs are normalized finite rates; invalid entries produce gaps. `holdings_xirr.avg` is only a descriptive current-value-weighted mean over `weighted_count` positively valued holdings. It is not portfolio XIRR, and best/worst holding rates may span different cash-flow histories. Computing portfolio XIRR requires aggregate dated cash flows (or a separately attributed first-party portfolio figure); do not promote this mean into a return for the book.
-
-- **Cross-domain** (`emergency_fund` / `protection_read` / `risk_posture`): emergency-fund months of
-  runway (liquid ÷ monthly expenses vs a 3–6 month target); protection-vs-net-worth status; risk
-  posture (equity share vs an explicit `profile.equity_band`, **gated by** the emergency-fund + protection state — a weak or unassessed
-  foundation forces `fix-foundation-first` whatever the share). Without a valid stated range the comparison is `unknown`; age never defines a limit. Valid comparisons return `below-target`, `within-target`, or `above-target`, replacing the old automatic add/reduce-risk labels. Out-of-range comparisons request review rather than a trade.
+  → else aggregate tradeable positions by class (labelled `tradeable-only`). Buckets are the fixed
+  `canonical_class` set (equity, mutual_funds, us_equity, debt, fd, epf, real_estate, gold, cash, insurance,
+  crypto, other).
+  - Coverage is `incomplete` when an asset row is malformed or negative, or the breakdown does not add up to
+    the reported net worth.
+  - `observed_liquid` is the cash and FD total. `liquid` stays null until `profile.emergency_reserve` gives a
+    dated, sourced balance the user confirmed is available.
+  - `known_equity_share_pct` counts direct Indian and US equity only. `equity_share_pct` is null while any fund
+    or other holding has unknown composition (`unclassified_equity_value`).
+  - `holdings_xirr.avg` is a value-weighted mean of per-holding XIRRs. It is not the portfolio's XIRR, which
+    needs dated cash flows.
+- **Liabilities.** The picture may carry `liabilities:{total,as_of,source}` from a first-party or user source.
+  The engine then checks reported net worth against assets minus liabilities, or computes it when no total
+  was reported, and computes percentages on gross assets (`allocation_basis: gross_assets`). Never derive
+  liabilities as a balancing figure.
+- **Cross-domain** (`emergency_fund` / `protection_read` / `risk_posture`): emergency-fund months of runway
+  (liquid ÷ monthly expenses vs a 3–6 month target, using the unrounded ratio); protection-vs-net-worth status;
+  risk posture, comparing equity share with the user's stated `profile.equity_band` (`below-target`,
+  `within-target`, `above-target`, or `unknown` with no band). A weak or unassessed emergency fund or protection
+  forces `fix-foundation-first` whatever the share.
 - **Scorecard** (`build_scorecard`): `{ domains:{net_worth,investments,protection,cashflow,
-  emergency_fund:{status,line}}, overall, assessed_domains, total_domains, coverage_complete, actions:[{priority,domain,text,next_step,run}] }`. Status ∈
-  strong|adequate|weak|critical|not_assessed; `overall` = worst *assessed* domain (an absent leg is a
-  gap, never sets overall). Actions are ordered **across** domains by the health stack
-  (emergency-fund/protection before fresh equity), max 5, each naming the spoke to run for depth.
-Emergency-fund status thresholds use the unrounded ratio; displayed months remain rounded. Invalid (>100%) savings rates or cashflow gaps withhold the cashflow score. Unresolved policy red flags cannot certify strong protection. Scorecard `overall` still summarizes assessed domains only: always disclose `assessed_domains`/`total_domains` and `coverage_complete` to prevent a partial good result reading as comprehensive health. Wealth CLI validates object-shaped top-level blocks and emits strict finite JSON or a structured nonzero error without a partial report.
-
+  emergency_fund:{status,line}}, overall, assessed_domains, total_domains, coverage_complete,
+  actions:[{priority,domain,text,next_step,run}] }`. Status ∈ strong|adequate|weak|critical|not_assessed;
+  `overall` = worst *assessed* domain. Always show `assessed_domains`/`total_domains` so a partial result does
+  not read as complete. Actions are ordered **across** domains by the health stack (emergency-fund/protection
+  before fresh equity), max 5, each naming the spoke to run for depth. An unresolved policy red flag blocks a
+  strong protection score; a savings rate above 100% withholds the cashflow score.
 - `--snapshot` returns spine + cross-domain flags only (no legs, no scorecard). Deterministic and
   offline; covered by `finance/tests/test_wealth.py`.
 
-Live plans size quantity from the published two-decimal entry and stop. Entry rounds to nearest, stops down, and proxy targets up so rounding cannot exceed the declared risk budget or undercut minimum RRR. Historical execution retains source precision and fills at the next open; gaps and transaction costs can make actual risk differ from a signal-bar plan.
-
 ## Report bundle publication
 
-`finance.publication.prepare(session, ticker, day, mode)` creates a unique run under
-`paths.report_stage(session, run_id)`: `tmp/report-staging/<session-hash>/<run-id>/`.
-It returns explicit paths for `report.json`, `report.html` and `agents/`, and writes immutable
-identity fields in `run.json` (session, ticker, date, mode, run_id). Modes are standard, deep or
-fundamentals. The run id is a sortable creation timestamp plus a UUID; sessions never share a
-staging directory. Callers write `ready` only after rendering, verification and all work-paper
-writes finish.
+`finance.publication.prepare(session, ticker, day, mode)` creates a run directory at
+`tmp/report-staging/<session-hash>/<run-id>/` (`paths.report_stage`) and returns the paths for `report.json`,
+`report.html` and `agents/`. `run.json` records session, ticker, date, mode and run id; mode is standard, deep or
+fundamentals. Write the `ready` marker only after rendering and every work paper are done.
 
-`publish(session, run_id)` requires matching projection meta (ticker/date/mode), a nonempty deck,
-work-paper directory and readiness marker. Symlinks are refused. A kernel lock serializes repeated
-publication attempts, and one rename publishes the whole directory to
-`paths.report_archive(ticker, day, run_id)` at `stocks/<ticker>/<day>/runs/<run-id>/`. Existing
-archives are never replaced. A failure leaves the staging bundle for repair. The `publish()` library function performs no network or
-notification; its CLI delegates authorized delivery after publication succeeds. CLI equivalents are `python -m finance.publication prepare`
-and `publish` with named arguments (`--help` lists them). For explicit completion, invoke
-`<plugin-root>/hooks/post-deep-analysis.sh publish ...` to load optional credentials through the
-shared loader before publication and authorized delivery.
+`publish(session, run_id)` checks that the projection's ticker, date and mode match `run.json`, that the deck
+and work papers exist, and that `ready` is present. Under a lock it renames the directory to
+`stocks/<ticker>/<day>/runs/<run-id>/` (`paths.report_archive`); an existing archive is never replaced, and a
+failure leaves staging in place. CLI: `python -m finance.publication prepare|publish`. To publish at the end of
+a run, call `<plugin-root>/hooks/post-deep-analysis.sh publish ...`, which loads credentials first. The Stop
+hook publishes ready bundles only for the `session_id` and `cwd` in its JSON input.
 
-`get_prior_run` reads these complete bundles for deep-analysis/fundamentals, selects the newest
-run id from the latest earlier day and retains legacy report-file support. Fundamental-only and
-standard/deep histories stay separate. The writer uses returned bundle paths; the orchestrator marks readiness after rendering verification. Normal
-completion publishes explicitly; the Stop hook recovers ready bundles for the JSON payload's exact
-session_id and cwd. It never scans legacy flat staging. Without SessionStart, callers retain a generated
-UUID session identity and publish explicitly. `prepare --telegram` records user-authorized delivery;
-credentials alone do not authorize it. Delivery uses the archived deck, keeps the token off process
-arguments, follows no redirect and never automatically retries an uncertain send. Delivery gaps cannot
-undo publication. Old flat staging is retained for explicit inspection and migration, never guessed into
-a session.
+`prepare --telegram` records that the user authorized delivery; credentials alone do not. `finance/telegram.py`
+sends the archived deck, or brief text via `bin/send-telegram.sh --text-file <path>`, through
+`transport.request`. The token never appears in process arguments, redirects are not followed, and a send is
+not retried. A failed send does not undo publication.
 
-### DCF scenario invariants
+## DCF engine (`compute/dcf.py`)
 
-The terminal sensitivity grid resolves its center from the actual WACC path, including a buildup,
-and freezes explicit-period discount rates in every cell. A terminal-rate change cannot silently
-change the young-company explicit discount-rate fade. Story margin scenarios shift both explicit
-and terminal margins, preserve negative margins, and reproduce the base value at zero shift.
-Reverse margin solving uses the same signed path/terminal shift. Sales-to-capital ratios must be
-finite and strictly positive in every explicit year; zero never means costless growth.
+- Inputs are finite numbers; numeric strings and booleans are rejected, and so are duplicate keys at any level
+  of the JSON or YAML (including YAML merge keys). The horizon and glide years are integers inside the horizon.
+  Financing weights and recovery fractions are in [0,1]; growth is above −100%; sales-to-capital is positive in
+  every year. Default-free confirmation must be the boolean `true`. The bundled example values are synthetic.
+- `model_shape: equity` treats `base_revenue` as after-tax earnings, so every margin must be 1, every tax rate 0,
+  `net_debt` 0, and a rate buildup must weight equity at 1.
+- Sensitivity grids center on the actual WACC path and hold explicit-period rates fixed when varying the
+  terminal rate. Story scenarios shift explicit and terminal margins together and keep negative margins. The
+  zero-shift cell equals the base value.
+- Reverse solving accepts a root at either end and a response in either direction. It returns `solved: false`
+  with a `reason` when the target is not bracketed or the iteration limit is hit; that does not mean the stock
+  is cheap or expensive.
+- A failed sensitivity, story or reverse calculation adds a gap and keeps the base valuation. Invalid base
+  inputs reject the whole call.
 
-DCF model scalars and path entries are finite numbers; numeric text and booleans do not substitute
-for quantities. Paths cannot be empty. The forecast horizon and glide timing use integers, with
-glide endpoints inside the horizon. Financing weights lie in [0,1] and sum to one; recovery fractions
-lie in [0,1]. Explicit discount factors must remain finite and positive, and revenue growth cannot
-be below -100%. Default-free confirmation requires the boolean true, never a truthy string.
-Reverse-margin output preserves the signed path used by its solver.
+## Discovery scans
 
-Supplied current prices must be finite and strictly positive. Risk-free rates retain their
-calculation precision when passed from the WACC buildup into validation and scenarios;
-display rounding must not change model inputs. Unrepresentable numeric inputs and nonfinite
-valuation totals are rejected, not published as a successful valuation.
+A failed fundamental gate or an unresolved named universe gives no shortlist; the scan never widens to the
+full screen or falls back to momentum. Invalid ranking, provider or limit inputs refuse before any fetch. One
+symbol's price failure is a gap and the rest continue.
 
-Reverse solving accepts endpoint roots and either direction of response within a bracket.
-It reports `solved: false` when the iteration limit is reached or the endpoints do not bracket
-the target. An unbracketed result is not evidence that a stock is cheap or expensive: interior
-or multiple roots may exist. Successful shifts and implied paths preserve solver precision.
-The target and tolerance must be positive finite numbers; the iteration limit a positive integer.
-DCF input files reject duplicate fields at every mapping level in JSON and YAML, including
-overrides introduced through YAML merges. Model field names must be strings. Keep one explicit
-value per assumption instead of relying on parser precedence. Bundled example values are
-synthetic, not sourced company observations or current market assumptions.
+Each stock-scan candidate carries `price_as_of`, `price_source` and `price_fetched_at`. `as_of` is the common
+price date (null when dates differ) and `generated_on` is the run date. Symbols whose return windows end on a
+different date from the rest are not ranked. Like the sector scan, `report_path` is named by content hash and
+`out` is only a prefix.
 
-The existing `model_shape: equity` adaptation treats `base_revenue` as after-tax earnings.
-Every explicit and terminal margin must equal 1, every explicit and terminal tax rate must
-equal 0, and `net_debt` must equal 0. A rate buildup must use equity weight 1 and debt weight 0.
-These checks prevent applying firm-side transformations to an equity stream; they cannot
-verify that a supplied scalar discount rate is actually a sourced cost of equity.
+Sector RS uses `prices.close_history`, the same loader as the stock scan, and needs 127 closes on the same dates
+as the benchmark for the 6M window. A sector with missing or invalid prices is unclassified, and one failed
+sector does not stop the scan. Valuation ranking needs a positive P/E and a percentile in [0,100].
 
-Optional DCF sensitivity/story/reverse calculations cannot discard a valid base valuation.
-Expected model/numeric failures produce a named `gaps` entry in the complete result and tool
-envelope; unavailable grids are null and reverse failures have `solved: false` plus `reason`.
-The CLI prints those gaps as well. Invalid base inputs still reject the valuation.
+## Alert store
 
-Discovery must not bypass a required screen: a failed fundamental gate or unresolved named
-universe produces no shortlist. A successful degraded universe retains its source gaps. Invalid
-ranking/provider/limit inputs refuse before fetching; one symbol's price-loader exception leaves
-other symbols usable with a labelled gap. A trade workflow cannot substitute shared cached
-survivors or momentum for a failed required fundamental gate.
+Writes run as a locked read-modify-write and replace the file atomically. IDs include a UUID, so alerts without
+a `dedup_key` never collide. A refresh by `dedup_key` updates snoozed alerts too and keeps them snoozed; a key
+cannot move to another subject or kind. Evaluation re-reads status from disk first, so a dismissed or snoozed
+alert cannot fire from a stale copy. Each record is validated on read; an invalid one stays on disk, is skipped
+and is reported as a gap (`load_all(gaps)`, `load_open(subject, gaps)`, and the `manage_alerts` envelope).
+A trigger must be exactly one type, and a missing date is not read as today.
 
-Stock-scan evidence carries `price_as_of`, `price_source` and `price_fetched_at` per candidate.
-Top-level `as_of` is the common actual price date (null when unavailable); `generated_on` is the
-run date. Source price gaps survive ranking. Invalid/nonpositive/nonfinite closes, duplicate or
-future dates are rejected. Production histories are sorted by date. Ranking excludes differing
-endpoints and mismatched return-window sessions; relative context validates each comparison
-window independently, so differing total history lengths are permitted when recent dates match.
+In `daily-brief`, holdings and performance come from personal sources, while prices, moves and alert checks
+come from market tools. A close-based alert needs a completed session's candle, not an intraday quote. A price
+event does not close a position. Time stops come from the trade's own strategy rule.
 
-Stock-scan `out` is a filename/prefix hint: returned `report_path` is content-addressed JSON, using
-shared atomic evidence publication. Consumers must use the returned path, not reconstruct the
-old mutable `stock-scan.json` filename. A persistence failure preserves the inline result with a gap.
+## Insurance math (`compute/insurance_math.py`)
 
-Sector RS uses the same `prices.close_history` adapter as stock scans. Source gaps are retained,
-and production sector/benchmark windows must share the same 127 closing-session dates for 6M
-coverage. Invalid prices cannot form returns or classifications; missing/nonfinite RS is
-unclassified. One failed sector does not abort the others. Valuation rankings require a successful
-source response, positive current P/E and a finite percentile in [0,100]. As with stock scans,
-`as_of` describes available price evidence and `generated_on` is the run date; undated valuation
-responses do not acquire a fabricated observation date.
+- Term cover needs `annual_income`, `income_multiple`, `outstanding_loans`, `education_corpus`,
+  `annual_expenses`, `years_to_independence`, `existing_corpus` and `existing_cover`. A missing input is a
+  gap; the engine supplies no multiplier or default. `annual_expenses` may be null only when
+  `years_to_independence` is 0.
+- Health sizing takes `base_target`, `total_target`, `deductible`, `personal_cover` and `employer_cover`, with
+  `0 < base_target <= total_target` and `0 <= deductible <= total_target`. It returns
+  `base_gap = max(base_target − personal_cover, 0)`, `top_up_target = total_target − deductible`,
+  `deductible_gap = max(deductible − personal_cover, 0)` and `planned_deductible_gap = max(deductible − base_target, 0)`.
+- Vehicle: IDV is null with an `idv_gap` for a vehicle older than five years or `model_discontinued: true`.
+  NCB is null with an `ncb_gap` when `claim_free_years` or `quoted_ncb` is missing. Each check stands alone.
+  `idv_tolerance` is a screening assumption.
+- `marginal_irr_continue` needs cash flows with both signs and exactly one sign change; otherwise there is no
+  IRR and the result is `ok:false` with the cash flows kept. Remaining premiums fall at t0 through
+  `remaining_premiums − 1`, with the surrender value forgone at t0. With no `hurdle_rate`, `beats_hurdle` is null.
+- Negative amounts and ages are rejected, not clamped. The CLI exits 2 on malformed JSON and 1 on a computed gap.
 
-Alert mutations serialize complete read/modify/write transactions across threads and processes.
-Writes replace a completed temporary YAML file atomically. IDs include a UUID; alerts without
-explicit dedup keys never overwrite each other, and completed history is retained when a new
-alert uses the same key. Dedup refresh includes snoozed records and preserves their snooze state;
-a key cannot change subject or kind. Evaluation reloads current persisted state before firing,
-so stale snapshots cannot resurrect dismissed or currently snoozed alerts. Invalid IDs, dates,
-severities, statuses and metric thresholds refuse with gaps through manage_alerts.
+## Rolling returns and look-through arithmetic
 
-Alert reads validate each YAML record independently, including identity/filename agreement,
-subject, action, trigger shape, status, dates and log type. Invalid records remain on disk and are
-excluded with a named gap; one record cannot hide the rest of the inbox. `load_all(gaps)` and
-`load_open(subject, gaps)` optionally collect those gaps; direct calls without a collector emit a
-warning. `manage_alerts` returns them in its envelope. Exactly one trigger type is required, and
-null dates cannot become today's date. Expired unswept records do not absorb dedup refreshes.
+A rolling window ends at the first NAV on or after `years × 365.25` days, and only if that NAV is no more than
+seven days late. With no eligible window, the statistics are null and `n_windows` is 0. A fund needs at least one
+eligible window for the requested period before the category scan ranks it.
 
-Daily-brief ownership and performance figures come from personal sources; decision CMP, daily
-moves and alert observations come only from approved market sources. Completed-close alerts require
-a verified completed-session candle, not an intraday quote. A price-level event does not establish
-an execution or close a position. Time-stop labels use the matched trade/strategy rule, never an
-invented universal expiry. Incomplete alert inbox gaps remain visible.
+Look-through scales weighted means to avoid overflow. A metric that is still not finite is withheld with a gap,
+whatever its coverage.
 
-`finance.telegram` owns text and report-document delivery through transport.request. User-authorized
-brief sends use `bin/send-telegram.sh --text-file <path>` and the shared secrets loader. Tokens and
-text are kept out of process arguments, private URLs do not redirect, and uncertain sends are not
-retried automatically. Missing credentials or a rejected message leave local reports intact.
-
-Insurance IRR calculations require a finite numeric cash-flow sequence containing both
-inflows and outflows, finite bounds satisfying `-1 < lo < hi`, and positive tolerance.
-Empty, zero-only and one-sided flows have no solvable IRR; they never return an endpoint
-rate. The solver supports exactly one cash-flow sign change; multiple sign changes are
-withheld because a single IRR may be ambiguous. Bisection uses scale-independent sign
-evaluation and absolute rate-interval tolerance. Unbracketed or unconverged flows return
-no supported solution. Invalid inputs and arithmetic failures return labelled gaps from
-`run_insurance_math`. Continuation premiums are modelled at t0 through
-`remaining_premiums-1`, with the surrender opportunity cost also at t0.
-
-Insurance arithmetic rejects negative supplied amounts or ages rather than clamping them
-to zero. Counts require nonnegative integers (booleans are not numeric inputs); NCB and IDV tolerance are fractions in [0,1].
-The public adapter rejects non-finite computed outputs. A continuation calculation with
-no supported IRR returns `ok:false` with a gap while preserving its cash-flow evidence.
-These numeric guarantees do not validate the insurance-sizing assumptions themselves.
-
-Term-cover expense runway requires explicit `annual_expenses` when
-`years_to_independence > 0`. Missing expenses no longer default to a percentage of income.
-An explicit zero is retained; with no runway requested, missing expenses remain null in
-the breakdown. Callers must surface a missing-input gap rather than silently removing
-the support horizon.
-
-Vehicle IDV checks return `expected_idv_low:null`, `expected_idv_high:null`, `idv_ok:null`
-and `idv_gap` for age >5 years or `model_discontinued:true`. The gap also appears in the
-outer envelope; `ok:true` can still carry the independently computed NCB result. Consumers
-must distinguish unknown IDV from a passing check. Exactly five years remains in the
-schedule. `idv_tolerance` is a screening assumption, not a policy rule. Source and scope:
-`skills/insurance-advisor/references/vehicle.md`.
-
-Health sizing now accepts explicit INR scenario inputs: `base_target`, `total_target`,
-`deductible`, `personal_cover`, `employer_cover`, all required. Demographic inputs and the
-city/age increments, fixed catastrophic target and half-weight employer rule are removed.
-Old demographic-only calls return a labelled input gap; callers must gather and justify
-the scenario rather than translate demographics into hidden defaults.
-
-`HealthNeed` echoes those five inputs and returns `base_gap=max(base_target-personal_cover,0)`,
-`top_up_target=total_target-deductible`, `deductible_gap=max(deductible-personal_cover,0)`,
-and `planned_deductible_gap=max(deductible-base_target,0)`. It requires
-`0 < base_target <= total_target` and `0 <= deductible <= total_target`.
-The old `base_recommended`, `effective_existing`, `top_up_recommended`, `gap`, `structure`
-and `breakdown` fields are replaced by these explicit fields. Producer: insurance_math;
-consumers: personal MCP description, insurance workflow/reference, CLI example and tests.
-These are nominal scenario calculations, not claims adjudication or proof of sufficiency.
-
-Term-cover inputs are now all explicit: `annual_income`, `income_multiple`,
-`outstanding_loans`, `education_corpus`, `annual_expenses`, `years_to_independence`,
-`existing_corpus`, and `existing_cover`. Omission returns an input gap; no 12× multiplier
-or absent-liability/cover assumption is supplied by the engine. `annual_expenses:null`
-is allowed only when the support horizon is zero. Other numeric inputs require finite
-nonnegative values (and a positive multiple). The existing result shape is unchanged;
-it describes the supplied scenario, not an endorsed universal coverage formula.
-
-The insurance CLI rejects malformed/non-object JSON, duplicate keys and non-finite
-JSON numbers as usage errors (exit 2, stderr, no calculation). Valid inputs still delegate
-to the shared calculator; a computed gap returns exit 1 and its JSON envelope.
-
-`marginal_irr_continue` no longer assumes a 7% benchmark. With omitted/null `hurdle_rate`,
-a supported IRR and cash flows remain available, `hurdle_rate` and `beats_hurdle` are null,
-and the envelope names the unavailable comparison. An explicit finite hurdle above -1
-retains the comparison. A comparison outcome alone does not decide policy surrender.
-
-Missing `claim_free_years` or `quoted_ncb` now leaves the vehicle `ncb_ok:null` with
-`ncb_gap`, also propagated to the envelope. The IDV check remains independently available.
-A supplied history can still yield `expected_ncb`; an omitted history cannot default to
-zero. Explicit zero history and zero quoted bonus remain valid numeric inputs.
-
-
-### Rolling-return endpoint coverage
-
-Rolling windows use the first observation on or after `years × 365.25` calendar days,
-provided it is no more than seven calendar days late. This is an explicit weekend/holiday
-tolerance, not an exchange-calendar guarantee. Later observations are excluded; sparse
-history must not turn a multi-year return into a nominal one-year observation. No eligible
-windows means null rolling statistics, zero `n_windows`, and unknown return confidence,
-even when the first-to-last history span is long. Shortlist flags expose missing coverage.
-A category scan requires at least one eligible rolling window before ranking; age metadata
-and other score components cannot substitute for the requested return coverage. NAV-stage
-rejection retains the count that passed the earlier screening gates. Cross-series comparisons
-must align endpoint calendars as well as starts.
-
-
-### Document reporting-period selection
-
-Annual-report label ordering uses the explicitly named reporting year, or the ending year
-of a one-year fiscal range, rather than a later incidental filing date. Labels with multiple
-unresolved years fall back with a recency gap instead of selecting the largest year. Label
-ordering is index metadata, not verification of the period printed inside the document.
-
-
-Look-through aggregation scales weighted arithmetic and harmonic calculations to avoid
-intermediate overflow on finite inputs. Coverage alone cannot authorize publication: a
-missing/nonfinite computed value is withheld with its actual coverage and a numeric gap.
-
-
-RSI values preserve TA-Lib's reference output, including its flat-series convention.
-A flat trailing window does not reset Wilder's earlier smoothed gains/losses to a
-synthetic neutral value. Strategies previously validated with the removed RSI=50
-override need revalidation if their rules depend on RSI; no strategy is reactivated automatically.
+RSI is TA-Lib's output as-is, including on flat series.

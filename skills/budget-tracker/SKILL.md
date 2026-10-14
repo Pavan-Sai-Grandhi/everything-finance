@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, Skill
 
 Read `references/reference.md` for the category taxonomy, the durable-map layering, the recurring-detection rules, and the target allocation framework (optional fallback heuristics; user-supplied targets take precedence).
 
-**No network source at all** — inputs are the user's own local statement files, so this skill calls no data tool. Use the budget workbook the user supplies, if any; do not assume a private Downloads file exists or has been read. Otherwise label the framework percentages in reference.md as fallback comparisons.
+**No network source at all** — inputs are the user's own local statement files, so this skill calls no data tool. Use the budget workbook if the user supplies one. Otherwise compare against the framework percentages in reference.md and label them as such.
 
 Two deterministic scripts do the categorization and recurring detection — call them, don't re-implement their logic:
 - `scripts/categorize.py` — durable merchant map + taxonomy → categorized transactions + UNCATEGORIZED residue.
@@ -35,25 +35,25 @@ UNCATEGORIZED handling:
 - **Interactive**: list the top UNCATEGORIZED merchants and ask the user to classify. Record each answer with `python3 <plugin>/skills/budget-tracker/scripts/categorize.py --learn --merchant "<narration>" --category "<Category>"` so it sticks — UNCATEGORIZED shrinks month over month. Never silently force a category.
 - **Non-interactive** (user away / batch): keep them in `UNCATEGORIZED` as their own line in the dashboard and verdict, top-5 listed for later classification — do not block, do not guess.
 - **First run / missing map**: behaves as taxonomy-only, then starts building the map.
-- **Invalid/unreadable map**: categorization reports a gap and uses taxonomy without altering saved rules. Learning fails safely; preserve and repair the existing file before adding corrections. Never replace it with an empty map to clear the error.
-- Carry the scripts' `gaps` into the report. Invalid transaction rows are excluded explicitly; do not call an incomplete month a balanced budget.
+- **Unreadable map**: categorization reports a gap and uses the taxonomy, and `--learn` refuses to write. Repair the file before adding corrections; never replace it with an empty map.
+- Carry the scripts' `gaps` into the report. An incomplete month is not a balanced budget.
 
 ## Step 3 — Recurring / subscription detection
 
-Concatenate the current transactions with prior months' (from `artifacts/budget/`) into one JSON and run `python3 <plugin>/skills/budget-tracker/scripts/recurring.py --txns <file> [--as-of <YYYY-MM-DD>]`. It returns the committed **recurring ₹/month**, the subscription/EMI/membership list (cadence, amount, months observed) and the **new / price_creep / dormant** flags, per the detection rules in reference.md. Cite every amount with the months it was observed in, and carry its confidence and `gaps` through. A single charge is an unconfirmed candidate with null cadence/monthly equivalent and is excluded from the total. The total covers observed active patterns, not verified contractual obligations. Exclude post-`as_of` transactions and deduplicate overlapping imports by transaction identity before concatenating; do not deduplicate different purchases merely because merchant/date/amount match.
+Concatenate the current transactions with prior months' (from `artifacts/budget/`) into one JSON and run `python3 <plugin>/skills/budget-tracker/scripts/recurring.py --txns <file> [--as-of <YYYY-MM-DD>]`. It returns the committed **recurring ₹/month**, the subscription/EMI/membership list (cadence, amount, months observed) and the **new / price_creep / dormant** flags, per the detection rules in reference.md. Cite every amount with the months it was seen in, and carry its confidence and `gaps` through. A single charge is a candidate, not part of the total. The total is what was observed, not a contractual commitment. Before concatenating, drop transactions after `as_of` and remove duplicate imports by transaction ID; two purchases with the same merchant, date and amount are not duplicates.
 
 ## Step 4 — Compare vs budget
 
-Reconcile statement coverage and inflows first. Credits can be own-account transfers, refunds or loan proceeds; they are not automatically income. Match refunds to the original expense where evidence permits and show unresolved credits as gaps. ATM withdrawals represent cash moved out of the account, with final spending untracked; do not count both a withdrawal and its documented cash purchases. Use verified positive household income for percentages; missing/zero income leaves savings rate and adherence unassessed.
+Check statement coverage and inflows first. A credit can be a transfer between your own accounts, a refund or a loan, so it is not automatically income. Match refunds to the original expense where possible and list unmatched credits as gaps. An ATM withdrawal is cash whose spending is untracked; do not also count cash purchases made from it. Percentages use verified household income; without it, savings rate and adherence are unassessed.
 
-Aggregate per category and per bucket (Essential / Lifestyle / EMIs / Investments / Leftout) and compute each bucket's % of verified inflow vs the declared target band. Comparisons to fallback bands are descriptive, not personalized investment instructions. Flags:
+Aggregate per category and per bucket (Essential / Lifestyle / EMIs / Investments / Leftout) and compute each bucket's % of verified inflow vs the target band. Flags:
 - Bucket > target band → overspend flag with the top 3 driver transactions
 - Investments below target → discipline gap (the framework treats investing as a bill, not a residual)
 - Leftout negative → the month ran a deficit; identify whether it's one-off (annual premium) or structural
 
 ## Output — `deep`
 
-Render `assets/budget-dashboard.html` (bundled with this skill: bucket gauges vs targets, category bars, top merchants, the committed-recurring-spend panel, month-over-month if prior artifacts exist under `artifacts/budget/`), save to `artifacts/budget/<YYYY-MM>.html` (`paths.report_path("budget", "<YYYY-MM>", "html")`). HTML-escape all filled text, constrain class fields to the template's documented choices, and use finite numeric style values. Set `SAVINGS_RATE_DISPLAY` to a formatted percentage or “Unassessed”; omit gauges when their denominator or target is missing. Carry script gaps into `DATA_GAPS` and leave unconfirmed recurring equivalents as “—”. In chat: savings rate (defined as (investments + leftout) / total inflow — state the formula), the single biggest leak, and one specific corrective action. Keep transaction-level data out of chat unless asked — it's sensitive; it lives in the artifact only.
+Render `assets/budget-dashboard.html` (bundled with this skill: bucket gauges vs targets, category bars, top merchants, the committed-recurring-spend panel, month-over-month if prior artifacts exist under `artifacts/budget/`), save to `artifacts/budget/<YYYY-MM>.html` (`paths.report_path("budget", "<YYYY-MM>", "html")`). HTML-escape all filled text, use only the class values the template documents, and use finite numbers in style values. Set `SAVINGS_RATE_DISPLAY` to a percentage or "Unassessed", and omit a gauge whose denominator or target is missing. Carry script gaps into `DATA_GAPS` and show single-charge recurring equivalents as "—". In chat: savings rate (defined as (investments + leftout) / total inflow — state the formula), the single biggest leak, and one specific corrective action. Keep transaction-level data out of chat unless asked — it's sensitive; it lives in the artifact only.
 
 ## Output — `quick` (cashflow-leg digest)
 

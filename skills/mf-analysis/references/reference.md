@@ -66,11 +66,11 @@ SEBI defines the tiers by **market-cap rank**: top 100 large, 101-250 mid, 251+ 
 
 ### Coverage is a gate, not a footnote
 
-Report the equity weight covered by each metric. The engine withholds values below 60% coverage, labels 60%–85% indicative, and labels at least 85% decision-grade. Indicative values must not decide a recommendation. Never extrapolate the uncovered remainder; distinguish missing ratios from a genuinely zero allocation.
+Report the equity weight each metric covers. The engine withholds a value below 60% coverage, labels 60–85% indicative and 85% or more decision-grade. An indicative value must not decide a recommendation. Never extrapolate to the uncovered part, and do not confuse a missing ratio with a zero allocation.
 
 ### P/B ÷ ROE — compare only matched holdings
 
-The engine computes P/B and weighted ROE on the intersection of holdings with both inputs, then applies the coverage gate to that shared weight. Independent coverage percentages cannot establish the overlap. Treat the result as a descriptive cross-check; stability in a few past revisions does not prove robustness, and it must not automatically override conflicting valuation evidence. Explain differences in coverage, sectors, accounting and profitability before drawing a conclusion.
+The engine computes P/B and weighted ROE over the holdings that have both, and applies the coverage gate to that set. Use the result as a cross-check, not as something that overrides other valuation evidence. Explain differences in coverage, sectors, accounting and profitability before concluding anything.
 
 ### Earnings-distress dispersion — and the cyclical/idiosyncratic split
 

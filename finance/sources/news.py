@@ -93,7 +93,7 @@ _SECTOR_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Opinion / forward-looking markers → `narrative`; everything else is an unverified `reported` event.
+# Opinion or forward-looking words mark `narrative`; everything else is an unverified `reported` event.
 _NARRATIVE_RE = re.compile(
     r"\b(target\s+price|price\s+target|raises?\s+target|cuts?\s+target|upgrade[sd]?|"
     r"downgrade[sd]?|buy|sell|hold|outperform|underperform|overweight|underweight|"
@@ -301,7 +301,7 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False, today
     company = company.strip()
     ticker = _norm(ticker or company)
     # Cache the source response, not one caller's classification/noise/window view.
-    # A versioned key also prevents old processed caches from masquerading as raw feeds.
+    # The versioned key skips caches written in the old processed format.
     key = hashlib.sha256(json.dumps([company.casefold(), days]).encode()).hexdigest()
     cache_file, cached, cache_gaps = None, None, []
     try:

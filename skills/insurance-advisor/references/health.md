@@ -8,23 +8,19 @@ Family composition + ages · city tier (metro / tier-2 / tier-3) · existing con
 
 ## Sizing (feeds `health_sum_insured`)
 
-Choose and explain a `base_target` and a `total_target` from the household interview,
-policy options and sourced research. These are scenario assumptions, not a city-tier
-formula or a medical-cost forecast. If evidence is insufficient, state the gap instead
-of supplying a default amount. Assess different covered groups separately.
+Choose a `base_target` and a `total_target` from the interview, the policy options and
+sourced research, and explain them. They are scenario assumptions, not a city-tier formula
+or a forecast of medical costs. If the evidence is too thin, state the gap instead of using a
+default. Size each covered group separately.
 
-Supply the policy's `deductible`, existing `personal_cover`, and `employer_cover` explicitly.
-The calculator keeps the two cover amounts separate and does not assume they reimburse
-the same expenses. `top_up_target = total_target - deductible` is a scenario sum insured
-above the deductible, not an additional purchase amount. Compare it with any existing
-top-up policy separately, including its deductible. Inspect both the current and planned
-deductible gaps. Check the
-policy's eligibility, exclusions, limits and aggregate-deductible rules before interpreting
-nominal amounts as available protection.
+Supply the policy's `deductible`, existing `personal_cover` and `employer_cover`. The
+calculator keeps the two covers separate. `top_up_target = total_target - deductible` is the
+sum insured needed above the deductible; compare it with any existing top-up and its own
+deductible. Check both deductible gaps, then the policy's eligibility, exclusions, limits and
+aggregate-deductible rules before treating any amount as real protection.
 
-The distinction between deductible and super-top-up sum insured is supported by
-[HDFC ERGO's product FAQ](https://www.hdfcergo.com/faqs/my-health-medisure-super-top-up-insurance-policy-faqs)
-(checked 2026-09-28). This example does not establish universal household cover targets.
+[HDFC ERGO's super-top-up FAQ](https://www.hdfcergo.com/faqs/my-health-medisure-super-top-up-insurance-policy-faqs)
+(checked 2026-09-28) explains the difference between deductible and top-up sum insured.
 
 ## Scoring checklist (weighted — score each candidate, higher = better)
 
@@ -49,4 +45,4 @@ Every high-weight criterion above, failed, is a red flag — **a room-rent cap w
 
 ## Sizing sanity (unverified rule of thumb)
 
-A commonly quoted band — roughly ₹15–25k/yr for a ₹10L individual floater, rising steeply with age — is an unsourced heuristic, not market data. A quote far below comparable quotes is a prompt to read the policy for caps and co-pay; compare actual quotes for the same members, sum insured and features, and never cite the band as evidence.
+A commonly quoted band of about ₹15–25k/yr for a ₹10L individual floater, rising steeply with age, has no source. A quote far below comparable quotes is a reason to read the policy for caps and co-pay. Compare real quotes for the same members, sum insured and features, and never cite the band as evidence.

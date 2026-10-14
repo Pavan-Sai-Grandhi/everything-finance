@@ -9,7 +9,6 @@ from finance.spine import envelope
 def screen(screen_url, max_survivors=200, fresh=False):
     return envelope(False, "screener.in", {
         "query": None, "screen_url": screen_url, "count": 0, "candidates": [],
-    }, ["Saved fundamental screens are not an approved decision source. screener.in is "
-        "approved for document discovery only. Re-author the spec using the supported "
-        "Tickertape fields, or report unsupported criteria as data gaps; do not silently "
-        "substitute a different screen."])
+    }, ["Saved screens are retired: screener.in is approved for documents only. Rewrite "
+        "the spec with Tickertape fields, or report criteria Tickertape cannot express "
+        "as data gaps; do not substitute a different screen."])

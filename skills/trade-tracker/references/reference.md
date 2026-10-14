@@ -12,9 +12,9 @@ Every trade entered through this plugin carries a written rationale (the trade-i
 
 `check_trade` evaluates these top-down; the first hit is the verdict:
 
-1. **EXIT_STOP** — price breached the stoploss. Non-negotiable; the stop is where the thesis was defined to be wrong. (Uses each unadjusted session's low for longs / high for shorts on every session after the recorded fill date, so a recovered breach still counts and is dated. On the fill day, or with an unknown fill date, it checks close and labels the intrabar gap.)
+1. **EXIT_STOP** — price breached the stoploss. Non-negotiable; the stop is where the thesis was defined to be wrong. (It checks the unadjusted low (long) or high (short) of every session after the fill date, so a breach that later recovered still counts, with its date. On the fill day, or with no fill date, it checks the close only.)
 2. **EXIT_THESIS** — a machine-checkable invalidation fired (e.g. *daily close below 50-EMA*, *break of pivot 3,250*). The setup that justified the entry is gone even if the hard stop hasn't printed — exit into strength rather than waiting for the stop.
-3. **EXIT_TARGET** — price reached the target. Recommend booking or trailing per the plan; the position remains open until matched broker executions confirm its full exit.
+3. **EXIT_TARGET** — price reached the target. Recommend booking or trailing per the plan; the position stays open until broker executions show the full exit.
 4. **EXIT_TIME** — held ≥ `time_stop_sessions` with neither stop nor target hit. Dead money has an opportunity cost; a swing trade that hasn't worked in its window is telling you something.
 5. **HOLD** — no evaluated mechanical condition fired. Resolve `manual_review` and data gaps before calling the rationale intact.
 

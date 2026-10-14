@@ -21,8 +21,8 @@ Reach for a raw `finance-market` tool (`get_indices`, `get_breadth`, `get_flows`
 
 ## Depth modes
 
-- **`quick`** (another skill requested it, or the user passed `--quick`) — reuse today’s compatible artifact for the requested history window with zero fetches; recompute if absent, invalid or incompatible. This is the mode every other skill calls, and it is why N skills in one day cost one computation. Emit the digest and stop.
-- **`deep`** (default on direct user invocation) — compute every rung, write the artifact, and produce the written market read below. Adds prior dated regime readings. Request `get_indices` only if a full per-sector valuation table is needed beyond the digest’s leaders and laggards.
+- **`quick`** (another skill requested it, or the user passed `--quick`) — reuse today's artifact for the same history window without fetching; recompute if it is missing or does not match. Every other skill calls this mode, so N skills in one day cost one computation. Emit the digest and stop.
+- **`deep`** (default on direct user invocation) — compute every rung, write the artifact, and write the market read below, including earlier regime readings. Call `get_indices` only if you need valuations for more sectors than the digest's leaders and laggards.
 
 ## Workflow
 
@@ -40,18 +40,18 @@ Reach for a raw `finance-market` tool (`get_indices`, `get_breadth`, `get_flows`
 
 ## Output
 
-The tool persists the **full structured context**, not its text digest, at `paths.report_path("market-analysis", ext="json")`. Strategy selection, fund scans and later market runs consume that file. Never overwrite it with the tool envelope, digest or a model-written reconstruction. In `deep`, read that JSON for fields omitted from the compact tool return, then write the Markdown report at `paths.report_path("market-analysis", ext="md")` using `assets/market-read.md`. Report a persistence gap if the tool could not save the shared record.
+The tool saves the **full context** to `paths.report_path("market-analysis", ext="json")`; strategy selection, fund scans and later market runs read that file. Never overwrite it yourself. In `deep`, read that JSON for fields the tool's reply leaves out, then write the report to `paths.report_path("market-analysis", ext="md")` using `assets/market-read.md`. If the tool could not save the file, report the gap.
 Summarize in chat: posture and trend, the breadth check, the cap-tier valuation table, the one tension that matters, and the data gaps. `quick` returns only the digest — no report, no chat narrative.
 
-**The market-context digest is a consumed contract** — `finance/contracts.md` (*Artifact: market-context*) lists every field, its meaning, which skill reads it, and the four spellings frozen because `strategy-manager/scripts/select_strategy.py` gates on them. The library owns JSON persistence; retain its field names when consuming it.
+**The market-context digest is a consumed contract** — `finance/contracts.md` (*Artifact: market-context*) lists every field, its meaning, which skill reads it, and the four spellings frozen because `strategy-manager/scripts/select_strategy.py` gates on them. The library writes the JSON; keep its field names when reading it.
 
 ## Reporting rules specific to this read
 
 - Percentiles are against **that index's own history**, never another index or a remembered "normal". A multiple without its own distribution behind it is not evidence.
-- Report the P/E exclusion count and heuristic: positive samples at least 3× the median are excluded. This does not establish the cause of an outlier. Percentile bands and blends are research conventions, not calibrated forecasts.
-- Missing values remain data gaps. Null breadth cannot pass a strategy gate, and `neutral` with an incomplete-evidence rationale does not mean normal conditions. Use component observation dates when available; a Nifty bar date does not establish the freshness of flows or valuations.
+- Report how many P/E samples were excluded and why (at or above 3× the median). The rule does not tell you what caused the outlier. Percentile bands and blends are conventions, not forecasts.
+- Missing values are data gaps. Null breadth fails a strategy gate, and `neutral` because of missing data does not mean conditions are normal. Use each component's own date; the Nifty bar date says nothing about how fresh flows or valuations are.
 - Never explain a **trailing-window** number with a **calendar-year** number. "The trailing 1Y is weak but CY2025 was worse" compares two different windows and is not an argument.
 
 ## Alerts this skill raises (via `manage_alerts`)
 
-On a posture change between complete, comparable readings, use `manage_alerts(action="add", subject_type="market", subject_id="nifty", kind="regime_change", created_by="market-analysis", check="review_regime_change", severity="watch", text="<prior posture/date> to <current posture/date>: re-check open positions and active strategy fit", dedup_key="regime-<date>")`. The check is a manual review request; include the observed transition in `text`. An incomplete-data fallback is not evidence of a genuine regime change. This prompts review, never a transaction.
+On a posture change between complete, comparable readings, use `manage_alerts(action="add", subject_type="market", subject_id="nifty", kind="regime_change", created_by="market-analysis", check="review_regime_change", severity="watch", text="<prior posture/date> to <current posture/date>: re-check open positions and active strategy fit", dedup_key="regime-<date>")`. The alert asks for a manual review, never a trade. A posture that changed only because data was missing is not a regime change.

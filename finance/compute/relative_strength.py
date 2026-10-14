@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import math
 
-
-def _finite(value):
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+from finance import spine
 
 
 WINDOWS = {"1m": 21, "3m": 63, "6m": 126}
@@ -25,7 +23,7 @@ def pct_return(closes, lookback):
     if type(lookback) is not int or lookback < 1 or not closes or len(closes) <= lookback:
         return None
     start = closes[-1 - lookback]
-    if not _finite(start) or not _finite(closes[-1]) or start <= 0 or closes[-1] <= 0:
+    if not spine.is_finite(start) or not spine.is_finite(closes[-1]) or start <= 0 or closes[-1] <= 0:
         return None
     result = 100.0 * (closes[-1] / start - 1.0)
     return round(result, 2) if math.isfinite(result) else None
@@ -50,7 +48,7 @@ def classify(rs_1m, rs_3m):
     Improving (1M positive, 3M negative) is early rotation — the actionable class.
     Either window missing yields 'unclassified' rather than a guessed label.
     """
-    if not _finite(rs_1m) or not _finite(rs_3m):
+    if not spine.is_finite(rs_1m) or not spine.is_finite(rs_3m):
         return "unclassified"
     if rs_1m >= 0 and rs_3m >= 0:
         return "Leading"

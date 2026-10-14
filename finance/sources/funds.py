@@ -719,16 +719,17 @@ def enrich(positions, workers=10, fresh=False):
         gaps.append(f"{unranked_w}% of the book is unranked in the AMFI cap list for "
                     f"{cap_period or 'the current period'} — cap-tilt falls back to the "
                     f"provider label for that weight")
-    return out, gaps
+    return out, list(dict.fromkeys(gaps))
 
 
 def nav_history(scheme_code, fresh=False):
     """Full daily NAV series for a scheme. `data = {code, meta, navs:[{date, nav}]}`
     with dates as ISO and OLDEST FIRST (mfapi serves newest-first)."""
-    if _scheme_code(scheme_code) is None:
+    code = _scheme_code(scheme_code)
+    if code is None:
         return _envelope(False, "mfapi.in", {"code": scheme_code, "navs": []},
                          [f"invalid AMFI scheme code {scheme_code!r}"])
-    scheme_code = _scheme_code(scheme_code)
+    scheme_code = code
     cache = _cache_path("nav", scheme_code)
     cached = _read_cache(cache, fresh)
     if cached is not None:

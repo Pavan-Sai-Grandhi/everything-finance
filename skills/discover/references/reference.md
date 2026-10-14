@@ -5,7 +5,7 @@ Distilled from Zerodha Varsity — *Technical Analysis* (22 chapters) and *Tradi
 ## Why trade and invest screen differently for the same stocks
 
 - **Trade** makes the **technical cut central**: a coarse fundamental gate keeps swing longs out of broken companies, then the technical screen and `run_strategy_screen` build entry/stop/target/RRR/qty. It is backtest-validated because entry/exit rules have a testable edge.
-- **Invest** (`run_stock_scan`) makes the **fundamental cut central** and drops timing entirely: the business-quality query, intersected with the universe, ranked by momentum, capped to a shortlist. No entry/stop/target/size, no RRR, no backtest — you are choosing *what to deep-dive*, not *when to enter*. The quick pass checks the survivors against the stated criteria and labels material uncertainty. It cannot establish fraud or management integrity from ratios. Discovery keeps the deterministic ranking among survivors; it does not invent a second numeric score.
+- **Invest** (`run_stock_scan`) makes the **fundamental cut central** and drops timing entirely: the business-quality query, intersected with the universe, ranked by momentum, capped to a shortlist. No entry/stop/target/size, no RRR, no backtest — you are choosing *what to deep-dive*, not *when to enter*. The quick pass checks survivors against the spec's criteria and flags what it cannot check; ratios cannot show fraud or management integrity. The scan's ranking stands.
 
 An investment spec is a trading spec **minus the trading half**: `universe` + `screening.fundamental` + `ranking` + `regime_required`, omitting `entry`/`exit`/`sizing`.
 
@@ -34,7 +34,7 @@ Run every shortlisted candidate through this order before emitting a signal — 
 
 ## Signal construction discipline (Trading Systems module)
 
-- **Entry**: the engine plans entry at the signal bar's close — the same sizing proxy the backtest uses (its fills land at the next open), so live and historical results describe one rule. A pattern trigger (breakout level / reversal-candle high) is a manual refinement: state it, recompute the stop distance and size, and do not present it as the validated rule.
+- **Entry**: the engine plans entry at the signal bar's close, the same price the backtest sizes from (its fills are at the next open), so live and backtest use one rule. A pattern trigger such as a breakout level or reversal-candle high is a manual change: state it, recompute the stop distance and size, and do not call it the validated rule.
 - **Stop** at structure — the recent swing low or breakout pivot, **not** the full consolidation low. (Anchoring the stop at the consolidation low inflates risk to ≈ the measured-move height, pinning RRR near 1.0 so nothing passes. The measured move sizes the *target*; the swing low sizes the *stop*.)
 - **Target** at the next resistance; for a blue-sky stock at/above its 52-week high (no overhead resistance), use the measured move of the prior consolidation and label it "measured-move".
 - **Position size from risk, never conviction**: `qty = (capital × risk%) / (entry − stop)`, default 1%. Conviction changes nothing; only the stop distance does. Never widen a stop to "give it room".

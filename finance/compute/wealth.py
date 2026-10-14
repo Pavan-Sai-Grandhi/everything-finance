@@ -132,6 +132,10 @@ def _breakdown_rows(breakdown):
     return []
 
 
+_RESERVE_UNVERIFIED = ("emergency-reserve availability unverified: cash/FD labels alone do not "
+                       "establish accessible funds")
+
+
 def build_spine(snapshot=None, breakdown=None, positions_env=None, liabilities=None):
     """Assemble the net-worth spine. Precedence for the allocation: IndMoney's
     `networth_allocation_breakdown` (authoritative, sees every class) → else aggregate
@@ -218,7 +222,7 @@ def build_spine(snapshot=None, breakdown=None, positions_env=None, liabilities=N
 
     observed_liquid = round(sum(alloc.get(b, 0.0) for b in _LIQUID), 2)
     liquid = None
-    gaps.append("emergency-reserve availability unverified: cash/FD labels alone do not establish accessible funds")
+    gaps.append(_RESERVE_UNVERIFIED)
     direct_equity = sum(alloc.get(b, 0.0) for b in _DIRECT_EQUITY)
     known_equity_share_pct = round(direct_equity / denom * 100, 1) if denom and denom > 0 else None
     unknown_equity_value = sum(alloc.get(b, 0.0) for b in ("mutual_funds", "other", "epf", "insurance"))
@@ -370,10 +374,9 @@ def protection_read(protection):
     return {"status": "not_assessed" if (missing or flags) and worst == "strong" else worst, "line": line}
 
 
-def risk_posture(equity_share_pct, ef_status, prot_status, age=None, equity_band=None):
-    """Compare exposure with a stated range; age alone does not define a target.
+def risk_posture(equity_share_pct, ef_status, prot_status, equity_band=None):
+    """Compare exposure with the user's stated range; there is no age-based default.
 
-    `age` remains accepted for older callers but is never used to invent a limit.
     A range comparison is a review finding, not authorization to transact.
     """
     share = _num(equity_share_pct)
@@ -538,7 +541,7 @@ def run(picture, snapshot_mode=False):
     else:
         spine["liquid"] = reserve
         spine["reserve_evidence"] = reserve_evidence
-        spine["gaps"] = [gap for gap in spine["gaps"] if not gap.startswith("emergency-reserve availability unverified:")]
+        spine["gaps"].remove(_RESERVE_UNVERIFIED)
 
     exp, exp_basis = _monthly_expenses(cashflow, profile)
     ef = emergency_fund(spine["liquid"], exp)
@@ -549,8 +552,7 @@ def run(picture, snapshot_mode=False):
     ef["expense_basis"] = exp_basis
     ef["reserve_evidence"] = reserve_evidence
     prot = protection_read(legs.get("protection"))
-    age = profile.get("age")
-    risk = risk_posture(spine["equity_share_pct"], ef["status"], prot["status"], age,
+    risk = risk_posture(spine["equity_share_pct"], ef["status"], prot["status"],
                         equity_band=profile.get("equity_band"))
 
     cross = {"emergency_fund": ef, "protection": prot, "risk_posture": risk}

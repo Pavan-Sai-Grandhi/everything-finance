@@ -6,7 +6,6 @@ Reached through: manage_alerts.
 """
 import fcntl
 from functools import wraps
-import tempfile
 import threading
 import uuid
 import warnings
@@ -97,17 +96,9 @@ def _validate(alert, expected_id=None):
 
 def _save(alert):
     _validate(alert)
-    target = _path(alert["id"])
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(mode='w', dir=os.path.dirname(target), delete=False, encoding='utf-8') as stream:
-            temporary = stream.name
-            yaml.safe_dump(alert, stream, sort_keys=False, default_flow_style=False)
-        os.replace(temporary, target)
-        return alert
-    finally:
-        if temporary and os.path.exists(temporary):
-            os.unlink(temporary)
+    spine.atomic_write(_path(alert["id"]), lambda stream: yaml.safe_dump(
+        alert, stream, sort_keys=False, default_flow_style=False))
+    return alert
 
 
 @_transaction

@@ -37,10 +37,9 @@ def screen_compute(symbols, spec, years, capital, loader=None):
     tests inject synthetic frames; production fetches via the data spine (`prices.history_df`,
     which owns the cache through paths.py). Source gaps remain visible."""
     try:
+        capital, _ = strategy.validate_spec(spec, capital)
         filters = strategy.entry_filters(spec)
         features = strategy.referenced_features(spec)
-        capital, _ = strategy.risk_parameters(spec, capital)
-        strategy.validate_exit(spec.get("exit"))
     except ValueError as exc:
         return {"candidates": [], "rejected": [], "data_gaps": [f"invalid strategy: {exc}"]}
 
@@ -106,10 +105,7 @@ def run(spec, symbols=None, years=2, capital=500000, out=None):
         doc = load_spec(spec)
         if not isinstance(doc, dict):
             raise ValueError("strategy must be a mapping")
-        strategy.entry_filters(doc)
-        strategy.referenced_features(doc)
-        capital, _ = strategy.risk_parameters(doc, capital)
-        strategy.validate_exit(doc.get("exit"))
+        capital, _ = strategy.validate_spec(doc, capital)
         if symbols is None:
             symbols = (doc.get("universe") or {}).get("source")
         syms, uni_gaps = universe.resolve_symbols(symbols)

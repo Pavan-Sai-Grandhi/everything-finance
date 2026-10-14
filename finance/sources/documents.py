@@ -161,15 +161,6 @@ def _to_text(src_path, txt_path, expected_pdf=False):
     return "pdftotext", None
 
 
-def _content_digest(path):
-    """Verify snapshot bytes, including same-length edits that counts cannot detect."""
-    digest = hashlib.sha256()
-    with open(path, "rb") as stream:
-        for block in iter(lambda: stream.read(65536), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def _measure(path):
     """(chars, lines) of the extracted text, read streaming so a 300-page report never
     lands in memory just to be counted."""
@@ -298,7 +289,7 @@ def _document(link, kind, fresh, gaps):
             if (format_checked and row.get("url") == url and row.get("kind") == kind and valid_path
                     and os.path.isfile(txt) and _measure(txt) == (row.get("text_chars"),row.get("text_lines"))):
                 expected = os.path.basename(txt)[len(_key(url)) + 1:-4]
-                if _content_digest(txt) == expected:
+                if spine.file_sha256(txt) == expected:
                     row["cached"] = True
                     row["label"] = label
                     row["publisher"] = transport._host(url)
@@ -331,17 +322,11 @@ def _document(link, kind, fresh, gaps):
         row = {"kind": kind, "label": label, "url": url, "publisher": transport._host(url),
                "text_path": txt, "text_chars": chars, "text_lines": lines,
                "extracted_by": method, "outline": outline}
-        pending = None
         try:
-            with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8", delete=False) as stream:
-                pending = stream.name
-                json.dump({**row, "_format_validation": 1}, stream, ensure_ascii=False)
-            os.replace(pending, meta)
+            spine.atomic_write(meta, json.dumps({**row, "_format_validation": 1},
+                                                ensure_ascii=False))
         except OSError as exc:
             gaps.append(f"{label}: text saved but metadata not cached ({exc})")
-        finally:
-            if pending and os.path.exists(pending):
-                os.unlink(pending)
         row["cached"] = False
         return row
     except (OSError, ValueError, TypeError) as exc:

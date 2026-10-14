@@ -188,10 +188,13 @@ def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None)
         else:
             env = prices.history(symbol, period="1y", adjusted=False)
             gaps.extend(env.get("gaps", []))
-            raw = env.get("data", {}).get("candles", [])
-            adj_env = prices.history(symbol, period="1y", adjusted=True)
-            gaps.extend(g for g in adj_env.get("gaps", []) if g not in gaps)
-            adjusted_raw = adj_env.get("data", {}).get("candles", [])
+            raw = adjusted_raw = env.get("data", {}).get("candles", [])
+            # The adjusted series is only read by moving-average conditions.
+            if any(re.search(r"\b(?:\d+\s*-?\s*(?:day\s*)?)?(?:ema|dma|sma|ma)\b", str(c).lower())
+                   for c in invalidations):
+                adj_env = prices.history(symbol, period="1y", adjusted=True)
+                gaps.extend(g for g in adj_env.get("gaps", []) if g not in gaps)
+                adjusted_raw = adj_env.get("data", {}).get("candles", [])
         before = len(gaps)
         rows = _price_rows(raw, gaps)
         missing_bars = len(gaps) > before
@@ -213,7 +216,7 @@ def check(trade, ohlcv=None, ltp=None, entry=None, qty=None, sessions_held=None)
     mark = ltp if ltp is not None else price
     # A daily high/low can predate an intraday fill. With no known fill date, or on
     # its own day, only the decision close is usable; never assume an old breach.
-    # Every full session after the fill counts: a breach does not un-happen on recovery.
+    # Check every session after the fill, so a breach still counts after price recovers.
     window = [row for row in rows if entered is not None and row["date"] > entered]
     if not window:
         window = [{"date": last["date"], "low": price, "high": price}]

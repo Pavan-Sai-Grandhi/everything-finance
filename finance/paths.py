@@ -32,6 +32,7 @@ from datetime import date as _date_cls
 from finance.spine import envelope as _envelope
 
 _SOURCE = "finance.paths"
+_RUN_ID = re.compile(r"[0-9]{20}-[a-f0-9]{32}")
 
 # skill -> report filename for the prior-run lookup. Only the entity-centric skills
 # that build on their own history are listed.
@@ -235,14 +236,14 @@ def report_staging_dir(session, *, create=False):
 
 def report_stage(session, run_id):
     """A run-specific path; creates its parent only."""
-    if not re.fullmatch(r"[0-9]{20}-[a-f0-9]{32}", str(run_id)):
+    if not _RUN_ID.fullmatch(str(run_id)):
         raise ValueError("invalid report run id")
     return _contained(os.path.join(report_staging_dir(session, create=True), run_id))
 
 
 def report_archive(ticker, day, run_id):
     """Immutable report bundle path; all publication paths are owned here."""
-    if not re.fullmatch(r"[0-9]{20}-[a-f0-9]{32}", str(run_id)):
+    if not _RUN_ID.fullmatch(str(run_id)):
         raise ValueError("invalid report run id")
     return _mkparent(os.path.join(stock_dir(ticker, day), "runs", run_id))
 
@@ -285,7 +286,7 @@ def latest_prior(skill, subject, before=None):
             if not os.path.isdir(runs):
                 continue
             for run_id in os.listdir(runs):
-                if not re.fullmatch(r"[0-9]{20}-[a-f0-9]{32}", run_id):
+                if not _RUN_ID.fullmatch(run_id):
                     continue
                 bundle = _contained(os.path.join(runs, run_id))
                 try:

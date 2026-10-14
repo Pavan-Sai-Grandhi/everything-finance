@@ -194,6 +194,7 @@ def scan(spec, top=None, fresh=False, market_context=None,
 
 
 def _result(spec, shortlist, universe_counts, source, metric, market_context, gaps):
+    scr = (spec.get("screening") or {}).get("fundamental") or {}
     price_dates = {row.get("price_as_of") for row in shortlist}
     return {
         "as_of": next(iter(price_dates)) if len(price_dates) == 1 else None,
@@ -202,13 +203,9 @@ def _result(spec, shortlist, universe_counts, source, metric, market_context, ga
         "spec": spec.get("name"),
         "ranking_metric": metric,
         "universe": {"source": source, **universe_counts, "shortlisted": len(shortlist)},
-        "gates": {"provider": (((spec.get("screening") or {}).get("fundamental") or {})
-                               .get("provider") or "tickertape"),
-                  "query": ((spec.get("screening") or {}).get("fundamental") or {}).get("query"),
-                  "screen_url": ((spec.get("screening") or {}).get("fundamental")
-                                 or {}).get("screen_url"),
-                  "max_survivors": ((spec.get("screening") or {}).get("fundamental")
-                                    or {}).get("max_survivors")},
+        "gates": {"provider": scr.get("provider") or "tickertape",
+                  "query": scr.get("query"), "screen_url": scr.get("screen_url"),
+                  "max_survivors": scr.get("max_survivors")},
         "market_context": market_context,
         "shortlist": shortlist,
         "gaps": gaps,

@@ -1,6 +1,6 @@
 # Market Read — {{as_of}}
 
-*Computed {{generated}} from `artifacts/market-analysis/{{generated}}.json`. `as_of` is the last available Nifty bar; show “unavailable” if null. Other components may have different observation dates.*
+*Computed {{generated}} from `artifacts/market-analysis/{{generated}}.json`. `as_of` is the last available Nifty bar; show "unavailable" if null. Other components may have different dates.*
 
 ## The call
 
@@ -46,13 +46,13 @@ India VIX **{{volatility.vix}}** — {{volatility.band}}, {{volatility.percentil
 | Midcap 150 | | | | | | | |
 | Smallcap 250 | | | | | | | |
 
-{{pe_pctile_note, available sample coverage and exclusions; the filter does not establish the cause of outliers}}
+{{pe_pctile_note, sample coverage and how many outliers were excluded}}
 
 **Relative:** smallcap/largecap P/B {{relative.smallcap_vs_largecap_pb_ratio}}, percentile spread {{relative.percentile_spread}}. {{relative.read}}
 
 ## Flows
 
-Session {{flows_session}} — FII net ₹{{FII.net_cr}} Cr, DII net ₹{{DII.net_cr}} Cr. {{describe this session; discuss persistence only with additional sourced sessions}}
+Session {{flows_session}} — FII net ₹{{FII.net_cr}} Cr, DII net ₹{{DII.net_cr}} Cr. {{describe this session only; a trend needs more sessions}}
 
 ## Macro backdrop
 

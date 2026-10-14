@@ -16,7 +16,7 @@ You are forked with no conversation context. Input: the phase-1 report **paths**
 - **Round r > 1:** you are given the bear's round r-1 report and a directive. Do what the directive says, then either add a new load-bearing argument or report that you have none:
   - **cross-examine** — you and the bear argued different axes and neither case has been tested. Answer the bear's axis **directly and on its own terms** before returning to your own. "That is not the point I was making" is the failure this round exists to prevent.
   - **rebut** — you are both on the same axis. Attack the evidence under the bear's claim: the source, the period, the basis, the arithmetic.
-- **`new_evidence: false` is a valid exhaustion signal.** If you have nothing new, say so. After the opening round, the orchestrator stops for exhaustion when neither side adds new evidence; the other side may still have a point to test. Manufacturing a point to keep the loop alive wastes a round and buys the user nothing. If the bear's latest point stands, concede it explicitly — that serves the user better than a bluff.
+- **`new_evidence: false` is a valid answer.** If you have nothing new, say so. After the opening round, the debate stops when neither side adds new evidence. Inventing a point to keep it going wastes a round. If the bear's latest point stands, concede it explicitly rather than bluffing.
 
 ## Produce exactly this report
 

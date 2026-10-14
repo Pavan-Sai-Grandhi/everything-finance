@@ -24,7 +24,7 @@ It is not a finding, and it never becomes a Tailwinds/Headwinds bullet on its ow
 
 ## Sector-specific KPIs (what "good" looks like per sector)
 
-The numeric bands below are unsourced rules of thumb (not verified against Varsity or any primary source), not current benchmarks. A finding compares the company's sourced KPI with the **sourced median of the constituent set** (step 2) and its own history; a band may be quoted only as a labelled heuristic, never as the evidence that settles a verdict.
+The numeric bands below are unsourced rules of thumb. A finding compares the company's KPI with the **median of the constituent set** (step 2) and with its own history; quote a band only as a labelled heuristic, never as the evidence for a verdict.
 
 **Banking / NBFC** (Varsity: revenues, capital adequacy, asset quality)
 - NIM (net interest margin): >3.5% strong for private banks, ~3% PSU norm

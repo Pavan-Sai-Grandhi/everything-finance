@@ -29,6 +29,6 @@
 - {{SYMBOL}}: {{what was missing — no rationale artifact / no price data / fetch blocked}}
 
 ---
-*Verdicts from `check_trade` (EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD), priority order. Decision data as of {{DECISION_DATE}}. R uses the actual fill and original stop; valuation mark: {{MARK_SOURCE}}. Reverse price differences for shorts. Unrealized P&L excludes execution charges. HOLD still requires the outstanding manual checks.*
+*Verdicts from `check_trade` (EXIT_STOP → EXIT_THESIS → EXIT_TARGET → EXIT_TIME → HOLD), priority order. Decision data as of {{DECISION_DATE}}. R uses the actual fill and original stop; price for unrealized P&L: {{MARK_SOURCE}}. Unrealized P&L excludes charges. A HOLD still needs the manual checks listed.*
 
 *This tool recommends; you place the order. No automated execution. Not investment advice — personal research tool.*

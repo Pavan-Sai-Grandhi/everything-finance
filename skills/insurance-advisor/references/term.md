@@ -4,15 +4,15 @@ Pure protection for dependents.
 
 ## Interview — what to ask (one at a time)
 
-Age · annual income · dependents + their ages · outstanding loans (home/auto/personal) · existing life cover · smoker/tobacco · target retirement age. For the liability-and-goals calculation, also ask annual family expenses, education goals and years of support. A positive support horizon requires an explicit expense figure; missing expenses are a gap, not zero. Also useful: existing liquid corpus (nets down the goals method), any known health conditions (affects insurability + premium honesty).
+Age · annual income · dependents + their ages · outstanding loans (home/auto/personal) · existing life cover · smoker/tobacco · target retirement age. For the liability-and-goals calculation, also ask annual family expenses, education goals and years of support. A positive support horizon needs an expense figure; missing expenses are a gap, not zero. Also useful: existing liquid corpus (nets down the goals method), any known health conditions (affects insurability + premium honesty).
 
 ## Cover sizing (feeds `term_cover_need`)
 
 With all household and scenario inputs supplied explicitly, compare:
-- **Income replacement scenario**: an explicitly chosen income multiple × annual income. Explain why that multiple fits the requested scenario; the calculator does not choose or endorse it.
+- **Income replacement scenario**: a chosen income multiple × annual income. Explain why that multiple fits; the calculator does not pick it.
 - **Liability + goals**: outstanding loans + children's education corpus + (annual family expenses × years to youngest dependent's independence) − existing liquid corpus.
 
-The calculator reports the larger scenario estimate, then subtracts existing cover (floored at zero). This is a planning comparison, not proof of sufficient cover. Explain omitted future inflation or discounting and verify that the liquid corpus is available for these goals. Choose the coverage term from the household's actual support horizon rather than a default retirement age.
+The calculator takes the larger of the two, then subtracts existing cover (floored at zero). It ignores inflation and discounting, so say so, and check that the liquid corpus is really available for these goals. Set the policy term from the household's support horizon, not a default retirement age.
 
 ## Scoring checklist (weighted — score each candidate, higher = better)
 
@@ -42,4 +42,4 @@ Each criterion above, failed, is a flag; these are the sales-behaviour ones the 
 
 ## Sizing sanity (unverified rule of thumb)
 
-A commonly quoted band — roughly ₹12–18k/yr per ₹1 Cr for a healthy 30-something, rising with age and for smokers — is an unsourced heuristic, not market data. Use it only to prompt a closer look at an outlier quote; compare actual quotes from insurers for the same age, term and riders before judging price, and never cite the band as evidence.
+A commonly quoted band of about ₹12–18k/yr per ₹1 Cr for a healthy 30-something, rising with age and for smokers, has no source. Use it only to spot an outlier quote. Judge price from real quotes for the same age, term and riders, and never cite the band as evidence.

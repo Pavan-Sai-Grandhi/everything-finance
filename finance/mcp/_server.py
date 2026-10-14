@@ -17,10 +17,8 @@ from __future__ import annotations
 
 import json
 import os
-import hashlib
-import tempfile
 
-from finance import paths
+from finance import paths, spine
 
 from mcp.server.mcpserver import MCPServer
 
@@ -53,23 +51,13 @@ def spill(env, key, name, keep=0):
     if not isinstance(rows, list):
         return env
     keep = max(0, keep)
-    path = pending = None
     try:
         payload = json.dumps(rows, ensure_ascii=False, allow_nan=False)
-        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-        directory = paths.cache_dir("mcp")
-        path = os.path.join(directory, f"{safe_name(name)[:160]}-{digest}.json")
-        with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False,
-                                         encoding="utf-8") as fh:
-            pending = fh.name
-            fh.write(payload)
-        os.replace(pending, path)
+        prefix = os.path.join(paths.cache_dir("mcp"), safe_name(name)[:160])
+        path = spine.publish_evidence(prefix, ".json", lambda fh: fh.write(payload))
     except (OSError, TypeError, ValueError) as exc:
         env.setdefault("gaps", []).append(f"could not spill {key} to disk: {exc}")
         path = None
-    finally:
-        if pending and os.path.exists(pending):
-            os.unlink(pending)
     env["data"][key] = rows[:keep]
     env["data"][f"{key}_total"] = len(rows)
     env["data"][f"{key}_path"] = path

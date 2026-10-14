@@ -28,13 +28,11 @@ from __future__ import annotations
 
 import json
 import fcntl
-import tempfile
 import threading
-import math
 import os
 from datetime import date
 
-from finance import paths
+from finance import paths, spine
 from finance.compute import ta
 from finance.sources import market
 from finance.sources import prices
@@ -52,12 +50,8 @@ robust_pe_percentile = market.robust_pe_percentile
 STANCE_BANDS = [(25, "cheap"), (45, "below average"), (65, "fair"), (85, "rich")]
 
 
-def _finite(value):
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-
-
 def _percentage(value):
-    return _finite(value) and 0 <= value <= 100
+    return spine.is_finite(value) and 0 <= value <= 100
 
 
 def _closes(df, minimum, label, gaps):
@@ -66,7 +60,7 @@ def _closes(df, minimum, label, gaps):
         gaps.append(f"{label}: insufficient price history")
         return None
     close = df["Close"]
-    if not all(_finite(v) and v > 0 for v in close):
+    if not all(spine.is_finite(v) and v > 0 for v in close):
         gaps.append(f"{label}: invalid or missing close prices")
         return None
     return close
@@ -86,7 +80,7 @@ def classify_trend(above50, above200, slope_up):
 
 def classify_vol_band(vix):
     """low / normal / high on the 13/20 India-VIX cut-points."""
-    if not _finite(vix) or vix <= 0:
+    if not spine.is_finite(vix) or vix <= 0:
         return "unknown"
     return "low" if vix < 13 else ("high" if vix > 20 else "normal")
 
@@ -233,9 +227,10 @@ def _breadth(gaps, expected_as_of=None):
         detail[name] = ok
         above += int(ok)
         total += 1
-    out["pct_sectors_above_ema50"] = round(100.0 * above / total, 0) if total and total == len(market.SECTOR_YF) else None
-    if len(set(observation_dates.values())) > 1:
-        out["pct_sectors_above_ema50"] = None
+    same_session = len(set(observation_dates.values())) <= 1
+    complete = total and total == len(market.SECTOR_YF) and same_session
+    out["pct_sectors_above_ema50"] = round(100.0 * above / total, 0) if complete else None
+    if not same_session:
         gaps.append("sector history sessions differ; breadth gate withheld")
     out["sector_observation_dates"] = observation_dates
     out["sectors_above_ema50_detail"] = detail
@@ -246,15 +241,12 @@ def _breadth(gaps, expected_as_of=None):
     return out
 
 
-def _valuation(gaps, years=10, live=None):
+def _valuation(gaps, live, years=10):
     """Cap-tier valuation: level + own-history percentile for P/E, P/B and dividend yield.
 
     Decides whether a CATEGORY is worth adding money to — a separate question from which
     fund inside it is best.
     """
-    if live is None:
-        live = market.indices()
-        gaps.extend(live.get("gaps") or [])
     snapshot = (live.get("data") or {}).get("indices") or {}
 
     out = {}
@@ -300,11 +292,11 @@ def _relative(valuation):
     """
     small = valuation.get("NIFTY SMALLCAP 250") or {}
     large = valuation.get("NIFTY 50") or {}
-    if not all(_finite(v) and v > 0 for v in (small.get("pb"), large.get("pb"))):
+    if not all(spine.is_finite(v) and v > 0 for v in (small.get("pb"), large.get("pb"))):
         return {}
     pb_ratio = round(small["pb"] / large["pb"], 2)
     pe_ratio = (round(small["pe"] / large["pe"], 2)
-                if all(_finite(v) and v > 0 for v in (small.get("pe"), large.get("pe"))) else None)
+                if all(spine.is_finite(v) and v > 0 for v in (small.get("pe"), large.get("pe"))) else None)
     spread = None
     if all(_percentage(v) for v in (small.get("blended_pctile"), large.get("blended_pctile"))):
         spread = round(small["blended_pctile"] - large["blended_pctile"], 1)
@@ -321,11 +313,8 @@ def _relative(valuation):
             "percentile_spread": spread, "read": read}
 
 
-def _sectors(gaps, live=None):
+def _sectors(gaps, live):
     """Sector leaders/laggards by 1-year change, from the single allIndices fetch."""
-    if live is None:
-        live = market.indices()
-        gaps.extend(live.get("gaps") or [])
     snap = (live.get("data") or {}).get("indices") or {}
     rows = [{"index": ix, "chg_1y_pct": snap[ix].get("pct_change_1y"),
              "pe": snap[ix].get("pe")}
@@ -375,7 +364,7 @@ def compute(mode="standard", years=10):
     br = _breadth(gaps, expected_as_of=as_of)
     live = market.indices()
     gaps.extend(live.get("gaps") or [])
-    val = _valuation(gaps, years=years, live=live)
+    val = _valuation(gaps, live, years=years)
     posture, why = classify_posture(trend, vol.get("band"), br.get("pct_sectors_above_ema50"))
 
     flows_env = market.flows()
@@ -400,7 +389,7 @@ def compute(mode="standard", years=10):
         "flows": (flows_env.get("data") or {}).get("flows") or {},
         "flows_session": (flows_env.get("data") or {}).get("session"),
         "macro": (macro_env.get("data") or {}).get("macro") or {},
-        "sectors": _sectors(gaps, live=live),
+        "sectors": _sectors(gaps, live),
         "gaps": gaps,
     }
     if mode == "deep":
@@ -523,21 +512,7 @@ def persist(ctx, out=None):
     """Replace the daily snapshot atomically; a failed write preserves the prior file."""
     out = out or artifact_path()
     body = json.dumps(ctx, indent=2, ensure_ascii=False, allow_nan=False)
-    directory = os.path.dirname(os.path.abspath(out))
-    os.makedirs(directory, exist_ok=True)
-    pending = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=directory, encoding="utf-8",
-                                         delete=False) as fh:
-            pending = fh.name
-            fh.write(body)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(pending, out)
-    finally:
-        if pending and os.path.exists(pending):
-            os.unlink(pending)
-    return out
+    return spine.atomic_write(out, body, fsync=True)
 
 
 def _resolve_locked(mode, years, fresh, out):

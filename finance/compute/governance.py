@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import sys
 
 from finance import spine
@@ -52,9 +51,7 @@ _EXCESS_ROUTE = ("lawful only with shareholders' general-meeting approval under 
 
 def _num(value):
     """A finite real number, else None. Strings and booleans are not figures."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return float(value) if math.isfinite(value) else None
+    return float(value) if spine.is_finite(value) else None
 
 
 def _not_checked(reason):

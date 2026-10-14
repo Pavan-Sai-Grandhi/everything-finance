@@ -15,7 +15,6 @@ import json
 import math
 import os
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
                    os.path.dirname(os.path.abspath(__file__))))))
@@ -29,16 +28,9 @@ DECAY_FLOOR_R = 0.1
 def dump_yaml(obj, path):
     """Never leave a strategy half-written after a failed serialization or process."""
     yaml = need("yaml", "pyyaml")
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=os.path.dirname(path), delete=False) as stream:
-            temporary = stream.name
-            yaml.safe_dump(obj, stream, sort_keys=False, default_flow_style=False)
-        os.chmod(temporary, os.stat(path).st_mode & 0o777)
-        os.replace(temporary, path)
-    finally:
-        if temporary and os.path.exists(temporary):
-            os.unlink(temporary)
+    spine.atomic_write(path, lambda stream: yaml.safe_dump(
+        obj, stream, sort_keys=False, default_flow_style=False),
+        mode=os.stat(path).st_mode & 0o777)
 
 
 def metrics(realized):

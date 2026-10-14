@@ -29,7 +29,6 @@ import hashlib
 from collections import Counter
 import os
 import statistics
-import tempfile
 from datetime import date, datetime, timedelta
 
 from finance import paths
@@ -213,6 +212,34 @@ def _parse_ind_close_csv(text, expected_day=None):
     return out
 
 
+_SNAPSHOT_MEMO = {}
+
+
+def _cached_snapshot(cache_file):
+    """A validated (indices, day) from a snapshot cache file, parsed once per file version.
+
+    valuation_history reads the same month-end files once per index, so the parse and
+    validation are memoized on the file's mtime.
+    """
+    try:
+        key = (cache_file, os.stat(cache_file).st_mtime_ns)
+        if key in _SNAPSHOT_MEMO:
+            return _SNAPSHOT_MEMO[key]
+        with open(cache_file) as fh:
+            blob = json.load(fh)
+        actual = date.fromisoformat(blob["day"])
+        cached = blob["indices"]
+        valid = (blob.get("validated_version") == 1 and isinstance(cached, dict) and cached
+                 and all(isinstance(k, str) and k and _canon(k) == k
+                         and isinstance(v, dict) and set(v) == {"close", "pe", "pb", "dy"}
+                         and all(x is None or (type(x) in (int, float) and math.isfinite(x))
+                                 for x in v.values()) for k, v in cached.items()))
+    except (OSError, ValueError, TypeError, KeyError):  # a bad cache file never blocks a fetch
+        return None
+    _SNAPSHOT_MEMO[key] = (cached, actual) if valid else None
+    return _SNAPSHOT_MEMO[key]
+
+
 def index_snapshot(day, fresh=False, walk_back=6):
     """Every index's close/P/E/P/B/DY on one past trading day, cached **permanently**.
 
@@ -228,20 +255,9 @@ def index_snapshot(day, fresh=False, walk_back=6):
         return {}, None, "archive requires a past/current ISO day and walk_back between 0 and 31"
     cache_file = _snapshot_cache_path(target.isoformat())
     if not fresh and os.path.exists(cache_file):
-        try:
-            with open(cache_file) as fh:
-                blob = json.load(fh)
-            actual = date.fromisoformat(blob["day"])
-            cached = blob["indices"]
-            if (blob.get("validated_version") == 1 and 0 <= (target - actual).days <= walk_back
-                    and isinstance(cached, dict) and cached
-                    and all(isinstance(k, str) and k and _canon(k) == k
-                            and isinstance(v, dict) and set(v) == {"close", "pe", "pb", "dy"}
-                            and all(x is None or (type(x) in (int, float) and math.isfinite(x))
-                                    for x in v.values()) for k, v in cached.items())):
-                return cached, actual.isoformat(), None
-        except (OSError, ValueError, TypeError, KeyError):  # noqa: BLE001 — a bad cache file never blocks a fetch
-            pass
+        hit = _cached_snapshot(cache_file)
+        if hit and 0 <= (target - hit[1]).days <= walk_back:
+            return hit[0], hit[1].isoformat(), None
 
     last_gap = None
     for back in range(walk_back + 1):
@@ -260,19 +276,12 @@ def index_snapshot(day, fresh=False, walk_back=6):
             return {}, None, f"invalid NSE archive: {exc}"
         if not snap:  # holiday: the archive serves an empty body, not a 404
             continue
-        pending = None
         try:
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False,
-                                             dir=os.path.dirname(cache_file)) as fh:
-                pending = fh.name
-                json.dump({"validated_version": 1, "day": probe.isoformat(), "indices": snap},
-                          fh, allow_nan=False)
-            os.replace(pending, cache_file)
+            spine.atomic_write(cache_file, json.dumps(
+                {"validated_version": 1, "day": probe.isoformat(), "indices": snap},
+                allow_nan=False))
         except OSError:
             pass  # Source evidence remains usable even when disposable caching fails.
-        finally:
-            if pending and os.path.exists(pending):
-                os.unlink(pending)
         return snap, probe.isoformat(), None
     return {}, None, (last_gap or f"no NSE archive snapshot within {walk_back}d of {day}")
 
@@ -366,9 +375,8 @@ def robust_pe_percentile(pe_series, current_pe):
     an outlier occurred, so the included/excluded counts are returned with the percentile.
     Returns (percentile, included, excluded).
     """
-    valid = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
-    pool = [p for p in (pe_series or []) if valid(p) and p > 0]
-    if not pool or not valid(current_pe) or current_pe <= 0:
+    pool = [p for p in (pe_series or []) if spine.is_finite(p) and p > 0]
+    if not pool or not spine.is_finite(current_pe) or current_pe <= 0:
         return None, 0, 0
     med = statistics.median(pool)
     clean = [p for p in pool if p < 3 * med]
@@ -415,9 +423,8 @@ def percentile(values, value):
     market-analysis skill's call, not the spine's. Ties count half, so a value sitting on a
     long flat stretch of its own history ranks mid-run rather than at either edge.
     """
-    valid = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
-    pool = [v for v in (values or []) if valid(v)]
-    if not pool or not valid(value):
+    pool = [v for v in (values or []) if spine.is_finite(v)]
+    if not pool or not spine.is_finite(value):
         return None
     below = sum(1 for v in pool if v < value)
     ties = sum(1 for v in pool if v == value)

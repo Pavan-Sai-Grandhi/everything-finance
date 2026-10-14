@@ -96,10 +96,10 @@ def run_fundamental_screen(query: str, limit: int = 1000, fresh: bool = False) -
 
 
 @SERVER.tool(
-    description="Retired saved-screen compatibility endpoint. Always returns a labelled gap "
-                "without fetching: screener.in is approved only for document discovery. "
-                "Use run_fundamental_screen for supported Tickertape criteria; do not silently "
-                "replace unsupported cross-period conditions with different filters."
+    description="Retired. Always returns a labelled gap and fetches nothing, because "
+                "screener.in is approved only for documents. Use run_fundamental_screen; "
+                "if a cross-period condition cannot be expressed there, say so instead of "
+                "substituting a different filter."
 )
 def run_saved_screen(screen_url: str, max_survivors: int = 200, fresh: bool = False) -> dict:
     return _screener_screen.screen(screen_url, max_survivors=max_survivors, fresh=fresh)

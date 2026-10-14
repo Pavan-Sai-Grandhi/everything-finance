@@ -4,15 +4,15 @@ Grounded in Zerodha Varsity — Insurance module (https://zerodha.com/varsity/mo
 
 ## The one stance: insurance is protection, not investment
 
-- **Buy term, invest the difference.** Mixing insurance with investment (endowment, ULIP, moneyback) usually buys weaker versions of both. Judge a specific plan by its own computed IRR (`marginal_irr_continue` / `irr` on its actual cash flows) against an explicitly sourced hurdle, never by a remembered "typical" return. Pure protection (term life, indemnity health, comprehensive motor) + the premium difference invested per the MF framework beats bundled products.
+- **Buy term, invest the difference.** Mixing insurance with investment (endowment, ULIP, moneyback) usually buys weaker versions of both. Judge a plan by the IRR of its own cash flows (`marginal_irr_continue` / `irr`) against a sourced hurdle, never by a remembered "typical" return. Pure protection (term life, indemnity health, comprehensive motor) + the premium difference invested per the MF framework beats bundled products.
 - **Disclosure is the claim.** Smoking, pre-existing conditions, family history, prior claims — misdeclaration is the #1 cause of claim rejection ("Perverse Incentives", "Dunning-Kruger"). Never optimise premium via omission; a cheaper policy that won't pay is worthless.
 - **A brochure claim never overrides a best-practice red flag** — the per-type red-flag lists win over marketing copy.
 
 ## Interview discipline (all modes)
 
 - **One question at a time**, type-aware (each per-type reference lists exactly what to ask). Conversational, not a form dump.
-- **Continue around a gap.** Complete supported sections and name missing inputs. Current cover, loans, assets and household expenses are facts to obtain, not values to invent or default to zero.
-- Forward goals and scenario assumptions must state the figure, rationale and source where applicable. Do not supply a fixed education corpus, expense percentage or policy bonus merely because an answer is missing. Keep unsupported calculations as gaps. For a proposed policy, use its actual guaranteed and illustrated cash flows with their stated basis.
+- **Work around a gap.** Finish the sections you have evidence for and name the missing inputs. Current cover, loans, assets and expenses are facts to ask for, not values to invent or set to zero.
+- State the figure, reason and source for every forward assumption. Do not fill a missing answer with a stock education corpus, expense percentage or bonus rate. For a proposed policy, use its guaranteed and illustrated cash flows as stated.
 
 ## Web research + sourcing (Advise mode fetches; all modes obey)
 

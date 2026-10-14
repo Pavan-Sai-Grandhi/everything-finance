@@ -63,7 +63,7 @@ finance/  transport spine paths deps caps publication report_hook telegram
   tests/    harness + test_*
 ```
 
-- **`transport.py`** — the one function that touches the network (curl, cookie-jar bootstrap, retry on transient failures only, returns `(body, gap)`, never raises). No module opens its own socket. The one sanctioned exception is `yf.download` in `sources/prices.py`: yfinance is the approved Yahoo client and keeps its own HTTP stack.
+- **`transport.py`** — the one function that touches the network (curl, cookie-jar bootstrap, retry on transient failures only, returns `(body, gap)`, never raises). No module opens its own socket, except `yf.download` in `sources/prices.py`, because yfinance is the approved Yahoo client and has its own HTTP stack.
 - **`sources/`** — one module per data domain, on that domain's finalized source.
 - **`compute/ta.py`** — the one definition of every indicator and pattern. Numeric indicators delegate to **TA-Lib** so the values traded on are the reference implementation; candlestick/range patterns stay geometric. The `FEATURES` registry + `materialize()` is the vocabulary a spec draws on: parameterized tokens (`ema21`, `rsi9`, `atr20`, `hh50`, `nr5`, …) resolve by regex and standard signals are pre-registered, so a new period or standard signal needs **no** code change. **Register a genuinely new primitive here, never inside a skill.**
 - **`compute/strategy.py`** — how a spec plus those columns becomes entries/stops/targets/size: the safe filter-language evaluator (`eval_series`, *not* python `eval`), `build_signal` (live), `build_bt_strategy`/`prepare_backtest_frame` (Backtesting.py). `compute/screen.py` and `compute/backtest.py` both sit on it, so they cannot disagree about what a strategy means.

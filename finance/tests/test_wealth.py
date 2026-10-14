@@ -131,13 +131,13 @@ def test_protection_read():
 
 
 def test_risk_posture():
-    r = wealth.risk_posture(55, "strong", "weak", age=35, equity_band={"min_pct": 45, "max_pct": 65})
+    r = wealth.risk_posture(55, "strong", "weak", equity_band={"min_pct": 45, "max_pct": 65})
     check("risk: weak protection → fix foundation first", r["stance"] == "fix-foundation-first", r["stance"])
-    r2 = wealth.risk_posture(55, "strong", "strong", age=35, equity_band={"min_pct": 45, "max_pct": 65})
+    r2 = wealth.risk_posture(55, "strong", "strong", equity_band={"min_pct": 45, "max_pct": 65})
     check("risk: 55% vs 65% ceiling, sound → balanced", r2["stance"] == "within-target", r2["stance"])
-    r3 = wealth.risk_posture(90, "strong", "strong", age=35, equity_band={"min_pct": 45, "max_pct": 65})
+    r3 = wealth.risk_posture(90, "strong", "strong", equity_band={"min_pct": 45, "max_pct": 65})
     check("risk: 90% over ceiling → reduce", r3["stance"] == "above-target", r3["stance"])
-    r4 = wealth.risk_posture(30, "strong", "strong", age=35, equity_band={"min_pct": 45, "max_pct": 65})
+    r4 = wealth.risk_posture(30, "strong", "strong", equity_band={"min_pct": 45, "max_pct": 65})
     check("risk: 30% well below → can add", r4["stance"] == "below-target", r4["stance"])
     check("risk: unknown share", wealth.risk_posture(None, "strong", "strong")["stance"] == "unknown")
     check("unassessed protection cannot authorize more risk",
@@ -226,9 +226,8 @@ def test_incomplete_foundation_evidence():
 
 
 def test_explicit_risk_targets():
-    for age in (None, 25, 75, 'unknown'):
-        result = wealth.risk_posture(10, 'strong', 'strong', age=age)
-        check('age alone cannot authorize added risk', result['stance'] == 'unknown')
+    check('no stated range cannot authorize added risk',
+          wealth.risk_posture(10, 'strong', 'strong')['stance'] == 'unknown')
     for band in ({'min_pct': -1, 'max_pct': 80}, {'min_pct': 90, 'max_pct': 50}, {'min_pct': True, 'max_pct': 80}):
         check('invalid target range stays unknown', wealth.risk_posture(50, 'strong', 'strong', equity_band=band)['stance'] == 'unknown')
     check('weak foundation takes precedence over above-target allocation', wealth.risk_posture(99, 'thin', 'strong', equity_band={'min_pct': 40, 'max_pct': 60})['stance'] == 'fix-foundation-first')

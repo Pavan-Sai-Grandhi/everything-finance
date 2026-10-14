@@ -13,7 +13,7 @@ Make / model / year / variant · whether the model is discontinued · current ID
 
 ## IDV & NCB sanity (feeds `idv_ncb_sanity`)
 
-- **IDV (Insured Declared Value):** the age schedule applies through five years; older vehicles and discontinued models require an insurer-insured agreement. Supply `model_discontinued:true` when applicable. A null `idv_ok` is an unavailable check, not approval or rejection. The tool's tolerance is a screening assumption, not a contractual entitlement. Confirm the agreed IDV and applicable valuation basis in the policy. Source: [New India private-car policy, pages 2–3](https://www.newindia.co.in/assets/docs/know-more/motor/STANDARD%20FORM%20FOR%20PRIVATE%20CAR%20PACKAGE%20POLICY.pdf), checked 2026-09-28.
+- **IDV (Insured Declared Value):** the age schedule covers vehicles up to five years old; for older vehicles and discontinued models the insurer and owner agree the IDV. Pass `model_discontinued:true` when it applies. A null `idv_ok` means the check could not run, not a pass or a fail. The tool's tolerance is a screening assumption; confirm the agreed IDV and its basis in the policy. Source: [New India private-car policy, pages 2–3](https://www.newindia.co.in/assets/docs/know-more/motor/STANDARD%20FORM%20FOR%20PRIVATE%20CAR%20PACKAGE%20POLICY.pdf), checked 2026-09-28.
 - **NCB** rewards claim-free years on a slab: 20% (1y) → 25% (2y) → 35% (3y) → 45% (4y) → 50% (5y, caps). A quoted NCB **above** the slab your claim-free history entitles is a red flag (verify history — misdeclaration voids it). **NCB is portable** across insurers and vehicles; **NCB-protect** add-on preserves it through one claim.
 
 ## Add-ons — worth it vs situational

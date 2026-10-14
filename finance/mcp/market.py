@@ -185,10 +185,10 @@ def run_sector_screen(spec: str | None = None, top: int = 3, fresh: bool = False
 @SERVER.tool(
     description="Backtest a strategy spec on historical NSE daily data (Backtesting.py: "
                 "no lookahead, stop wins a bar that touches both stop and target). "
-                "Returns win rate, expectancy, profit factor and worst per-symbol marked "
-                "drawdown. Return uses all independently funded test accounts, including "
-                "idle ones; this is not a portfolio simulation. Trade/equity CSVs and "
-                "summary JSON use immutable returned paths. `symbols` accepts 'largecap20' for the 20-stock liquid "
+                "Returns win rate, expectancy, profit factor and the worst single-symbol "
+                "drawdown. Each symbol is a separate account, and return counts accounts "
+                "that never traded; this is not a portfolio simulation. The summary JSON "
+                "and trade/equity CSVs are at the returned paths. `symbols` accepts 'largecap20' for the 20-stock liquid "
                 "large-cap basket. Historical validation only — never a live signal."
 )
 def run_backtest(spec: str, symbols: list | str, years: int = 5,
@@ -202,10 +202,11 @@ def run_backtest(spec: str, symbols: list | str, years: int = 5,
     description="Re-validate one open trade against the plan that opened it and return "
                 "HOLD or an EXIT_* verdict with its reason: stop breached, thesis "
                 "invalidation fired, target reached, or time stop. `trade` is the path to "
-                "a trade-idea YAML. `entry` uses actual broker fills (else recorded fill_avg); "
-                "qty is remaining quantity. Personal ltp only marks unrealized P&L/R; "
-                "decisions use the approved OHLCV series. Sessions count after entry_date. "
-                "This recommends an exit; it never confirms execution. Invalidations this cannot "
+                "a trade-idea YAML. Pass the broker's actual fill as `entry` (default: the "
+                "recorded fill_avg) and the quantity still held as `qty`. A personal `ltp` "
+                "values unrealized P&L only; exit decisions use market price history. "
+                "Sessions are counted after entry_date. The verdict is a recommendation, "
+                "not proof that an exit happened. Invalidations this cannot "
                 "check mechanically come back under `manual_review` for you to judge."
 )
 def check_trade(trade: str, ohlcv: str | None = None, ltp: float | None = None,

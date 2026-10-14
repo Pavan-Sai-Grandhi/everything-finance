@@ -35,7 +35,7 @@ Every deck this plugin renders is read by a person deciding where their money go
 ## What the projection must carry
 
 - **Fill every field the fixture shows.** A lens the mode did not run is marked as a labelled gap in its slot (`not run (<mode>)`), never blank and never quietly omitted.
-- **It is also a prior-run and trade-rationale record**, so the data-integrity rule is absolute: **every value must trace to a work paper.** A figure a paper does not carry goes into that section's gap slot (a labelled gap the deck prints), **never invented to fill the slide**; an empty pledge list is `"unknown"`, not `"none"`; a chart series the run lacks is left absent so the slide renders its labelled gap rather than a fabricated chart.
+- **Later runs and trade-tracker read it as a record**, so **every value must trace to a work paper.** A figure no paper carries goes in that section's gap slot, which the deck prints as a labelled gap. An empty pledge list is `"unknown"`, not `"none"`. Leave out a chart series the run lacks so the slide shows its gap notice.
 - **Numbers keep their citation.** A figure that arrives in a work paper with its source keeps that source in the field the deck sources from; one that arrives without a source is a gap, not a number to launder into the deck.
 - **The gaps slide is the union** of every leg's gaps, the orchestrator's own, and the lenses the mode skipped. It is what makes the rest trustworthy — do not trim it for length.
 - Where two legs report the same quantity differently, name both and say which the verdict used.

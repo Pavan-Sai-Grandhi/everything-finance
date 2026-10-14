@@ -14,18 +14,18 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
 
 ## Inputs
 
-- **Live holdings (preferred) — via `finance/compute/holdings.py`.** Source the real book through the shared resolver, precedence **IndMoney → broker → watchlist positions**. IndMoney (`mcp__indmoney__*`) is net worth across asset classes; the broker MCPs (`mcp__kite__*` = Zerodha, `mcp__upstox__*` = Upstox) are the equity fallback. The resolver runs in script context and cannot call MCP tools, so the **handoff is**: for each connected source, invoke its holdings tool (IndMoney `networth_holdings` once per needed `asset_type` (`IND_STOCK` and `US_STOCK` for equity, `MF` for funds — the tool requires it and serves one type per call); broker holdings + positions), **write the raw payload to a temp file** under `paths.tmp_dir("holdings")`, then resolve and take the equity slice:
+- **Live holdings (preferred) — via `finance/compute/holdings.py`.** Source the real book through the shared resolver, precedence **IndMoney → broker → watchlist positions**. IndMoney (`mcp__indmoney__*`) is net worth across asset classes; the broker MCPs (`mcp__kite__*` = Zerodha, `mcp__upstox__*` = Upstox) are the equity fallback. The resolver is a script and cannot call MCP tools, so for each connected source call its holdings tool yourself: IndMoney `networth_holdings` once per `asset_type` (`IND_STOCK` and `US_STOCK` for equity, `MF` for funds; it serves one type per call), and the broker's holdings and positions. **Write each raw payload to a file** under `paths.tmp_dir("holdings")`, then resolve and take the equity slice:
   ```bash
   PYTHONPATH=<plugin> python3 -m finance.compute.holdings --indmoney <ind-stock.json> --indmoney <ind-us.json> --kite <kite.json> --equity-only
   ```
-  (pass only the files for sources that are connected; add `--portfolio <watchlist.json>` to fold the hand-maintained positions in as the last fallback). The envelope's `data.positions` give authoritative ownership, quantity, cost and personal P&L. Broker/aggregator `ltp` is only a personal valuation mark, never the price used to evaluate stops, targets, daily moves or alerts in the position-health section — **XIRR is available but not surfaced here** (depth belongs to wealth-manager / portfolio-review). `source` and `gaps` tell you which source won and what was absent. If no source is connected, build the brief without the position sections and suggest connecting one.
+  (pass only the files for sources that are connected; add `--portfolio <watchlist.json>` to fold the hand-maintained positions in as the last fallback). `data.positions` gives ownership, quantity, cost and personal P&L. A broker or IndMoney `ltp` values the holding but is never the price used for stops, targets, daily moves or alerts. `source` and `gaps` say which source won and what was missing. If no source is connected, build the brief without the position sections and suggest connecting one.
 - **Watchlist + open positions (fallback / supplement)** — the managed list at `paths.watchlist_path()` (`artifacts/state/watchlist.json`); its `positions` block is also the `--portfolio` fallback the resolver folds in when no live source is connected. Shape:
   ```json
   {"watchlist": [{"ticker": "TICKER", "added": "YYYY-MM-DD", "source": "discover", "note": "..."}],
    "positions": [{"ticker": "TICKER", "entry": null, "sl": null, "target": null, "qty": null, "entry_date": "YYYY-MM-DD"}]}
   ```
   `entry_date` (YYYY-MM-DD) enables the STALE check. Missing file + no broker → build the brief without those sections and suggest creating one once. Renamed/demerged tickers that 404: report "ticker not found — possibly renamed (corporate action?)", don't silently drop.
-- **Decision observations** — deduplicate the union of held and watched symbols before fetching quotes/history. Record each observation date/time. A missing source leaves position health or the trigger unassessed; it never falls back to a personal mark.
+- **Decision prices** — fetch quotes and history once per symbol across holdings and the watchlist, and record when each was observed. If a price is missing, that position's health or alert is unassessed; do not use the broker's price instead.
 - **Alert inbox** — `manage_alerts(action="list")` returns the open alerts, severity first; pass `subject` to narrow to one name. Take the held + watched names plus the portfolio-wide items; this feeds the Alerts & actions section and the vetted half of Opportunities.
 
 ## Sections (in order; these become the fields of the `report.json` projection — see Output)
@@ -35,7 +35,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
 3. **Sector tone**: top 2 / bottom 2 sectoral indices today — from `get_market_context` (`sectors.leaders` / `sectors.laggards`) or `get_indices`.
 4. **⏰ Alerts & actions** (the inbox the rest of the plugin fills): surface what's open and what fired, never run anything.
    1. `manage_alerts(action="list")` for held + watched names and portfolio-wide alerts.
-   2. `alerts.evaluate_cheap(open_alerts, market_data)` where `market_data` uses **decision-source observations only**, fetched once per unique held/watched symbol. Use `get_quote` for current-price health, and a verified completed-session candle from `get_history` for `close` alerts. Never relabel an intraday quote as a completed close, and never use broker marks, costs or watchlist entry prices as market observations — `{"date": "<today>", "prices": {SYMBOL: {"close":…, "day_change_pct":…, "dist_to_sl_pct":…}}}`. Print fired alerts inline with their `action.text`.
+   2. `alerts.evaluate_cheap(open_alerts, market_data)` where `market_data` uses **decision-source observations only**, fetched once per unique held/watched symbol. Use `get_quote` for current-price health and a completed-session candle from `get_history` for `close` alerts. An intraday quote is not a close, and broker prices, costs or watchlist entry prices are not market data. Shape: `{"date": "<today>", "prices": {SYMBOL: {"close":…, "day_change_pct":…, "dist_to_sl_pct":…}}}`. Print fired alerts inline with their `action.text`.
    3. List due date-based alerts (`sip_due`, `reanalyze_due`, `revalidate_due`, `rebalance_due`).
    4. For `{check: …}` alerts, print the exact `action.suggest` command for the user — **never auto-run it.**
    5. Lead with anything at `severity: act`. Curating these (dismiss/snooze) is the `alert-manager` skill's job; here you only surface.
@@ -55,7 +55,7 @@ A fast composite — breadth over depth; every section is 2–4 lines. Target: r
 The watchlist at `paths.watchlist_path()` is a managed, stamped list — keep it clean:
 
 - **Auto-add vetted opportunities only.** When a *vetted* opportunity surfaces (Section 5), append `{ticker, added: <today>, source: <producer>, note: <one-line basis>}` if not already present, so it's tracked from the next run. **Never** auto-add a news-flagged/unvetted idea — that keeps the durable list signal-only.
-- **Recommend pruning, never auto-remove.** When a watchlist entry has gone stale (e.g. "TATASTEEL: 30d on watch, no setup, no position → drop?"), flag it in the brief and let the user authorize a watchlist edit (`alert-manager` curates alerts, not watchlist entries). daily-brief never deletes a watchlist entry on its own.
+- **Recommend pruning, never auto-remove.** When a watchlist entry has gone stale (e.g. "TATASTEEL: 30d on watch, no setup, no position → drop?"), flag it in the brief and let the user approve the edit. daily-brief never deletes a watchlist entry on its own, and `alert-manager` does not edit the watchlist.
 
 ## Output
 
@@ -70,4 +70,4 @@ The brief is a single self-contained **HTML page** (a phone-scroll one-pager, no
    ```
    (`paths.report_path("daily-brief", ext="report.html")`). The page is theme-aware and needs no network. Surface the `.report.html` to the user.
 
-If the user said "send" (or asks to), also send the Telegram-compressed **text** version via `assets/telegram-brief.md` format using `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` through the shared secrets loader. Write the text under `paths.tmp_dir("telegram")`, then run `bash <plugin-root>/bin/send-telegram.sh --text-file <path>`. Do not call curl directly or put credentials in command arguments. A failure or uncertain result is a delivery gap; preserve the rendered brief and do not automatically retry.
+If the user said "send" (or asks to), also send the Telegram-compressed **text** version via `assets/telegram-brief.md` format using `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` through the shared secrets loader. Write the text under `paths.tmp_dir("telegram")`, then run `bash <plugin-root>/bin/send-telegram.sh --text-file <path>`. Do not call curl or put credentials in arguments. If the send fails or its result is unclear, report a delivery gap and do not retry.

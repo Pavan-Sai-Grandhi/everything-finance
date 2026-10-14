@@ -213,10 +213,11 @@ def _validate_candles(rows):
         raise ValueError("candles must be a list")
     dated, seen = {}, set()
     invalid = 0
+    today = date.today().isoformat()
     for row in rows:
         try:
             day = row["date"]
-            if not isinstance(day, str) or date.fromisoformat(day).isoformat() != day or day > date.today().isoformat():
+            if not isinstance(day, str) or date.fromisoformat(day).isoformat() != day or day > today:
                 raise ValueError("invalid/future candle date")
             if day in seen:
                 if day in dated:

@@ -20,7 +20,6 @@ gap — never an abort. Returns the shared data-spine envelope.
 import argparse
 import json
 import re
-import sys
 
 from finance.spine import envelope as _envelope, f, first as _first
 from finance.deps import load_yaml
@@ -188,7 +187,7 @@ def _normalize_broker(payload, quantity_includes_t1=False):
         if not isinstance(it, dict):
             continue
         # Kite documents `quantity` as settled (T+2) and `t1_quantity` apart, so both
-        # count; Upstox documents `quantity` as the total, so T+1 is only labelled —
+        # count. Upstox documents `quantity` as the total, so T+1 is only labelled,
         # unless quantity < t1_quantity, which shows T+1 was not included.
         settled = _num(_first(it, "quantity", "qty", "net_quantity"))
         unsettled = _num(it.get("t1_quantity"))
@@ -339,11 +338,10 @@ def resolve(prefer="indmoney", payloads=None):
 
 
 def _load(path):
-    with open(path) as f:
-        txt = f.read()
     if path.endswith((".yml", ".yaml")):
         return load_yaml(path)
-    return json.loads(txt)
+    with open(path) as f:
+        return json.load(f)
 
 
 def main():

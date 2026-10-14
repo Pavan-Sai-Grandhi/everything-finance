@@ -1,6 +1,6 @@
 # Exchange filings reference
 
-Research triage for NSE corporate filings. These priorities are plugin heuristics, not a determination of legal materiality or an instruction to trade. Review the actual disclosure before assigning a thesis impact.
+Triage for NSE corporate filings. The tiers are this plugin's heuristics, not legal materiality, and not trade instructions. Read the disclosure before saying how it affects the thesis.
 
 ## Materiality taxonomy
 
@@ -12,7 +12,7 @@ Research triage for NSE corporate filings. These priorities are plugin heuristic
 - SEBI/ED/regulatory action, search/seizure, fraud disclosure; court/tribunal judgments resolving disclosed regulatory matters
 - Promoter pledge creation/increase; bulk/block deals by promoters
 - Credit rating downgrade
-- Order wins material to the business: compare disclosed value, execution period, cancellation terms and revenue on matching units; no universal percentage establishes materiality
+- Order wins material to the business: compare the order value with revenue over the same period, and note execution period and cancellation terms. No fixed percentage decides materiality
 
 🟡 **Monitor (context, not action)**
 - Investor/analyst meet schedules and presentations (PPTs often carry guidance not in press releases — worth opening)
@@ -27,15 +27,15 @@ Research triage for NSE corporate filings. These priorities are plugin heuristic
 
 ## Shareholding pattern reading
 
-- **Promoter %**: compare available quarters and reconcile changes with share counts, dilution, transactions and reclassification. A percentage change alone does not establish buying, selling or confidence.
-- **Pledge**: state the filed date and denominator. Pledged shares as a percentage of promoter holdings and as a percentage of total share capital are different measures. Discuss disclosed collateral terms and changes; do not use a fixed pledge threshold or a falling price to predict a crash. If current data is unavailable, label it unknown; identify any older figure by its date.
-- **Institutional ownership**: FII/DII stake changes are ownership snapshots, not net cash-flow measures. Reconcile capital changes before interpreting them. NSE's public category includes institutions; it is not synonymous with retail and cannot be added to institutional percentages as a disjoint bucket.
-- Quarterly filings do not establish the timing or motive of intra-quarter transactions. Use separately sourced transaction disclosures where available.
+- **Promoter %**: a change can come from buying, selling, dilution or reclassification. Check share counts before calling it buying or selling.
+- **Pledge**: give the filing date and say whether the percentage is of promoter holding or of total shares; the two differ. Do not predict a crash from a pledge level or a falling price. If there is no current figure, say unknown and date any older one.
+- **Institutional ownership**: FII/DII stake changes are holdings at quarter end, not money flows. NSE's public category includes institutions, so it is not retail and cannot be added to the institutional figures.
+- A quarterly filing does not show when or why shares changed hands within the quarter.
 
-The [NSE shareholding-pattern page](https://www.nseindia.com/companies-listing/corporate-filings-shareholding-pattern) identifies the published ownership categories. [NSE's pledge table](https://betanseapi.nseindia.com/companies-listing/corporate-filings-pledged-data) distinguishes the two percentage denominators. These links document the interpretation; fetch decision figures only through the approved MCP tools.
+The [NSE shareholding-pattern page](https://www.nseindia.com/companies-listing/corporate-filings-shareholding-pattern) identifies the published ownership categories. [NSE's pledge table](https://betanseapi.nseindia.com/companies-listing/corporate-filings-pledged-data) distinguishes the two percentage denominators. Fetch the figures themselves only through the MCP tools.
 
 ## Corporate-actions mechanics worth stating in reports
 
-- Report the exchange's current ex-date, record date and any subsequent correction. Explain eligibility from the specific notice and applicable settlement rules; do not promise entitlement from a generic calendar rule.
-- Distinguish regular and special dividends. A split or bonus changes share count and per-share comparators; reconcile both before interpreting a price or EPS change as value creation.
-- For a buyback, use the disclosed route, terms, eligibility, funding and timetable. Entitlement is not a guaranteed acceptance amount. Do not assume a historical route remains available, call it price support, or infer undervaluation from the announcement alone.
+- Give the exchange's ex-date and record date, and any later correction. Explain eligibility from the notice itself, not a general calendar rule.
+- Separate regular from special dividends. A split or bonus changes the share count, so adjust per-share figures before reading a price or EPS change as value created.
+- For a buyback, report the route, terms, eligibility, funding and timetable from the notice. Entitlement is not the amount that will be accepted. An announcement is not price support and not proof of undervaluation.

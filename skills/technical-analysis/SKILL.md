@@ -10,7 +10,7 @@ allowed-tools: Read, Write, Bash, mcp__finance-market__*, mcp__plugin_everything
 
 Read `references/reference.md` first — it owns the method: the six-step Varsity checklist and the order it runs in, the moving-average rules, the stale-quote cross-check, and the `ta.py` recipe that produces every indicator value. This SKILL is the workflow.
 
-**Sources for this skill only:** `finance-market` — `get_history(symbol, period="1y", adjusted=True)` for EOD candles (the full series is written to `candles_path`; the summary alone is not enough to derive levels). Use the adjusted series: a split or bonus inside the window otherwise breaks every average, RSI reading and pre-event level, and discover/backtest compute on adjusted bars too. Adjusted levels are in today's price terms, so they compare directly with the live quote and `get_quote(symbol)` for the live bar.
+**Sources for this skill only:** `finance-market` — `get_history(symbol, period="1y", adjusted=True)` for EOD candles (the full series is written to `candles_path`; the summary alone is not enough to derive levels). Use the adjusted series: a split or bonus inside the window otherwise breaks every average, RSI reading and older level, and discover and the backtest use adjusted bars too. Adjusted levels are in today's prices, so they compare directly with `get_quote(symbol)`.
 
 ## Workflow
 

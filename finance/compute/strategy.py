@@ -285,6 +285,18 @@ def risk_parameters(spec, capital, risk_pct=None):
     return capital, risk_pct
 
 
+
+def validate_spec(spec, capital, risk_pct=None):
+    """Check a trading spec's entry, features, sizing and exit once, before any fetch.
+
+    Returns the validated `(capital, risk_pct)`; raises ValueError on the first problem.
+    """
+    entry_filters(spec)
+    referenced_features(spec)
+    capital, risk_pct = risk_parameters(spec, capital, risk_pct)
+    validate_exit(spec.get("exit"))
+    return capital, risk_pct
+
 def build_signal(df, spec, capital, entry_override=None):
     """Construct a live trade signal for one stock from the spec. Returns a dict,
     or {skip: reason} when the RRR gate or a malformed stop rejects it."""

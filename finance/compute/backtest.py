@@ -201,10 +201,7 @@ def run(spec, symbols, years=5, capital=500000, risk_pct=None, out=None):
             raise ValueError("backtest requires a trading spec")
         if doc.get("direction", "long") != "long":
             raise ValueError("this backtest supports long strategies only")
-        capital, risk_pct = strategy.risk_parameters(doc, capital, risk_pct)
-        strategy.validate_exit(doc.get("exit"))
-        strategy.entry_filters(doc)
-        strategy.referenced_features(doc)
+        capital, risk_pct = strategy.validate_spec(doc, capital, risk_pct)
         if type(years) is not int or years <= 0:
             raise ValueError("years must be a positive integer")
         symbols, gaps = universe.resolve_symbols(symbols)

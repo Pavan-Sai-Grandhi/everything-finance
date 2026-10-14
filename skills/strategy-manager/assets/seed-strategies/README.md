@@ -1,31 +1,29 @@
 # Seed strategy library
 
-These are draft research templates, not validated trading systems or recommended allocations. Numeric cutoffs are design assumptions. No bundled seed includes performance evidence, and field resolvability alone does not establish an edge.
+These are draft templates. None has been backtested, and their numeric cutoffs are design choices. A seed that parses is not a seed with an edge.
 
-Copy a selected seed to the path returned by `finance.paths.state_dir("strategies")` under the session artifact root. Preserve the draft until the applicable validation is complete; never activate all seeds simply because they parse.
+Copy a seed into `finance.paths.state_dir("strategies")` and keep it `draft` until it passes validation.
 
 ## Validation by purpose
 
-- **Trading:** compare the prose setup with the exact expressions the engine executes. Most swing seeds contain coarse `compute_filters`; those are not a mechanical definition of a retest, reversal candle, trendline touch or Fibonacci impulse. Define an explicit `entry.signal` and any required feature in the shared TA registry before testing that idea. The engine refuses missing/empty signals before fetching; it never converts screening filters into an entry automatically. Check stop/target meanings as well: `range_low` and `measured_move` use the engine's lookback range, not a manually selected squeeze candle. Backtest the exact final rules, with costs and out-of-sample evidence, before activation. A result for a coarse proxy does not validate the prose strategy.
-- **Investment:** validate the approved fundamental query, universe and ranking. Activation makes the screen executable for research; it is not a buy recommendation and has no trading expectancy.
-- **Funds:** validate the category, scan window, AUM floor and shortlist size against `get_fund_scan`. A historical scan window does not define the investor's holding horizon, and a large-cap equity fund does not guarantee capital protection.
+- **Trading:** most swing seeds only have coarse `compute_filters`, which do not define a retest, a reversal candle, a trendline touch or a Fibonacci impulse. Write an explicit `entry.signal` (and register any missing feature in `compute/ta.py`) before testing the idea; the engine refuses a spec without one. `range_low` and `measured_move` use the engine's lookback range, not a hand-picked candle. Backtest the final rules, with costs and out-of-sample data, before activating. A backtest of the coarse filters does not validate the strategy described.
+- **Investment:** validate the Tickertape query, universe and ranking. Active means the screen runs; it is not a buy recommendation.
+- **Funds:** validate the category, scan window, AUM floor and shortlist size against `get_fund_scan`. The scan window is not the investor's holding period.
 
-## Swing ideas and unresolved definitions
+## What each swing seed still needs
 
-| Seed | Intended idea | What must be made explicit before activation |
+| Seed | Idea | Must be defined before activation |
 |---|---|---|
-| `ema-pullback-swing` | Pullback to a rising moving average | Average period, proximity, reversal candle, support and volume confirmation |
-| `breakout-retest-swing` | Retest after a consolidation break | Prior breakout, elapsed retest window, pivot tolerance and separate breakout/retest volume rules |
-| `rsi-trendline-reversal-swing` | Reversal near a rising trendline | Trendline construction, touch tolerance, reversal and the exact RSI band |
-| `inside-bar-nr7-swing` | Expansion after a squeeze | Verify `coil_breakout` matches the intended squeeze and choose the exact stop/target rule |
-| `fibonacci-retracement-swing` | Retracement of an identified impulse | Causal impulse pivots, retracement zone and confirmation candle |
+| `ema-pullback-swing` | Pullback to a rising moving average | Average period, how close counts as a touch, reversal candle, support and volume rule |
+| `breakout-retest-swing` | Retest after a consolidation break | The prior breakout, retest window, pivot tolerance, and separate breakout and retest volume rules |
+| `rsi-trendline-reversal-swing` | Reversal near a rising trendline | How the trendline is drawn, touch tolerance, reversal rule and the RSI band |
+| `inside-bar-nr7-swing` | Expansion after a squeeze | Whether `coil_breakout` matches the intended squeeze, and the stop and target rule |
+| `fibonacci-retracement-swing` | Retracement of a prior impulse | Impulse pivots that use only past bars, the retracement zone and the confirmation candle |
 
-TradingView filters are coarse provider-specific cuts. SMA filters and local EMA filters are different definitions; do not describe the compute path as an exact fallback unless equivalence has been established. The shared local entry engine owns the final executed expressions.
+TradingView filters use SMAs and local filters use EMAs, so the local path is a different screen, not an exact fallback.
 
-A Nifty daily EMA200 gate is market context, not a weekly confirmation for the stock. True multi-timeframe confirmation needs separately defined, completed weekly bars and the same causal rule in live and historical execution; no seed currently establishes that overlay.
+The Nifty 200-EMA gate is market context, not weekly confirmation for the stock. No seed has a weekly-timeframe rule yet; adding one needs completed weekly bars computed the same way live and in the backtest.
 
-## Retired source
+## Removed seed
 
-The former `soic-crossperiod-screener-in` seed was removed because repository policy approves screener.in only for document discovery. Legacy saved-screen calls return a gap without fetching. Re-author any user copy with approved decision data; do not silently replace unavailable cross-period conditions with point-in-time proxies.
-
-General educational references and old screen-result counts do not validate the exact cutoffs or execution rules. Recheck the sources and retain evidence with a user strategy when developing it.
+`soic-crossperiod-screener-in` was removed because screener.in is approved for documents only. Rewrite any copy of it on Tickertape, and say so where a cross-period condition becomes a point-in-time one.

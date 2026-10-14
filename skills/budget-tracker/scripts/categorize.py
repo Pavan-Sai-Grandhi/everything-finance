@@ -19,7 +19,6 @@ CLI (the file-handoff the skill uses):
 """
 import argparse
 import fcntl
-import tempfile
 import threading
 import json
 import math
@@ -30,7 +29,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
                    os.path.dirname(os.path.abspath(__file__))))))
-from finance import paths  # noqa: E402
+from finance import paths, spine  # noqa: E402
 
 # Mirrors references/reference.md.
 # Ordered: more-specific categories first so an overlapping narration resolves to the
@@ -262,7 +261,7 @@ def load_map(path=None, *, gaps=None):
             return _validate_map(json.load(stream, object_pairs_hook=_unique_map))
     except FileNotFoundError:
         return {}
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError):
         if gaps is None:
             raise
         gaps.append("Merchant map unreadable or invalid; using taxonomy only; saved rules preserved")
@@ -272,21 +271,7 @@ def load_map(path=None, *, gaps=None):
 def write_json(value, path):
     """Publish a complete JSON file atomically, preserving prior data on failure."""
     payload = json.dumps(value, indent=2, sort_keys=True, allow_nan=False)
-    directory = os.path.dirname(os.path.abspath(path))
-    os.makedirs(directory, exist_ok=True)
-    pending = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
-                                         delete=False) as stream:
-            pending = stream.name
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(pending, path)
-    finally:
-        if pending and os.path.exists(pending):
-            os.unlink(pending)
-    return path
+    return spine.atomic_write(path, payload, fsync=True)
 
 
 def save_map(merchant_map, path=None):
