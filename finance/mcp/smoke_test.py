@@ -63,7 +63,6 @@ CASES = {
          {"query": "Market Cap > 100000 AND PE Ratio < 25", "limit": 25},
          ["candidates", "count"]),
         # Retired endpoint: verifies the labelled compatibility gap, never a fetch.
-        ("run_saved_screen", {"screen_url": "retired://saved-screen"}, ["candidates", "count"]),
         ("get_stock_ratios", {"sid": "RELI"}, ["ticker"]),
         ("get_news", {"company": "Reliance Industries", "ticker": "RELIANCE", "days": 30,
                       "limit": 5}, ["items_total"]),

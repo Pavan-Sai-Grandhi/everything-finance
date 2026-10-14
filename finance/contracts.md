@@ -17,7 +17,7 @@ data, gaps}`. No name appears on two servers.
 | server | tools |
 |---|---|
 | `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `get_universe` `run_strategy_screen` `run_stock_scan` `run_sector_screen` `run_backtest` `check_trade` `manage_alerts` `get_prior_run` |
-| `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `run_saved_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `run_dcf` `run_governance_checks` |
+| `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `run_dcf` `run_governance_checks` |
 | `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
 | `finance-personal` | `run_insurance_math` |
 
@@ -221,12 +221,6 @@ holding and a per-quarter shareholder count are not published (current count is 
 `is_logged_out(html)` catches screener's HTTP-200 Register page, so a gated document index
 reports itself rather than reading as a company that has filed nothing. Covered by
 `finance/tests/test_fundamentals.py` (offline parser fixtures).
-
-### `finance/sources/screener_screen.py` — retired
-`run_saved_screen` still exists for old clients. It always returns `ok:false`, no candidates and a
-source-policy gap, and makes no request: screener.in is approved for documents only. Investment specs use
-Tickertape and must name a universe. A spec written for a saved screen must be rewritten by its author;
-the engine does not substitute criteria. `test_screener_screen.py`, `test_stock_scan.py`.
 
 ### `finance/sources/documents.py` — primary documents as cached local text
 Consumer: `get_documents` (envelope, cache layout, reading legs in *Artifact: document cache*).

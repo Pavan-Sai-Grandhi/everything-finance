@@ -62,9 +62,8 @@ screening:
     provider: tickertape              # tickertape | none  (none = skip the quality gate)
     # provider: tickertape -> `query` below, run by run_fundamental_screen. `FIELD OP VALUE`
     #   clauses joined by AND; Tickertape catalogue field names; ONLY > and < (point-in-time).
-    #   Use this when the cut needs what Tickertape cannot express — a CROSS-PERIOD comparison
-    #   ("ROCE > ROCE preceding year"), PEG, promoter-holding change, pledged %. Author/save the
-    #   screen on screener.in (free), make it PUBLIC, and paste the /screens/<id>/<slug>/ URL.
+    #   A CROSS-PERIOD criterion ("ROCE > ROCE preceding year") cannot be expressed here:
+    #   say so in the spec and report it as a data gap rather than substituting a filter.
     query: >
       Market Cap > 1000 AND ROCE > 12
       AND Debt to Equity < 1 AND 1Y Historical EPS Growth > 0

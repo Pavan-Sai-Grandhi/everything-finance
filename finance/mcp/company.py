@@ -17,7 +17,6 @@ from finance.sources import filings as _filings
 from finance.sources import fundamentals as _fundamentals
 from finance.sources import funds as _funds
 from finance.sources import news as _news
-from finance.sources import screener_screen as _screener_screen
 
 from finance.mcp._server import create, safe_name, spill
 
@@ -93,16 +92,6 @@ def get_documents(symbol: str, annual_reports: int = 1, concalls: int = 1,
 )
 def run_fundamental_screen(query: str, limit: int = 1000, fresh: bool = False) -> dict:
     return _fundamentals.screen(query, limit=limit, fresh=fresh)
-
-
-@SERVER.tool(
-    description="Retired. Always returns a labelled gap and fetches nothing, because "
-                "screener.in is approved only for documents. Use run_fundamental_screen; "
-                "if a cross-period condition cannot be expressed there, say so instead of "
-                "substituting a different filter."
-)
-def run_saved_screen(screen_url: str, max_survivors: int = 200, fresh: bool = False) -> dict:
-    return _screener_screen.screen(screen_url, max_survivors=max_survivors, fresh=fresh)
 
 
 @SERVER.tool(

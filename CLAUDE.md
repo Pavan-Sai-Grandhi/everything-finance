@@ -55,7 +55,7 @@ One library, so cross-skill logic cannot be re-implemented and drift.
 ```
 finance/  transport spine paths deps caps publication report_hook telegram
   sources/  tickertape prices market funds fundamentals documents news filings
-            universe screener_screen
+            universe
   compute/  ta strategy holdings alerts context rolling relative_strength
             lookthrough fund_scan screen stock_scan sector_scan backtest
             dcf relval governance trade_check insurance_math wealth allocation
