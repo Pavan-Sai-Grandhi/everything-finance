@@ -59,57 +59,7 @@
     ]
   },
   "coverage": {
-    "lede": "Twelve slides of evidence sit under the call. Each opens with its answer in one line; the workings are behind a rule you can open. Nothing was cut to make it fit.",
-    "contents": [
-      {
-        "name": "Company overview",
-        "num": "03"
-      },
-      {
-        "name": "Intrinsic value",
-        "num": "08"
-      },
-      {
-        "name": "The six lenses",
-        "num": "04"
-      },
-      {
-        "name": "The relative read",
-        "num": "09"
-      },
-      {
-        "name": "Financials — scorecard",
-        "num": "05"
-      },
-      {
-        "name": "Technical structure",
-        "num": "10"
-      },
-      {
-        "name": "Financials — the record",
-        "num": "06"
-      },
-      {
-        "name": "News & filings",
-        "num": "11"
-      },
-      {
-        "name": "Management integrity",
-        "num": "07"
-      },
-      {
-        "name": "The debate",
-        "num": "12"
-      },
-      {
-        "name": "Sector context",
-        "num": "13"
-      },
-      {
-        "name": "What changes the call",
-        "num": "14"
-      }
-    ],
+    "lede": "Seventeen slides of evidence sit under the call, in the order a reader decides: the business and the people, whether the industry has a future, then the numbers, the value, the timing and the debate. Each opens with its answer in one line.",
     "brief_label": "Telegram brief — as sent",
     "brief": "AVOID HDFCBANK @ ₹726.95 (conviction: medium)\n🐂 NII/PAT still grew (+6.7%/+5% YoY) through the record-low NIM print\n🐻 Q1FY27 NIM 3.26% breached the prior thesis's ≤3.38% trigger; price implies an 18–20% ROE the bank has never sustained\n🧭 Sector: NIFTY Bank is Leading, but HDFCBANK is the one laggard in it\nKey level: ₹727 tested twice on weekly closes; ₹748–750 is the reclaim level\nReview: Q2 FY27 (~19-Oct) and the CEO third-term/RBI decision — same month",
     "ran": [
@@ -144,10 +94,29 @@
         "muted": true
       }
     ],
-    "gaps_label": "GAPS — SLIDE 15",
+    "gaps_label": "GAPS — LAST SLIDE",
     "gaps_line": "No concall transcript for a 3rd cycle; get_news/get_filings unavailable this run; peer ROE not sourced; 10Y series and a rebased sector RS series absent.",
     "papers": "WORK PAPERS\nartifacts/stocks/HDFCBANK/2026-08-22/\n  deep-analysis.html · deep-analysis.report.json · dcf.md · dcf.json\n  management.md · agents/ (10 files)",
     "footer": "Mode standard · 11 agents · market context 2026-08-20 (last trading bar) · every number traceable to the run's artifacts"
+  },
+  "changed_since": {
+    "title": "What changed since 2026-05-20",
+    "lede": "The call moves from ACCUMULATE to AVOID. The margin trigger set last time has fired; the valuation gap barely moved.",
+    "items": [
+      {
+        "label": "THESIS TRIGGER",
+        "text": "The prior run's invalidation was a margin print at or below its stated floor. The Q1 print came in below it, so the condition that held the call is gone."
+      },
+      {
+        "label": "VALUE",
+        "text": "Intrinsic value is broadly unchanged; the shift is in the evidence, not in the model."
+      },
+      {
+        "label": "PRICE",
+        "text": "Price is lower than at the last run, but not by enough to reopen the margin of safety."
+      }
+    ],
+    "footer": "Prior projection via get_prior_run · ILLUSTRATIVE SAMPLE"
   },
   "overview": {
     "title": "Company overview",
@@ -264,6 +233,72 @@
     },
     "footer": "Franchise metrics: annual report FY26 MD&A · balance-sheet size & ratios: Tickertape, fetched 2026-08-22 · one-off stake-sale gains stripped from Other-Income growth"
   },
+  "sector_story": {
+    "title": "Does the industry have a future?",
+    "lede": "Yes, structurally: credit is still small relative to the economy and private banks keep taking share from state-owned ones. The near-term story is weaker, because deposit growth is lagging loan growth across the system.",
+    "cards": [
+      {
+        "label": "SYSTEM CREDIT",
+        "value": "₹180 L Cr",
+        "sub": "FY26 · RBI data via AR MD&A"
+      },
+      {
+        "label": "CREDIT GROWTH",
+        "value": "~12%",
+        "sub": "FY26, down from ~16%"
+      },
+      {
+        "label": "PRIVATE BANK SHARE",
+        "value": "~40%",
+        "sub": "of loans, rising"
+      },
+      {
+        "label": "LIFECYCLE",
+        "value": "Growth",
+        "sub": "credit/GDP still low"
+      }
+    ],
+    "drivers": [
+      {
+        "text": "Credit penetration is low by emerging-market standards, so loan growth can outrun nominal GDP for years.",
+        "source": "AR FY26 MD&A, Industry structure"
+      },
+      {
+        "text": "Private banks keep gaining share from state-owned banks on deposits and retail loans.",
+        "source": "AR FY26 MD&A, Opportunities"
+      },
+      {
+        "text": "Digital payments rails lower the cost of acquiring deposits.",
+        "source": "Q1 FY27 concall"
+      }
+    ],
+    "risks": [
+      {
+        "text": "Deposits are growing slower than loans across the system, squeezing margins.",
+        "source": "AR FY26 MD&A, Threats"
+      },
+      {
+        "text": "Unsecured retail stress has risen and regulators have raised risk weights.",
+        "source": "RBI circular, 2023-11-16"
+      }
+    ],
+    "policy": [
+      {
+        "date": "2023-11-16",
+        "text": "Higher risk weights on unsecured consumer credit and loans to NBFCs.",
+        "source": "rbi.org.in · circular"
+      },
+      {
+        "date": "2025-04-01",
+        "text": "Revised liquidity coverage norms for retail deposits phased in.",
+        "source": "rbi.org.in · circular"
+      }
+    ],
+    "verdict": "STRUCTURAL GROWTH",
+    "verdict_tone": "pos",
+    "read": "The industry tailwind is real and long; it does not rescue a bank whose own deposit franchise is lagging, which is this one's problem.",
+    "footer": "AR FY26 MD&A (industry structure, opportunities and threats, outlook) · Q1 FY27 concall · RBI circulars · ILLUSTRATIVE SAMPLE"
+  },
   "glance": {
     "title": "The six lenses",
     "lede": "Four lenses lean negative or neutral; the balance sheet is the one clear strength. The call is carried by financials — NIM breaking its own floor — corroborated by news and sector, with valuation and technicals in genuine, unresolved tension.",
@@ -315,6 +350,94 @@
       }
     ],
     "footer": "Each row is a leg's own machine-read block, unedited · full papers in artifacts/stocks/HDFCBANK/2026-08-22/deep-analysis/agents/"
+  },
+  "story": {
+    "title": "How it started, and how it got here",
+    "lede": "A single-product lender founded by a parent institution grew into a universal bank through two acquisitions and one reverse merger. Each step widened the franchise; the last one also diluted returns, which is the debate today.",
+    "facts": [
+      {
+        "label": "FOUNDED",
+        "value": "1994",
+        "sub": "incorporated; operations from 1995"
+      },
+      {
+        "label": "FOUNDED BY",
+        "value": "Parent institution",
+        "sub": "promoter until the merger"
+      },
+      {
+        "label": "LISTED",
+        "value": "1995",
+        "sub": "NSE + BSE"
+      },
+      {
+        "label": "HEADQUARTERS",
+        "value": "Mumbai",
+        "sub": "pan-India network"
+      }
+    ],
+    "narrative": [
+      "The bank was set up by its parent as one of the first private banks licensed after liberalisation, with a mandate to serve the parent's corporate relationships and a small retail book.",
+      "Growth came in three steps: organic branch expansion through the 2000s, two bank acquisitions that brought retail deposits, and a reverse merger with the parent that folded a large mortgage book onto the balance sheet."
+    ],
+    "timeline_title": "Milestones · from the annual report's journey page",
+    "timeline": [
+      {
+        "when": "1994",
+        "what": "Incorporated with an in-principle banking licence."
+      },
+      {
+        "when": "1995",
+        "what": "Begins operations; lists on the exchanges."
+      },
+      {
+        "when": "2000",
+        "what": "First acquisition: a smaller private bank, adding branches and deposits."
+      },
+      {
+        "when": "2008",
+        "what": "Second acquisition doubles the branch network."
+      },
+      {
+        "when": "2023",
+        "what": "Reverse merger with the parent; mortgage book and the parent's shareholders come across."
+      },
+      {
+        "when": "FY26",
+        "what": "Integration year: deposits rebuilt, loan-to-deposit ratio brought back under 95%."
+      }
+    ],
+    "footer": "Annual report FY26 (Our Journey, Chairman's message) · offer document (History and certain corporate matters) · ILLUSTRATIVE SAMPLE"
+  },
+  "people": {
+    "title": "Who runs it, and how they got there",
+    "lede": "A professionally managed bank with no individual promoter since the merger. The CEO is an insider of three decades; the board is independent-heavy.",
+    "people": [
+      {
+        "name": "CEO A",
+        "role": "MD & CEO · since 2020",
+        "background": "Joined in 1996 as a manager; ran finance and HR before taking the top job. Chartered accountant. (board profile, AR FY26)"
+      },
+      {
+        "name": "Chair B",
+        "role": "Independent chair",
+        "background": "Former civil servant with a finance-ministry background; on the board since 2021. (board profile, AR FY26)"
+      },
+      {
+        "name": "CFO C",
+        "role": "Chief financial officer",
+        "background": "Promoted from deputy CFO in 2023; 20 years in the bank's finance function. (AR FY26)"
+      },
+      {
+        "name": "Director D",
+        "role": "Executive director",
+        "background": "Runs retail and branch banking; joined from a peer bank in 2009. (board profile, AR FY26)"
+      }
+    ],
+    "control_label": "Who controls the company",
+    "control": "No promoter group after the 2023 merger: the parent's stake passed to public shareholders. Foreign institutions hold the largest block; there is no pledge because there is no promoter (shareholding, Q1 FY27).",
+    "read": "Control is not a governance risk here; succession is. The CEO's current term ends inside two years and the next tier is not named publicly.",
+    "footer": "Board and KMP profiles, AR FY26 · shareholding Q1 FY27 · ILLUSTRATIVE SAMPLE"
   },
   "scorecard": {
     "title": "The due-diligence scorecard",
@@ -487,19 +610,23 @@
     "skill": [
       {
         "label": "QUALIFICATION",
-        "score": 4.5
+        "grade": "STRONG",
+        "note": "Board and KMP carry decades in the sector (board profiles, AR)."
       },
       {
         "label": "MINDSET",
-        "score": 3.4
+        "grade": "ADEQUATE",
+        "note": "Plans promised two years ago were partly delivered (MD&A, both years)."
       },
       {
         "label": "CAPITAL ALLOCATION",
-        "score": 4.2
+        "grade": "STRONG",
+        "note": "Return on retained earnings above cost of equity over five years."
       },
       {
         "label": "SUCCESSION",
-        "score": 3.2
+        "grade": "ADEQUATE",
+        "note": "Professional CEO in place; the next tier is not named."
       }
     ],
     "reservation_label": "THE ONE RESERVATION",

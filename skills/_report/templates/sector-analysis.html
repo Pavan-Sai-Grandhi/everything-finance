@@ -118,14 +118,24 @@
 {#- ============================================================ 05-07 · DEEP-DIVES ======= -#}
 {% for dd in r.deepdives %}
 {% call c.slide(dd.name, dd.num, dd.section, r.meta.subject_date, dd.title, dd.lede, dd.footer) %}
-  <div style="display:flex;flex-direction:column;gap:24px;margin-top:26px;">
-    <div style="display:flex;align-items:center;gap:22px;">
-      {{ c.chip(dd.klass, tone=dd.klass_tone, solid=true) }}
-      <span style="font-family:var(--mono);font-size:24px;letter-spacing:.1em;color:var(--ink3);">{{ dd.generated }}</span>
+  <div style="display:flex;flex-direction:column;gap:16px;margin-top:20px;">
+    <div style="display:grid;grid-template-columns:auto 1fr auto;gap:30px;align-items:center;border-top:2px solid var(--ink);border-bottom:1px solid var(--rule);padding:14px 0;">
+      {% if dd.story %}
+      {{ c.chip(dd.story.klass, tone=dd.story.tone, solid=true) }}
+      <div style="font-size:26px;line-height:1.4;">{{ dd.story.text }}</div>
+      {% else %}
+      {{ c.chip('STORY NOT ASSESSED', tone='muted') }}
+      <div style="font-size:24px;line-height:1.4;color:var(--ink3);">The cached sector body predates the growth-story read; refresh it to see whether the industry has a future.</div>
+      {% endif %}
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+        <span style="font-family:var(--mono);font-size:22px;letter-spacing:.1em;color:var(--ink3);">MARKET'S READ</span>
+        {{ c.chip(dd.klass, tone=dd.klass_tone, solid=true) }}
+        <span style="font-family:var(--mono);font-size:22px;color:var(--ink3);">{{ dd.generated }}</span>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;">
       {% for m in dd.rs %}
-      {{ c.metric_card(m.label, m.value, value_color='var(--'~m.tone~')' if m.tone else 'var(--ink)', value_size=44, pad='22px 28px') }}
+      {{ c.metric_card(m.label, m.value, value_color='var(--'~m.tone~')' if m.tone else 'var(--ink)', value_size=40, pad='16px 28px') }}
       {% endfor %}
     </div>
     <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:56px;align-items:start;">

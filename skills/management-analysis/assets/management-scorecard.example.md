@@ -11,6 +11,17 @@ axis: governance
 <Everything from this leg that could change a verdict, in 3-6 plain sentences — each with its number and where it came from. A reader who stops here has the leg's whole case.>
 
 
+## Story & people
+**Origins**: <founding year, founders, first product, why it was started — each with its source>
+**Milestones**:
+| Year | What changed | Source |
+|---|---|---|
+| <YYYY> | <acquisition / capacity step / listing / change of control / new line> | <AR FY journey page · RHP chapter · company site URL> |
+**What it does today**: <one or two sentences — and how that differs from where it started>
+**Promoters**: <name — education, prior career, how they came to control the company, other group companies; or "professionally managed, no promoter" and the largest holder>
+**Leaders**: <MD/CEO, CFO, executive directors — background and tenure, each sourced>
+**Control**: <promoter stake and trend, pledge, holding structure, contestability>
+
 > Integrity is a hard gate; skill is graded for honest managements. Judges intention and pattern, not fixed ratios. Evidence cited or it doesn't count.
 
 ## Integrity scorecard

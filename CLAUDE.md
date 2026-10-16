@@ -10,7 +10,7 @@ India-focused personal financial intelligence. These rules bind every skill and 
 
 3. **Personal data and decision data never mix.**
    - **Personal sources** — IndMoney, Kite, Upstox (optional; connect whatever you have). They answer exactly one question: **what do you own and what is it worth** (holdings, units, quantity, average cost, invested/current value, P&L, XIRR, SIPs, order fills, net worth). Within that scope they are authoritative first-party state. Broker MCPs are the only source of exact order fills.
-   - **Decision sources** — the seven below, reached only through the four `finance-*` servers. Every number that shapes a view: prices, valuations, ratios, a *fund's own* holdings, returns-vs-benchmark, category returns and ranks, cap classification, news, sentiment, filings.
+   - **Decision sources** — the eight below, reached only through the four `finance-*` servers. Every number that shapes a view: prices, valuations, ratios, a *fund's own* holdings, returns-vs-benchmark, category returns and ranks, cap classification, discount-rate inputs, news, sentiment, filings.
 
    **A personal source must never supply a decision input**, however convenient the field looks — an authenticated feed *looks* authoritative, and these fields have been measurably wrong. So: fund holdings from `get_fund_holdings`, cap tiers from `get_stock_ratios.cap_rank`, fund performance computed from NAV history, news from `get_news`. Personal sources are normalized through `finance/compute/holdings.py`.
 
@@ -27,8 +27,11 @@ India-focused personal financial intelligence. These rules bind every skill and 
 | **Tickertape** | company financials, fundamental screen, fund category screen, **complete** fund holdings, per-stock ratios | `get_company_fundamentals`, `run_fundamental_screen`, `screen_funds`, `get_fund_holdings`, `get_stock_ratios` |
 | **AMFI** (registry + mfapi.in NAV mirror) | fund identity, NAV history, SEBI market-cap rank | `resolve_fund`, `get_nav_history`, `get_stock_ratios` |
 | **Google News RSS** | company and market news | `get_news` |
+| **Damodaran** (NYU Stern country-risk dataset) | India sovereign rating, default spread, country risk premium, mature-market ERP — dated vintage | `get_risk_inputs` (with TradingView's India 10Y yield) |
 
-Four servers, split by domain — `finance-market` (prices, index and market state, the universe authority and the discovery screeners: `get_universe` / `run_strategy_screen` / `run_stock_scan` / `run_sector_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `run_dcf` / `run_governance_checks`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
+**Qualitative primary sources** — reached with `WebSearch` restricted to the named domains and `WebFetch` of the document itself, only by the skills that name them, and cited by document number and date. They carry the story a data feed cannot: company history and promoter background (the offer document's history and promoter chapters on `sebi.gov.in` / `nseindia.com` / `bseindia.com`; the company's own site), policy and regulation from the issuing authority (`pib.gov.in`, `egazette.gov.in`, `dgtr.gov.in`, `cbic.gov.in`, `sebi.gov.in`, `rbi.org.in`, `irdai.gov.in`, `pfrda.org.in`, the ministry's own `*.gov.in`), and industry statistics from statutory and industry bodies (`amfiindia.com`, `siam.in`, `npci.org.in`, `trai.gov.in`, `cea.nic.in`, `dgca.gov.in`, `mnre.gov.in`). Industry size and outlook come first from annual-report MD&A sections via `get_documents`. A news article about a policy points to the document; it is never the source of its terms.
+
+Four servers, split by domain — `finance-market` (prices, index and market state, the universe authority and the discovery screeners: `get_universe` / `run_strategy_screen` / `run_stock_scan` / `run_sector_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `get_risk_inputs` / `run_dcf` / `run_governance_checks`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
 
 `get_market_context` is the interpreted market-of-record, shared by every skill so reads cannot drift — prefer it over assembling a market view from raw tools.
 
@@ -55,7 +58,7 @@ One library, so cross-skill logic cannot be re-implemented and drift.
 ```
 finance/  transport spine paths deps caps publication report_hook telegram
   sources/  tickertape prices market funds fundamentals documents news filings
-            universe
+            universe risk
   compute/  ta strategy holdings alerts context rolling relative_strength
             lookthrough fund_scan screen stock_scan sector_scan backtest
             dcf relval governance trade_check insurance_math wealth allocation

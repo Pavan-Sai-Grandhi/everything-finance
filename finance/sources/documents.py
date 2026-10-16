@@ -191,6 +191,19 @@ _SECTIONS = {
     "esop": r"(employee stock option|esop scheme)",
     "shareholding": r"(shareholding pattern|pattern of shareholding)",
     "qna": r"(question[- ]and[- ]answer session|we will now begin the question)",
+    # The story of the business and of its industry, which the SEBI LODR Schedule V MD&A
+    # mandates (industry structure, opportunities and threats, outlook) and the front of
+    # the report narrates (journey, chairman's letter, board profiles).
+    "history": (r"(our journey|milestones|corporate history|history and certain corporate"
+                r"|about (the company|us)|who we are)"),
+    "chairman_message": (r"(chairman'?s? (message|letter|statement|speech)|letter to (the )?"
+                         r"shareholders|message from the (chairman|managing director))"),
+    "director_profiles": (r"(profiles? of (the )?directors|directors'? profiles?|board profiles?"
+                          r"|brief (profile|resume)|details of directors? seeking)"),
+    "industry": (r"industry (structure|overview|scenario|outlook|review|landscape)"
+                 r"|sector overview|economic overview"),
+    "opportunities_threats": r"(opportunities and threats|threats and opportunities|risks and concerns)",
+    "outlook": r"^\s*(business |future |company )?outlook\b",
 }
 
 # A heading line is short and carries no page number; a contents-page entry is the
@@ -291,6 +304,9 @@ def _document(link, kind, fresh, gaps):
                 expected = os.path.basename(txt)[len(_key(url)) + 1:-4]
                 if spine.file_sha256(txt) == expected:
                     row["cached"] = True
+                    # Re-derived, not trusted from metadata, so a section added to the map
+                    # reaches documents converted before it existed.
+                    row["outline"] = _outline(txt, row["text_lines"])
                     row["label"] = label
                     row["publisher"] = transport._host(url)
                     return row

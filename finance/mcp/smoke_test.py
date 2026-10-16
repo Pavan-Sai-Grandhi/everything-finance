@@ -71,6 +71,7 @@ CASES = {
         ("get_corporate_actions", {"symbol": "RELIANCE"}, ["corporate_actions"]),
         ("run_dcf", {"ticker": "SMOKETEST", "inputs": SELFTEST_DCF_SPEC},
          ["intrinsic_value_per_share", "dcf_path"]),
+        ("get_risk_inputs", {}, ["india_10y", "country_risk"]),
         ("run_governance_checks", {"total_remuneration": 30.0, "net_profit": 1000.0,
                                    "fees": [2.0, 2.6], "revenues": [100.0, 102.0]},
          ["remuneration", "auditor_fee"]),

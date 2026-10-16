@@ -165,6 +165,14 @@ for _skill, _agent in (("management-analysis", "field-analyst"), ("valuation-ana
         check(f"{_agent} can reach get_prior_run, which {_skill} calls",
               "finance-market__get_prior_run" in _granted or "finance-market__*" in _granted, _granted)
 
+with open(os.path.join(ROOT, "skills", "sector-analysis", "SKILL.md"), encoding="utf-8") as fh:
+    _sector = fh.read()
+check("terminal-analyst can reach the issuing-authority sites sector-analysis reads policy from",
+      "WebFetch" in _sector and "WebSearch" in _agent_tools("terminal-analyst")
+      and "WebFetch" in _agent_tools("terminal-analyst"))
+check("sector-analysis reads the growth story before the market's read",
+      _sector.find("### The growth story") < _sector.find("### The market's read") != -1)
+
 check(".env.example template ships", os.path.isfile(os.path.join(ROOT, ".env.example")))
 loader = os.path.join(ROOT, "bin", "load-env.sh")
 check("bin/load-env.sh exists", os.path.isfile(loader))

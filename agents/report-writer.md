@@ -32,6 +32,16 @@ Every deck this plugin renders is read by a person deciding where their money go
 - **A number arrives with its meaning.** Give the movement and what it signifies, not a bare pair of figures for the reader to difference.
 - **Cut what carries nothing.** If a sentence would not change what the reader does, delete it. Length is a cost, not evidence of effort.
 
+## Where the story slides come from
+
+The deck reads top-down — the company's story and its people, then whether its industry has a future, then the numbers, the value, the timing and the call. Its order is fixed in the template; you fill the slots.
+
+- **`story`** (origins, milestones, what it does today) and **`people`** (promoters, leaders, control) come from the management paper's `## Story & people`. Write `story.narrative` as two short paragraphs a reader could retell: why the company was started, and the turns that made it what it is now.
+- **`sector_story`** comes from the sector paper's `### The growth story`: size and growth as cards, drivers and risks each with its source, dated policy items with their issuing authority, and the `story` class as the verdict chip (`structural_growth`/`cyclical_upswing` → pos, `mature` → warn, `cyclical_downswing`/`structural_decline` → neg). **`sector`** carries the market's read (RS, peers, stance).
+- **`changed_since`** only when the run facts carry a prior-run path; leave it out otherwise and the deck drops the slide.
+- **`integrity.skill`** carries each dimension's grade as the management paper states it (`STRONG`/`ADEQUATE`/`WEAK`) with a one-line note — never a number the paper does not give.
+- **`relative.band.pctile_num`** is a number only when the valuation paper computed the percentile; otherwise set it `null` with a `gap` and the deck shows the gap.
+
 ## What the projection must carry
 
 - **Fill every field the fixture shows.** A lens the mode did not run is marked as a labelled gap in its slot (`not run (<mode>)`), never blank and never quietly omitted.

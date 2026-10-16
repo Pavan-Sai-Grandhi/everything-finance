@@ -118,6 +118,10 @@ def _fake_annual_report(path):
                         ("Corporate Governance Report", 104)):
         lines.append(f"        {title} {page}")
     lines += [""] * 400
+    lines.append("Chairman's Message")
+    lines += ["Dear shareholders, this was a year of record volumes."] * 40
+    lines.append("Our Journey")
+    lines += ["1988 Incorporated as a two-person data processing shop."] * 20
     lines.append("Board's Report")
     lines += ["The directors present the annual accounts."] * 200
     lines.append("Corporate Governance Report")
@@ -125,7 +129,12 @@ def _fake_annual_report(path):
     lines.append("Managerial Remuneration to Directors")
     lines += ["Sitting fees and commission are set out below."] * 60
     lines.append("Management Discussion and Analysis")
+    lines.append("INDUSTRY STRUCTURE AND DEVELOPMENTS")
     lines += ["The electronics manufacturing industry grew 21% during the year."] * 300
+    lines.append("OPPORTUNITIES AND THREATS")
+    lines += ["Import substitution remains the largest opportunity."] * 30
+    lines.append("OUTLOOK")
+    lines += ["Demand is expected to stay strong."] * 20
     lines.append("Independent Auditor's Report")
     lines += ["We have audited the accompanying financial statements."] * 120
     lines.append("Emphasis of Matter")
@@ -153,7 +162,9 @@ def test_outline_finds_the_notes_a_leg_needs():
 
         for key in ("mdna", "auditors_report", "emphasis_of_matter", "related_party",
                     "contingent_liabilities", "remuneration", "tax_note", "cash_flow",
-                    "auditor_remuneration", "corporate_governance", "directors_report"):
+                    "auditor_remuneration", "corporate_governance", "directors_report",
+                    "history", "chairman_message", "industry", "opportunities_threats",
+                    "outlook"):
             check(f"outline locates {key}", key in out and out[key], sorted(out))
 
         toc_end = 12

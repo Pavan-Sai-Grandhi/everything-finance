@@ -38,6 +38,18 @@ Integrity is screened **before** skill. A *skilled but dishonest* management is 
 
 **Skill-builders for integrity** (reading to sharpen judgement — not evidence sources; see § Evidence standard): Vijay Malik's blogs (deep RPT/remuneration forensics); Moneylife / Sucheta Dalal exposés of dishonest promoters.
 
+## The story and the people
+
+A reader decides faster about a business they can picture. Before the integrity gate, write who these people are and how the company got here, so the checks that follow land on a story rather than a ticker.
+
+- **Origins.** Founding year, founders, what the company first made or sold, and why it was started — the problem or the opening it went after.
+- **Evolution.** Five to eight dated milestones that changed the business: a new product line, a capacity step, an acquisition or demerger, the listing, a change of control, a crisis survived. Each with its year and source. Say plainly what the company does today and how that differs from what it started as.
+- **The promoters.** Who they are — education, career before this company, how they came to control it (founded, inherited, acquired), other group companies they run, and generational change. A professionally managed company with no promoter says so and names who holds the largest block.
+- **The leaders.** The MD/CEO, CFO and executive directors: background, years at the company, how they got the role.
+- **Control.** Promoter stake and its trend, pledge, holding structure (direct, through holding companies, through trusts), and whether control is contestable.
+
+Biographical facts are verified fact or labelled gap — never inference. A prior employer, a degree or a founding year from memory is exactly the confident fabrication the plugin forbids.
+
 ## Pillar 2 — SKILL (graded for integrity-clean managements)
 
 Skilled management can turn a struggling company around (the source's example: Siddhartha Lal at Eicher — shut loss-making commercial-vehicle lines, concentrated on Royal Enfield, made it a multibagger). Among honest managements, grade capability:

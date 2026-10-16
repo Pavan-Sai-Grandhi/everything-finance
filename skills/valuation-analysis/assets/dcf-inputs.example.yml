@@ -57,12 +57,12 @@ sales_to_capital: 2.5           # ₹ sales per ₹ invested (scalar or list)
 #     the country-risk premium explicit instead of buried in one guessed number) ----------
 # wacc: 0.13                     # CoE+CoD weighted, ₹ terms — OR build it up (preferred):
 wacc_buildup:
-  government_bond_yield: 0.068  # INR government-bond yield       [src + as-of date: current market]
-  sovereign_default_spread: 0.0195 # subtract to get default-free INR rate [src + as-of: Damodaran]
+  government_bond_yield: 0.068  # get_risk_inputs india_10y.value   [TradingView TVC:IN10Y + as_of]
+  sovereign_default_spread: 0.0195 # get_risk_inputs country_risk.default_spread [Damodaran + as_of]
   beta: 1.1                     # BOTTOM-UP / sector beta (business risk), NOT the stock's regression beta
                                 #   [src: unlevered peer betas, relevered; >1.3 trips a flag — recheck]
-  mature_erp: 0.0508            # Damodaran mature-market ERP      [src + as-of date: current table]
-  country_risk_premium: 0.0219  # India CRP; add once after removing default spread [same vintage]
+  mature_erp: 0.0508            # get_risk_inputs country_risk.mature_erp [Damodaran + as_of]
+  country_risk_premium: 0.0219  # get_risk_inputs country_risk.country_risk_premium; add once [same vintage]
   lambda_country: 1.0           # India OPERATING exposure: ~1 domestic; ~0.1 for an IT exporter (see reference)
   cost_of_debt_pretax: 0.09     # [src: interest/avg debt or rating spread]
   equity_weight: 0.90           # market-value weights

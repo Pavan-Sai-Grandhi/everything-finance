@@ -16,10 +16,11 @@ projection"). Nothing in the plugin ever reads it back into a decision.
 import argparse
 import json
 import math
-import tempfile
 import os
 import re
 import sys
+import tempfile
+import traceback
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SKILL = os.path.dirname(_HERE)
@@ -109,6 +110,14 @@ def _json_number(text):
     return value
 
 
+def _template_line(exc, template):
+    """' at <template>.html:<line>' for the deepest template frame, so a projection field that
+    breaks the render can be found without re-running under a debugger."""
+    frames = [f for f in traceback.extract_tb(exc.__traceback__)
+              if f.filename.endswith(f"{template}.html")]
+    return f" at {template}.html:{frames[-1].lineno}" if frames else ""
+
+
 def render(report_json, template, out=None, assets_dir=None, templates_dir=None):
     if not isinstance(template, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", template):
         raise ValueError("template must be a bundled template name")
@@ -146,13 +155,14 @@ def render(report_json, template, out=None, assets_dir=None, templates_dir=None)
         with open(fonts_path) as fh:
             fonts_css = re.sub(r"</(style)", r"<\\/\1", fh.read(), flags=re.IGNORECASE)
 
-    from jinja2 import TemplateError
     try:
         tpl = env.get_template(f"{template}.html")
         html = tpl.render(r=data, deck_css=deck_css, deck_js=deck_js,
                           fonts_href=FONTS_HREF, fonts_css=fonts_css)
-    except TemplateError as exc:
-        raise ValueError(f"report template failed: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 — any failure over untrusted JSON is reported, never raised raw
+        raise ValueError(f"report template failed{_template_line(exc, template)}: {exc}. A value "
+                         "the work papers lack must be omitted or null so its slot renders a "
+                         "labelled gap — never filled with a placeholder") from exc
 
     pending = None
     try:

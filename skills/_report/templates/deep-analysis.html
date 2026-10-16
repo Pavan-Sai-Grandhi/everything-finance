@@ -1,4 +1,16 @@
 {%- import '_partials/components.html' as c -%}
+{#- The running order is defined once, here: slide numbers and the contents list both derive
+    from it, so moving a slide renumbers the deck. Business before price — what the company is
+    and who runs it, whether its industry has a future, then the numbers, the value, the timing
+    and the call. `changed` exists only when a prior run does. -#}
+{%- set deck_all = [('cover', 'Cover'), ('coverage', 'How to read'), ('changed', 'What changed'), ('glance', 'The six lenses'), ('story', 'The story'), ('people', 'The people'), ('overview', 'The business today'), ('sector_story', 'Sector — the growth story'), ('sector', 'Sector — standing'), ('scorecard', 'Financials — scorecard'), ('record', 'Financials — the record'), ('integrity', 'Management integrity'), ('dcf', 'Intrinsic value'), ('relative', 'The relative read'), ('news', 'News & filings'), ('technical', 'Technical structure'), ('debate', 'The debate'), ('invalidation', 'What changes the call'), ('gaps', 'Gaps & sources')] -%}
+{%- set deck = deck_all if r.changed_since else deck_all | rejectattr('0', 'equalto', 'changed') | list -%}
+{%- macro n(key) -%}{%- for k, _ in deck -%}{%- if k == key -%}{{ '%02d' % loop.index }}{%- endif -%}{%- endfor -%}{%- endmacro -%}
+{%- macro absent(label, key, section, title, text) -%}
+{% call c.slide(label, n(key), section, r.meta.subject_date, title, none, none) %}
+  <div style="margin-top:48px;">{{ c.gap_notice('NOT IN THIS RUN', text, tone='muted', pad='30px 34px') }}</div>
+{% endcall %}
+{%- endmacro -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,8 +26,8 @@
 <body>
 <deck-stage width="1920" height="1620" hint-size="100%,100%">
 
-{#- ============================================================ 01 · COVER =============== -#}
-<section data-label="Cover" data-screen-label="01" data-speaker-notes="The verdict slide. Everything else in the deck exists to support or qualify this one line." style="background:var(--inkdark);color:#FCFAF6;font-family:var(--serif);padding:var(--pad-top) var(--pad-x) var(--pad-bottom);display:flex;flex-direction:column;">
+{#- ============================================================ COVER -#}
+<section data-label="Cover" data-screen-label="{{ n('cover') }}" data-speaker-notes="The verdict slide. Everything else in the deck exists to support or qualify this one line." style="background:var(--inkdark);color:#FCFAF6;font-family:var(--serif);padding:var(--pad-top) var(--pad-x) var(--pad-bottom);display:flex;flex-direction:column;">
   <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:var(--t-label);letter-spacing:.16em;text-transform:uppercase;color:#8B857B;border-bottom:1px solid #34373C;padding-bottom:22px;">
     <span>everything-finance · deep-analysis</span>
     <span>{{ r.cover.eyebrow_right }}</span>
@@ -44,14 +56,14 @@
   </div>
 </section>
 
-{#- ============================================================ 02 · COVERAGE ============ -#}
-{% call c.slide('How to read', '02', 'Coverage', r.meta.subject_date, 'How to read this report', r.coverage.lede, r.coverage.footer) %}
+{#- ============================================================ HOW TO READ -#}
+{% call c.slide('How to read', n('coverage'), 'Coverage', r.meta.subject_date, 'How to read this report', r.coverage.lede, r.coverage.footer) %}
   <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:60px;margin-top:56px;">
     <div>
       {{ c.eyebrow('Contents') }}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 48px;">
-        {% for item in r.coverage.contents %}
-        <div style="display:flex;justify-content:space-between;padding:17px 0;border-bottom:1px solid var(--rule);font-size:var(--t-small);"><span>{{ item.name }}</span><span style="font-family:var(--mono);color:var(--ink3);">{{ item.num }}</span></div>
+        {% for key, name in deck if key not in ('cover', 'coverage') %}
+        <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--rule);font-size:var(--t-small);"><span>{{ name }}</span><span style="font-family:var(--mono);color:var(--ink3);">{{ n(key) }}</span></div>
         {% endfor %}
       </div>
       <div style="margin-top:44px;background:var(--card);border:1px solid var(--rule);padding:32px 36px;">
@@ -75,8 +87,107 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 03 · OVERVIEW ============ -#}
-{% call c.slide('Company', '03', 'Overview', r.meta.subject_date, r.overview.title, r.overview.lede, r.overview.footer) %}
+{#- ============================================================ WHAT CHANGED -#}
+{% if r.changed_since %}
+{% call c.slide('What changed', n('changed'), 'Since the last run', r.meta.subject_date, r.changed_since.title, r.changed_since.lede, r.changed_since.footer) %}
+  <div style="margin-top:48px;border-top:2px solid var(--ink);">
+    {% for it in r.changed_since['items'] %}
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:40px;padding:30px 0;border-bottom:1px solid var(--rule);">
+      <span style="font-family:var(--mono);font-size:var(--t-label);letter-spacing:.14em;color:var(--ink3);">{{ it.label }}</span>
+      <span style="font-size:var(--t-small);line-height:1.5;">{{ it.text }}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endcall %}
+{% endif %}
+
+{#- ============================================================ THE SIX LENSES -#}
+{% call c.slide('Six lenses', n('glance'), 'At a glance', r.meta.subject_date, r.glance.title, r.glance.lede, r.glance.footer) %}
+  <div style="margin-top:48px;border:1px solid var(--rule);background:var(--card);flex:1;display:flex;flex-direction:column;">
+    <div style="display:grid;grid-template-columns:300px 220px 1fr 300px;font-family:var(--mono);font-size:24px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);background:var(--paper2);border-bottom:1px solid var(--rule);">
+      <div style="padding:20px 34px;">Lens</div><div style="padding:20px 0;">Stance</div><div style="padding:20px 0;">The read</div><div style="padding:20px 34px;text-align:right;">Confidence</div>
+    </div>
+    {% for lens in r.glance.lenses %}
+    <div style="display:grid;grid-template-columns:300px 220px 1fr 300px;align-items:center;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}flex:1;{% if lens.highlight %}background:var(--warnT);{% endif %}">
+      <div style="padding:0 34px;font-family:var(--mono);font-size:var(--t-label);letter-spacing:.1em;">{{ lens.name }}</div>
+      <div>{{ c.chip(lens.stance, tone=lens.tone, solid=lens.solid|default(false)) }}</div>
+      <div style="font-size:var(--t-small);line-height:1.45;padding-right:40px;">{{ lens.read }}</div>
+      <div style="padding:0 34px;text-align:right;font-family:var(--mono);font-size:var(--t-label);color:var(--ink2);">{{ lens.confidence }}</div>
+    </div>
+    {% endfor %}
+  </div>
+{% endcall %}
+
+{#- ============================================================ THE STORY -#}
+{% if r.story %}
+{% call c.slide('The story', n('story'), 'Company · origins', r.meta.subject_date, r.story.title, r.story.lede, r.story.footer) %}
+  <div style="display:grid;grid-template-columns:1fr 1.15fr;gap:60px;margin-top:44px;align-items:start;">
+    <div style="display:flex;flex-direction:column;gap:30px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        {% for m in r.story.facts %}
+        {{ c.metric_card(m.label, m.value, m.sub, value_size=34, pad='22px 26px') }}
+        {% endfor %}
+      </div>
+      {% for para in r.story.narrative %}
+      <div style="font-size:var(--t-small);line-height:1.55;color:var(--ink2);">{{ para }}</div>
+      {% endfor %}
+    </div>
+    <div style="display:flex;flex-direction:column;">
+      {{ c.eyebrow(r.story.timeline_title) }}
+      {% if r.story.timeline %}
+      <div style="border-top:2px solid var(--ink);">
+        {% for e in r.story.timeline %}
+        <div style="display:grid;grid-template-columns:150px 1fr;gap:28px;padding:16px 0;border-bottom:1px solid var(--rule);">
+          <span style="font-family:var(--mono);font-size:26px;color:var(--accent);">{{ e.when }}</span>
+          <span style="font-size:24px;line-height:1.45;">{{ e.what }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      {{ c.gap_notice(r.story.timeline_gap.label, r.story.timeline_gap.text, tone='muted', pad='30px 34px') }}
+      {% endif %}
+    </div>
+  </div>
+{% endcall %}
+{% else %}
+{{ absent('The story', 'story', 'Company · origins', 'The story', "The management paper carried no story section this run, so the company's origins and milestones are not shown.") }}
+{% endif %}
+
+{#- ============================================================ THE PEOPLE -#}
+{% if r.people %}
+{% call c.slide('The people', n('people'), 'Company · promoters & leadership', r.meta.subject_date, r.people.title, r.people.lede, r.people.footer) %}
+  {% if r.people.people %}
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:44px;">
+    {% for p in r.people.people %}
+    <div style="background:var(--card);border:1px solid var(--rule);padding:28px 32px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:20px;">
+        <span style="font-size:34px;">{{ p.name }}</span>
+        <span style="font-family:var(--mono);font-size:24px;letter-spacing:.08em;color:var(--ink3);text-align:right;">{{ p.role }}</span>
+      </div>
+      <div style="font-size:24px;line-height:1.5;color:var(--ink2);margin-top:12px;">{{ p.background }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="margin-top:44px;">{{ c.gap_notice(r.people.people_gap.label, r.people.people_gap.text, tone='muted', pad='30px 34px') }}</div>
+  {% endif %}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;border-top:2px solid var(--ink);padding-top:28px;margin-top:36px;">
+    <div>
+      {{ c.eyebrow(r.people.control_label) }}
+      <div style="font-size:26px;line-height:1.5;color:var(--ink2);">{{ r.people.control }}</div>
+    </div>
+    <div>
+      {{ c.eyebrow('What it means for the stock') }}
+      <div style="font-size:26px;line-height:1.5;">{{ r.people.read }}</div>
+    </div>
+  </div>
+{% endcall %}
+{% else %}
+{{ absent('The people', 'people', 'Company · promoters & leadership', 'The people', "The management paper carried no profile of the promoters and leaders this run.") }}
+{% endif %}
+
+{#- ============================================================ THE BUSINESS TODAY -#}
+{% call c.slide('The business today', n('overview'), 'Company · today', r.meta.subject_date, r.overview.title, r.overview.lede, r.overview.footer) %}
   <div style="flex:1;display:flex;flex-direction:column;gap:44px;margin-top:44px;">
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;">
       {% for m in r.overview.cards %}
@@ -113,25 +224,101 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 04 · AT A GLANCE ========= -#}
-{% call c.slide('Six lenses', '04', 'At a glance', r.meta.subject_date, r.glance.title, r.glance.lede, r.glance.footer) %}
-  <div style="margin-top:48px;border:1px solid var(--rule);background:var(--card);flex:1;display:flex;flex-direction:column;">
-    <div style="display:grid;grid-template-columns:300px 220px 1fr 300px;font-family:var(--mono);font-size:24px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);background:var(--paper2);border-bottom:1px solid var(--rule);">
-      <div style="padding:20px 34px;">Lens</div><div style="padding:20px 0;">Stance</div><div style="padding:20px 0;">The read</div><div style="padding:20px 34px;text-align:right;">Confidence</div>
+{#- ============================================================ SECTOR — THE GROWTH STORY -#}
+{% if r.sector_story %}
+{% call c.slide('Sector story', n('sector_story'), 'Sector · the growth story', r.meta.subject_date, r.sector_story.title, r.sector_story.lede, r.sector_story.footer) %}
+  <div style="display:flex;flex-direction:column;gap:34px;margin-top:40px;">
+    <div style="display:grid;grid-template-columns:repeat({{ r.sector_story.cards|length or 1 }},minmax(0,1fr));gap:24px;">
+      {% for m in r.sector_story.cards %}
+      {{ c.metric_card(m.label, m.value, m.sub, value_size=40) }}
+      {% endfor %}
     </div>
-    {% for lens in r.glance.lenses %}
-    <div style="display:grid;grid-template-columns:300px 220px 1fr 300px;align-items:center;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}flex:1;{% if lens.highlight %}background:var(--warnT);{% endif %}">
-      <div style="padding:0 34px;font-family:var(--mono);font-size:var(--t-label);letter-spacing:.1em;">{{ lens.name }}</div>
-      <div>{{ c.chip(lens.stance, tone=lens.tone, solid=lens.solid|default(false)) }}</div>
-      <div style="font-size:var(--t-small);line-height:1.45;padding-right:40px;">{{ lens.read }}</div>
-      <div style="padding:0 34px;text-align:right;font-family:var(--mono);font-size:var(--t-label);color:var(--ink2);">{{ lens.confidence }}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start;">
+      {% for col in [{'title': 'What grows it', 'tone': 'pos', 'rows': r.sector_story.drivers}, {'title': 'What could break it', 'tone': 'neg', 'rows': r.sector_story.risks}] %}
+      <div>
+        {{ c.eyebrow(col.title, color='var(--' ~ col.tone ~ ')') }}
+        <div style="border-top:1px solid var(--rule);">
+          {% for row in col.rows %}
+          <div style="padding:14px 0;border-bottom:1px solid var(--rule);"><div style="font-size:26px;line-height:1.45;">{{ row.text }}</div><div style="font-family:var(--mono);font-size:22px;color:var(--ink3);margin-top:6px;">{{ row.source }}</div></div>
+          {% else %}
+          <div style="padding:14px 0;font-size:24px;color:var(--ink3);">None sourced this run — see gaps.</div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
+    <div>
+      {{ c.eyebrow('Policy & regulation · dated, from the issuing authority') }}
+      {% if r.sector_story.policy %}
+      <div style="border:1px solid var(--rule);background:var(--card);">
+        {% for row in r.sector_story.policy %}
+        <div style="display:grid;grid-template-columns:170px 1fr 300px;gap:24px;align-items:start;padding:14px 26px;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}">
+          <span style="font-family:var(--mono);font-size:24px;color:var(--ink3);">{{ row.date }}</span>
+          <span style="font-size:24px;line-height:1.45;">{{ row.text }}</span>
+          <span style="font-family:var(--mono);font-size:22px;color:var(--ink3);text-align:right;">{{ row.source }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      {{ c.gap_notice(r.sector_story.policy_gap.label, r.sector_story.policy_gap.text, tone='muted') }}
+      {% endif %}
+    </div>
+    <div style="border-top:2px solid var(--ink);padding-top:26px;display:grid;grid-template-columns:auto 1fr;gap:36px;align-items:center;">
+      {{ c.chip(r.sector_story.verdict, tone=r.sector_story.verdict_tone, solid=true) }}
+      <div style="font-size:28px;line-height:1.5;">{{ r.sector_story.read }}</div>
+    </div>
+  </div>
+{% endcall %}
+{% else %}
+{{ absent('Sector story', 'sector_story', 'Sector · the growth story', 'The growth story', "The sector lens did not run in this mode, or its paper carried no growth story, so whether the industry has a future is not assessed here.") }}
+{% endif %}
+
+{#- ============================================================ SECTOR — STANDING -#}
+{% call c.slide('Sector standing', n('sector'), 'Sector · standing', r.meta.subject_date, r.sector.title, r.sector.lede, r.sector.footer) %}
+  <div style="display:flex;flex-direction:column;gap:38px;margin-top:38px;">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;">
+      {% for m in r.sector.rs %}
+      <div style="background:var(--card);border:1px solid var(--rule);padding:26px 30px;"><div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--ink3);">{{ m.label }}</div><div style="font-family:var(--mono);font-size:48px;margin-top:8px;color:var(--{{ m.tone }});">{{ m.value }}</div></div>
+      {% endfor %}
+    </div>
+    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:56px;align-items:start;">
+      <div style="display:flex;flex-direction:column;">
+        {{ c.eyebrow(r.sector.rs_chart.title) }}
+        {% if r.sector.rs_chart.series %}
+        {{ line_svg(r.sector.rs_chart.series, r.sector.rs_chart.labels, px_h=430, vbw=700, vbh=320, baseline=r.sector.rs_chart.baseline, right_labels=r.sector.rs_chart.right_labels) | safe }}
+        {% else %}
+        {{ c.gap_notice(r.sector.rs_chart.gap.label, r.sector.rs_chart.gap.text, tone='muted', pad='30px 34px') }}
+        {% endif %}
+      </div>
+      <div style="display:flex;flex-direction:column;">
+        {{ c.eyebrow(r.sector.table.title) }}
+        <div style="border:1px solid var(--rule);background:var(--card);">
+          <div style="display:grid;grid-template-columns:1fr 160px 160px;font-family:var(--mono);font-size:24px;letter-spacing:.12em;color:var(--ink3);background:var(--paper2);border-bottom:1px solid var(--rule);"><div style="padding:16px 26px;">{{ r.sector.table.head[0] }}</div><div style="padding:16px 0;text-align:right;">{{ r.sector.table.head[1] }}</div><div style="padding:16px 26px;text-align:right;">{{ r.sector.table.head[2] }}</div></div>
+          {% for row in r.sector.table.rows %}
+          <div style="display:grid;grid-template-columns:1fr 160px 160px;align-items:center;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}{% if row.focus %}background:var(--accentT);{% endif %}"><div style="padding:18px 26px;font-size:24px;{% if row.focus %}font-weight:500;{% endif %}">{{ row.name }}</div><div style="padding:18px 0;text-align:right;font-family:var(--mono);font-size:26px;color:var(--{{ row.rs_tone }});">{{ row.rs }}</div><div style="padding:18px 26px;text-align:right;font-family:var(--mono);font-size:26px;">{{ row.pe }}</div></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:48px;border-top:2px solid var(--ink);padding-top:30px;">
+      <div>
+        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--pos);margin-bottom:12px;">TAILWIND</div>
+        <div style="font-size:26px;line-height:1.5;color:var(--ink2);">{{ r.sector.tailwind }}</div>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--neg);margin-bottom:12px;">HEADWIND</div>
+        <div style="font-size:26px;line-height:1.5;color:var(--ink2);">{{ r.sector.headwind }}</div>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--ink3);margin-bottom:12px;">THE READ</div>
+        <div style="font-size:26px;line-height:1.5;">{{ r.sector.read }}</div>
+      </div>
+    </div>
   </div>
 {% endcall %}
 
-{#- ============================================================ 05 · SCORECARD =========== -#}
-{% call c.slide('Scorecard', '05', 'Financials', r.meta.subject_date, r.scorecard.title, r.scorecard.lede, r.scorecard.footer) %}
+{#- ============================================================ FINANCIALS — SCORECARD -#}
+{% call c.slide('Scorecard', n('scorecard'), 'Financials', r.meta.subject_date, r.scorecard.title, r.scorecard.lede, r.scorecard.footer) %}
   <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:64px;margin-top:48px;">
     <div data-swap="">
       <div style="display:flex;align-items:baseline;gap:20px;margin-bottom:28px;">
@@ -162,8 +349,8 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 06 · THE RECORD ========== -#}
-{% call c.slide('The record', '06', 'Financials', r.meta.subject_date, r.record.title, r.record.lede, r.record.footer) %}
+{#- ============================================================ FINANCIALS — THE RECORD -#}
+{% call c.slide('The record', n('record'), 'Financials', r.meta.subject_date, r.record.title, r.record.lede, r.record.footer) %}
   <div style="display:flex;flex-direction:column;gap:36px;margin-top:36px;">
     <div style="display:grid;grid-template-columns:repeat({{ r.record.metrics|length }},minmax(0,1fr));gap:24px;">
       {% for m in r.record.metrics %}
@@ -183,8 +370,8 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 07 · INTEGRITY ========== -#}
-{% call c.slide('Integrity', '07', 'Management', r.meta.subject_date, r.integrity.title, r.integrity.lede, r.integrity.footer) %}
+{#- ============================================================ MANAGEMENT INTEGRITY -#}
+{% call c.slide('Integrity', n('integrity'), 'Management', r.meta.subject_date, r.integrity.title, r.integrity.lede, r.integrity.footer) %}
   <div style="display:flex;flex-direction:column;gap:26px;margin-top:28px;">
     <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:56px;align-items:start;">
       <div data-swap="">
@@ -196,7 +383,16 @@
       </div>
       <div style="display:flex;flex-direction:column;">
         {{ c.eyebrow('Skill · four dimensions') }}
-        {{ skill_bars(r.integrity.skill) | safe }}
+        <div style="border-top:1px solid var(--rule);">
+          {% for d in r.integrity.skill %}
+          <div style="display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center;padding:9px 0;border-bottom:1px solid var(--rule);">
+            <div><div style="font-family:var(--mono);font-size:24px;letter-spacing:.1em;">{{ d.label }}</div>{% if d.note %}<div style="font-size:22px;line-height:1.3;color:var(--ink2);margin-top:2px;">{{ d.note }}</div>{% endif %}</div>
+            {{ c.chip(d.grade, tone={'STRONG': 'pos', 'ADEQUATE': 'warn', 'WEAK': 'neg'}.get(d.grade, 'muted')) }}
+          </div>
+          {% else %}
+          {{ c.gap_notice('SKILL NOT GRADED', r.integrity.skill_gap or 'The management paper carries no skill grades this run.', tone='muted') }}
+          {% endfor %}
+        </div>
         <div style="background:var(--warnT);border-left:3px solid var(--warn);padding:26px 30px;margin-top:24px;">
           <div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--warn);margin-bottom:12px;">{{ r.integrity.reservation_label }}</div>
           <div style="font-size:var(--t-small);line-height:1.5;">{{ r.integrity.reservation }}</div>
@@ -221,8 +417,8 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 08 · INTRINSIC =========== -#}
-{% call c.slide('Intrinsic value', '08', 'Valuation', r.meta.subject_date, r.dcf.title, r.dcf.lede, r.dcf.footer) %}
+{#- ============================================================ INTRINSIC VALUE -#}
+{% call c.slide('Intrinsic value', n('dcf'), 'Valuation', r.meta.subject_date, r.dcf.title, r.dcf.lede, r.dcf.footer) %}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:28px;flex:1;align-items:stretch;">
     <div data-swap="" style="display:flex;flex-direction:column;">
       <div style="display:flex;gap:0;border-top:2px solid var(--ink);border-bottom:1px solid var(--rule);">
@@ -250,8 +446,8 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 09 · RELATIVE =========== -#}
-{% call c.slide('Relative', '09', 'Valuation', r.meta.subject_date, r.relative.title, r.relative.lede, r.relative.footer) %}
+{#- ============================================================ THE RELATIVE READ -#}
+{% call c.slide('Relative', n('relative'), 'Valuation', r.meta.subject_date, r.relative.title, r.relative.lede, r.relative.footer) %}
   <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:56px;margin-top:44px;flex:1;align-items:stretch;">
     <div style="display:flex;flex-direction:column;">
       {{ c.eyebrow(r.relative.peers.title) }}
@@ -260,6 +456,7 @@
     </div>
     <div style="display:flex;flex-direction:column;">
       {{ c.eyebrow(r.relative.band.title) }}
+      {% if r.relative.band.pctile_num is number %}
       <div style="background:var(--card);border:1px solid var(--rule);padding:40px 40px 34px;">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px;">
           <span style="font-family:var(--mono);font-size:var(--t-label);letter-spacing:.1em;">{{ r.relative.band.metric }}</span>
@@ -267,6 +464,9 @@
         </div>
         {{ percentile_rail(r.relative.band.pctile_num, low=r.relative.band.low, mid=r.relative.band.mid, high=r.relative.band.high) | safe }}
       </div>
+      {% else %}
+      {{ c.gap_notice(r.relative.band.gap.label if r.relative.band.gap else 'OWN-HISTORY BAND NOT AVAILABLE', r.relative.band.gap.text if r.relative.band.gap else 'No work paper carries the stock\'s own multiple history this run.', tone='muted', pad='30px 34px') }}
+      {% endif %}
       <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:24px;margin-top:32px;">
         {% for m in r.relative.metrics %}
         <div style="background:var(--card);border:1px solid var(--rule);padding:26px 28px;">
@@ -281,28 +481,8 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 10 · TECHNICAL ========== -#}
-{% call c.slide('Technical', '10', 'Technical', r.meta.subject_date, r.technical.title, r.technical.lede, r.technical.footer) %}
-  <div style="display:flex;flex-direction:column;gap:36px;margin-top:36px;">
-    <div style="display:grid;grid-template-columns:repeat({{ r.technical.metrics|length }},1fr);gap:24px;">
-      {% for m in r.technical.metrics %}
-      {{ c.metric_card(m.label, m.value, value_color='var(--'~m.tone~')' if m.tone else 'var(--ink)', value_size=30, pad='24px 28px', nowrap=true) }}
-      {% endfor %}
-    </div>
-    <div style="display:flex;flex-direction:column;">
-      {{ candles_levels(r.technical.chart.closes, r.technical.chart.ema, r.technical.chart.levels, band=r.technical.chart.band, cmp_label=r.technical.chart.cmp_label) | safe }}
-      <div style="display:flex;gap:26px;margin-top:14px;font-family:var(--mono);font-size:24px;color:var(--ink3);">
-        <span style="display:inline-flex;align-items:center;gap:8px;"><span style="width:26px;height:4px;background:#1C1F23;"></span>{{ r.technical.chart.close_legend }}</span>
-        {% if r.technical.chart.ema %}<span style="display:inline-flex;align-items:center;gap:8px;"><span style="width:26px;height:3px;background:#2C5B8F;"></span>50-EMA</span>{% endif %}
-        <span style="display:inline-flex;align-items:center;gap:8px;"><span style="width:26px;height:14px;background:#1B6E4F;opacity:.14;"></span>{{ r.technical.chart.band_legend }}</span>
-      </div>
-    </div>
-    <div style="border-top:2px solid var(--ink);padding-top:24px;font-size:28px;line-height:1.5;color:var(--ink2);max-width:1560px;">{{ r.technical.note }}</div>
-  </div>
-{% endcall %}
-
-{#- ============================================================ 11 · NEWS =============== -#}
-{% call c.slide('News', '11', 'News & filings', r.meta.subject_date, r.news.title, r.news.lede, r.news.footer) %}
+{#- ============================================================ NEWS & FILINGS -#}
+{% call c.slide('News', n('news'), 'News & filings', r.meta.subject_date, r.news.title, r.news.lede, r.news.footer) %}
   <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:56px;margin-top:44px;">
     <div style="display:flex;flex-direction:column;">
       {% if r.news.sentiment_series %}
@@ -349,10 +529,30 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 12 · DEBATE ============= -#}
-<section data-label="The debate" data-screen-label="12" data-speaker-notes="Two rounds. Where the bull and bear engaged, conceded, and what the portfolio manager decided." style="background:var(--inkdark);color:#FCFAF6;font-family:var(--serif);padding:var(--pad-top) var(--pad-x) var(--pad-bottom);display:flex;flex-direction:column;">
+{#- ============================================================ TECHNICAL STRUCTURE -#}
+{% call c.slide('Technical', n('technical'), 'Technical', r.meta.subject_date, r.technical.title, r.technical.lede, r.technical.footer) %}
+  <div style="display:flex;flex-direction:column;gap:36px;margin-top:36px;">
+    <div style="display:grid;grid-template-columns:repeat({{ r.technical.metrics|length }},1fr);gap:24px;">
+      {% for m in r.technical.metrics %}
+      {{ c.metric_card(m.label, m.value, value_color='var(--'~m.tone~')' if m.tone else 'var(--ink)', value_size=30, pad='24px 28px', nowrap=true) }}
+      {% endfor %}
+    </div>
+    <div style="display:flex;flex-direction:column;">
+      {{ candles_levels(r.technical.chart.closes, r.technical.chart.ema, r.technical.chart.levels, band=r.technical.chart.band, cmp_label=r.technical.chart.cmp_label) | safe }}
+      <div style="display:flex;gap:26px;margin-top:14px;font-family:var(--mono);font-size:24px;color:var(--ink3);">
+        <span style="display:inline-flex;align-items:center;gap:8px;"><span style="width:26px;height:4px;background:#1C1F23;"></span>{{ r.technical.chart.close_legend }}</span>
+        {% if r.technical.chart.ema %}<span style="display:inline-flex;align-items:center;gap:8px;"><span style="width:26px;height:3px;background:#2C5B8F;"></span>50-EMA</span>{% endif %}
+        <span style="display:inline-flex;align-items:center;gap:8px;"><span style="width:26px;height:14px;background:#1B6E4F;opacity:.14;"></span>{{ r.technical.chart.band_legend }}</span>
+      </div>
+    </div>
+    <div style="border-top:2px solid var(--ink);padding-top:24px;font-size:28px;line-height:1.5;color:var(--ink2);max-width:1560px;">{{ r.technical.note }}</div>
+  </div>
+{% endcall %}
+
+{#- ============================================================ THE DEBATE -#}
+<section data-label="The debate" data-screen-label="{{ n('debate') }}" data-speaker-notes="Two rounds. Where the bull and bear engaged, conceded, and what the portfolio manager decided." style="background:var(--inkdark);color:#FCFAF6;font-family:var(--serif);padding:var(--pad-top) var(--pad-x) var(--pad-bottom);display:flex;flex-direction:column;">
   <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:var(--t-label);letter-spacing:.16em;text-transform:uppercase;color:#8B857B;border-bottom:1px solid #34373C;padding-bottom:20px;">
-    <span>12 · The debate</span><span>{{ r.debate.eyebrow_right }}</span>
+    <span>{{ n('debate') }} · The debate</span><span>{{ r.debate.eyebrow_right }}</span>
   </div>
   <div style="font-size:var(--t-title);letter-spacing:-.02em;margin-top:var(--gap-title);">Bull against bear</div>
   <div style="font-size:var(--t-lede);line-height:1.45;color:#C9C3B7;margin-top:18px;max-width:1550px;">{{ r.debate.lede }}</div>
@@ -381,52 +581,8 @@
   </div>
 </section>
 
-{#- ============================================================ 13 · SECTOR ============= -#}
-{% call c.slide('Sector', '13', 'Sector', r.meta.subject_date, r.sector.title, r.sector.lede, r.sector.footer) %}
-  <div style="display:flex;flex-direction:column;gap:38px;margin-top:38px;">
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;">
-      {% for m in r.sector.rs %}
-      <div style="background:var(--card);border:1px solid var(--rule);padding:26px 30px;"><div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--ink3);">{{ m.label }}</div><div style="font-family:var(--mono);font-size:48px;margin-top:8px;color:var(--{{ m.tone }});">{{ m.value }}</div></div>
-      {% endfor %}
-    </div>
-    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:56px;align-items:start;">
-      <div style="display:flex;flex-direction:column;">
-        {{ c.eyebrow(r.sector.rs_chart.title) }}
-        {% if r.sector.rs_chart.series %}
-        {{ line_svg(r.sector.rs_chart.series, r.sector.rs_chart.labels, px_h=430, vbw=700, vbh=320, baseline=r.sector.rs_chart.baseline, right_labels=r.sector.rs_chart.right_labels) | safe }}
-        {% else %}
-        {{ c.gap_notice(r.sector.rs_chart.gap.label, r.sector.rs_chart.gap.text, tone='muted', pad='30px 34px') }}
-        {% endif %}
-      </div>
-      <div style="display:flex;flex-direction:column;">
-        {{ c.eyebrow(r.sector.table.title) }}
-        <div style="border:1px solid var(--rule);background:var(--card);">
-          <div style="display:grid;grid-template-columns:1fr 160px 160px;font-family:var(--mono);font-size:24px;letter-spacing:.12em;color:var(--ink3);background:var(--paper2);border-bottom:1px solid var(--rule);"><div style="padding:16px 26px;">{{ r.sector.table.head[0] }}</div><div style="padding:16px 0;text-align:right;">{{ r.sector.table.head[1] }}</div><div style="padding:16px 26px;text-align:right;">{{ r.sector.table.head[2] }}</div></div>
-          {% for row in r.sector.table.rows %}
-          <div style="display:grid;grid-template-columns:1fr 160px 160px;align-items:center;{% if not loop.last %}border-bottom:1px solid var(--rule);{% endif %}{% if row.focus %}background:var(--accentT);{% endif %}"><div style="padding:18px 26px;font-size:24px;{% if row.focus %}font-weight:500;{% endif %}">{{ row.name }}</div><div style="padding:18px 0;text-align:right;font-family:var(--mono);font-size:26px;color:var(--{{ row.rs_tone }});">{{ row.rs }}</div><div style="padding:18px 26px;text-align:right;font-family:var(--mono);font-size:26px;">{{ row.pe }}</div></div>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:48px;border-top:2px solid var(--ink);padding-top:30px;">
-      <div>
-        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--pos);margin-bottom:12px;">TAILWIND</div>
-        <div style="font-size:26px;line-height:1.5;color:var(--ink2);">{{ r.sector.tailwind }}</div>
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--neg);margin-bottom:12px;">HEADWIND</div>
-        <div style="font-size:26px;line-height:1.5;color:var(--ink2);">{{ r.sector.headwind }}</div>
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:24px;letter-spacing:.14em;color:var(--ink3);margin-bottom:12px;">THE READ</div>
-        <div style="font-size:26px;line-height:1.5;">{{ r.sector.read }}</div>
-      </div>
-    </div>
-  </div>
-{% endcall %}
-
-{#- ============================================================ 14 · INVALIDATION ======= -#}
-{% call c.slide('What changes it', '14', 'Invalidation', r.meta.subject_date, r.invalidation.title, r.invalidation.lede, r.invalidation.footer) %}
+{#- ============================================================ WHAT CHANGES THE CALL -#}
+{% call c.slide('What changes it', n('invalidation'), 'Invalidation', r.meta.subject_date, r.invalidation.title, r.invalidation.lede, r.invalidation.footer) %}
   <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:60px;margin-top:48px;">
     <div>
       <div style="border-top:2px solid var(--ink);">
@@ -460,8 +616,8 @@
   </div>
 {% endcall %}
 
-{#- ============================================================ 15 · GAPS ============== -#}
-{% call c.slide('Gaps & sources', '15', 'Gaps, sources, papers', r.meta.subject_date, r.gaps.title, r.gaps.lede, none, bg='var(--paper2)', rule='var(--rule2)') %}
+{#- ============================================================ GAPS & SOURCES -#}
+{% call c.slide('Gaps & sources', n('gaps'), 'Gaps, sources, papers', r.meta.subject_date, r.gaps.title, r.gaps.lede, none, bg='var(--paper2)', rule='var(--rule2)') %}
   <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:60px;margin-top:48px;">
     <div>
       {% for g in r.gaps['items'] %}

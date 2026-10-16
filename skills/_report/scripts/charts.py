@@ -357,29 +357,6 @@ def score_ladder(rows, *, verdict_w="150px"):
     return "".join(out)
 
 
-# ── 9 · skill bars (four dimensions, /5) ──────────────────────────────────────────────────────
-def skill_bars(dims):
-    """Horizontal progress bars scored out of 5. `dims` = [{label, score, of, color?}].
-
-    A score below 3 takes the warn colour. Reference: mock slide 07 (skill · four dimensions)."""
-    out = ['<div style="display:flex;flex-direction:column;border-top:1px solid var(--rule);">']
-    for d in dims:
-        of = d.get("of", 5)
-        pct = max(0, min(100, d["score"] / of * 100))
-        color = d.get("color") or (WARN if d["score"] < 3 else BAR)
-        vcolor = WARN if d["score"] < 3 else INK
-        out.append('<div style="padding:16px 0;border-bottom:1px solid var(--rule);">'
-                   '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;">'
-                   '<span style="' + _MONO + f'font-size:24px;letter-spacing:.1em;">{_e(d["label"])}</span>'
-                   '<span style="' + _MONO + f'font-size:30px;color:{vcolor};">{d["score"]:g}'
-                   f'<span style="font-size:24px;color:{INK3};"> / {of:g}</span></span></div>'
-                   f'<div style="height:16px;background:{PAPER2};border:1px solid var(--rule);position:relative;">'
-                   f'<div style="position:absolute;left:0;top:0;bottom:0;width:{pct:.1f}%;background:{color};"></div>'
-                   '</div></div>')
-    out.append("</div>")
-    return "".join(out)
-
-
 # ── 10 · candles/close + level bands (technical) ──────────────────────────────────────────────
 def candles_levels(closes, ema, levels, *, band=None, cmp_label=None, px_h=630, vbw=1000, vbh=625):
     """Daily close + a moving-average line, horizontal S/R levels, an optional accumulation band.

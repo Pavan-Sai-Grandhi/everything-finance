@@ -11,7 +11,7 @@ This file owns what belongs to no single lens: **how the six lenses combine into
 | Management | Can the people running it be trusted with either? |
 | Technical | Where is the price in its own structure, and which level kills a thesis? |
 | News | What is being said, and does a filing stand behind it? |
-| Sector | Does the stock swim with its industry or against it? |
+| Sector | Will the industry be bigger and as profitable in five years — and does the stock swim with it or against it? |
 
 ## Combining them
 
@@ -21,7 +21,7 @@ Three rules decide the verdict and belong to no lens on its own.
 
 **Valuation is weighted by its own confidence.** The valuation leg returns a combined Undervalued / Fair / Overvalued stance *and* a DCF-confidence grade. A high-confidence DCF leads the call on margin of safety against intrinsic value; a low-confidence one (terminal-heavy, aggressive, or a bank or violent cyclical) is a sanity band only and the call leans on the relative read. Never let a low-confidence DCF drive a buy on intrinsic value alone.
 
-**The sector read can move the call.** A great company in a lagging sector, or a laggard inside a leading one, changes the position — the researchers and the portfolio-manager weigh it alongside the rest, not as decoration.
+**The sector's growth story can move the call; its relative strength times it.** An industry in `structural_decline` caps the call at HOLD for a holder and AVOID for a new buyer, however cheap the stock — a cheap stock in a shrinking industry usually stays cheap. A `structural_growth` story with lagging RS is a timing question, not a reason to reject. A great company in a lagging sector, or a laggard inside a leading one, changes the position — the researchers and the portfolio-manager weigh it alongside the rest, not as decoration.
 
 A lens that could not run is uncertainty, not neutrality. The synthesis names it in Data Gaps and the portfolio-manager prices it as risk.
 

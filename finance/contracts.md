@@ -10,14 +10,14 @@ named producer and consumer. Two dependency kinds: **artifacts** (files one skil
 ## The data layer: one door, one transport
 
 **`finance/mcp/{market,company,funds,personal}.py` — the four servers.** The only door to decision data: 35
-tools over the seven finalized sources (CLAUDE.md's source table) plus their compute engines, each delegating
+tools over the eight finalized sources (CLAUDE.md's source table) plus their compute engines, each delegating
 to the matching `sources/` or `compute/` module and returning the shared **envelope** `{ok, source, fetched_at,
 data, gaps}`. No name appears on two servers.
 
 | server | tools |
 |---|---|
 | `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `get_universe` `run_strategy_screen` `run_stock_scan` `run_sector_screen` `run_backtest` `check_trade` `manage_alerts` `get_prior_run` |
-| `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `run_dcf` `run_governance_checks` |
+| `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `get_risk_inputs` `run_dcf` `run_governance_checks` |
 | `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
 | `finance-personal` | `run_insurance_math` |
 
@@ -235,7 +235,17 @@ from the label; a label with no parseable year falls back to list position + a l
 `extracted_by` records which ran. A PDF URL must return PDF bytes; other text must be valid UTF-8 with no
 binary bytes, and known error-page titles are rejected. These checks do not prove the document is
 authentic. A PDF that extracts to zero characters and a missing `pdftotext` (`brew install
-poppler`) are labelled gaps, never crashes. `test_documents.py`.
+poppler`) are labelled gaps, never crashes. Each row's `outline` is re-derived from the cached text on every
+call, so a section added to the map reaches documents converted earlier. `test_documents.py`.
+
+### `finance/sources/risk.py` — India DCF discount-rate inputs
+Consumer: `get_risk_inputs`, read by `valuation-analysis` for `run_dcf`'s `wacc_buildup`. `fetch(fresh=False)` →
+`data:{india_10y:{value, as_of, source, label}, country_risk:{country, as_of, source, rating, default_spread,
+country_risk_premium, total_equity_risk_premium, mature_erp}, default_free_risk_free}`, every rate a decimal.
+The 10Y yield is TradingView `TVC:IN10Y` on the global scanner; the rest is Damodaran's `ctryprem.xlsx`
+(NYU Stern), parsed by label rather than cell address, its `as_of` the workbook's own "Date of update".
+`default_free_risk_free` = yield − default spread, derived only when both arrive. Either half failing is a
+labelled gap; the envelope is cached for 7 days only when complete. `test_risk.py`.
 
 ### `finance/sources/market.py` — market-wide fetch (indices, valuation history, breadth, flows, macro)
 Consumers: `get_indices` / `get_index_valuation_history` / `get_breadth` / `get_flows` / `get_macro`, and
@@ -575,7 +585,7 @@ their own blocks.
 | `management-analysis` | `management-block` | `integrity` (the hard gate), **`integrity_checks`** (all seven sub-checks, each PASS/FLAG/FAIL/NOT-CHECKED), `skill`, `overall_grade`, `confidence`, `axis: governance` |
 | `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, **`pe_basis`**, **`eps_adjustments`**, `peg`, `peer_median_pe`, **`peers_priced`**, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
 | `news-scan` | `news-block` | `sentiment_score` (−2…+2), `confidence`, `recurring_theme`, `next_event`, `axis: growth_durability` |
-| `sector-analysis` | `sector-block` | `sector`, `rs_class`, `stance`, `confidence`, `focus_position` |
+| `sector-analysis` | `sector-block` | `sector`, `rs_class`, `story` (`structural_growth`\|`cyclical_upswing`\|`mature`\|`cyclical_downswing`\|`structural_decline`), `story_confidence`, `stance`, `confidence`, `focus_position`. The portfolio-manager reads `story` as a bound on the call. |
 | `deep-analysis` (`quick` mode) | `quick-block` | `verdict ∈ {keep, reject, review}`, `lean` (one line), `flags`, `reasons`, `gaps`. A screen from structured data only, run in the current context with no sub-agents. Discover's Stage B keeps the scan order among keeps and lists `review` separately. `keep` is not a BUY or an integrity pass. |
 | `contest-researcher` | `contest-block` | `lean ∈ {bull, bear, genuinely split}`, `axis`, one-line `bull`, one-line `bear` |
 | `bull-researcher` / `bear-researcher` | `debate-block` | `axis`, `claim`, `conceded`, `new_evidence` |
@@ -619,8 +629,8 @@ that mode. **Consumer:** `trade-tracker` may read the projection as rationale wh
 artifact; any number it acts on must be fetched again. See *Report bundle publication*.
 
 The modes differ by **amount of judgment**: `quick` is one pass in the current context (structured data only,
-no sub-agents) → one `quick.md` under the run-day folder, **no deck and no bundle**; `standard` → four legs
-(financials, management, valuation, news) + one contest pass → verdict; `deep` → all six legs + multi-round
+no sub-agents) → one `quick.md` under the run-day folder, **no deck and no bundle**; `standard` → five legs
+(financials, management, valuation, news, sector) + one contest pass → verdict; `deep` → all six legs + multi-round
 bull/bear → verdict; `fundamentals` → financials, management, valuation, no debate. Work papers go to the
 bundle's `agents_dir`.
 
@@ -645,8 +655,13 @@ plus an unclassified remainder; they do not scale partial data up to 100%.
 **Every value traces to a work paper.** A figure a paper does not carry is omitted so the deck renders that
 slot's **labelled gap** — never a fabricated number, zero or blank; an empty pledge list is `"unknown"`, not
 `"none"`; a missing chart series shows its gap notice. `coverage.brief` is the ≤10-line Telegram brief.
-The shape is one key per deck slide over the seven-beat spine (`meta, cover, coverage, glance, overview,
-scorecard, record, integrity, dcf, relative, technical, news, debate, sector, invalidation, gaps`);
+The shape is one key per deck slide, in the deck's running order (`meta, cover, coverage, changed_since?,
+glance, story, people, overview, sector_story, sector, scorecard, record, integrity, dcf, relative, news,
+technical, debate, invalidation, gaps`). The template owns the order, the slide numbers and the contents
+list; the projection carries no numbering. `story` and `people` come from the management paper's
+`## Story & people`, `sector_story` from the sector paper's `### The growth story`, `changed_since` only
+when a prior run exists. `integrity.skill` rows carry `grade` (STRONG/ADEQUATE/WEAK), never a score;
+`relative.band.pctile_num` is `null` with a `gap` when no paper computed it;
 **`skills/_report/scripts/fixtures/deep-analysis.sample.json` is the worked example and authority on field
 names**, `templates/deep-analysis.html` consumes it, and charts come from `charts.py` (nine data-driven types),
 never hand-authored markup. Covered by `test_render_report.py` (chart geometry, render integrity, gap-not-blank,
@@ -656,7 +671,8 @@ browser-gated 1620px overflow).
 **Producers:** `sector-analysis` (monthly refresher), `deep-analysis` (inline refresh when missing/stale).
 **Consumer:** `deep-analysis`'s sector leg. **Location:** `state/sectors/<slug>.md` (`paths.sector_cache_path`)
 — durable, not dated, overwritten on refresh. **Fields:** frontmatter `generated: YYYY-MM-DD` + `rs_class:`;
-body = the sector-level read (RS vs Nifty, cycle, KPI snapshot, tailwinds/headwinds, leaders/laggards, stance),
+body = the sector-level read (the growth story with its `story` class, RS vs Nifty, cycle, KPI snapshot,
+tailwinds/headwinds, leaders/laggards, stance) — a body with no `### The growth story` section is stale,
 **not** the focus-stock overlay (computed fresh). The **RS numbers come from `run_sector_screen`**
 (`compute/sector_scan.py`), not re-derived in the skill. **Freshness:** `paths.sector_cache_age_days(sector)` `>30` or
 `None` ⇒ stale ⇒ refresh + a `sector_refresh_due` alert (`dedup_key: sector-refresh-<sector>`, due +30d). Dated

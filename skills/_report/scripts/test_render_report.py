@@ -8,6 +8,7 @@ Three layers:
   * layout (principles 1/5/7 of the handoff) — a best-effort browser check that SKIPS cleanly
     when no Chrome is present, so the core suite stays fully offline.
 """
+import json
 import os
 import re
 import shutil
@@ -127,8 +128,13 @@ def _render_fixture(dirpath):
 def test_render_is_complete_and_clean():
     with tempfile.TemporaryDirectory() as d:
         html = _render_fixture(d)
-    check("15 content slides render", len(re.findall(r'data-screen-label="\d\d"', html)) == 15,
-          len(re.findall(r'data-screen-label="\d\d"', html)))
+    labels = re.findall(r'data-screen-label="(\d\d)"', html)
+    check("19 slides render, numbered in order", labels == [f"{i:02d}" for i in range(1, 20)], labels)
+    order = [html.find(t) for t in ("Company · origins", "Company · promoters", "Company · today",
+                                    "Sector · the growth story", "Sector · standing", "· Valuation<",
+                                    "· The debate", "Gaps, sources, papers")]
+    check("business, people and sector story come before the numbers and the call",
+          -1 not in order and order == sorted(order), order)
     check("no unrendered jinja expressions", "{{" not in html and "{%" not in html)
     check("no leaked python None", ">None<" not in html)
     check("the deck runtime is inlined", "customElements.define('deck-stage'" in html)
@@ -239,6 +245,74 @@ def test_daily_brief_render_is_complete_and_clean():
     check("position table state pill rendered", "SL-HIT" in html and "pill-slhit" in html)
     check("one-thing rendered", "breaching its ₹3,866" in html)
     check("₹ is preserved, not mojibake", "₹" in html and "â\x82¹" not in html)
+
+
+def test_changed_since_is_optional_and_renumbers():
+    data = json.load(open(FIXTURE))
+    data.pop("changed_since")
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "report.json")
+        json.dump(data, open(path, "w"))
+        html = open(render_report.render(path, "deep-analysis", out=os.path.join(d, "r.html"))).read()
+    labels = re.findall(r'data-screen-label="(\d\d)"', html)
+    check("no prior run -> no 'what changed' slide, deck renumbers to 18",
+          labels == [f"{i:02d}" for i in range(1, 19)] and "Since the last run" not in html, labels)
+    check("contents list follows the deck, not authored numbers",
+          re.search(r"The story</span><span[^>]*>04<", html), html.count("The story"))
+
+
+def test_missing_story_band_and_skill_render_as_gaps():
+    """The BORORENEW failure: a paper without numeric skill scores or an own-history band made the
+    render crash, and the run patched in a placeholder percentile. Each must be a labelled gap."""
+    data = json.load(open(FIXTURE))
+    data["integrity"]["skill"] = []
+    data["relative"]["band"] = {"title": "Own historical band", "pctile_num": None,
+                                "gap": {"label": "OWN P/E BAND NOT AVAILABLE",
+                                        "text": "Under three years of quarterly EPS."}}
+    data["story"]["timeline"] = []
+    data["story"]["timeline_gap"] = {"label": "NO DATED MILESTONES", "text": "The report has no journey page."}
+    data["people"]["people"] = []
+    data["people"]["people_gap"] = {"label": "BOARD PROFILES NOT READ", "text": "No profile section found."}
+    data["sector_story"]["policy"] = []
+    data["sector_story"]["policy_gap"] = {"label": "NO POLICY DOCUMENT", "text": "No issuing-authority source."}
+    data["sector_story"]["risks"] = []
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "report.json")
+        json.dump(data, open(path, "w"))
+        html = open(render_report.render(path, "deep-analysis", out=os.path.join(d, "r.html"))).read()
+    for label in ("SKILL NOT GRADED", "OWN P/E BAND NOT AVAILABLE", "NO DATED MILESTONES",
+                  "BOARD PROFILES NOT READ", "NO POLICY DOCUMENT", "None sourced this run"):
+        check(f"gap renders: {label}", label in html)
+    check("no percentile rail is drawn without a percentile", "var(--paper2) 50%,var(--negT)" not in html)
+
+
+def test_projection_without_story_slides_renders_labelled_gaps():
+    """A mode that skips the sector lens, or a paper with no story section, leaves the key out."""
+    data = json.load(open(FIXTURE))
+    for key in ("story", "people", "sector_story"):
+        data.pop(key)
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "report.json")
+        json.dump(data, open(path, "w"))
+        html = open(render_report.render(path, "deep-analysis", out=os.path.join(d, "r.html"))).read()
+    check("each absent story slide keeps its place with a labelled gap",
+          html.count("NOT IN THIS RUN") == 3
+          and len(re.findall(r'data-screen-label="\d\d"', html)) == 19)
+
+
+def test_render_failure_names_the_template_line():
+    data = json.load(open(FIXTURE))
+    data["dcf"]["sensitivity"] = None
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "report.json")
+        json.dump(data, open(path, "w"))
+        try:
+            render_report.render(path, "deep-analysis", out=os.path.join(d, "r.html"))
+            msg = ""
+        except ValueError as exc:
+            msg = str(exc)
+    check("a broken field fails with the template line and the gap rule",
+          re.search(r"deep-analysis\.html:\d+", msg) and "labelled gap" in msg, msg)
 
 
 def test_render_prints_gaps_not_blanks():
