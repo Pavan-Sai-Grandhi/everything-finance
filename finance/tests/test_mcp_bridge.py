@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
@@ -34,7 +35,11 @@ def test_bridge_script():
     check("token check is scoped to the pinned version dir",
           "mcp-remote-{version}" in helper and "mcp-remote-*/" not in src,
           "a token under another version dir is one mcp-remote will not read")
-    check("gates the first login", ".first-login-" in helper)
+    check("one login at a time, held by the login itself",
+          'store.lock("login")' in helper and "LOCK_NB" in helper and "pass_fds" in helper)
+    check("the login outlives mcp-remote's 30-second auth limit", "--auth-timeout" in helper)
+    check("proxies run with an `open` that never launches a browser", "proxy_env()" in helper)
+    check("one refresher at a time", 'store.lock("refresh")' in helper)
     check("token store is owner-only", "chmod 700" in src)
     check("does not kill unrelated processes based on PPID", 'ps -o' not in src and 'kill "$pid"' not in src)
 
@@ -42,7 +47,14 @@ def test_bridge_script():
 def _session_env(work):
     home = os.path.join(work, "home")
     os.makedirs(home)
-    return {"HOME": home, "npm_config_cache": os.path.expanduser("~/.npm")}
+    # A starting session waits as long as Claude would give it with MCP_TIMEOUT raised.
+    return {"HOME": home, "npm_config_cache": os.path.expanduser("~/.npm"),
+            "EF_BRIDGE_LOGIN_WAIT": "60"}
+
+
+def _tokens_path(home):
+    saved = _saved_tokens(home)
+    return saved[0] if saved else None
 
 
 def _ok(resp):
@@ -189,6 +201,116 @@ def test_broker_that_pins_its_redirect():
                   f"{len(broker.events('register_rejected'))} rejected")
 
 
+def test_laptop_wakes_with_an_expired_token():
+    """Four sessions start together on a token that expired overnight.
+
+    Before: each proxy redeemed the same single-use refresh token, one won, and every loser
+    opened its own login tab. Now one refresh serves all four and no tab opens."""
+    with tempfile.TemporaryDirectory() as work:
+        env = _session_env(work)
+        sd = os.path.join(work, "broker")
+        with Broker(sd) as broker, BrowserBot(sd) as bot:
+            a = Session("A", BRIDGE, broker.url, sd, env).start()
+            a.initialize()
+            a.list_tools()
+            a.stop()
+            path = _tokens_path(env["HOME"])
+            tokens = json.load(open(path))
+            tokens["expires_at"] = int((time.time() - 3600) * 1000)
+            json.dump(tokens, open(path, "w"))
+            tabs = bot.tabs()
+
+            sessions = [Session(n, BRIDGE, broker.url, sd, env).start() for n in "BCDE"]
+            try:
+                states = {s.name: _connect(s, timeout=60) for s in sessions}
+            finally:
+                for s in sessions:
+                    s.stop()
+
+            check("every waking session connects", all(v is True for v in states.values()), states)
+            check("no login tab opened on wake", bot.tabs() == tabs, f"{bot.tabs() - tabs} tabs")
+            check("one refresh served all four",
+                  len([e for e in broker.events("token_issued") if e["grant_type"] == "refresh_token"]) == 1)
+            check("no refresh token was redeemed twice", len(broker.events("refresh_rejected")) == 0)
+
+
+def test_running_sessions_never_reach_expiry():
+    """Two sessions run past the access token's lifetime; the keeper refreshes ahead of it."""
+    with tempfile.TemporaryDirectory() as work:
+        env = {**_session_env(work), "EF_BRIDGE_REFRESH_AHEAD": "12", "EF_BRIDGE_KEEPER_INTERVAL": "1"}
+        sd = os.path.join(work, "broker")
+        with Broker(sd, expires_in=20) as broker, BrowserBot(sd) as bot:
+            a = Session("A", BRIDGE, broker.url, sd, env).start()
+            b = Session("B", BRIDGE, broker.url, sd, env).start()
+            try:
+                first = (_connect(a), _connect(b))
+                time.sleep(45)  # two full token lifetimes
+                later = (_connect_tools(a), _connect_tools(b))
+            finally:
+                a.stop()
+                b.stop()
+            check("both sessions start", first == (True, True), first)
+            check("both still work after two token lifetimes", later == (True, True), later)
+            check("exactly one browser login all along", bot.tabs() == 1, f"{bot.tabs()} tabs")
+            check("no refresh token was redeemed twice", len(broker.events("refresh_rejected")) == 0)
+
+
+def test_slow_login_outlives_the_connect_limit():
+    """The user takes 40 seconds over the OTP; sessions keep starting meanwhile.
+
+    Before: Claude's 30-second connect limit and mcp-remote's 30-second auth limit killed the
+    login, the tab was dead, and the next start opened another. Now the one login survives,
+    no other tab opens, and the next connect after it finishes just works."""
+    with tempfile.TemporaryDirectory() as work:
+        env = {**_session_env(work), "EF_BRIDGE_LOGIN_WAIT": "5"}
+        sd = os.path.join(work, "broker")
+        with Broker(sd) as broker, BrowserBot(sd, delay=40) as bot:
+            early = []
+            for name in "ABC":
+                s = Session(name, BRIDGE, broker.url, sd, env).start()
+                early.append(_connect(s, timeout=20))
+                s.stop()
+            deadline = time.time() + 90
+            while time.time() < deadline and not _tokens_path(env["HOME"]):
+                time.sleep(1)
+            late = Session("D", BRIDGE, broker.url, sd, env).start()
+            try:
+                late_state = _connect(late, timeout=30)
+            finally:
+                late.stop()
+            check("sessions started mid-login fail fast instead of hanging",
+                  all(v is not True for v in early), early)
+            check("one tab for the whole login", bot.tabs() == 1, f"{bot.tabs()} tabs")
+            check("the login completed after every starter was gone",
+                  _tokens_path(env["HOME"]) is not None)
+            check("the next session connects with no new login", late_state is True, late_state)
+            check("one authorization in all", len(broker.events("authorize")) == 1)
+
+
+def test_broker_without_oauth():
+    """Kite serves no OAuth: two sessions starting together both connect, no login at all."""
+    with tempfile.TemporaryDirectory() as work:
+        env = _session_env(work)
+        sd = os.path.join(work, "broker")
+        with Broker(sd, no_auth=True) as broker, BrowserBot(sd) as bot:
+            a = Session("A", BRIDGE, broker.url, sd, env).start()
+            b = Session("B", BRIDGE, broker.url, sd, env).start()
+            try:
+                states = (_connect(a, timeout=40), _connect(b, timeout=40))
+            finally:
+                a.stop()
+                b.stop()
+            check("both sessions connect", states == (True, True), states)
+            check("no login and no registration", bot.tabs() == 0 and not broker.events("register"))
+
+
+def _connect_tools(session):
+    try:
+        return _ok(session.list_tools(timeout=30))
+    except Exception as exc:  # noqa: BLE001 - the failure is the finding
+        return f"{type(exc).__name__}"
+
+
 if __name__ == "__main__":
     tests = [test_bridge_script]
     if E2E:
@@ -198,7 +320,11 @@ if __name__ == "__main__":
             tests += [test_second_session_joins_a_live_one,
                       test_later_session_inherits_the_token,
                       test_simultaneous_cold_start,
-                      test_broker_that_pins_its_redirect]
+                      test_broker_that_pins_its_redirect,
+                      test_laptop_wakes_with_an_expired_token,
+                      test_running_sessions_never_reach_expiry,
+                      test_slow_login_outlives_the_connect_limit,
+                      test_broker_without_oauth]
     else:
         print("  note: set EF_BRIDGE_E2E=1 to also run the mcp-remote scenarios")
     for fn in tests:

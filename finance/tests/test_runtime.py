@@ -82,67 +82,67 @@ elif sys.argv[2]=='pip':
 
 
 def test_broker_cold_starts_share_one_login():
+    """Offline: a fake npx stands in for both the login (`mcp-remote-client`) and the proxy."""
     import hashlib
+    import time
+    url = 'https://fixture.invalid/mcp'
+    key = hashlib.md5(url.encode()).hexdigest()
     with tempfile.TemporaryDirectory() as work:
         work = Path(work)
         store = work / 'auth'
-        store.mkdir()
+        (store / 'mcp-remote-0.1.49').mkdir(parents=True)
+        (store / 'mcp-remote-0.1.49' / f'{key}_client_info.json').write_text('{"client_id": "c"}')
+        token = store / 'mcp-remote-0.1.49' / f'{key}_tokens.json'
+        logins = store / 'logins'
         fake = work / 'npx'
         fake.write_text('#!' + sys.executable + '\n' + r"""
-import hashlib,os,pathlib,sys,time
+import json,os,pathlib,sys,time
 store=pathlib.Path(os.environ['MCP_REMOTE_CONFIG_DIR'])
-key=hashlib.md5(sys.argv[3].encode()).hexdigest()
-token=store/'mcp-remote-0.1.49'/f'{key}_tokens.json'
-if not token.exists():
-    with open(store/'logins','a') as f:f.write('login\n')
-    time.sleep(float(os.environ.get("EF_FIXTURE_LOGIN_DELAY", ".5")))
-    token.parent.mkdir(exist_ok=True)
-    token.write_text('{}')
+if 'mcp-remote-client' in sys.argv:
+    with open(store/'logins','a') as f: f.write('login\n')
+    time.sleep(float(os.environ.get('EF_FIXTURE_LOGIN_DELAY', '.5')))
+    for p in (store/'mcp-remote-0.1.49').glob('*_client_info.json'):
+        (p.parent/p.name.replace('client_info','tokens')).write_text(json.dumps(
+            {'access_token':'a','expires_at':(time.time()+3600)*1000}))
+    sys.exit(0)
 print('ready',flush=True)
 sys.stdin.read()
 """)
         fake.chmod(0o755)
-        env = {**os.environ, 'PATH': str(work)+os.pathsep+os.environ['PATH'], 'MCP_REMOTE_CONFIG_DIR':str(store)}
-        args = [sys.executable,str(ROOT/'bin/broker-login.py'),'https://fixture.invalid/mcp','0.1.49']
-        children = [subprocess.Popen(args,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True) for _ in range(3)]
+        env = {**os.environ, 'PATH': str(work) + os.pathsep + os.environ['PATH'],
+               'MCP_REMOTE_CONFIG_DIR': str(store), 'EF_BRIDGE_LOGIN_WAIT': '10'}
+        args = [sys.executable, str(ROOT / 'bin/broker-login.py'), url, '0.1.49']
+
+        def start(extra=None):
+            return subprocess.Popen(args, env={**env, **(extra or {})}, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        children = [start() for _ in range(3)]
         try:
-            # communicate closes each client's stdin; later callers still share the token.
-            results = [child.communicate(timeout=10) for child in children]
-            check('cold broker starts all connect',all(child.returncode==0 for child in children),results)
-            check('one cold login owns the callback',(store/'logins').read_text().splitlines()==['login'])
-            check('coordination does not pollute protocol stdout',all(out=='ready\n' for out,err in results),results)
-            import time
-            token = store/'mcp-remote-0.1.49'/(hashlib.md5(b'https://fixture.invalid/mcp').hexdigest()+'_tokens.json')
+            results = [child.communicate(timeout=20) for child in children]
+            check('cold broker starts all connect', all(c.returncode == 0 for c in children), results)
+            check('one login serves every cold start', logins.read_text().splitlines() == ['login'])
+            check('coordination does not pollute protocol stdout',
+                  all(out == 'ready\n' for out, _ in results), results)
+
             token.unlink()
-            (store/'logins').unlink()
-            owner = subprocess.Popen(args,env={**env,'EF_FIXTURE_LOGIN_DELAY':'5'},stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
-            children.append(owner)
-            deadline = time.monotonic()+3
-            while not (store/'logins').exists() and time.monotonic()<deadline:
-                time.sleep(.02)
-            follower = subprocess.Popen(args,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
-            children.append(follower)
-            owner.terminate()
-            owner.communicate(timeout=5)
-            out, err = follower.communicate(timeout=5)
-            check('terminated login owner releases ownership for a waiting session',follower.returncode==0 and out=='ready\n',(out,err))
-            check('takeover needs only one replacement login',(store/'logins').read_text().splitlines()==['login','login'])
-            token.unlink()
-            (store/'logins').unlink()
-            owner = subprocess.Popen(args,env={**env,'EF_FIXTURE_LOGIN_DELAY':'1'},stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
-            children.append(owner)
-            deadline = time.monotonic()+3
-            while not (store/'logins').exists() and time.monotonic()<deadline:
-                time.sleep(.02)
-            owner.kill()
-            follower = subprocess.Popen(args,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
-            children.append(follower)
-            owner.communicate(timeout=5)
-            out, err = follower.communicate(timeout=5)
-            check('surviving bridge retains ownership after supervisor is killed',follower.returncode==0 and (store/'logins').read_text().splitlines()==['login'],(out,err))
+            logins.unlink()
+            starter = start({'EF_FIXTURE_LOGIN_DELAY': '2', 'EF_BRIDGE_LOGIN_WAIT': '0.5'})
+            out, err = starter.communicate(timeout=10)
+            check('a session that gives up says how to finish the login',
+                  starter.returncode == 1 and 'reconnect' in err, (out, err))
+            deadline = time.monotonic() + 10
+            while not token.exists() and time.monotonic() < deadline:
+                time.sleep(.1)
+            check('the login finishes after the session that opened it is gone', token.exists())
+            later = start()
+            out, err = later.communicate(timeout=10)
+            check('the next session connects with no second login',
+                  later.returncode == 0 and logins.read_text().splitlines() == ['login'], (out, err))
         finally:
             for child in children:
-                if child.poll() is None: child.terminate()
+                if child.poll() is None:
+                    child.terminate()
                 child.wait(timeout=5)
 
 

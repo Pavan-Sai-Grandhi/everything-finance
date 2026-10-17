@@ -3,12 +3,16 @@
 
 Speaks the OAuth/MCP subset needed for mcp-remote login-sharing tests. It is
 not a protocol conformance or PKCE-security test server (it does not validate
-verifiers or refresh-token ownership). It carries the two broker traits the bridge has to survive:
+verifiers or refresh-token ownership). It carries the broker traits the bridge has to survive:
 
   * one live access token per user — issuing a new one revokes every earlier
     token, so a needless re-authorization logs another session out;
+  * single-use refresh tokens, as IndMoney issues them: redeeming one rotates it,
+    and a second redemption of the same token is refused (`refresh_rejected`);
+  * access tokens that really expire (`STUB_EXPIRES_IN` seconds, default 3600);
   * optionally (STUB_PIN_FIRST_REDIRECT=1) a client locked to the callback port
-    of its first registration, refusing to register on any other.
+    of its first registration, refusing to register on any other;
+  * optionally (STUB_NO_AUTH=1) no OAuth at all, as Kite serves.
 
 Registrations, authorizations, token issues and revocations are appended to
 events.jsonl for the test to assert on.
@@ -24,13 +28,16 @@ from urllib.parse import urlparse, parse_qs, urlencode
 
 STATE_DIR = os.environ["STUB_STATE_DIR"]
 PIN_FIRST_REDIRECT = os.environ.get("STUB_PIN_FIRST_REDIRECT") == "1"
+NO_AUTH = os.environ.get("STUB_NO_AUTH") == "1"
+EXPIRES_IN = int(os.environ.get("STUB_EXPIRES_IN", "3600"))
 
 EVENTS = os.path.join(STATE_DIR, "events.jsonl")
 _lock = threading.Lock()
 
 clients = {}        # client_id -> {redirect_uris}
 codes = {}          # code -> {client_id, redirect_uri, challenge}
-live_tokens = set() # access tokens the broker still honours
+live_tokens = {}    # access token -> expiry (epoch seconds) the broker still honours
+refresh_tokens = set()  # unredeemed refresh tokens
 pinned_first = {"port": None}   # set by the first registration when pinning
 
 
@@ -72,6 +79,9 @@ class Handler(BaseHTTPRequestHandler):
     # -- OAuth discovery --------------------------------------------------
     def do_GET(self):
         path = urlparse(self.path).path
+
+        if NO_AUTH and path.startswith("/.well-known/"):
+            return self._send(404, b"{}")
 
         if path.startswith("/.well-known/oauth-protected-resource"):
             return self._json(200, {
@@ -173,15 +183,23 @@ class Handler(BaseHTTPRequestHandler):
             entry = codes.pop(form.get("code", ""), None)
             if not entry:
                 return self._json(400, {"error": "invalid_grant"})
-        elif grant != "refresh_token":
+        elif grant == "refresh_token":
+            with _lock:
+                redeemed = form.get("refresh_token") in refresh_tokens
+                refresh_tokens.discard(form.get("refresh_token"))
+            if not redeemed:
+                record("refresh_rejected")
+                return self._json(400, {"error": "invalid_grant"})
+        else:
             return self._json(400, {"error": "unsupported_grant_type"})
 
-        token = uuid.uuid4().hex
+        token, refresh = uuid.uuid4().hex, uuid.uuid4().hex
         with _lock:
             # One live token per user: minting a new one kills every earlier one.
             revoked = list(live_tokens)
             live_tokens.clear()
-            live_tokens.add(token)
+            live_tokens[token] = time.time() + EXPIRES_IN
+            refresh_tokens.add(refresh)
         # Recorded outside the lock — record() takes it too, and it is not reentrant.
         if revoked:
             record("revoked_previous_tokens", count=len(revoked))
@@ -189,8 +207,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {
             "access_token": token,
             "token_type": "Bearer",
-            "expires_in": 3600,
-            "refresh_token": uuid.uuid4().hex,
+            "expires_in": EXPIRES_IN,
+            "refresh_token": refresh,
         })
 
     def _mcp(self):
@@ -198,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
         token = auth[7:] if auth.lower().startswith("bearer ") else None
         body = self._body()
 
-        if not token or token not in live_tokens:
+        if not NO_AUTH and (not token or live_tokens.get(token, 0) < time.time()):
             record("mcp_401", had_token=bool(token))
             return self._json(401, {"error": "invalid_token"}, extra={
                 "WWW-Authenticate":

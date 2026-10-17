@@ -51,11 +51,15 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 class Broker:
     """The stub broker MCP, running for the length of a `with` block."""
 
-    def __init__(self, state_dir, pin_first_redirect=False):
+    def __init__(self, state_dir, pin_first_redirect=False, no_auth=False, expires_in=None):
         self.state_dir = state_dir
         self.env = {"STUB_STATE_DIR": state_dir}
         if pin_first_redirect:
             self.env["STUB_PIN_FIRST_REDIRECT"] = "1"
+        if no_auth:
+            self.env["STUB_NO_AUTH"] = "1"
+        if expires_in is not None:
+            self.env["STUB_EXPIRES_IN"] = str(expires_in)
 
     def __enter__(self):
         # Test state must be fresh; never recursively delete a caller's directory.
@@ -210,10 +214,12 @@ class Session:
 
 
 class BrowserBot:
-    """Stands in for the user: fetches every authorize URL mcp-remote opens."""
+    """Stands in for the user: fetches every authorize URL mcp-remote opens, `delay`
+    seconds after the tab appears (the time a person takes to type an OTP)."""
 
-    def __init__(self, state_dir):
+    def __init__(self, state_dir, delay=0):
         self.state_dir = state_dir
+        self.delay = delay
         self._stop = threading.Event()
 
     def __enter__(self):
@@ -225,6 +231,11 @@ class BrowserBot:
         self._stop.set()
         self._thread.join(timeout=5)
 
+    def tabs(self):
+        """How many browser tabs were opened, by anything."""
+        path = os.path.join(self.state_dir, "authorize_urls")
+        return len([u for u in open(path).read().splitlines() if u.strip()]) if os.path.exists(path) else 0
+
     def _run(self):
         path = os.path.join(self.state_dir, "authorize_urls")
         seen = 0
@@ -232,6 +243,8 @@ class BrowserBot:
             if os.path.exists(path):
                 urls = [u for u in open(path).read().splitlines() if u.strip()]
                 while seen < len(urls):
+                    if self._stop.wait(self.delay):
+                        return
                     self._login(urls[seen])
                     seen += 1
             self._stop.wait(0.1)

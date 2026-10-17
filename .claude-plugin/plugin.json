@@ -1,6 +1,6 @@
 {
   "name": "everything-finance",
-  "version": "0.9.9",
+  "version": "0.9.10",
   "description": "Personal India-focused financial intelligence: strategy-driven trade finding on the Nifty 500, multi-agent deep stock analysis, DCF valuation, sector rotation, mutual fund research, insurance gap analysis, budget tracking, exchange-filings monitoring, reference-article-driven strategy design, live trade tracking against your broker (Zerodha/Upstox), and whole-picture wealth management — total net worth across every asset class with a cross-domain financial-health scorecard.",
   "author": {
     "name": "Pavan Sai Grandhi"
