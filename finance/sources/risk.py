@@ -31,11 +31,23 @@ _IN10Y = "TVC:IN10Y"
 DAMODARAN_CTRYPREM = "https://pages.stern.nyu.edu/~adamodar/pc/datasets/ctryprem.xlsx"
 _SOURCE = "TradingView + Damodaran (NYU Stern)"
 _ERP_SHEET = "ERPs by country"
-_CACHE_DAYS = 7
+# The yield moves every session; Damodaran's dataset is one vintage refreshed a few times a year.
+_YIELD_CACHE_DAYS = 0
+_COUNTRY_CACHE_DAYS = 7
 
 
-def _cache_path():
-    return os.path.join(paths.cache_dir("risk"), "india-risk-inputs.json")
+def _cached(name, fresh, max_age_days, fetcher, gaps):
+    """One half of the inputs, from its own cache when young enough, else `fetcher()`."""
+    path = os.path.join(paths.cache_dir("risk"), f"{name}.json")
+    cached = _read_cache(path, fresh, max_age_days=max_age_days)
+    if isinstance(cached, dict) and isinstance(cached["data"].get("row"), dict):
+        return cached["data"]["row"]
+    row, gap = fetcher()
+    if gap:
+        gaps.append(gap)
+    elif row:
+        _write_cache(path, {"data": {"row": row}})
+    return row
 
 
 def india_10y():
@@ -124,24 +136,15 @@ def fetch(fresh=False):
     """India DCF discount-rate inputs, each with its source and as-of date.
 
     `default_free_risk_free` is derived only when both halves arrived: the 10Y yield minus
-    the default spread, the rupee rate the valuation reference's WACC build-up starts from."""
-    cached = _read_cache(_cache_path(), fresh, max_age_days=_CACHE_DAYS)
-    if isinstance(cached, dict) and cached.get("ok") is True:
-        return cached
+    the default spread, the rupee rate the valuation reference's WACC build-up starts from.
+    The yield is refetched each day; the country-risk vintage is reused for a week."""
     gaps = []
-    gsec, gap = india_10y()
-    if gap:
-        gaps.append(gap)
-    crp, gap = country_risk()
-    if gap:
-        gaps.append(gap)
+    gsec = _cached("india-10y", fresh, _YIELD_CACHE_DAYS, india_10y, gaps)
+    crp = _cached("country-risk", fresh, _COUNTRY_CACHE_DAYS, country_risk, gaps)
     data = {"india_10y": gsec, "country_risk": crp, "default_free_risk_free": None}
     if gsec and crp and crp.get("default_spread") is not None:
         data["default_free_risk_free"] = round(gsec["value"] - crp["default_spread"], 6)
     else:
         gaps.append("default-free rupee rate not derived: needs both the 10Y yield and the "
                     "default spread")
-    env = _envelope(bool(gsec or crp), _SOURCE, data, gaps)
-    if not gaps:
-        _write_cache(_cache_path(), env)
-    return env
+    return _envelope(bool(gsec or crp), _SOURCE, data, gaps)

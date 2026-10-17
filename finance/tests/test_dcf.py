@@ -684,4 +684,117 @@ with tempfile.TemporaryDirectory() as optional_root:
             check('scenario gap survives in persisted evidence', bool(recorded.get('gaps')))
         else:
             check('scenario gap survives in persisted evidence', False)
+# Cash-flow timing. The base period ends before the valuation date, and a year's cash arrives
+# through that year: explicit flows sit at mid-year, everything rolls forward to the valuation date.
+from datetime import date as _date  # noqa: E402
+timed = dcf.value(dict(spec1, timing={"base_period_end": "2026-03-31", "valuation_date": "2026-03-31"}))
+check("mid-year: year-1 flow discounted half a year",
+      rel_approx(timed["pv_explicit_fcff"], 115.0 / 1.1 ** 0.5, 1e-6), timed["pv_explicit_fcff"])
+check("mid-year: terminal value stays at year end",
+      rel_approx(timed["pv_terminal_value"], 1560.0, 1e-4), timed["pv_terminal_value"])
+elapsed = (_date(2026, 9, 30) - _date(2026, 3, 31)).days / 365.25
+stub = dcf.value(dict(spec1, timing={"base_period_end": "2026-03-31", "valuation_date": "2026-09-30"}))
+check("stub: explicit flow rolled forward to the valuation date",
+      rel_approx(stub["pv_explicit_fcff"], 115.0 / 1.1 ** (0.5 - elapsed), 1e-6), stub["pv_explicit_fcff"])
+check("stub: terminal value rolled forward to the valuation date",
+      rel_approx(stub["pv_terminal_value"], 1560.0 * 1.1 ** elapsed, 1e-6), stub["pv_terminal_value"])
+check("stub: elapsed years reported", rel_approx(stub["assumptions"]["timing"]["years_elapsed"], elapsed, 1e-4),
+      stub["assumptions"]["timing"])
+check("YAML date objects are accepted",
+      dcf.value(dict(spec1, timing={"base_period_end": _date(2026, 3, 31),
+                                    "valuation_date": _date(2026, 9, 30)}))["enterprise_value"]
+      == stub["enterprise_value"])
+check("untimed run is flagged TIMING_UNADJUSTED", any(f.startswith("TIMING_UNADJUSTED") for f in r1["flags"]),
+      r1["flags"])
+check("timed run carries no timing flag", not any(f.startswith("TIMING_UNADJUSTED") for f in stub["flags"]),
+      stub["flags"])
+for bad_timing in ({"base_period_end": "2026-03-31"},
+                   {"base_period_end": "2026-03-31", "valuation_date": "2026-01-01"},
+                   {"base_period_end": "2025-03-31", "valuation_date": "2026-06-30"},
+                   {"base_period_end": "31/03/2026", "valuation_date": "2026-06-30"},
+                   "2026-03-31"):
+    try:
+        dcf.value(dict(spec1, timing=bad_timing))
+        refused = False
+    except ValueError:
+        refused = True
+    check("invalid timing is refused", refused, bad_timing)
+reverse_timed = dcf.reverse_dcf(dict(rspec, current_price=base_intrinsic,
+                                     timing={"base_period_end": "2026-03-31", "valuation_date": "2026-09-30"}),
+                                solve="growth")
+check("reverse DCF solves on the timed model", reverse_timed.get("solved") is True, reverse_timed)
+with tempfile.TemporaryDirectory() as timing_root:
+    with mock.patch.dict(os.environ, {'EVERYTHING_FINANCE_ARTIFACTS': timing_root}):
+        untimed_env = dcf.run('TESTCO', spec1)
+        check('untimed run_dcf names the timing gap', any('timing' in gap for gap in untimed_env['gaps']),
+              untimed_env['gaps'])
+# The market's own implied return, and the run's two checks on the discount rate.
+mr = dcf.implied_market_return(21.89, 3.12, 1.3, 0.055142)
+check("implied market return prices the index at par",
+      rel_approx(dcf._index_worth(21.89, 3.12, 1.3, 0.055142, mr), 1.0, 1e-4), mr)
+check("a dearer index implies a lower return",
+      dcf.implied_market_return(30.0, 3.12, 1.3, 0.055142) < mr)
+check("unusable index figures give no implied return",
+      dcf.implied_market_return(-5, 3.0, 1.0, 0.05) is None
+      and dcf.implied_market_return("21", 3.0, 1.0, 0.05) is None)
+risk_ok = {"ok": True, "source": "TradingView + Damodaran (NYU Stern)", "gaps": [],
+           "data": {"india_10y": {"value": 0.07382},
+                    "country_risk": {"default_spread": 0.018678, "mature_erp": 0.0423,
+                                     "country_risk_premium": 0.028454},
+                    "default_free_risk_free": 0.055142}}
+index_ok = {"ok": True, "source": "NSE", "fetched_at": "2026-10-16T16:00:00+05:30", "gaps": [],
+            "data": {"indices": {"NIFTY 500": {"pe": 21.89, "pb": 3.12, "dy": 1.3}}}}
+sourced_buildup = {"government_bond_yield": 0.0741, "sovereign_default_spread": 0.018678,
+                   "beta": 1.0, "mature_erp": 0.0423, "country_risk_premium": 0.028454,
+                   "lambda_country": 1.0, "equity_weight": 1.0, "tax_rate": 0.25}
+check("sourced discount-rate inputs pass the provenance check",
+      dcf._risk_provenance(sourced_buildup, risk_ok) == [])
+example_copy = dict(sourced_buildup, government_bond_yield=0.068, sovereign_default_spread=0.0195,
+                    mature_erp=0.0508, country_risk_premium=0.0219)
+check("example-file rates are named as unsourced",
+      len(dcf._risk_provenance(example_copy, risk_ok)) == 4, dcf._risk_provenance(example_copy, risk_ok))
+check("an unreachable source is one labelled gap",
+      len(dcf._risk_provenance(sourced_buildup, {"ok": False, "gaps": ["down"]})) == 1)
+mspec = dict(spec1, wacc=None, wacc_buildup=sourced_buildup, terminal_wacc=0.12, current_price=100.0)
+mbase = dcf.value(mspec)
+consensus_ok = {"ok": True, "gaps": [], "data": {"growth": [0.09, 0.17], "coverage": 0.8}}
+consensus_down = {"ok": False, "gaps": ["Yahoo down"], "data": {"growth": None}}
+view, view_gaps = dcf.market_view(mspec, mbase, risk_ok, index_ok, consensus_ok)
+check("market view: a beta-1 firm's cost of equity is the market's implied return",
+      rel_approx(view["cost_of_equity"], view["market_implied_return"], 1e-6), view)
+check("market view: terminal rate moves by the same change",
+      rel_approx(view["terminal_wacc"] - 0.12, view["cost_of_equity"] - view["method_cost_of_equity"], 1e-6),
+      view)
+check("market view: a lower market return raises the value",
+      view["intrinsic_value_per_share"] > mbase["intrinsic_value_per_share"], view)
+check("market view: the method's rate values the index below its price",
+      view["index_value_to_price_at_method_rate"] < 1.0, view)
+check("market view: explicit wacc is skipped, not guessed",
+      "skipped" in dcf.market_view(spec1, r1, risk_ok, index_ok, consensus_ok)[0])
+check("market view: a missing index is a labelled gap",
+      dcf.market_view(mspec, mbase, risk_ok, {"ok": False, "data": {"indices": {}}}, consensus_ok)[1] != [])
+check("market view: consensus drives the market's growth when present",
+      view["market_growth_basis"] == "analyst consensus" and view["market_growth_path"][:2] == [0.09, 0.17]
+      and view_gaps == [], view)
+fallback, fallback_gaps = dcf.market_view(mspec, mbase, risk_ok, index_ok, consensus_down)
+check("market view: without consensus it falls back to index fundamentals, labelled",
+      fallback["market_growth_basis"] == "index fundamentals"
+      and any("consensus" in g for g in fallback_gaps), (fallback, fallback_gaps))
+path = dcf.market_growth_path(21.89, 3.12, 1.3, 0.055, [0.09, 0.17])
+check("consensus path: compound rate runs to year 5, then fades to the risk-free rate",
+      rel_approx(path[2], (1.09 * 1.17) ** 0.5 - 1, 1e-9) and path[4] == path[2]
+      and rel_approx(path[-1], 0.055, 1e-9) and len(path) == 10, path)
+check("consensus raises or lowers the implied return through growth alone",
+      dcf.implied_market_return(21.89, 3.12, 1.3, 0.055142, [0.20, 0.20])
+      > dcf.implied_market_return(21.89, 3.12, 1.3, 0.055142, [0.05, 0.05]))
+with tempfile.TemporaryDirectory() as view_root:
+    with mock.patch.dict(os.environ, {'EVERYTHING_FINANCE_ARTIFACTS': view_root}), \
+            mock.patch.object(dcf._risk, 'fetch', return_value=risk_ok), \
+            mock.patch.object(dcf._market, 'indices', return_value=index_ok), \
+            mock.patch.object(dcf._estimates, 'market', return_value=consensus_ok):
+        venv = dcf.run('TESTCO', dict(mspec, wacc_buildup=example_copy))
+        check('run_dcf carries the market view', venv['data']['market_view'].get('intrinsic_value_per_share') is not None,
+              venv['data']['market_view'])
+        check('run_dcf names unsourced discount-rate inputs',
+              sum('unsourced discount-rate input' in g for g in venv['gaps']) == 4, venv['gaps'])
 summary()

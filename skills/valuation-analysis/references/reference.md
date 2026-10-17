@@ -24,6 +24,8 @@ FCFF_t         = NOPAT_t − reinvestment_t
 PV_t           = FCFF_t / Π(1 + WACC_i) for i ≤ t
 ```
 
+With `timing`, each year's cash is taken at mid-year and the whole value is rolled forward from the base period's end to the price date; without it every flow is a full year late and the result carries `TIMING_UNADJUSTED`.
+
 Terminal value (a *stable-growth* firm, growth tied to reinvestment via ROIC):
 
 ```
@@ -53,7 +55,7 @@ The engine's `SELFTEST_SPEC` is a synthetic arithmetic example, not a company or
 | Lever | Source it from | Sanity rule |
 |---|---|---|
 | Base revenue | annual-report **Revenue from Operations** (latest FY or TTM) | exclude interest, investment and other non-operating income; if the feed only exposes `Total Revenue`, derive the operating figure from the annual report rather than double-counting non-operating assets |
-| Revenue growth path | TAM studies + company guidance (concall) + Revenue from Operations history; fade to ≈ GDP+inflation by year N | peak growth > 30% must be defended against TAM and reinvestment |
+| Revenue growth path | TAM studies + company guidance (concall) + Revenue from Operations history, cross-checked against `get_analyst_estimates`' consensus for the next two years; fade to ≈ GDP+inflation by year N | peak growth > 30% must be defended against TAM and reinvestment |
 | Operating margin path | the company's own trend + peer steady-state margins | use operating EBIT ÷ Revenue from Operations. The published `OPM %` is EBITDA-like, not EBIT; above-peer margins need a stated moat and peak > 40% is rare |
 | Tax rate | **the annual report's tax note**, via `get_documents` | the published `Taxes & Other Items` row is tax **plus** the non-controlling interest — deriving a rate from it overstates the effective rate by the non-controlling share of profit — material for any group with large minorities, and different for every company. Never derive it. India ≈ 25% statutory for most |
 | Sales-to-capital | historical **ΔRevenue ÷ reinvestment**, reinvestment sourced per § below; peer benchmark | asset-light (software) high (3–5+); capital-heavy (utilities, autos) low (0.5–1.5) |
@@ -117,6 +119,8 @@ lambda_country ≈ (company's % of revenue/operations in India) / (average firm'
 ```
 
 A domestic FMCG, lender, or infra play has λ ≈ 1 and carries the full CRP; an exporter carries less according to its operating exposure. Setting `lambda_country` from the revenue mix stops you over-discounting an Indian exporter and under-discounting a domestic firm. The local government bond is not default-free: subtract the sovereign default spread before treating its yield as the rupee risk-free rate, then add country equity risk once through CRP. Feeding the full G-sec yield into `risk_free` and adding CRP again double-counts sovereign risk. `get_risk_inputs` supplies the bond yield, sovereign spread, mature-market ERP and CRP from one dated vintage; cite each with its date. Terminal growth is bounded by that **adjusted default-free rupee rate**, not by the headline G-sec yield.
+
+**The build-up's premium is a view on the market, so measure it against the market.** Mature ERP plus India's rating-based CRP is what Damodaran's tables say Indian equities should earn; the NIFTY 500's own P/E, P/B and dividend yield, with analysts' consensus earnings growth for its constituents, imply what buyers are pricing them to earn today — the same solve Damodaran runs on the S&P 500 for his mature-market premium. When the build-up asks more, it values the whole index below its price, and every stock inherits that discount before its own story enters. `run_dcf` therefore returns `market_view`: the market's implied return, the value rebased to it, and the index's value-to-price at the method's rate. The two answer different questions. The method-rate value asks whether the stock is worth its price in absolute terms; the market-view value asks whether it is dear against the alternative of owning the market. A gap that closes at the market's return is the market's valuation, which the market context carries into sizing; the gap that survives it is this company's.
 
 For a young/high-growth company, risk should converge as the business matures: the explicit cost of capital fades toward a defensible mature `terminal_wacc`. A flat high-growth WACC for every forecast year while abruptly switching to a lower terminal WACC is internally inconsistent. Mature/stable firms may justifiably have a flat path.
 
@@ -196,7 +200,7 @@ For a lender or insurer, run the DCF as an **equity-shaped** model rather than b
 
 **When the relative read is void** — under three priced peers, or a basis mismatch — the *low* row has nothing to lean on. Say so: the stance rests on a low-confidence DCF and the own band alone, and the combined stance carries that as its stated weakness rather than borrowing confidence it does not have.
 
-Emit a single **Undervalued / Fair / Overvalued** with a margin-of-safety range blending the DCF intrinsic range and the relative read.
+Emit a single **Undervalued / Fair / Overvalued** with a margin-of-safety range blending the DCF intrinsic range and the relative read. The stance is the company's: weigh the DCF at the market's implied return (`dcf_mos_market`), and report the method-rate margin (`dcf_mos`) beside it as the absolute read. When the market view was skipped, the stance rests on `dcf_mos` and Findings says why.
 
 ## Final discipline (the devil's-advocate pass)
 

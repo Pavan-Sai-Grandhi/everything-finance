@@ -40,6 +40,7 @@ The deck reads top-down — the company's story and its people, then whether its
 - **`sector_story`** comes from the sector paper's `### The growth story`: size and growth as cards, drivers and risks each with its source, dated policy items with their issuing authority, and the `story` class as the verdict chip (`structural_growth`/`cyclical_upswing` → pos, `mature` → warn, `cyclical_downswing`/`structural_decline` → neg). **`sector`** carries the market's read (RS, peers, stance).
 - **`changed_since`** only when the run facts carry a prior-run path; leave it out otherwise and the deck drops the slide.
 - **`integrity.skill`** carries each dimension's grade as the management paper states it (`STRONG`/`ADEQUATE`/`WEAK`) with a one-line note — never a number the paper does not give.
+- **`dcf.headline`** carries both margins of safety from the valuation paper: at the method's rate and at the market's own return (`dcf_mos_market`), each labelled, so the reader sees how much of the gap is the market's.
 - **`relative.band.pctile_num`** is a number only when the valuation paper computed the percentile; otherwise set it `null` with a `gap` and the deck shows the gap.
 
 ## What the projection must carry

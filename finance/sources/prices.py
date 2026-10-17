@@ -240,7 +240,7 @@ def _validate_candles(rows):
     return candles, invalid, gaps
 
 
-def _yf_ticker(sym):
+def yf_ticker(sym):
     """yfinance market form of a symbol: indices (`^NSEI`, `^CNXIT`) and non-equity
     instruments (FX `INR=X`, futures `GC=F`, already-suffixed `NIFTY_FIN_SERVICE.NS`) pass
     through; a bare NSE equity gets the `.NS` suffix. Keeps the spine usable for equities,
@@ -258,7 +258,7 @@ def history(symbol, period="1y", fresh=False, adjusted=False):
     match the live TV bar; warmup callers want `adjusted=True` to share the backtest's
     adjusted series."""
     sym = _norm(symbol)
-    yf_t = _yf_ticker(sym)
+    yf_t = yf_ticker(sym)
     cache_file = _cache_path("history", sym, period, adjusted)
     cached = _read_cache(cache_file, fresh)
     if isinstance(cached, dict) and cached.get("ok") is True and cached.get("source") == "yfinance":

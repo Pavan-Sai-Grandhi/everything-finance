@@ -16,6 +16,14 @@ Model (per explicit-forecast year t = 1..N):
     fcff_t          = nopat_t - reinvestment_t                # free cash flow to the firm
     pv_t            = fcff_t / prod_{i<=t}(1 + wacc_i)         # cumulative discounting
 
+Cash-flow timing (`timing: {base_period_end, valuation_date}`): a year's cash arrives through
+the year, so each explicit flow is discounted from mid-year, and the whole value is rolled
+forward from the base period's end to the valuation date:
+    pv_t            *= (1 + wacc_t)**0.5 * (1 + wacc_1)**elapsed
+    pv_TV           *= (1 + wacc_1)**elapsed      # the terminal value stays at year end
+Without it every flow is discounted from the end of its year, counted from the base period's
+end; the result carries TIMING_UNADJUSTED.
+
 Terminal value (Gordon growth on a stable-growth firm, Damodaran's reinvestment tie):
     g_T             = terminal_growth          (must be <= risk_free; a mature firm
                                                 cannot outgrow the economy forever)
@@ -49,9 +57,13 @@ import json
 import math
 import os
 import sys
+from datetime import date
 
 from finance import paths, spine
 from finance.compute import relval
+from finance.sources import estimates as _estimates
+from finance.sources import market as _market
+from finance.sources import risk as _risk
 from finance.deps import need as _need
 
 _SOURCE = "finance.compute.dcf"
@@ -255,6 +267,41 @@ def _cum_discount(wacc_path):
     return factors
 
 
+def _iso(value, name):
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            pass
+    raise ValueError(f"timing.{name} must be an ISO date (YYYY-MM-DD)")
+
+
+def resolve_timing(spec):
+    """`timing` → (base_period_end, valuation_date, years_elapsed), or None when absent.
+
+    The base period is the one `base_revenue` covers (the fiscal year or TTM window it ends
+    on); the valuation date is the date of `current_price`. Year 1 is the twelve months after
+    the base period, so the valuation date must fall inside it."""
+    raw = spec.get("timing")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("timing must be a mapping of base_period_end and valuation_date")
+    if raw.get("base_period_end") is None or raw.get("valuation_date") is None:
+        raise ValueError("timing needs both base_period_end and valuation_date")
+    base_end = _iso(raw["base_period_end"], "base_period_end")
+    valued = _iso(raw["valuation_date"], "valuation_date")
+    elapsed = (valued - base_end).days / 365.25
+    if elapsed < 0:
+        raise ValueError("timing.valuation_date precedes base_period_end")
+    if elapsed >= 1:
+        raise ValueError("the base period ended a year or more before the valuation date — "
+                         "roll base_revenue forward to the latest TTM or fiscal year")
+    return base_end, valued, elapsed
+
+
 def value(spec):
     """Run the DCF. Returns a result dict. Raises ValueError on invalid input/model."""
     n = _horizon(spec)
@@ -326,6 +373,8 @@ def value(spec):
         raise ValueError("terminal_roic must be > 0")
 
     df = _cum_discount(wacc)
+    timing = resolve_timing(spec)
+    roll = (1.0 + wacc[0]) ** timing[2] if timing else 1.0
     rows, pv_sum, prev_rev = [], 0.0, base_rev
     for t in range(n):
         rev = prev_rev * (1.0 + growth[t])
@@ -333,7 +382,8 @@ def value(spec):
         nopat = ebit * (1.0 - tax[t])
         reinvest = (rev - prev_rev) / s2c[t]
         fcff = nopat - reinvest
-        pv = fcff / df[t]
+        factor = df[t] / (roll * ((1.0 + wacc[t]) ** 0.5 if timing else 1.0))
+        pv = fcff / factor
         pv_sum += pv
         rows.append({
             "year": t + 1,
@@ -346,7 +396,7 @@ def value(spec):
             "sales_to_capital": round(s2c[t], 6),
             "reinvestment": round(reinvest, 4),
             "fcff": round(fcff, 4),
-            "discount_factor": round(df[t], 6),
+            "discount_factor": round(factor, 6),
             "pv_fcff": round(pv, 4),
         })
         prev_rev = rev
@@ -356,7 +406,7 @@ def value(spec):
     reinvest_rate_T = g_T / roic_T
     fcff_T1 = nopat_T1 * (1.0 - reinvest_rate_T)
     tv = fcff_T1 / (wacc_T - g_T)
-    pv_tv = tv / df[-1]
+    pv_tv = tv / df[-1] * roll
 
     ev = pv_sum + pv_tv
     net_debt = _number(spec.get("net_debt", 0.0))
@@ -424,6 +474,11 @@ def value(spec):
             "wacc_buildup": wacc_detail,
             "lifecycle_stage": lifecycle_stage(spec),
             "model_shape": shape,
+            "timing": ({"base_period_end": timing[0].isoformat(),
+                        "valuation_date": timing[1].isoformat(),
+                        "years_elapsed": round(timing[2], 6),
+                        "convention": "mid-year flows, rolled forward to the valuation date"}
+                       if timing else None),
         },
         "yearly": rows,
         "terminal_value": round(tv, 4),
@@ -445,8 +500,14 @@ def value(spec):
         "terminal_value_fraction": round(tv_fraction, 6) if tv_fraction is not None else None,
         "flags": _sanity_flags(spec, g_T, wacc_T, roic_T, ev, pv_sum, pv_tv,
                                risk_free, growth, margin, equity_going_concern, p_fail, cx,
-                               wacc_detail),
+                               wacc_detail) + ([] if timing else [_TIMING_UNADJUSTED]),
     }
+
+
+_TIMING_UNADJUSTED = ("TIMING_UNADJUSTED: no `timing` block, so every cash flow is discounted from the "
+                      "end of its year counted from the base period's end. Value is understated by "
+                      "about (1+WACC)^(years since the base period + 0.5) — supply base_period_end and "
+                      "valuation_date.")
 
 
 _MODEL_SHAPES = ("fcff", "equity")
@@ -791,6 +852,7 @@ SELFTEST_SPEC = {
     "non_operating_cash": 100.0,
     "shares_outstanding": 100.0,
     "current_price": 60.0,
+    "timing": {"base_period_end": "2026-03-31", "valuation_date": "2026-09-30"},
 }
 
 
@@ -874,6 +936,145 @@ def grid_markdown(grid, row_axis, col_axis, corner, axis_kind="shift"):
     return "\n".join(out)
 
 
+MARKET_INDEX = "NIFTY 500"
+_NO_BUILDUP = "inputs use an explicit `wacc`; the market view needs `wacc_buildup`"
+# The buildup fields get_risk_inputs serves, with how far a run may sit from today's figure.
+# The Damodaran fields are one dated vintage and must match it; the yield moves daily.
+_RISK_FIELDS = (("government_bond_yield", ("india_10y", "value"), 0.0025),
+                ("sovereign_default_spread", ("country_risk", "default_spread"), 1e-6),
+                ("mature_erp", ("country_risk", "mature_erp"), 1e-6),
+                ("country_risk_premium", ("country_risk", "country_risk_premium"), 1e-6))
+
+
+def market_growth_path(pe, pb, dy_pct, risk_free, consensus=None, years_high=5, years=10):
+    """The index's earnings growth, year by year. With `consensus` (analysts' expected growth
+    for the next fiscal years), those years come first and their compound rate runs on to
+    `years_high`; without it, the sustainable ROE x (1 - payout) runs for `years_high`. Either
+    way growth then fades linearly to the default-free `risk_free` by `years`."""
+    if consensus:
+        compound = math.prod(1.0 + g for g in consensus) ** (1.0 / len(consensus)) - 1.0
+        high = list(consensus) + [compound] * max(0, years_high - len(consensus))
+    else:
+        high = [pb / pe * (1.0 - dy_pct / 100.0 * pe)] * years_high
+    last = high[-1]
+    return high + [last + (risk_free - last) * (i + 1) / (years - len(high))
+                   for i in range(years - len(high))]
+
+
+def _index_worth(pe, pb, dy_pct, rf, r, consensus=None):
+    """Value per unit of index price at discount rate `r` (see implied_market_return)."""
+    roe = pb / pe
+    earn, pv, disc = 1.0 / pe, 0.0, 1.0
+    for g in market_growth_path(pe, pb, dy_pct, rf, consensus):
+        earn *= 1.0 + g
+        disc *= 1.0 + r
+        pv += earn * (1.0 - g / roe) / disc
+    return pv + earn * (1.0 + rf) * (1.0 - rf / roe) / (r - rf) / disc
+
+
+def implied_market_return(pe, pb, dy_pct, risk_free, consensus=None):
+    """The annual return today's index level implies — Damodaran's implied-ERP solve.
+
+    Per unit of index price: earnings 1/PE and ROE = PB/PE; growth follows
+    `market_growth_path` (analysts' consensus when supplied, else the index's sustainable
+    growth). Each year's cash to equity is earnings x (1 - g/ROE); after year ten it grows at
+    `risk_free` forever with ROE held. Returns the rate that equates those cash flows to the
+    price, or None when the inputs cannot support one."""
+    if not all(spine.is_finite(v) for v in (pe, pb, dy_pct, risk_free)):
+        return None
+    if pe <= 0 or pb <= 0 or dy_pct < 0:
+        return None
+    worth = lambda r: _index_worth(pe, pb, dy_pct, risk_free, r, consensus)  # noqa: E731
+    lo, hi = risk_free + 1e-4, 0.5
+    if worth(lo) < 1.0 or worth(hi) > 1.0:
+        return None
+    for _ in range(100):
+        mid = (lo + hi) / 2.0
+        lo, hi = (mid, hi) if worth(mid) > 1.0 else (lo, mid)
+    return round((lo + hi) / 2.0, 6)
+
+
+def _risk_provenance(buildup, risk_env):
+    """Gaps for every market input in `wacc_buildup` that does not match `get_risk_inputs`."""
+    if not risk_env.get("ok"):
+        return ["discount-rate inputs not verified: get_risk_inputs unavailable "
+                f"({'; '.join(risk_env.get('gaps') or ['no data'])})"]
+    data, gaps = risk_env.get("data") or {}, []
+    for field, (block, key), tol in _RISK_FIELDS:
+        if field not in buildup:
+            continue
+        sourced = (data.get(block) or {}).get(key)
+        given = buildup[field]
+        if not spine.is_finite(sourced):
+            gaps.append(f"wacc_buildup.{field} not verified: get_risk_inputs has no {block}.{key}")
+        elif not spine.is_finite(given) or abs(given - sourced) > tol:
+            gaps.append(f"wacc_buildup.{field}={given} is not get_risk_inputs' {sourced} — "
+                        "an unsourced discount-rate input")
+    return gaps
+
+
+def market_view(inputs, result, risk_env, index_env, consensus_env):
+    """The same company valued at the return the Indian market itself implies today.
+
+    The buildup's total equity premium (mature ERP + country premium) is a view on what
+    Indian equities should earn; the index price implies its own. Rescaling both premium
+    parts to the market-implied total (so `lambda_country` still applies) and shifting the
+    terminal rate by the same change separates "is this stock dear against the market" from
+    "is the market dear". The market's growth is analysts' consensus (`consensus_env`, from
+    `estimates.market`) and falls back to the index's own sustainable growth when that is
+    unavailable. Returns (block, gaps)."""
+    buildup = inputs.get("wacc_buildup")
+    if not isinstance(buildup, dict):
+        return {"skipped": _NO_BUILDUP}, []
+    row = ((index_env.get("data") or {}).get("indices") or {}).get(MARKET_INDEX) or {}
+    rf = result["assumptions"]["risk_free"]
+    gaps = []
+    consensus = (consensus_env.get("data") or {}).get("growth") if consensus_env.get("ok") else None
+    if consensus is None:
+        gaps.append("market growth from the index's own fundamentals: analyst consensus "
+                    f"unavailable ({'; '.join(consensus_env.get('gaps') or ['no data'])})")
+    coe_mkt = implied_market_return(row.get("pe"), row.get("pb"), row.get("dy"), rf, consensus)
+    country = (risk_env.get("data") or {}).get("country_risk") or {}
+    mature, crp = country.get("mature_erp"), country.get("country_risk_premium")
+    if coe_mkt is None or not spine.is_finite(mature) or not spine.is_finite(crp):
+        reason = (f"{MARKET_INDEX} P/E, P/B and dividend yield did not yield an implied return"
+                  if coe_mkt is None else "sourced mature ERP and country premium unavailable")
+        return {"skipped": reason}, gaps + [f"market view not computed: {reason}"]
+    implied_erp = coe_mkt - rf
+    scale = implied_erp / (mature + crp)
+    trial = dict(inputs, wacc_buildup=dict(buildup, mature_erp=mature * scale,
+                                           country_risk_premium=crp * scale))
+    if inputs.get("terminal_wacc") is not None:
+        shift = (resolve_wacc(trial, 1)[1]["wacc"]
+                 - result["assumptions"]["wacc_buildup"]["wacc"])
+        trial["terminal_wacc"] = _number(inputs["terminal_wacc"]) + shift
+    try:
+        rebased = value(trial)
+    except ValueError as exc:
+        return {"skipped": str(exc)}, gaps + [f"market view not computed: {exc}"]
+    method_coe = result["assumptions"]["wacc_buildup"]["cost_of_equity"]
+    beta_one = rf + mature + crp
+    return {
+        "index": MARKET_INDEX,
+        "index_pe": row.get("pe"), "index_pb": row.get("pb"), "index_dy_pct": row.get("dy"),
+        "index_source": index_env.get("source"), "index_fetched_at": index_env.get("fetched_at"),
+        "market_growth_basis": "analyst consensus" if consensus else "index fundamentals",
+        "market_growth_path": [round(g, 6) for g in market_growth_path(
+            row["pe"], row["pb"], row["dy"], rf, consensus)],
+        "consensus_coverage": (consensus_env.get("data") or {}).get("coverage") if consensus else None,
+        "market_implied_return": coe_mkt,
+        "market_implied_erp": round(implied_erp, 6),
+        "method_erp": round(mature + crp, 6),
+        "method_cost_of_equity": method_coe,
+        "cost_of_equity": rebased["assumptions"]["wacc_buildup"]["cost_of_equity"],
+        "terminal_wacc": rebased["assumptions"]["terminal_wacc"],
+        "intrinsic_value_per_share": rebased["intrinsic_value_per_share"],
+        "margin_of_safety": rebased["margin_of_safety"],
+        "index_value_to_price_at_method_rate": round(
+            _index_worth(row["pe"], row["pb"], row["dy"], rf, beta_one, consensus), 4),
+    }, gaps
+
+
 def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=False,
         reverse_solve="growth", reverse_target=None, date=None):
     """Intrinsic value and relative value as one envelope.
@@ -895,6 +1096,17 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
                               [f"dcf inputs rejected: {exc}"])
 
     gaps = list(result.get("gaps", []))
+    if result["assumptions"]["timing"] is None:
+        gaps.append("cash-flow timing not supplied: values discounted from the base period's end, "
+                    "not the valuation date (TIMING_UNADJUSTED)")
+    view = {"skipped": _NO_BUILDUP}
+    if isinstance(inputs.get("wacc_buildup"), dict):
+        risk_env = _risk.fetch()
+        gaps.extend(_risk_provenance(inputs["wacc_buildup"], risk_env))
+        view, view_gaps = market_view(inputs, result, risk_env,
+                                      _market.indices(names=[MARKET_INDEX]), _estimates.market())
+        gaps.extend(view_gaps)
+    result["market_view"] = view
     read = None
     if relative is not None:
         if isinstance(relative, dict):
@@ -924,12 +1136,13 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
     a = result["assumptions"]
     data["assumptions"] = {k: a[k] for k in (
         "wacc_path", "wacc_buildup", "tax_path", "sales_to_capital_path",
-        "terminal_growth", "terminal_wacc", "terminal_roic")}
+        "terminal_growth", "terminal_wacc", "terminal_roic", "timing")}
     try:
         data["ticker"] = paths.ticker_key(ticker)
     except ValueError:
         data["ticker"] = None
     data["relative"] = read
+    data["market_view"] = view
     data["dcf_path"] = path
     data["revisions"] = result["revisions"]
     if sensitivity:

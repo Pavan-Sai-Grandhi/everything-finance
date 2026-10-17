@@ -17,7 +17,7 @@ data, gaps}`. No name appears on two servers.
 | server | tools |
 |---|---|
 | `finance-market` | `get_quote` `get_history` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `get_universe` `run_strategy_screen` `run_stock_scan` `run_sector_screen` `run_backtest` `check_trade` `manage_alerts` `get_prior_run` |
-| `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `get_risk_inputs` `run_dcf` `run_governance_checks` |
+| `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `get_analyst_estimates` `get_risk_inputs` `run_dcf` `run_governance_checks` |
 | `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
 | `finance-personal` | `run_insurance_math` |
 
@@ -245,7 +245,20 @@ country_risk_premium, total_equity_risk_premium, mature_erp}, default_free_risk_
 The 10Y yield is TradingView `TVC:IN10Y` on the global scanner; the rest is Damodaran's `ctryprem.xlsx`
 (NYU Stern), parsed by label rather than cell address, its `as_of` the workbook's own "Date of update".
 `default_free_risk_free` = yield − default spread, derived only when both arrive. Either half failing is a
-labelled gap; the envelope is cached for 7 days only when complete. `test_risk.py`.
+labelled gap. The yield is cached for the day and the country-risk vintage for 7 days, each only when it
+arrived. `test_risk.py`.
+
+### `finance/sources/estimates.py` — analyst consensus (Yahoo Finance via yfinance)
+Consumers: `get_analyst_estimates` (`valuation-analysis`) and `run_dcf`'s market view. `company(symbol)` →
+`data:{symbol, revenue_unit: "INR Crore", eps:{current_fy, next_fy}, revenue:{current_fy, next_fy}}`, each
+period `{avg, low, high, year_ago, analysts}` and EPS also `growth` (vs Yahoo's year-ago EPS); fewer than three
+analysts is a gap; cached for the day. `market()` → `data:{index: "NIFTY 500", growth:[current_fy, next_fy] |
+null, coverage, covered, constituents, excluded_basis, min_analysts, basis_tolerance}`: each constituent's
+latest fiscal-year net income (Tickertape screener `incNinc`) grown by its consensus EPS ratios and summed. A
+stock counts only with ≥3 analysts and a Yahoo year-ago EPS within 20% of Tickertape's `incEps`; mismatches
+are listed (largest ten). Under 70% of the index's positive net income covered, `growth` is null and the
+envelope is not ok. Cached 7 days when complete. Yahoo's `indexTrend` (the S&P 500) is never read.
+`test_estimates.py`.
 
 ### `finance/sources/market.py` — market-wide fetch (indices, valuation history, breadth, flows, macro)
 Consumers: `get_indices` / `get_index_valuation_history` / `get_breadth` / `get_flows` / `get_macro`, and
@@ -583,7 +596,7 @@ their own blocks.
 | `technical-analysis` | `technical-block` | `verdict`, `confidence`, `trend_stage`, `support`, `resistance`, `bull_invalidated_below`, `bear_invalidated_above`, `axis: technical_structure` |
 | `financial-analysis` | `financials-block` | `verdict`, `confidence`, `varsity_score` (PASS count of the applicable checks — 7, or fewer for financials where D/E/cash checks are NOT-APPLICABLE), `roce`, `de`, `cfo_ebitda`, `rev_cagr_5y`, **`clean_eps`**, **`eps_adjustments`**, `flags`, `axis: growth_durability` |
 | `management-analysis` | `management-block` | `integrity` (the hard gate), **`integrity_checks`** (all seven sub-checks, each PASS/FLAG/FAIL/NOT-CHECKED), `skill`, `overall_grade`, `confidence`, `axis: governance` |
-| `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, `dcf_confidence`, **`terminal_weight`**, `pe`, **`pe_basis`**, **`eps_adjustments`**, `peg`, `peer_median_pe`, **`peers_priced`**, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
+| `valuation-analysis` | `valuation-block` | `combined_stance`, `dcf_mos`, **`dcf_mos_market`** (margin of safety at the market's own implied return; `n/a` when `run_dcf` skipped its market view), `dcf_confidence`, **`terminal_weight`**, `pe`, **`pe_basis`**, **`eps_adjustments`**, `peg`, `peer_median_pe`, **`peers_priced`**, **`ev_ebitda`**, `relative_stance`, `axis: valuation` |
 | `news-scan` | `news-block` | `sentiment_score` (−2…+2), `confidence`, `recurring_theme`, `next_event`, `axis: growth_durability` |
 | `sector-analysis` | `sector-block` | `sector`, `rs_class`, `story` (`structural_growth`\|`cyclical_upswing`\|`mature`\|`cyclical_downswing`\|`structural_decline`), `story_confidence`, `stance`, `confidence`, `focus_position`. The portfolio-manager reads `story` as a bound on the call. |
 | `deep-analysis` (`quick` mode) | `quick-block` | `verdict ∈ {keep, reject, review}`, `lean` (one line), `flags`, `reasons`, `gaps`. A screen from structured data only, run in the current context with no sub-agents. Discover's Stage B keeps the scan order among keeps and lists `review` separately. `keep` is not a BUY or an integrity pass. |
@@ -889,6 +902,17 @@ not retried. A failed send does not undo publication.
   is cheap or expensive.
 - A failed sensitivity, story or reverse calculation adds a gap and keeps the base valuation. Invalid base
   inputs reject the whole call.
+- `timing: {base_period_end, valuation_date}` (ISO dates; the valuation date inside year 1) discounts each
+  explicit flow from mid-year and rolls the value forward to the valuation date; the terminal value stays at
+  year end. Without it the result carries `TIMING_UNADJUSTED` and `run_dcf` a gap.
+- `run_dcf` with a `wacc_buildup` checks the yield (±25 bp), default spread, mature ERP and country premium
+  against `get_risk_inputs`; each mismatch is a gap naming the unsourced input. It also returns
+  `market_view`: the NIFTY 500's implied return from its NSE P/E, P/B and dividend yield
+  (`implied_market_return`), its growth from analyst consensus (`estimates.market`: those years, their
+  compound rate to year 5, then a fade to the default-free rate by year 10) or, labelled as a gap, the
+  index's sustainable ROE × retention, the value rebased to it (both premium parts rescaled to the implied total, the
+  terminal rate shifted by the same change), and `index_value_to_price_at_method_rate`. An explicit `wacc`
+  skips it with a reason; a failed index or risk fetch is a gap.
 
 ## Discovery scans
 

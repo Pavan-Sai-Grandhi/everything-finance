@@ -19,6 +19,9 @@ net_debt: 12000.0               # total debt − cash                [src: balan
 non_operating_cash: 0.0         # cash/investments not in FCFF      [src: balance_sheet_10y Long Term Investments]
 minority_interest: 0.0          # minority interest to subtract     [src: balance_sheet_10y Minority Interest]
 current_price: 1500.0           # market price/share, ₹             [src: get_quote]
+timing:                         # mid-year flows, rolled forward to the price date
+  base_period_end: "2026-03-31"  # the day the base_revenue period ends (FY or TTM window)
+  valuation_date: "2026-09-30"   # the date of current_price
 # Reconcile historical cash flows with the model definitions before using them as a check.
 # Accounting free cash flow and modeled FCFF may differ in taxes, interest and reinvestment;
 # a discrepancy requires explanation and is not by itself proof that an input is wrong.

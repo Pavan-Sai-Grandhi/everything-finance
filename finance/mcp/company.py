@@ -13,6 +13,7 @@ from __future__ import annotations
 from finance.compute import dcf as _dcf
 from finance.compute import governance as _governance
 from finance.sources import documents as _documents
+from finance.sources import estimates as _estimates
 from finance.sources import filings as _filings
 from finance.sources import fundamentals as _fundamentals
 from finance.sources import funds as _funds
@@ -174,7 +175,11 @@ def get_corporate_actions(symbol: str) -> dict:
                 "`inputs.model_shape` is `fcff` (default) or `equity` — use `equity` for "
                 "a bank, NBFC or insurer, where FCFF is ill-defined: feed net income as "
                 "`base_revenue` with a cost-of-equity discount rate, and the margin checks "
-                "that have no meaning on that shape are suppressed."
+                "that have no meaning on that shape are suppressed. "
+                "`inputs.timing` `{base_period_end, valuation_date}` discounts mid-year flows "
+                "to the price date. With a `wacc_buildup`, the market inputs are checked "
+                "against `get_risk_inputs` (a mismatch is a gap) and `market_view` gives the "
+                "value at the NIFTY 500's own implied return beside the build-up's."
 )
 def run_dcf(ticker: str, inputs: dict, relative: dict | None = None,
             sensitivity: bool = False, story: bool = False, reverse: bool = False,
@@ -182,6 +187,19 @@ def run_dcf(ticker: str, inputs: dict, relative: dict | None = None,
     return _dcf.run(ticker, inputs, relative=relative, sensitivity=sensitivity,
                     story=story, reverse=reverse, reverse_solve=reverse_solve,
                     reverse_target=reverse_target)
+
+
+@SERVER.tool(
+    description="Analyst consensus for one NSE stock from Yahoo Finance: mean, low and "
+                "high EPS and revenue (₹ Crore) for the current and next fiscal year, "
+                "the analyst count, and the year-ago figure each growth is struck "
+                "against. Yahoo's year-ago EPS can sit on a different basis from the "
+                "annual report (standalone vs consolidated, before a demerger or a "
+                "one-off) — check it against the published EPS before using the growth. "
+                "Fewer than three analysts is named as a thin consensus. Cached for the day."
+)
+def get_analyst_estimates(symbol: str, fresh: bool = False) -> dict:
+    return _estimates.company(symbol, fresh=fresh)
 
 
 @SERVER.tool(

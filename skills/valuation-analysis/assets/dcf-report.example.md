@@ -1,6 +1,6 @@
 <!-- valuation-block
 combined_stance: Undervalued | Fair | Overvalued
-dcf_mos: <±x%>          dcf_confidence: low | med | high   terminal_weight: <x%>
+dcf_mos: <±x%>   dcf_mos_market: <±x%|n/a>   dcf_confidence: low | med | high   terminal_weight: <x%>
 pe: <x>   pe_basis: reported | adjusted | reported (unchecked)   peg: <x>
 eps_adjustments: <what the one-off scan found, or `none`>
 peer_median_pe: <x|n/a>   peers_priced: <n>   ev_ebitda: <x|n/a>   relative_stance: <undervalued|fair|overvalued|not computable>
@@ -35,6 +35,8 @@ axis: valuation
 | Tax rate | <…>% | annual report FY<…> tax note (effective → statutory) |
 | Sales-to-capital | <…> | historical ΔRev/ΔInvCapital; peer benchmark |
 | WACC | <…>% → <…>% | CoE (default-free rf = G-sec <…>% − sovereign spread <…>%; + β<…>×mature-ERP <…>% + λ<…>×CRP <…>%) + after-tax CoD; source dates <…> |
+| Cash-flow timing | base period ends <YYYY-MM-DD>, valued <YYYY-MM-DD> | mid-year flows, rolled forward <x.xx> years |
+| Market view | <NIFTY 500> implies <…>% (ERP <…>%) vs the method's <…>% | `market_view` from `run_dcf`: value ₹<…> at the market's own return; the method values the index at <x.xx>× its price |
 | Terminal growth | <…>% | ≤ default-free risk-free <…>% in the cash-flow currency |
 | Terminal ROIC | <…>% | excess return ROIC−WACC = <…>pp (the terminal driver); >0 only for a named durable moat, else convergence |
 | Net debt / cash / shares | ₹<…> Cr / ₹<…> Cr / <…> Cr | `Total Debt` − `Cash and Equivalent`; `Common Shares Outstanding` |

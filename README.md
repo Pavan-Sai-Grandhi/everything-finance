@@ -30,7 +30,7 @@ TELEGRAM_CHAT_ID=...
 
 Seven servers ([`.mcp.json`](.mcp.json)) in two classes with deliberately opposite rules.
 
-**`finance-market` (17 tools), `finance-company` (11), `finance-funds` (6), `finance-personal` (1)** — local, all four launched by `bin/finance-mcp.sh <market|company|funds|personal>`, together the only door to every number the plugin reasons about. 35 tools over eight verified sources (TradingView, Yahoo, Tickertape, NSE, screener.in, AMFI, Google News RSS, Damodaran's country-risk dataset) plus the compute engines that run on them; no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
+**`finance-market` (17 tools), `finance-company` (12), `finance-funds` (6), `finance-personal` (1)** — local, all four launched by `bin/finance-mcp.sh <market|company|funds|personal>`, together the only door to every number the plugin reasons about. 36 tools over eight verified sources (TradingView, Yahoo, Tickertape, NSE, screener.in, AMFI, Google News RSS, Damodaran's country-risk dataset) plus the compute engines that run on them; no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
 
 **`kite`** (Zerodha), **`upstox`**, **`indmoney`** — optional, read-only, personal. They answer only *what you own and what it is worth* and never feed a view (CLAUDE.md rule 3). Connect whichever you use. IndMoney covers every asset class with per-position value and P&L, but has no XIRR, no cost for stocks held through a linked broker, and no order history, so exact entry fills come from a broker MCP. All three run through `bin/mcp-bridge.sh`, an `mcp-remote` wrapper that points every Claude session at one shared OAuth store (`~/.mcp-auth`): **log in once and every session is logged in**, on one client registration and one token per broker. `finance/tests/test_mcp_bridge.py` covers it; `EF_BRIDGE_E2E=1` adds end-to-end scenarios against a stub broker.
 
@@ -78,7 +78,7 @@ Eight files, in two kinds.
 ```
 finance/          the one library — transport, spine, paths, deps, caps, plus report
                   publication (publication, report_hook, telegram)
-  sources/        one module per data domain (prices market funds fundamentals documents news filings) + the shared tickertape client
+  sources/        one module per data domain (prices market funds fundamentals documents news filings universe risk estimates) + the shared tickertape client
   compute/        ta strategy holdings alerts context rolling relative_strength lookthrough
                   fund_scan screen stock_scan sector_scan backtest dcf relval governance
                   trade_check insurance_math wealth allocation

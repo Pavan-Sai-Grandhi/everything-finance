@@ -115,5 +115,32 @@ def test_fetch_derives_default_free_rate_only_from_both_halves():
     check("a null close is a gap, never a zero yield", env["data"]["india_10y"] is None)
 
 
+def test_yield_refreshes_daily_while_the_country_vintage_is_reused():
+    import json
+    from datetime import date, timedelta
+    from finance import paths
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    folder = paths.cache_dir("risk")
+    for name, row in (("india-10y", {"value": 0.07, "as_of": yesterday, "source": "TradingView TVC:IN10Y"}),
+                      ("country-risk", {"default_spread": 0.0187, "mature_erp": 0.0423,
+                                        "country_risk_premium": 0.0285, "as_of": "2026-01-01"})):
+        with open(os.path.join(folder, f"{name}.json"), "w") as fh:
+            json.dump({"data": {"row": row, "_cached_on": yesterday}}, fh)
+    downloads = []
+
+    def fake_json(url, **kw):
+        return {"data": [{"s": "TVC:IN10Y", "d": [7.40, "India 10 Year"]}]}, None
+
+    def no_download(url, dest=None, **kw):
+        downloads.append(url)
+        return None, "should not download"
+
+    with swap(transport, "json_request", fake_json), swap(transport, "request", no_download):
+        env = risk.fetch()
+    check("yesterday's yield is refetched", env["data"]["india_10y"]["value"] == 0.074, env["data"])
+    check("a day-old country vintage is reused without a download",
+          downloads == [] and env["data"]["country_risk"]["mature_erp"] == 0.0423, downloads)
+
+
 if __name__ == "__main__":
     run(globals())

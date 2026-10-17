@@ -21,7 +21,7 @@ India-focused personal financial intelligence. These rules bind every skill and 
 | Source | Serves | Tools |
 |---|---|---|
 | **TradingView** scanner | live quote, technical screen, breadth | `get_quote`, `run_technical_screen`, `get_breadth` |
-| **Yahoo** (yfinance) | EOD OHLCV, sector history, macro | `get_history`, `get_macro` |
+| **Yahoo** (yfinance) | EOD OHLCV, sector history, macro, analyst consensus (EPS and revenue, current and next fiscal year) | `get_history`, `get_macro`, `get_analyst_estimates` |
 | **screener.in** | annual-report and concall document index | `get_documents`, `get_company_fundamentals` (`documents` section only) |
 | **NSE** | index valuation (live + historical), FII/DII flows, announcements, corporate actions, index-constituent universes | `get_indices`, `get_index_valuation_history`, `get_flows`, `get_filings`, `get_shareholding`, `get_corporate_actions`, `get_universe` |
 | **Tickertape** | company financials, fundamental screen, fund category screen, **complete** fund holdings, per-stock ratios | `get_company_fundamentals`, `run_fundamental_screen`, `screen_funds`, `get_fund_holdings`, `get_stock_ratios` |
@@ -31,7 +31,7 @@ India-focused personal financial intelligence. These rules bind every skill and 
 
 **Qualitative primary sources** — reached with `WebSearch` restricted to the named domains and `WebFetch` of the document itself, only by the skills that name them, and cited by document number and date. They carry the story a data feed cannot: company history and promoter background (the offer document's history and promoter chapters on `sebi.gov.in` / `nseindia.com` / `bseindia.com`; the company's own site), policy and regulation from the issuing authority (`pib.gov.in`, `egazette.gov.in`, `dgtr.gov.in`, `cbic.gov.in`, `sebi.gov.in`, `rbi.org.in`, `irdai.gov.in`, `pfrda.org.in`, the ministry's own `*.gov.in`), and industry statistics from statutory and industry bodies (`amfiindia.com`, `siam.in`, `npci.org.in`, `trai.gov.in`, `cea.nic.in`, `dgca.gov.in`, `mnre.gov.in`). Industry size and outlook come first from annual-report MD&A sections via `get_documents`. A news article about a policy points to the document; it is never the source of its terms.
 
-Four servers, split by domain — `finance-market` (prices, index and market state, the universe authority and the discovery screeners: `get_universe` / `run_strategy_screen` / `run_stock_scan` / `run_sector_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `get_risk_inputs` / `run_dcf` / `run_governance_checks`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
+Four servers, split by domain — `finance-market` (prices, index and market state, the universe authority and the discovery screeners: `get_universe` / `run_strategy_screen` / `run_stock_scan` / `run_sector_screen` / `run_backtest` / `check_trade` / `manage_alerts`), `finance-company` (one company's fundamentals, disclosures, news, plus `get_analyst_estimates` / `get_risk_inputs` / `run_dcf` / `run_governance_checks`), `finance-funds` (funds, plus `get_fund_scan` / `get_fund_lookthrough`), `finance-personal` (`run_insurance_math` — deterministic math on figures you supply, no source behind it). The broker servers `kite`, `upstox`, `indmoney` are optional and read-only (rule 3).
 
 `get_market_context` is the interpreted market-of-record, shared by every skill so reads cannot drift — prefer it over assembling a market view from raw tools.
 
@@ -58,7 +58,7 @@ One library, so cross-skill logic cannot be re-implemented and drift.
 ```
 finance/  transport spine paths deps caps publication report_hook telegram
   sources/  tickertape prices market funds fundamentals documents news filings
-            universe risk
+            universe risk estimates
   compute/  ta strategy holdings alerts context rolling relative_strength
             lookthrough fund_scan screen stock_scan sector_scan backtest
             dcf relval governance trade_check insurance_math wealth allocation
@@ -66,7 +66,7 @@ finance/  transport spine paths deps caps publication report_hook telegram
   tests/    harness + test_*
 ```
 
-- **`transport.py`** — the one function that touches the network (curl, cookie-jar bootstrap, retry on transient failures only, returns `(body, gap)`, never raises). No module opens its own socket, except `yf.download` in `sources/prices.py`, because yfinance is the approved Yahoo client and has its own HTTP stack.
+- **`transport.py`** — the one function that touches the network (curl, cookie-jar bootstrap, retry on transient failures only, returns `(body, gap)`, never raises). No module opens its own socket, except the yfinance calls in `sources/prices.py` and `sources/estimates.py`, because yfinance is the approved Yahoo client and has its own HTTP stack.
 - **`sources/`** — one module per data domain, on that domain's finalized source.
 - **`compute/ta.py`** — the one definition of every indicator and pattern. Numeric indicators delegate to **TA-Lib** so the values traded on are the reference implementation; candlestick/range patterns stay geometric. The `FEATURES` registry + `materialize()` is the vocabulary a spec draws on: parameterized tokens (`ema21`, `rsi9`, `atr20`, `hh50`, `nr5`, …) resolve by regex and standard signals are pre-registered, so a new period or standard signal needs **no** code change. **Register a genuinely new primitive here, never inside a skill.**
 - **`compute/strategy.py`** — how a spec plus those columns becomes entries/stops/targets/size: the safe filter-language evaluator (`eval_series`, *not* python `eval`), `build_signal` (live), `build_bt_strategy`/`prepare_backtest_frame` (Backtesting.py). `compute/screen.py` and `compute/backtest.py` both sit on it, so they cannot disagree about what a strategy means.
