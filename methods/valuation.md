@@ -1,7 +1,7 @@
 # Valuation
 
 **Consumers:** valuation-analysis, deep-analysis (the portfolio-manager weighs the result).
-**Sources, in priority order:** `damodaran`, `plugin`.
+**Sources, in priority order:** `damodaran`, `moneypurse`, `plugin`.
 
 The method is Damodaran's story-driven FCFF valuation, reconciled with a relative-multiples read
 [damodaran]. `run_dcf` is the arithmetic; the job here is a coherent story turned into a small set
@@ -87,6 +87,8 @@ Take the ratio over **several years, not one** — a single year's capex is lump
 
 **Cross-check the base year against the published `Free Cash Flow`.** `cash_flow_10y` carries FCF over the same ten years, so the model's year-0 FCFF has a sourced figure to sit beside. They are not the same quantity — FCFF is pre-financing and after cash taxes on EBIT, the published line is `Cash from Operating Activities − Capital Expenditures` — so they need not match, and a material gap requires reconciliation of definitions, timing, interest, taxes and reinvestment before it can validate or invalidate an input.
 
+Variant [moneypurse:CC9qeBP-2I4@13:10]: a plain FCF-growth DCF. Base FCF is averaged over three to ten years, never one [moneypurse:CC9qeBP-2I4@13:43]; growth is at most the current rate plus one or two points, never 25–30% [moneypurse:CC9qeBP-2I4@17:08]; the discount is a flat 15–20% for small and mid caps in place of a WACC build-up [moneypurse:CC9qeBP-2I4@18:25]; terminal growth is 0–2% [moneypurse:CC9qeBP-2I4@20:04]. The FCFF build-up is the rule; the averaged base is the cross-check on a year-0 FCFF that sits far above the multi-year record.
+
 **Use ₹ Crore for money inputs and crore shares for the share count, so per-share lands in ₹.** Check units explicitly before calculation.
 
 ## Diagnose first: the corporate life cycle decides which levers move
@@ -170,11 +172,12 @@ Multiples are **DCF in shorthand**: every one of them traces to the same drivers
 - **Peer group built for comparability** — same industry, similar size, growth and risk. `get_company_fundamentals` returns real sub-sector peers, each row carrying `ttm_pe` and `pb` already, plus a `sid` for any other ratio via `get_stock_ratios`. Still read the list: a peer set that ignores size/growth/risk makes the median meaningless, and a four-name list is thin enough that one outlier matters.
 - **Median, not mean.** Multiple distributions are right-skewed (a few very-high outliers); the **median** is the representative peer value, and the engine enforces it.
 - **Consistent definitions.** Same trailing-vs-forward basis across the peer set; same numerator/denominator (equity multiples like P/E to equity, enterprise multiples like EV/EBITDA to the firm). State the basis.
-- **PEG = P/E ÷ expected EPS growth (%).** A cross-check that normalises P/E for growth — but it hides two assumptions: **equal risk** across the peer set and a **linear** growth↔P/E relationship. Flag both; PEG is never a standalone verdict. The growth input is a labelled estimate (forward/analyst or historical EPS CAGR, basis stated), never fabricated.
+- **PEG = P/E ÷ expected EPS growth (%).** A cross-check that normalises P/E for growth — but it hides two assumptions: **equal risk** across the peer set and a **linear** growth↔P/E relationship. Flag both; PEG is never a standalone verdict. The growth input is a labelled estimate (forward/analyst or historical EPS CAGR, basis stated), never fabricated. When the latest year's growth is abnormal, take a three-to-five-year EPS CAGR, never one or two years [moneypurse:aDxVzunmnxg@14:37].
 - **Own-band percentile.** Where the company's P/E sits inside its own historical band is the one comparison immune to a bad peer set.
 - **Same earnings basis on both sides.** A P/E struck on earnings adjusted for one-offs is not comparable to peers struck on reported earnings — a recurring fair-value gain can halve a reported multiple, so the two bases can differ by 2x on the same company. Declare `pe_basis` and `peer_pe_basis`; when they differ the peer read is directional only and does not carry the stance.
 - **A peer median needs peers.** Under three priced peers is one company's accident, not a centre. The engine voids the peer half below that floor and returns the gap; report it and lean on the own band rather than presenting a stance the peer set could not support.
-- **Pick the multiple to the business.** P/E for profitable firms; **P/B with RoE** for banks, NBFCs and insurers (EV/EBITDA and FCFF are both ill-defined there); P/S or EV/Sales for loss-makers; **EV/EBITDA** where capital structure differs across the peer set.
+- **Pick the multiple to the business.** P/E for profitable firms; **P/B with RoE** for banks, NBFCs and insurers (EV/EBITDA and FCFF are both ill-defined there); P/S or EV/Sales for loss-makers; **EV/EBITDA** where capital structure differs across the peer set. EV/EBITDA also where EBITDA is positive but net profit is not, and P/S when both are negative [moneypurse:cKf35eocdkw@06:12] [moneypurse:cKf35eocdkw@02:06]. P/B suits a cyclical, whose book value holds steadier than its earnings, and not an asset-light business with a small book [moneypurse:cKf35eocdkw@13:18] [moneypurse:cKf35eocdkw@12:39]. A cyclical's P/E is lowest near peak earnings, so a low one is not cheapness [moneypurse:aDxVzunmnxg@11:09].
+- Variant [moneypurse:aDxVzunmnxg@06:52] [moneypurse:cKf35eocdkw@04:18] [moneypurse:cKf35eocdkw@07:30]: fixed absolute bands — P/E 12–15 very attractive and above 25 overbought, P/S below 5 reasonable and above 10 very expensive, EV/EBITDA 6–10 fair and above 20 expensive. The source itself calls them a starting reference; the rule reads a multiple against its peers and its own band.
 
 ## Reconcile and grade confidence
 

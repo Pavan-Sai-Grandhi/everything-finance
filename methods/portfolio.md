@@ -1,6 +1,6 @@
 # Portfolio review
 
-**Consumers:** portfolio-review, wealth-manager (the investments leg). **Sources:** `plugin`.
+**Consumers:** portfolio-review, wealth-manager (the investments leg). **Sources:** `moneypurse`, `plugin`.
 
 A rubric for finding holdings that need review. The thresholds are adjustable heuristics, not
 trade instructions.
@@ -22,6 +22,8 @@ Fund quick digests describe; they do not judge. Use performance, fees and change
 ## Concentration and coverage
 
 `finance/compute/allocation.py` owns the thresholds and arithmetic. Defaults flag a stock above 10% of the valued book, a sector above 25% (above 35% escalates the flag), a small/micro sleeve above 30%, an AMC above 40% of the **fund sleeve**, and asset drift above 10 percentage points. Use the user's own limits when given, and state which limits applied.
+
+Too many direct stocks is a finding as well: more names than the holder can follow dilutes the winners. The source puts 15–20 as enough even above ₹1 crore and says a 50–100-stock book never compounds [moneypurse:5V5QugxC7cs@25:30] [moneypurse:5V5QugxC7cs@26:05].
 
 Cross-account rows of the same ticker combine for stock concentration. Personal sources give a fund's units and value; decision sources give its cap and style. A fund with no look-through is a coverage gap, not evidence that it holds no smallcaps.
 

@@ -2,7 +2,7 @@
 
 **Consumers:** deep-analysis, the debate agents (debate-researcher, contest-researcher) and the
 portfolio-manager. **Sources, in priority order:** `varsity-fa`,
-`varsity-ta`, `damodaran`, `plugin`.
+`varsity-ta`, `damodaran`, `moneypurse`, `plugin`.
 
 This file owns what belongs to no single lens: how the lenses combine into one call, and how the
 debate runs. Each lens's own method lives in its topic file.
@@ -93,5 +93,7 @@ The verdict-relevant axes are `valuation`, `growth_durability`, `balance_sheet_r
   opening ones.
 
 Side-specific weights: valuation alone is a weak lead bear argument unless extreme (a
-low-confidence, terminal-heavy DCF is itself a bear point), so pair it with a deterioration. A
+low-confidence, terminal-heavy DCF is itself a bear point), so pair it with a deterioration. The
+business, its industry, its financials and its management carry most of a decision, valuation a
+fifth to a third [moneypurse:aDxVzunmnxg@01:27]. A
 management integrity FAIL is near-fatal to a bull case: engage it or concede, never wave it away.

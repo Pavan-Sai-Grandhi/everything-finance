@@ -2,7 +2,7 @@
 
 **Consumers:** financial-analysis, valuation-analysis (the published-row vocabulary),
 deep-analysis (the quick pass), portfolio-review (the drift check). **Sources, in priority
-order:** `varsity-fa`, `plugin`.
+order:** `varsity-fa`, `moneypurse`, `plugin`.
 
 The scorecard is **seven checks**, each PASS / FLAG / FAIL with the number that decided it.
 `checklist_score` is the count of PASS out of the checks that apply. A check you cannot source is
@@ -26,9 +26,13 @@ investor presentation; `methods/sectors.md` lists the KPIs.
 ### 1. Returns: ROE above 15% sustained, ROCE above 15% and above the cost of capital
 
 ROCE above the cost of capital is the moat signal: the business earns more than the money it
-consumes. DuPont the ROE before trusting it: net margin (`Net Income` ÷ `Total Revenue`) × asset
+consumes; below it, the shortfall is paid out of equity until the reserves run down
+[moneypurse:YA7sdbN4_68@01:52]. The 15% floor is roughly what an FD, PPF or a fund returned with
+no effort at the time of the recording, so a business earning less is not paying for its risk
+[moneypurse:5-ZdmTjODVk@12:28]. DuPont the ROE before trusting it: net margin (`Net Income` ÷ `Total Revenue`) × asset
 turnover (`Total Revenue` ÷ `Total Assets`) × leverage (`Total Assets` ÷ `Total Equity`). An ROE
-carried by the leverage term is a red flag and shows up again in check 3. Read all three across
+carried by the leverage term is a red flag and shows up again in check 3: shrinking the equity base
+with debt is the usual way an ROE is dressed up [moneypurse:YA7sdbN4_68@15:25]. Read all three across
 the available years.
 
 ### 2. Margins: stable or expanding operating margin over five years
@@ -38,12 +42,23 @@ the finding, and a step change needs a reason from the segment note or MD&A. Whe
 moved, decompose it against `Raw Materials`, `Power & Fuel Cost`, `Employee Cost` and
 `Selling & Administrative Expenses`, and name the line that moved.
 
+Read the level only against same-sector peers [moneypurse:a5vIDbjhT1E@14:50]. A margin held above
+a peer's year after year is pricing power from product, brand, technology or cost
+[moneypurse:a5vIDbjhT1E@09:04]; a thin margin turned over fast can out-earn a fat one, which check
+1's asset-turnover term shows [moneypurse:a5vIDbjhT1E@16:01].
+
 ### 3. Balance-sheet safety: D/E below 1, interest coverage above 3
 
 D/E = `Total Debt` ÷ `Total Equity` (near zero preferred). Interest coverage = `PBIT` ÷
 `Interest & Other Items`; the denominator bundles other financing items, so the coverage is
 conservative; say so near the threshold. Read `Cash and Equivalent` for net debt: a gross-debt FLAG
 on a company holding more cash than debt is wrong.
+
+D/E between 1 and 2, or coverage between 2 and 3, is a FLAG that needs a stated reason. D/E
+above 2, coverage below 2, or D/E climbing year on year (1.5 to 3) is a FAIL
+[moneypurse:nMwjjn8kVK8@06:22] [moneypurse:nMwjjn8kVK8@06:37] [moneypurse:nMwjjn8kVK8@14:52].
+Variant [moneypurse:nMwjjn8kVK8@13:48]: coverage struck on EBITDA, since depreciation is not
+cash; the plugin's PBIT basis is the stricter and is the rule.
 
 ### 4. Cash reality: CFO tracking EBITDA over a cycle
 
@@ -55,7 +70,8 @@ and tax means the earnings exist only on paper.
 
 `cash_flow_10y` carries `Cash from Operating Activities` (CFO), `Capital Expenditures` and a
 published `Free Cash Flow`. FCF positive across a cycle is the standard for a mature firm; a young
-firm burning cash is a different question. Read `Changes in Working Capital` beside them: CFO
+firm burning cash is a different question. Count the years as well as the sum: CFO positive in
+at least seven or eight of the ten is the mark of a cash generator [moneypurse:5V5QugxC7cs@20:08]. Read `Changes in Working Capital` beside them: CFO
 propped up by a working-capital release is the receivable-days finding from the other side.
 
 ### 5. Promoter holding and pledge: stable or rising, pledging not increasing
@@ -105,6 +121,12 @@ Report `clean_eps` and `eps_adjustments` whatever the verdict; `none` is a findi
 - **Working-capital cycle.** Receivable days (`Total Receivables` ÷ `Total Revenue` × 365) and
   inventory days (`Total Inventory`). Receivable days rising while revenue grows is the
   channel-stuffing signature.
+- **Liquidity.** Current ratio = `Total Current Assets` ÷ `Total Current Liabilities`, healthy at
+  1.33–3; quick ratio = (`Total Current Assets` − `Total Inventory`) ÷ `Total Current Liabilities`,
+  healthy at 1–2.5 [moneypurse:BCaSBH0dGjk@06:47] [moneypurse:BCaSBH0dGjk@14:10]. Below the band a
+  small company may have to borrow or issue shares to meet the year's bills; a large, cash-efficient
+  one can run 0.75–1 [moneypurse:BCaSBH0dGjk@07:02]. Above it, look for idle cash or swelling
+  inventory and receivables [moneypurse:BCaSBH0dGjk@10:12]. Not for banks, NBFCs or insurers.
 - **Goodwill.** A rising `Goodwill & Intangibles` line is acquisition-funded growth, with the
   impairment risk sitting there.
 - **Payout.** A high `Payout Ratio %` beside a high-growth claim is a contradiction one side must
@@ -140,6 +162,10 @@ the lines you need and cite the filing itself, a page or note, never a précis.
 - **Latest concall**: guidance actually given, and two or three management statements with the
   quarter. Read the Q&A as asked and answered.
 
+Judge on the consolidated statements when subsidiaries carry the story, and on the standalone to
+isolate the core business; a large gap between the two is a finding the segment note explains
+[moneypurse:g35Wg5cj6zo@07:16].
+
 Three to five specific, cited annual-report findings is the bar.
 
 ## The company overview
@@ -147,7 +173,10 @@ Three to five specific, cited annual-report findings is the bar.
 Self-contained: a reader meeting the company here comes away oriented. What it does; segment
 revenue and EBIT mix in %, tying to the published `Total Revenue`; geography; flagship products
 or brands; end-markets; and the moat named as a mechanism (switching cost, scale, licence, brand,
-network), not an adjective.
+network), not an adjective, and tested against named competitors and substitutes, including ones
+from outside the industry [moneypurse:5V5QugxC7cs@14:30]. Growth that rides a commodity price or a
+one-off demand spike is not a moat: it reverses when the price or the spike does
+[moneypurse:2bDua8Lmc48@17:18].
 
 ## Verdict
 
