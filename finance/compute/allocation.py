@@ -15,16 +15,14 @@ Two provenance-honest input styles per dimension:
     weights, not one tag per row. A cap tier is a classification, so it comes from
     `get_stock_ratios`' `cap_rank` via that look-through, never from a personal
     source's own breakdown field.
-
-Reached through: skills/portfolio-review/scripts/allocation.py.
 """
 import math
 
-from finance import caps
+from finance import caps, spine
 from finance.compute.holdings import market_value
 
 
-# Concentration thresholds (%). Grounded in references/reference.md; overridable
+# Concentration thresholds (%), explained in methods/portfolio.md; overridable
 # per call so a stated plan can tighten them.
 DEFAULTS = {
     "single_stock": 10.0,          # any one stock over this share of the book
@@ -306,3 +304,14 @@ def review_book(book):
     """`review` over one {holdings, targets?, breakdowns?, thresholds?} bundle."""
     return review(book.get("holdings", []), book.get("targets"),
                   book.get("breakdowns"), book.get("thresholds"))
+
+
+@spine.guarded("finance.compute.allocation")
+def review_file(book):
+    """`review_book` over a JSON file {holdings, targets?, breakdowns?, thresholds?}."""
+    bundle = spine.read_json(book)
+    if not isinstance(bundle, dict) or not isinstance(bundle.get("holdings"), list):
+        raise ValueError("book must contain a holdings list")
+    result = review_book(bundle)
+    gaps = result.pop("gaps", [])
+    return spine.envelope(True, "finance.compute.allocation", result, gaps)

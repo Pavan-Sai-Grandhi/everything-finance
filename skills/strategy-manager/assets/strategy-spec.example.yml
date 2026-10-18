@@ -5,7 +5,7 @@
 #   discover     reads universe/screening/entry/exit/sizing of an ACTIVE, regime-fitting spec.
 #   run_backtest   reads entry/exit/sizing; VALIDATE writes results into expectancy_assumptions.
 #   trade-tracker  reads regime_required of a trade's linked strategy; feeds closed trades back.
-# Every field must be present.  (Full schema doc: <plugin>/finance/contracts.md)
+# Every field must be present.  (full schema: finance/contracts.md → Artifact: strategy spec)
 
 name: nifty500-momentum-swing        # kebab-case id, also the filename
 version: 1                           # bump on each optimization that changes the rules
@@ -99,7 +99,7 @@ entry:
   # "k * col", "A or B"; the list is ANDed. Columns can be any finance/compute/ta.py feature:
   #   - parameterized indicators <kind><N>[_rising]: ema21, sma100, rsi9, atr20, adx14,
   #     hh50, ll20, vol30, nr5, ema21_rising  (any period — no plugin change needed)
-  #   - registered patterns/signals: inside_bar, outside_bar, engulfing, hammer, doji,
+  #   - registered patterns/signals: inside_bar, outside_bar, bullish_engulfing, hammer, doji,
   #     coil_breakout, golden_cross, macd_bullish_cross, rsi_oversold, bb_squeeze,
   #     volume_surge, gap_up, new_high_20, new_high_52w, ...  (see finance/compute/ta.py FEATURES)
   # Required explicit per-bar trigger; compute_filters above is only the coarse
@@ -116,7 +116,7 @@ exit:
                                       # (auto-floored at max(0.5*ATR, 1% of price) so a
                                       #  squeeze candle's low can't collapse the risk denominator)
   target: min_rrr  # Fixed risk-multiple objective; choose measured_move explicitly to use the range height.
-                                      # measured_move | next_resistance | none/trailing/signal
+                                      # measured_move | min_rrr | trailing | signal | none
                                       #   -> use none/trailing when trail_atr or exit_signal
                                       #      governs the close (no fixed take-profit)
   min_rrr: 1.5

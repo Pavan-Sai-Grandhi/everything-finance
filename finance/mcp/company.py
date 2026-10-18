@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """finance-company — one company's fundamentals, disclosures, news and valuation.
 
 Every tool delegates to `finance/`: `sources/fundamentals.py` (Tickertape financials +
@@ -156,7 +155,7 @@ def get_corporate_actions(symbol: str) -> dict:
 @SERVER.tool(
     description="Value one company: a story-driven FCFF DCF (Damodaran) and, when peer "
                 "figures come with it, the relative-multiples read — one valuation "
-                "answer. `inputs` is the DCF spec (base_revenue, revenue_growth or "
+                "answer. `inputs` is the DCF spec, or the path to its YAML file (base_revenue, revenue_growth or "
                 "growth_glide, operating_margin or margin_glide, tax_rate, "
                 "sales_to_capital, wacc, terminal_growth/roic/margin, "
                 "shares_outstanding, net_debt, current_price); every figure must trace "
@@ -181,7 +180,7 @@ def get_corporate_actions(symbol: str) -> dict:
                 "against `get_risk_inputs` (a mismatch is a gap) and `market_view` gives the "
                 "value at the NIFTY 500's own implied return beside the build-up's."
 )
-def run_dcf(ticker: str, inputs: dict, relative: dict | None = None,
+def run_dcf(ticker: str, inputs: dict | str, relative: dict | None = None,
             sensitivity: bool = False, story: bool = False, reverse: bool = False,
             reverse_solve: str = "growth", reverse_target: float | None = None) -> dict:
     return _dcf.run(ticker, inputs, relative=relative, sensitivity=sensitivity,

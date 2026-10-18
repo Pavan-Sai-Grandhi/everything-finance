@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
 """Mutual-fund fetch — identity, category screen, FULL holdings, NAV history.
 
 Holdings come from Tickertape's public JSON API (free, no auth), which returns the
 complete current allocation at 90-99% weight coverage. Never source them from a personal
 MCP: that feed caps at 20 rows while funds hold 64-278 positions, so a look-through built
-on it describes a different fund (CLAUDE.md rule 3). AMFI's NAVAll.txt is the authority for
+on it describes a different fund (RULES.md rule 3). AMFI's NAVAll.txt is the authority for
 scheme code + ISIN, and its half-yearly average-market-capitalisation workbook is the
 authority for the SEBI cap rank; mfapi.in serves the daily NAV series the return math
 runs on.

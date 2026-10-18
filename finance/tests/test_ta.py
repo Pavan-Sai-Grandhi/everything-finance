@@ -119,7 +119,7 @@ def test_features_materialize():
     out = ta.materialize(df, ["inside_bar", "nr4"])
     check("materialize adds inside_bar col", "inside_bar" in out.columns)
     check("materialize adds nr4 col", "nr4" in out.columns)
-    check("materialize skips unrequested", "engulfing" not in out.columns)
+    check("materialize skips unrequested", "bullish_engulfing" not in out.columns)
     check("materialize matches direct inside_bar",
           bool(out["inside_bar"].iloc[1]) == bool(ta.inside_bar(df).iloc[1]))
     check("materialize ignores unknown name", "bogus" not in

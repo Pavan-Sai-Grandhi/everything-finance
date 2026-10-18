@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Analyst consensus — Yahoo Finance's EPS and revenue consensus for NSE stocks, and the
 NIFTY 500's expected earnings growth built from it.
 

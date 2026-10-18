@@ -274,20 +274,18 @@ def test_resolver_points_to_broker_cost_when_indmoney_lacks_it():
           any("no cost basis" in g and "upstox" in g for g in env["gaps"]), env["gaps"])
 
 
-def test_cli_combines_one_indmoney_payload_per_asset_type():
-    import json as _json, subprocess, sys as _sys, tempfile as _tf, os as _os
+def test_resolve_files_combines_one_indmoney_payload_per_asset_type():
+    import json as _json, tempfile as _tf, os as _os
     d = _tf.mkdtemp()
     stock = _os.path.join(d, "stock.json"); fund = _os.path.join(d, "mf.json")
     _json.dump(_indmoney_live_shape([_ind_row()]), open(stock, "w"))
     _json.dump(_indmoney_live_shape([_ind_row(investment_code="3229", investment="Fund A Direct Growth",
                                               asset_type="MF", broker=None, market_cap=None)]), open(fund, "w"))
-    root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-    out = subprocess.run([_sys.executable, "-m", "finance.compute.holdings", "--indmoney", stock,
-                          "--indmoney", fund, "--mf-only"], capture_output=True, text=True,
-                         cwd=root, env=dict(_os.environ, PYTHONPATH=root))
-    env = _json.loads(out.stdout)
-    check("cli: repeated --indmoney payloads combine; the MF slice finds the fund",
-          [p["ticker"] for p in env["data"]["positions"]] == ["Fund A Direct Growth"], out.stdout[-300:] + out.stderr[-300:])
+    env = holdings.resolve_files(indmoney=[stock, fund], slice="mf")
+    check("resolve_files: IndMoney payloads combine; the MF slice finds the fund",
+          [p["ticker"] for p in env["data"]["positions"]] == ["Fund A Direct Growth"], env)
+    check("resolve_files: an unknown slice is a labelled gap",
+          not holdings.resolve_files(indmoney=[stock], slice="bonds")["ok"])
 
 
 def _kite_live_row(sym, exch="NSE", isin="INE000000001"):

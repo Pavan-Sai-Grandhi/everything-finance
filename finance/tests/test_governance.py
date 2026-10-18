@@ -134,7 +134,6 @@ check("verdicts come from the fixed vocabulary",
       all(x["verdict"] in ("PASS", "FLAG", "FAIL", "NOT-CHECKED")
           for x in (g.remuneration_check(130.0, 1000.0), g.auditor_fee_check([2.0]))))
 
-check("selftest passes", g._selftest() == 0)
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -142,7 +141,7 @@ def _read(rel):
     with open(os.path.join(_ROOT, rel), encoding="utf-8") as fh:
         return fh.read()
 
-_ref = _read("skills/management-analysis/references/reference.md")
+_ref = _read("methods/management.md")
 check("the gate aggregation names an outcome for a FLAGged sub-check",
       "else **`FLAG`** if any check flagged" in _ref,
       "a flagged check with no aggregate outcome forces the leg to improvise one")

@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""India discount-rate inputs for the DCF — the gap every valuation run used to carry.
+"""India discount-rate inputs for the DCF, each with its source and date.
 
 Two sources, each the reference for its number:
 
@@ -7,14 +6,13 @@ Two sources, each the reference for its number:
   bond yield, the same scanner `get_quote` reads.
 - **Damodaran, NYU Stern** (`ctryprem.xlsx`) — India's sovereign rating, rating-based
   default spread and country risk premium, and the mature-market equity risk premium, all
-  from one dated vintage. The valuation reference names these tables as the authority; the
-  dataset is refreshed each January with a mid-year update, so its own `Date of update`
-  travels with every figure.
+  from one dated vintage. The dataset is refreshed each January with a mid-year update, so
+  its own `Date of update` travels with every figure.
 
 Returns the shared envelope. Nothing here is estimated: a number either comes back with its
 source and date or the field is absent and named in `gaps`. Fetched bytes are untrusted data.
 
-Reached through: get_risk_inputs.
+Reached through get_risk_inputs.
 """
 from __future__ import annotations
 

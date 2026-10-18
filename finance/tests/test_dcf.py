@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from finance import paths  # noqa: E402
 from finance.compute import dcf  # noqa: E402
 from finance.tests.harness import check, rel_approx, summary  # noqa: E402
+from finance.tests import fixtures  # noqa: E402
 
 
 spec1 = {
@@ -325,7 +326,7 @@ check("story range wider than WACC×g range",
       (max(story_flat) - min(story_flat)) > (max(wg_flat) - min(wg_flat)),
       (max(story_flat) - min(story_flat), max(wg_flat) - min(wg_flat)))
 
-young = dict(dcf.SELFTEST_SPEC, lifecycle_stage="high_growth",
+young = dict(fixtures.DCF_SPEC, lifecycle_stage="high_growth",
              growth_glide={"initial": 0.30, "fade_to": 0.06, "years_high": 4},
              terminal_growth=0.06, terminal_roic=0.14, sales_to_capital=3.0)
 ry = dcf.value(young)
@@ -371,7 +372,7 @@ check("guard: discount on non-positive equity flagged",
 check("guard: no false fire when going-concern equity positive",
       not any("DISCOUNT_ON_NONPOSITIVE_EQUITY" in f for f in dcf.value(dict(spec1, complexity_discount=0.2))["flags"]))
 
-rs = dcf.value(dcf.SELFTEST_SPEC)
+rs = dcf.value(fixtures.DCF_SPEC)
 check("selftest EV = pv_fcff + pv_tv",
       rel_approx(rs["enterprise_value"], rs["pv_explicit_fcff"] + rs["pv_terminal_value"], 1e-4))
 check("selftest equity = EV - netdebt + cash - minority",
@@ -379,7 +380,7 @@ check("selftest equity = EV - netdebt + cash - minority",
 check("selftest per-share positive", rs["intrinsic_value_per_share"] > 0)
 
 os.environ["EVERYTHING_FINANCE_ARTIFACTS"] = os.path.join(tempfile.mkdtemp(), "artifacts")
-env = dcf.run("reliance", dcf.SELFTEST_SPEC, story=True,
+env = dcf.run("reliance", fixtures.DCF_SPEC, story=True,
               relative={"pe": 18.0, "peer_pe": [28, 24, 30, 22],
                         "own_pe_history": [20, 25, 28, 30, 32],
                         "growth": {"value": 22, "basis": "5y EPS CAGR"}})
@@ -581,56 +582,19 @@ try:
 except OverflowError:
     huge_rejected = False
 check('unrepresentable integer becomes an input gap', huge_rejected)
-# CLI failures must preserve the user's inputs and any previous output.
-import contextlib
-import io
-from unittest import mock
-
-def cli_status(arguments):
-    with mock.patch.object(sys, 'argv', ['dcf'] + arguments), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        try:
-            dcf.main()
-        except SystemExit as exc:
-            return exc.code
-        except Exception:
-            return 'uncaught'
-    return 0
-
-with tempfile.TemporaryDirectory() as cli_root:
-    from pathlib import Path
-    source = Path(cli_root) / 'inputs.json'
-    original = json.dumps(spec1)
-    source.write_text(original)
-    check('CLI refuses input/output alias without modifying input',
-          cli_status(['--inputs', str(source), '--out', str(source)]) == 2
-          and source.read_text() == original)
-    alias = Path(cli_root) / 'alias.json'
-    alias.symlink_to(source)
-    check('CLI refuses symlink alias',
-          cli_status(['--inputs', str(source), '--out', str(alias)]) == 2
-          and source.read_text() == original)
-    alias.unlink()
-    os.link(source, alias)
-    check('CLI refuses hardlink alias',
-          cli_status(['--inputs', str(source), '--out', str(alias)]) == 2
-          and source.read_text() == original)
-    alias.unlink()
+# run_dcf takes the inputs file the skill wrote, so the audit trail and the run cannot differ.
+from pathlib import Path
+with tempfile.TemporaryDirectory() as file_root:
+    source = Path(file_root) / 'inputs.json'
+    source.write_text(json.dumps(spec1))
+    from_file = dcf.run("reliance", str(source))
+    from_dict = dcf.run("reliance", spec1)
+    check('an inputs file values identically to the same mapping',
+          from_file['ok'] and from_file['data']['intrinsic_value_per_share']
+          == from_dict['data']['intrinsic_value_per_share'], from_file)
     source.write_text('{broken json')
-    check('CLI malformed input has a controlled usage failure',
-          cli_status(['--inputs', str(source)]) == 2)
-    source.write_text(original)
-    output = Path(cli_root) / 'output.json'
-    output.write_text('previous evidence')
-    with mock.patch.object(dcf.os, 'replace', side_effect=OSError('simulated publication failure')):
-        status = cli_status(['--inputs', str(source), '--out', str(output)])
-    check('CLI failed publication preserves previous evidence',
-          status == 2 and output.read_text() == 'previous evidence')
-    check('CLI failed publication cleans pending file',
-          sorted(p.name for p in Path(cli_root).iterdir()) == ['inputs.json', 'output.json'])
-    check('CLI publishes a complete valid result',
-          cli_status(['--inputs', str(source), '--out', str(output)]) == 0
-          and json.loads(output.read_text())['intrinsic_value_per_share'] == r1['intrinsic_value_per_share']
-          and source.read_text() == original)
+    broken = dcf.run("reliance", str(source))
+    check('an unreadable inputs file is a labelled gap', not broken['ok'] and broken['gaps'], broken)
 
 # Repeated assumptions must not be silently overwritten by the parser.
 with tempfile.TemporaryDirectory() as input_root:

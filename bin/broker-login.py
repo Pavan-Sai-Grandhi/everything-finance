@@ -1,25 +1,19 @@
 #!/usr/bin/env python3
 """Broker MCP bridge supervisor: one login per broker, shared by every Claude session.
 
-Each Claude session starts its own mcp-remote proxy per broker, all reading one token store.
-Left alone, mcp-remote turns that into login tabs in three ways, each closed here:
+Each session starts its own mcp-remote proxy per broker, all reading one token store.
 
-1. Every proxy refreshes an expiring token itself. The brokers rotate refresh tokens, so when
-   several refresh at once one wins and the rest fall back to the dead token, take a 401 and
-   open their own login tab — a laptop waking with sessions open produced a screenful. Here
-   one refresher, under a cross-process lock, keeps the stored token ahead of expiry. Proxies
-   re-read the store on every request, so they pick up the new token and never refresh.
-2. The browser login lives inside the proxy, and the proxy dies when Claude's connect limit or
-   mcp-remote's own 30-second auth limit runs out, long before an OTP is typed. Here a login
-   runs in one detached `mcp-remote-client` with a 15-minute window, under a lock: it outlives
-   the session that started it, and no second tab opens while it runs.
-3. Every proxy could open a login tab of its own. Proxies now run with a PATH whose `open`
-   records the request instead of launching a browser, so the one login above is the only
-   place a tab can come from. A login opened in the background (a token that died while
-   sessions were running) is not reopened for `RELOGIN_COOLDOWN`; starting or reconnecting a
-   session can always open one when none is running.
-4. A broker without OAuth (Kite) never had a token to wait for, and a second session sat
-   behind the first's login gate until Claude gave up. It is now passed straight through.
+1. **One refresher.** The brokers rotate refresh tokens, so concurrent refreshes leave every
+   loser on a dead token. One refresher, under a cross-process lock, keeps the stored token
+   ahead of expiry; proxies re-read the store on every request and never refresh.
+2. **One detached login.** A browser login runs in one `mcp-remote-client` with a 15-minute
+   window, under a lock, so it outlives the session that started it (Claude's connect limit
+   and mcp-remote's 30-second auth limit are far shorter than typing an OTP), and no second
+   tab opens while it runs.
+3. **Proxies never open a tab.** They run with a PATH whose `open` records the request, so the
+   login above is the only place a tab can come from. A login opened in the background is not
+   reopened for `RELOGIN_COOLDOWN`; starting or reconnecting a session can always open one.
+4. **Non-OAuth brokers pass through.** Kite has no token to wait for.
 
 usage: broker-login.py URL MCP_REMOTE_VERSION [mcp-remote options]   (via bin/mcp-bridge.sh)
 """

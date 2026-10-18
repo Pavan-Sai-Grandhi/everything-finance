@@ -220,7 +220,7 @@ store=os.path.dirname(alerts._path(valid['id']))
 for name, content in (('broken','invalid: ['),('scalar','42'),('wrong-id','id: another\nstatus: open\n')):
     with open(os.path.join(store,name+'.yml'),'w') as fh:fh.write(content)
 inbox=alerts.manage('list')
-check('one bad legacy record cannot hide valid alerts',inbox['ok'] and inbox['data']['count']==1 and inbox['data']['alerts'][0]['id']==valid['id'],inbox)
+check('one unreadable record cannot hide valid alerts',inbox['ok'] and inbox['data']['count']==1 and inbox['data']['alerts'][0]['id']==valid['id'],inbox)
 check('each skipped record is named in gaps',len(inbox['gaps'])==3 and all('preserved' in g for g in inbox['gaps']),inbox['gaps'])
 check('corrupt originals are never deleted',all(os.path.isfile(os.path.join(store,n+'.yml')) for n in ('broken','scalar','wrong-id')))
 ambiguous=alerts.manage('add',subject_id='ABC',text='fixture',due='2030-01-01',metric='close',op='<',level=100)
@@ -242,4 +242,7 @@ clash = alerts.manage("add", subject_id="DEDUPB", due="2030-09-01", text="two", 
 check("a rejected alert operation explains why, not just the exception type",
       first["ok"] and not clash["ok"] and any("dedup key" in g for g in clash["gaps"]), clash)
 
+env = alerts.manage("evaluate", prices={"NOPE": {"close": 1}}, as_of="2099-01-01")
+check("evaluate runs the cheap triggers through the inbox tool", env["ok"] and "fired" in env["data"], env)
+check("evaluate without prices is a labelled gap", not alerts.manage("evaluate")["ok"])
 summary()

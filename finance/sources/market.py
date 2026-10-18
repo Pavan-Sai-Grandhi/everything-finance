@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Market-wide fetch — indices, valuation history, breadth, flows, macro.
 
 Where `prices.py` answers "what is this stock doing", this module answers "what is the

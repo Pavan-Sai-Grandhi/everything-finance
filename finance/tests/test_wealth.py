@@ -295,15 +295,19 @@ def test_scorecard_precision_and_coverage():
     check('policy red flags prevent sound-protection certification', wealth.protection_read(protection)['status'] == 'not_assessed')
     result = wealth.run({})['scorecard']
     check('scorecard exposes unassessed domain count', result['assessed_domains'] == 0 and result['total_domains'] == 5 and not result['coverage_complete'])
-    import json, subprocess, tempfile
-    script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'skills', 'wealth-manager', 'scripts', 'wealth.py')
+    import json, tempfile
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, 'picture.json')
         with open(path, 'w') as stream:
             json.dump({'profile': []}, stream)
-        completed = subprocess.run([sys.executable, script, '--input', path], capture_output=True, text=True)
-        check('CLI invalid shape yields no partial report', completed.returncode == 1 and not completed.stdout)
-        check('CLI validation error is structured', json.loads(completed.stderr)['ok'] is False)
+        env = wealth.report(path)
+        check('an invalid picture shape yields a labelled gap, no partial report',
+              env['ok'] is False and env['data'] == {} and env['gaps'], env)
+        with open(path, 'w') as stream:
+            json.dump({}, stream)
+        env = wealth.report(path, snapshot=True)
+        check('report runs the engine over the picture file',
+              env['ok'] and env['data']['mode'] == 'snapshot', env)
 
 
 def test_explicit_liability_reconciliation():

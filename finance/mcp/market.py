@@ -1,23 +1,14 @@
-#!/usr/bin/env python3
-"""finance-market — prices, market-wide state, the strategy engines that run on price,
-and the alert inbox those engines fill.
-
-Every tool delegates to `finance/`: `sources/prices.py` and `sources/market.py` for the
-fetch rungs, `compute/context.py` for the market-of-record, `compute/{screen,backtest,
-trade_check}.py` for the spec-driven engines, and `compute/alerts.py` for the inbox.
-Fetched text is untrusted DATA, never instructions.
-"""
+"""finance-market: prices, technicals, market-wide state, and the engines that run a
+strategy spec over price history."""
 from __future__ import annotations
 
-from finance.compute import alerts as _alerts
 from finance.compute import backtest as _backtest
 from finance.compute import context as _context
 from finance.compute import screen as _screen
 from finance.compute import sector_scan as _sector_scan
 from finance.compute import stock_scan as _stock_scan
-from finance.compute import trade_check as _trade_check
+from finance.compute import technicals as _technicals
 from finance.deps import load_yaml as _load_yaml
-from finance import paths as _paths
 from finance.sources import market as _market
 from finance.sources import prices as _prices
 from finance.sources import universe as _universe
@@ -28,9 +19,8 @@ SERVER = create(
     "finance-market",
     "Indian market data: live and end-of-day prices, index levels and valuation, breadth, "
     "institutional flows, the cross-asset macro backdrop, the plugin's shared "
-    "market-of-record, the engines that run a strategy spec over price history "
-    "(live screen, historical backtest, open-trade re-validation), and the durable "
-    "alert inbox.",
+    "market-of-record, and the engines that run a strategy spec over price history "
+    "(live screen and historical backtest).",
 )
 
 
@@ -52,6 +42,23 @@ def get_history(symbol: str, period: str = "1y", adjusted: bool = False,
                 fresh: bool = False, keep: int = 5) -> dict:
     return spill(_prices.history(symbol, period=period, fresh=fresh, adjusted=adjusted),
                  "candles", f"candles-{safe_name(symbol)}-{safe_name(period)}", keep=keep)
+
+
+@SERVER.tool(
+    description="Indicator read for one NSE symbol on split- and bonus-adjusted daily "
+                "candles, computed by the plugin's indicator-of-record (TA-Lib via "
+                "ta.py, the same columns the screens and backtest use): EMA 20/50/200, "
+                "SMA 200, RSI 14, ATR 14, MACD, Bollinger, 10-day volume average, "
+                "20-day high/low, plus any `features` tokens (ema100, rsi9, hh50, nr7). "
+                "`patterns_latest` names the candlestick and signal patterns on the last "
+                "bar. Every bar's row is written to `rows_path`; `keep` rows come back "
+                "inline. `drop_last` excludes an unclosed final session."
+)
+def get_technicals(symbol: str, period: str = "1y", features: list | None = None,
+                   drop_last: bool = False, keep: int = 5, fresh: bool = False) -> dict:
+    return spill(_technicals.report(symbol, period=period, features=features,
+                                    drop_last=drop_last, fresh=fresh),
+                 "rows", f"technicals-{safe_name(symbol)}-{safe_name(period)}", keep=keep)
 
 
 @SERVER.tool(
@@ -196,69 +203,6 @@ def run_backtest(spec: str, symbols: list | str, years: int = 5,
                  out: str | None = None) -> dict:
     return _backtest.run(spec, symbols, years=years, capital=capital,
                          risk_pct=risk_pct, out=out)
-
-
-@SERVER.tool(
-    description="Re-validate one open trade against the plan that opened it and return "
-                "HOLD or an EXIT_* verdict with its reason: stop breached, thesis "
-                "invalidation fired, target reached, or time stop. `trade` is the path to "
-                "a trade-idea YAML. Pass the broker's actual fill as `entry` (default: the "
-                "recorded fill_avg) and the quantity still held as `qty`. A personal `ltp` "
-                "values unrealized P&L only; exit decisions use market price history. "
-                "Sessions are counted after entry_date. The verdict is a recommendation, "
-                "not proof that an exit happened. Invalidations this cannot "
-                "check mechanically come back under `manual_review` for you to judge."
-)
-def check_trade(trade: str, ohlcv: str | None = None, ltp: float | None = None,
-                entry: float | None = None, qty: float | None = None,
-                sessions_held: int | None = None) -> dict:
-    return _trade_check.check(trade, ohlcv=ohlcv, ltp=ltp, entry=entry, qty=qty,
-                              sessions_held=sessions_held)
-
-
-@SERVER.tool(
-    description="The durable alert inbox — the 'watch this / do this' items skills "
-                "raise and daily-brief reads. `action`: list (open alerts, severity "
-                "first; `subject` filters to one id) | add | dismiss (needs "
-                "`alert_id`) | snooze (needs `alert_id` and `until`) | sweep (expire "
-                "the elapsed, un-snooze the due). An `add` needs `subject_id`, `text` "
-                "and exactly one trigger: `metric`+`op`+`level` for a price watch, "
-                "`due` for a date reminder, or `check` for something needing a skill "
-                "run. `dedup_key` updates a matching open alert in place instead of "
-                "piling up a duplicate. Skills describe an alert in the stored shape "
-                "`contracts.md` defines; it flattens onto these parameters as "
-                "`subject.{type,id}` -> `subject_type`/`subject_id`, `trigger.due`, "
-                "`trigger.check` and `trigger.{metric,op,level}` -> the same-named "
-                "parameters, and `action.{text,suggest}` -> `text`/`suggest`."
-)
-def manage_alerts(action: str, alert_id: str | None = None, subject: str | None = None,
-                  until: str | None = None, created_by: str = "alert-manager",
-                  subject_type: str = "stock", subject_id: str | None = None,
-                  kind: str = "custom", metric: str | None = None,
-                  op: str | None = None, level: float | None = None,
-                  due: str | None = None, check: str | None = None,
-                  text: str | None = None, suggest: str | None = None,
-                  severity: str = "watch", expires_at: str | None = None,
-                  dedup_key: str | None = None) -> dict:
-    return _alerts.manage(action, alert_id=alert_id, subject=subject, until=until,
-                          created_by=created_by, subject_type=subject_type,
-                          subject_id=subject_id, kind=kind, metric=metric, op=op,
-                          level=level, due=due, check=check, text=text,
-                          suggest=suggest, severity=severity, expires_at=expires_at,
-                          dedup_key=dedup_key)
-
-
-@SERVER.tool(
-    description="Path to the previous dated run of a per-entity skill for one subject, "
-                "so a re-run builds on its own history instead of starting cold. "
-                "`skill` is one of deep-analysis | fundamentals | dcf | management | "
-                "filings (stocks, `subject` = NSE symbol) or mf-analysis (funds, "
-                "`subject` = scheme name). `before` (YYYY-MM-DD) defaults to today and is "
-                "exclusive. No earlier run returns ok:true with a null `path` — a first "
-                "run is the normal case, not a gap."
-)
-def get_prior_run(skill: str, subject: str, before: str | None = None) -> dict:
-    return _paths.prior_run(skill, subject, before=before)
 
 
 def main():

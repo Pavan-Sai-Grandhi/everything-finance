@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Look-through portfolio metrics — the forward-looking pillar of mf-analysis.
 
 A fund does not publish its own P/E, P/B or ROE, but it does publish what it owns.

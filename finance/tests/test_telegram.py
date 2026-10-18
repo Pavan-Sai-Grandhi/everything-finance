@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from finance import telegram
+from finance.report import telegram
 from finance.tests.harness import check, run
 
 
@@ -27,6 +27,18 @@ def test_text_uses_private_nonretrying_transport():
         with mock.patch.object(telegram.transport,'request',return_value=('{"ok":false,"description":"fixture-token"}',None)):
             gap=telegram.send_text('fixture')
         check('provider failure cannot echo credentials',bool(gap) and 'fixture-token' not in gap)
+
+
+def test_send_text_file_reports_outcome_in_envelope():
+    import tempfile
+    with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False) as stream:
+        stream.write('fixture brief')
+    with mock.patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN':'fixture-token','TELEGRAM_CHAT_ID':'fixture-chat'}), \
+            mock.patch.object(telegram.transport,'request',return_value=('{"ok": true}',None)):
+        env = telegram.send_text_file(stream.name)
+    check('a confirmed send is ok', env['ok'] and env['data']['sent'] is True, env)
+    check('an unreadable file is a labelled gap', not telegram.send_text_file('/nonexistent/brief.txt')['ok'])
+    os.unlink(stream.name)
 
 
 if __name__ == '__main__':

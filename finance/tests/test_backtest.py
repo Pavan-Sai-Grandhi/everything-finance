@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from finance.compute import backtest
 from finance.sources import universe
 from finance.tests.harness import approx, check, run
+from finance.tests import fixtures  # noqa: E402
 
 pd = backtest.pd
 
@@ -150,8 +151,8 @@ def test_load_ohlcv_source_contract():
 
 
 def test_run_symbol_wiring():
-    df = backtest._synth("up")
-    trades = backtest.run_symbol(df, backtest.SELFTEST_SPEC, "SYNTH", 500000, 1.0)["trades"]
+    df = fixtures.trend_frame("up")
+    trades = backtest.run_symbol(df, fixtures.BACKTEST_SPEC, "SYNTH", 500000, 1.0)["trades"]
     check("an uptrend fires trades", len(trades) > 0, f"got {len(trades)}")
     if not trades:
         return
@@ -160,7 +161,7 @@ def test_run_symbol_wiring():
               "exit_date", "exit", "reason", "pnl", "r_multiple", "year"):
         check(f"trade carries {f}", f in t0)
     check("symbol tagged", t0["symbol"] == "SYNTH")
-    check("strategy tagged", t0["strategy"] == backtest.SELFTEST_SPEC["name"])
+    check("strategy tagged", t0["strategy"] == fixtures.BACKTEST_SPEC["name"])
     check("qty is a whole number of shares", isinstance(t0["qty"], int) and t0["qty"] > 0)
     check("stop sits below entry on a long", t0["sl"] < t0["entry"])
     check("exit is not before entry", all(t["exit_date"] >= t["entry_date"] for t in trades))
@@ -190,7 +191,7 @@ def test_run_symbol_wiring():
               approx(t["pnl"], expected, tol), f"net {t['pnl']} vs expected {expected:.2f}")
         check(f"net is worse than gross ({t['entry_date']})", t["pnl"] < gross)
 
-    ts = backtest.SELFTEST_SPEC["exit"]["time_stop_sessions"]
+    ts = fixtures.BACKTEST_SPEC["exit"]["time_stop_sessions"]
     timed = [t for t in trades if t["reason"] == "TIME"]
     check("the time-stop fires", len(timed) > 0,
           f"reasons={sorted({t['reason'] for t in trades})}")
@@ -201,8 +202,8 @@ def test_run_symbol_wiring():
 
 
 def test_run_symbol_downtrend():
-    df = backtest._synth("down")
-    trades = backtest.run_symbol(df, backtest.SELFTEST_SPEC, "SYNTH", 500000, 1.0)["trades"]
+    df = fixtures.trend_frame("down")
+    trades = backtest.run_symbol(df, fixtures.BACKTEST_SPEC, "SYNTH", 500000, 1.0)["trades"]
     check("a long-only pullback spec takes no longs in a downtrend",
           len(trades) == 0, f"got {len(trades)}")
 
@@ -210,7 +211,7 @@ def test_run_symbol_downtrend():
 def test_run_symbol_stop_out():
     """The stop path, end to end: sizing, stop placement and costs at once."""
     capital, risk_pct = 500000.0, 1.0
-    trades = backtest.run_symbol(crash_frame(), backtest.SELFTEST_SPEC, "SYNTH",
+    trades = backtest.run_symbol(crash_frame(), fixtures.BACKTEST_SPEC, "SYNTH",
                                  capital, risk_pct)["trades"]
     stopped = [t for t in trades if t["reason"] == "SL"]
     check("a crash takes out the stop", len(stopped) > 0,
@@ -236,10 +237,10 @@ def test_run_envelope():
     spec_path = os.path.join(tmp, "selftest.yml")
     yaml = backtest.ta._need("yaml", "pyyaml")
     with open(spec_path, "w") as fh:
-        yaml.safe_dump(backtest.SELFTEST_SPEC, fh)
+        yaml.safe_dump(fixtures.BACKTEST_SPEC, fh)
 
     orig = backtest.load_ohlcv
-    backtest.load_ohlcv = lambda sym, years: (backtest._synth("up"), [])
+    backtest.load_ohlcv = lambda sym, years: (fixtures.trend_frame("up"), [])
     try:
         out = os.path.join(tmp, "report")
         env = backtest.run(spec_path, ["SYNTH1", "SYNTH2"], years=2, capital=500000,
@@ -278,14 +279,14 @@ def test_run_degrades():
     spec_path = os.path.join(tmp, "selftest.yml")
     yaml = backtest.ta._need("yaml", "pyyaml")
     with open(spec_path, "w") as fh:
-        yaml.safe_dump(backtest.SELFTEST_SPEC, fh)
+        yaml.safe_dump(fixtures.BACKTEST_SPEC, fh)
 
     orig = backtest.load_ohlcv
 
     def one_bad(sym, years):
         if sym == "BAD":
             raise RuntimeError("no data for BAD")
-        return backtest._synth("up"), []
+        return fixtures.trend_frame("up"), []
 
     try:
         backtest.load_ohlcv = one_bad
@@ -296,7 +297,7 @@ def test_run_degrades():
               any("BAD" in g for g in env["gaps"]), f"gaps={env['gaps']}")
         check("the good symbol still produced trades", env["data"]["trades"] > 0)
 
-        backtest.load_ohlcv = lambda sym, years: (backtest._synth("down"), [])
+        backtest.load_ohlcv = lambda sym, years: (fixtures.trend_frame("down"), [])
         env = backtest.run(spec_path, ["SYNTH1"], years=2, out=os.path.join(tmp, "r2"))
         check("no trades -> not ok", env["ok"] is False)
         check("no trades is called out as untested",
@@ -326,12 +327,12 @@ def test_simulated_equity_accounting():
         engine.append(stats)
         return stats
     Backtest.run = capture
-    backtest.load_ohlcv = lambda sym, years: (backtest._synth("down") if sym == "IDLE" else crash_frame(), [])
+    backtest.load_ohlcv = lambda sym, years: (fixtures.trend_frame("down") if sym == "IDLE" else crash_frame(), [])
     try:
         with tempfile.TemporaryDirectory() as tmp:
             spec_path = os.path.join(tmp, "spec.yml")
             with open(spec_path, "w") as stream:
-                backtest.ta._need("yaml", "pyyaml").safe_dump(backtest.SELFTEST_SPEC, stream)
+                backtest.ta._need("yaml", "pyyaml").safe_dump(fixtures.BACKTEST_SPEC, stream)
             env = backtest.run(spec_path, ["ONE", "TWO", "IDLE"], capital=500000, out=os.path.join(tmp, "report"))
             s = env["data"]["summary"]
             expected_return = sum(float(stats["Return [%]"]) for stats in engine) / 3
@@ -359,10 +360,10 @@ def test_exit_year_and_trade_order():
 
 
 def test_gapped_fill_uses_actual_risk():
-    frame = backtest._synth("up")
+    frame = fixtures.trend_frame("up")
     frame["Open"] = frame["Close"].shift(1).fillna(frame["Close"].iloc[0]) * 1.01
     frame["High"] = frame[["High", "Open"]].max(axis=1) + 1
-    tested = backtest.run_symbol(frame, backtest.SELFTEST_SPEC, "GAP", 500000, 1.0)
+    tested = backtest.run_symbol(frame, fixtures.BACKTEST_SPEC, "GAP", 500000, 1.0)
     check("gap fixture produces trades", bool(tested["trades"]))
     for t in tested["trades"]:
         expected = t["pnl"] / ((t["entry"] - t["initial_stop"]) * t["qty"])
@@ -373,7 +374,7 @@ def test_run_input_and_output_boundaries():
     with tempfile.TemporaryDirectory() as tmp:
         spec_path = os.path.join(tmp, "spec.yml")
         with open(spec_path, "w") as stream:
-            backtest.ta._need("yaml", "pyyaml").safe_dump(backtest.SELFTEST_SPEC, stream)
+            backtest.ta._need("yaml", "pyyaml").safe_dump(fixtures.BACKTEST_SPEC, stream)
         for key, value in (("capital", float("nan")), ("capital", 0), ("years", 0), ("years", 1.5), ("risk_pct", 2)):
             try:
                 with mock.patch.object(backtest, "load_ohlcv", side_effect=AssertionError("unexpected fetch")) as loader:
@@ -381,7 +382,7 @@ def test_run_input_and_output_boundaries():
                 check(f"invalid {key}={value} rejects before data fetch", not loader.called and not env["ok"] and any("input" in g for g in env["gaps"]), env)
             except Exception as exc:
                 check(f"invalid {key}={value} is an envelope, not a crash", False, str(exc))
-        with mock.patch.object(backtest, "load_ohlcv", return_value=(backtest._synth("up"), [])):
+        with mock.patch.object(backtest, "load_ohlcv", return_value=(fixtures.trend_frame("up"), [])):
             with mock.patch.object(backtest.universe, "resolve_symbols", return_value=(["ONE"], ["fixture stale universe"])):
                 degraded = backtest.run(spec_path, "named-basket", out=os.path.join(tmp, "degraded"))
             check("backtest keeps the universe authority's gaps", "fixture stale universe" in degraded["gaps"] and degraded["data"]["config"]["symbols_resolved"] == ["ONE"])
@@ -390,7 +391,7 @@ def test_run_input_and_output_boundaries():
             before = open(path, "rb").read()
             second = backtest.run(spec_path, ["TWO"], out=os.path.join(tmp, "report"))
             check("rerun preserves previous trade evidence", first["data"]["trades_path"] != second["data"]["trades_path"] and open(path, "rb").read() == before)
-        with mock.patch.object(backtest, "load_ohlcv", return_value=(backtest._synth("up"), [])), mock.patch.object(backtest.os, "replace", side_effect=OSError("fixture disk failure")):
+        with mock.patch.object(backtest, "load_ohlcv", return_value=(fixtures.trend_frame("up"), [])), mock.patch.object(backtest.os, "replace", side_effect=OSError("fixture disk failure")):
             try:
                 env = backtest.run(spec_path, ["ONE"], out=os.path.join(tmp, "failed"))
                 check("output failure preserves computed metrics and labels gap", env["ok"] and env["data"]["summary_path"] is None and bool(env["gaps"]))
@@ -398,17 +399,17 @@ def test_run_input_and_output_boundaries():
                 check("output failure is an envelope, not a crash", False, str(exc))
 
 def test_last_bar_signal_cannot_fill_without_a_next_bar():
-    frame = backtest._synth("up")
+    frame = fixtures.trend_frame("up")
     frame.loc[frame.index[-1], "Volume"] = 1000000
-    spec = {**backtest.SELFTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
+    spec = {**fixtures.BACKTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
     result = backtest.run_symbol(frame, spec, "LAST", 500000, 1.0)
     check("last-bar signal has no next-open execution", result["equity"].iloc[-1] == 500000, result["equity"].iloc[-1])
 
 
 def test_unfinished_position_is_marked_not_realized():
-    frame = backtest._synth("up")
+    frame = fixtures.trend_frame("up")
     frame.loc[frame.index[-2], "Volume"] = 1000000
-    spec = {**backtest.SELFTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
+    spec = {**fixtures.BACKTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
     result = backtest.run_symbol(frame, spec, "OPEN", 500000, 1.0)
     check("real next-open fill remains open at end", result["open_trades"] == 1, result)
     check("unclosed trade does not enter realized sample", result["trades"] == [])
@@ -419,7 +420,7 @@ def test_backtest_loader_uses_source_cache_not_undated_csv():
     import unittest.mock as mock
     from finance.sources import prices
     with tempfile.TemporaryDirectory() as cache:
-        stale, current = backtest._synth("up"), backtest._synth("down")
+        stale, current = fixtures.trend_frame("up"), fixtures.trend_frame("down")
         stale.to_csv(os.path.join(cache, "SYNTH_2y.csv"))
         with mock.patch.object(prices, "history_df", return_value=(current, ["fixture history degradation"])) as source:
             result = backtest.load_ohlcv("SYNTH", 2)
@@ -435,9 +436,9 @@ def test_backtest_warmup_matches_live_atr_requirement():
     except ValueError:
         floored = True
     check("a nonfinite ATR cannot silently skip the stop floor", floored)
-    frame = backtest._synth("up")
+    frame = fixtures.trend_frame("up")
     frame.loc[:, "Volume"] = 1000000
-    spec = {**backtest.SELFTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
+    spec = {**fixtures.BACKTEST_SPEC, "entry": {"signal": ["Volume > 999999"]}}
     trades = backtest.run_symbol(frame, spec, "WARM", 500000, 1.0)["trades"]
     first = str(frame.index[14].date())
     check("no backtest entry before ATR14 exists (live would skip)",

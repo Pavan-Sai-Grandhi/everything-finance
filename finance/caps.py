@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """SEBI market-cap classification — the one definition of the tiers.
 
 SEBI classifies by market-cap RANK, not by absolute size: top 100 large, 101-250 mid,

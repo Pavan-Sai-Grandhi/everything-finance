@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Document fetch — a company's annual report and concall as cached local text.
 
 screener.in's `#documents` section is the index; the documents themselves are published by
@@ -100,9 +99,9 @@ def _key(url):
 
 
 def _cache_paths(url):
-    """(downloaded source, extracted text, row metadata) for one document URL."""
+    """(text stem, row metadata) for one document URL; the text file adds its content hash."""
     base = os.path.join(paths.cache_dir("documents"), _key(url))
-    return base + ".src", base + ".txt", base + ".json"
+    return base, base + ".json"
 
 
 def _html_to_text(raw):
@@ -288,7 +287,7 @@ def _document(link, kind, fresh, gaps):
         gaps.append(f"{label}: refused a link that is not a named public web host ({url[:80]})")
         return None
 
-    _, legacy_txt, meta = _cache_paths(url)
+    text_stem, meta = _cache_paths(url)
     directory = os.path.dirname(meta)
     if not fresh and os.path.isfile(meta):
         try:
@@ -312,7 +311,7 @@ def _document(link, kind, fresh, gaps):
                     return row
                 gaps.append(f"{label}: cached text failed its content hash; attempting a fresh download")
         except (OSError, ValueError, TypeError, KeyError):
-            pass  # Invalid or legacy metadata triggers a fresh isolated extraction.
+            pass  # Unverifiable metadata triggers a fresh isolated extraction.
 
     try:
         with tempfile.TemporaryDirectory(prefix="document-", dir=directory) as work:
@@ -334,7 +333,7 @@ def _document(link, kind, fresh, gaps):
             def write(stream):
                 with open(extracted, encoding="utf-8") as source:
                     shutil.copyfileobj(source, stream)
-            txt = spine.publish_evidence(os.path.splitext(legacy_txt)[0], ".txt", write)
+            txt = spine.publish_evidence(text_stem, ".txt", write)
         row = {"kind": kind, "label": label, "url": url, "publisher": transport._host(url),
                "text_path": txt, "text_chars": chars, "text_lines": lines,
                "extracted_by": method, "outline": outline}

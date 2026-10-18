@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Alert schema, producers, consumers and invariants: `finance/contracts.md`
 ("Artifact: alert"). This module owns the storage, dedup and cheap evaluation.
 
@@ -243,11 +242,10 @@ def evaluate_cheap(alerts, market_data):
     skill run). Fired alerts are marked `status: triggered` on disk; returns the list
     of fired alerts.
 
-    market_data: {"date": "YYYY-MM-DD", "prices": {SYMBOL: {metric: value, ...}}}
-    (a bare {SYMBOL: {...}} mapping is also accepted, with date defaulting to today).
+    market_data: {"date": "YYYY-MM-DD", "prices": {SYMBOL: {metric: value, ...}}}.
     """
     today = _date(market_data.get("date") or _today())
-    prices = market_data.get("prices", market_data)
+    prices = market_data.get("prices") or {}
     fired = []
     current = {a["id"]: a for a in load_all()}
     for supplied in alerts:
@@ -302,14 +300,15 @@ def sweep(gaps=None):
     return {"expired": expired, "unsnoozed": unsnoozed}
 
 
-_ACTIONS = ("list", "add", "dismiss", "snooze", "sweep")
+_ACTIONS = ("list", "add", "dismiss", "snooze", "sweep", "evaluate")
 
 
 def _manage(action, alert_id=None, subject=None, until=None, created_by="alert-manager",
            subject_type="stock", subject_id=None, kind="custom", metric=None, op=None,
            level=None, due=None, check=None, text=None, suggest=None, severity="watch",
-           expires_at=None, dedup_key=None):
-    """Every inbox operation in the shared envelope: list | add | dismiss | snooze | sweep.
+           expires_at=None, dedup_key=None, prices=None, as_of=None):
+    """Every inbox operation in the shared envelope: list | add | dismiss | snooze | sweep |
+    evaluate.
 
     `list` comes back severity-first (act before watch before info) then by subject, so
     every consumer reads the same order. An unknown action, a missing alert or an
@@ -322,6 +321,14 @@ def _manage(action, alert_id=None, subject=None, until=None, created_by="alert-m
                                   a.get("subject", {}).get("id") or ""))
         return spine.envelope(True, _SOURCE,
                               {"action": action, "count": len(items), "alerts": items}, gaps)
+
+    if action == "evaluate":
+        if not isinstance(prices, dict):
+            return spine.envelope(False, _SOURCE, {"action": action},
+                                  ["evaluate needs `prices` as {SYMBOL: {metric: value}}"])
+        fired = evaluate_cheap(load_open(subject, gaps), {"date": as_of, "prices": prices})
+        return spine.envelope(True, _SOURCE,
+                              {"action": action, "count": len(fired), "fired": fired}, gaps)
 
     if action == "sweep":
         return spine.envelope(True, _SOURCE, dict(sweep(gaps), action=action), gaps)

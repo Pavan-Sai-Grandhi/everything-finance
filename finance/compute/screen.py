@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """discover screening + signal engine.
 
 discover is strategy-AGNOSTIC: it runs whatever active, regime-fitting spec it is handed
@@ -83,13 +82,6 @@ def load_spec(path):
         return yaml.safe_load(f)
 
 
-def resolve_symbols(symbols):
-    """The universe as callers express it — a list, comma-string, file path or named
-    universe — resolved by the one authority in `sources/universe.py`."""
-    from finance.sources import universe
-    return universe.resolve_symbols(symbols)[0]
-
-
 def run(spec, symbols=None, years=2, capital=500000, out=None):
     """The whole live screen in the shared data-spine envelope.
 
@@ -133,34 +125,3 @@ def run(spec, symbols=None, years=2, capital=500000, out=None):
         {"config": res["config"], "candidates": res["candidates"],
          "rejected_count": len(res["rejected"]), "report_path": path},
         gaps)
-
-
-def _synth(kind):
-    """Build a deterministic OHLCV frame: 'uptrend' passes an ema-pullback screen,
-    'downtrend' fails it."""
-    import numpy as np
-    n = 260
-    idx = pd.date_range("2023-01-02", periods=n, freq="B")
-    if kind == "uptrend":
-        base = np.linspace(100, 200, n)
-        close = base + np.sin(np.arange(n) / 6) * 3
-    else:
-        base = np.linspace(200, 100, n)
-        close = base + np.sin(np.arange(n) / 6) * 3
-    close = pd.Series(close, index=idx)
-    high = close + 1.5
-    low = close - 1.5
-    op = close.shift(1).fillna(close.iloc[0])
-    vol = pd.Series([1000] * n, index=idx)
-    vol.iloc[-1] = 2000  # last-bar volume surge
-    return pd.DataFrame({"Open": op, "High": high, "Low": low,
-                         "Close": close, "Volume": vol}, index=idx)
-
-
-SELFTEST_SPEC = {
-    "name": "selftest-ema-pullback", "archetype": "pullback",
-    "entry": {"signal": ["ema50_rising", "Close > ema50", "rsi14 between 40 and 100"],
-              "trigger": "synthetic test condition: rising EMA50, close above EMA50 and RSI 40–100"},
-    "exit": {"stop": "ema50_minus_2atr", "target": "next_resistance", "min_rrr": 1.5},
-    "sizing": {"risk_per_trade_pct": 1.0},
-}

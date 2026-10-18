@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Investment stock scorer — the scored shortlist tier stocks were missing.
 
 The invest·stocks counterpart to `compute/fund_scan.py`: take a business-quality query,

@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 """Lazy third-party imports, in one place.
 
-Skill scripts are run directly by a user, not installed, so a missing dependency has to
-self-heal rather than traceback. Kept separate from `ta.py` so a script needing only PyYAML
-does not drag in pandas, numpy and the TA-Lib native bootstrap.
+The servers run in whichever interpreter the launcher resolved, so a missing package
+self-heals rather than tracebacks. Separate from `ta.py` so a module needing only PyYAML
+does not drag in pandas, numpy and the TA-Lib bootstrap.
 """
 from contextlib import contextmanager
 import fcntl

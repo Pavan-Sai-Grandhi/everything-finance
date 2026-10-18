@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic insurance math for insurance-advisor.
 
 Every figure the skill reports as "computed" comes through here rather than being

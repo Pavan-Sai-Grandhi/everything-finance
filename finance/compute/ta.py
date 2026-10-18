@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Shared technical-analysis primitives.
 
 One definition of every indicator and candlestick pattern, imported by every skill that
@@ -399,7 +398,6 @@ FEATURES = {
     # bar / candlestick patterns
     "inside_bar":        inside_bar,
     "outside_bar":       outside_bar,
-    "engulfing":         bullish_engulfing,
     "bullish_engulfing": bullish_engulfing,
     "bearish_engulfing": bearish_engulfing,
     "hammer":            hammer,

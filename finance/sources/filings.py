@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Exchange-filings fetch + materiality classification.
 
 `filings-watch` wraps this with the judgement/report; `daily-brief` calls it for the
@@ -25,7 +24,7 @@ from finance import spine
 from finance import transport
 from finance.spine import envelope as _envelope, f as _f, norm_symbol as _norm_symbol
 
-# Keep this taxonomy in sync with references/reference.md.
+# The tiers methods/filings.md describes; change both together.
 ACT_ON = [
     ("results", "financial results / earnings"),
     ("board meeting", "board meeting (often results/dividend)"),

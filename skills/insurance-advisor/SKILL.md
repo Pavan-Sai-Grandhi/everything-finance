@@ -7,60 +7,65 @@ allowed-tools: WebFetch, WebSearch, Read, Write, mcp__finance-personal__run_insu
 
 # Insurance Advisor
 
-Always load `references/reference.md` (shared framework, interview discipline, web-research guardrails, compliance close) **plus** the relevant per-type reference — `references/term.md`, `references/health.md`, or `references/vehicle.md`. Each type is judged on different criteria; those files carry them.
+Term life, health and vehicle. Insurer and IRDAI pages are reached with `WebFetch` and
+`WebSearch`; no data tool covers insurance products, and the user's own policies come from what
+they paste or the PDFs they point at. Every computed figure comes from `run_insurance_math`; each
+input is a sourced figure or a stated assumption, and every assumption lands in the report's
+Assumptions table.
 
-**Sources for this skill only:** insurer and IRDAI pages via `WebFetch` / `WebSearch`. No data tool in this plugin covers insurance products, and no personal MCP is read here — the user's own policies come from what they paste or the PDFs they point at.
+**Method:** `methods/insurance/framework.md` plus the type's file: `term.md`, `health.md` or
+`vehicle.md` in the same directory.
 
-All computed figures come from `run_insurance_math` — call it, don't eyeball. Pass the calculation's keyword inputs as `inputs`; each one is a sourced figure or a stated assumption, and every assumption lands in the report's Assumptions table.
+## Route the request
 
-## Route the intent first
+- "help me buy / compare / which policy / how much cover" → **Advise**.
+- "is my cover enough / review my policies / should I keep this ULIP" → **Audit**.
+- "does my policy cover X / explain this clause / portability / renewal" → **Ask**.
 
-Read the user's phrasing and pick the mode:
-- **"help me buy / compare / which policy / how much cover"** → **Advise**.
-- **"is my cover enough / review my policies / should I keep this ULIP"** → **Audit**.
-- **"does my policy cover X / explain this clause / portability / renewal"** → **Ask**.
+Identify the type too. If either is ambiguous, ask one short question, then load the method files.
 
-Also identify the **type** (term / health / vehicle) from the request. If the mode is ambiguous, ask which of the three the user wants (one short question). If the type is unclear, ask that too — then proceed. Load the shared reference + the per-type reference for the chosen type.
+## Advise
 
----
+1. **Interview**: the type's questions, one at a time. Missing facts are gaps, not zero.
+2. **Size the need** with `run_insurance_math`:
+   - term: `term_cover_need` with every input explicit (`annual_income`, `income_multiple`,
+     `outstanding_loans`, `education_corpus`, `annual_expenses`, `years_to_independence`,
+     `existing_corpus`, `existing_cover`). The multiple and the goals are scenario assumptions
+     you explain. A positive support horizon needs annual expenses; without them that calculation
+     is a gap.
+   - health: `health_sum_insured` with `base_target`, `total_target`, `deductible`,
+     `personal_cover` and `employer_cover`, the targets labelled as scenarios and the deductible
+     and covers taken from the policy documents. Keep employer cover apart from personal cover. A
+     gap figure says nothing about whether a claim would be paid.
+   - vehicle: `idv_ncb_sanity` on the quoted IDV and NCB, with discontinued-model status. A null
+     result is settled from the policy, never assumed to pass; NCB is checked only with both the
+     claim-free years and the quoted bonus.
+3. **Research candidates** under the framework's sourcing rules.
+4. **Score** each against the type's weighted checklist.
+5. **Shortlist exactly two**, compare them side by side on the type's criteria, make a reasoned
+   pick, and say in one line what would change it.
+6. **Save** to `artifacts/insurance/<type>/<YYYY-MM-DD>.md`. End with the compliance close.
 
-## Mode: Advise (buy) — primary flow
+## Audit
 
-Type-aware interview → size the need → research candidates → score → **shortlist exactly 2** → side-by-side.
+- Read the current policies the user supplies.
+- Compute need against cover with `run_insurance_math` and report the ₹ gap per category in a
+  current-vs-required table, with the Assumptions table beside it.
+- Red flags from the type's file, each tied to the clause in the user's own document.
+- For an in-force endowment or ULIP held "for investment", `marginal_irr_continue` (forgo the
+  surrender value, pay the remaining premiums, collect at maturity), compared with a
+  `hurdle_rate` only when one is supplied with its source. The IRR alone never decides surrender:
+  weigh the cover, replacement availability, guarantees, charges and tax. Label marginal against
+  whole-policy IRR.
+- Three to five prioritised actions with rough premium magnitudes.
+- Save to `artifacts/insurance/<YYYY-MM-DD>.md`. End with the compliance close.
+- **As wealth-manager's protection leg**: open the report with the `protection-block`
+  (`finance/contracts.md` → *Convention: protection-leg digest*), transcribed from the gap table
+  and red flags above, and return that block plus the path.
 
-**1 — Interview.** Ask the per-type questions (see the type's reference), **one at a time**, conversationally. Carry on with the sections you have evidence for. Missing policy or household facts are **data gaps**, not zero. A forward scenario may use an assumption if you state its basis.
+## Ask
 
-**2 — Size the need** with `run_insurance_math`:
-- term → `term_cover_need` (larger of income-replacement and liability+goals; gap vs existing cover). Supply every input explicitly: `annual_income`, `income_multiple`, `outstanding_loans`, `education_corpus`, `annual_expenses`, `years_to_independence`, `existing_corpus`, and `existing_cover`. Explain the income multiple and goals as scenario assumptions. Use zero only for something known to be absent. A positive support horizon needs annual family expenses; if they are missing, report that calculation as a gap rather than setting the horizon to zero.
-- health → `health_sum_insured` with explicit `base_target`, `total_target`, `deductible`, `personal_cover`, and `employer_cover` (INR). Label the targets as scenarios and explain them from the interview and research. Take the deductible and existing cover from the policy documents; missing values are gaps, not zero. The tool returns `base_gap`, `top_up_target`, `deductible_gap` (against current personal cover) and `planned_deductible_gap` (against the proposed base). Keep employer cover separate from personal cover. A gap figure says nothing about whether a claim would be paid.
-- vehicle → `idv_ncb_sanity` on the current/quoted IDV & NCB; supply discontinued-model status. For an older or discontinued vehicle the IDV check returns null with a gap; settle it from the policy or agreed-value document, not by assuming a pass. NCB is checked when both claim-free years and the quoted bonus are given; otherwise it is unknown, not zero.
-
-**3 — Research candidates** under the sourcing guardrails in `reference.md` (IRDAI authoritative, every figure sourced and dated, premiums indicative, too-few-candidates handling).
-
-**4 — Score** each candidate against the type's weighted checklist in its reference.
-
-**5 — Shortlist exactly 2** and render a **side-by-side comparison** on the type-specific criteria, then a **reasoned pick** and a one-line **"what would change the call."**
-
-**6 — Save** to `paths.insurance_report_path(<type>)` → `insurance/<type>/YYYY-MM-DD.md`. Text-first (no HTML). End with the compliance close.
-
----
-
-## Mode: Audit (existing coverage)
-
-- Gather current policies (from the user or policy PDFs they point to — read them).
-- Compute **need vs have** with `run_insurance_math`; report the **₹ gap per category** in a current-vs-required table.
-- **Assumptions table** — every value assumed, with the figure used.
-- **Policy-level red flags** from the relevant per-type reference, each tied to the clause in the user's own document.
-- For an in-force **endowment/ULIP** held "for investment": compute the **marginal IRR of *continuing*** (`marginal_irr_continue` — forgo surrender value + pay remaining premiums → maturity) and compare it with a `hurdle_rate` only if one is supplied with a source or reason. Without one, report the IRR and note the missing comparison. The IRR alone does not decide surrender; also weigh the cover, whether replacement cover is available, guarantees, charges and tax. Label marginal-IRR vs whole-policy-IRR.
-- 3–5 prioritised actions with rough premium magnitudes.
-- Save to `paths.report_path("insurance")` → `insurance/YYYY-MM-DD.md`. End with the compliance close.
-- **As wealth-manager's protection leg:** open the report with the `protection-block` digest, whose shape `finance/contracts.md` owns. Its fields are the need-vs-have gap table and red-flag list already computed above, transcribed — nothing extra to compute. Return that block plus the report path, never the body.
-
----
-
-## Mode: Ask (Q&A on a held policy)
-
-- Read the user's policy PDF (they point to it) and answer the specific question — does it cover X, what does this clause mean, portability, renewal call — grounded in the relevant per-type reference.
-- Quote the policy wording you're relying on; separate **what the document says** from **general best-practice**. If the document doesn't settle it, say so and name what to check with the insurer — never fabricate a term.
-- Short answers stay conversational (no artifact needed); a full policy review can be saved via `paths.report_path("insurance")`. End with the compliance close.
-
+Read the policy the user points to and answer the specific question, quoting the wording relied
+on. Keep what the document says apart from general practice. If the document does not settle it,
+say so and name what to ask the insurer; never invent a term. A short answer stays in chat; a full
+review may be saved to `artifacts/insurance/<YYYY-MM-DD>.md`. End with the compliance close.

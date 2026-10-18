@@ -23,7 +23,3 @@ Copy a seed into `finance.paths.state_dir("strategies")` and keep it `draft` unt
 TradingView filters use SMAs and local filters use EMAs, so the local path is a different screen, not an exact fallback.
 
 The Nifty 200-EMA gate is market context, not weekly confirmation for the stock. No seed has a weekly-timeframe rule yet; adding one needs completed weekly bars computed the same way live and in the backtest.
-
-## Removed seed
-
-`soic-crossperiod-screener-in` was removed because screener.in is approved for documents only. Rewrite any copy of it on Tickertape, and say so where a cross-period condition becomes a point-in-time one.

@@ -80,7 +80,9 @@ def test_malformed_envelopes_cannot_pass_or_crash():
         client.tools.return_value = ['run_insurance_math']
         client.call.return_value = envelope
         client.errlog = []
-        with mock.patch.object(smoke,'Client',return_value=client), mock.patch.object(smoke,'close'), contextlib.redirect_stdout(io.StringIO()):
+        only_insurance = {'personal': [c for c in smoke.CASES['personal'] if c[0] == 'run_insurance_math']}
+        with mock.patch.object(smoke,'Client',return_value=client), mock.patch.object(smoke,'close'), \
+                mock.patch.dict(smoke.CASES, only_insurance), contextlib.redirect_stdout(io.StringIO()):
             try:
                 result = smoke.run_server('personal',sys.executable,False,{})
             except Exception:

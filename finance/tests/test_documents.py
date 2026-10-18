@@ -399,11 +399,10 @@ def test_raw_source_deleted_after_conversion():
     def body(call, calls):
         env = call()
         for row in env["data"]["documents"]:
-            src, txt, meta = dz._cache_paths(row["url"])
             check(f"{row['kind']}: the extracted .txt is kept",
                   os.path.isfile(row["text_path"]), row["text_path"])
-            check(f"{row['kind']}: the raw .src download is deleted after conversion",
-                  not os.path.isfile(src), src)
+            leftovers = [n for n in os.listdir(os.path.dirname(row["text_path"])) if n.endswith(".src")]
+            check(f"{row['kind']}: the raw download is deleted after conversion", not leftovers, leftovers)
     _harness(body)
 
 
@@ -451,7 +450,7 @@ def test_undated_label_is_a_gap_not_a_silent_miscite():
     _harness(body, docs=docs, bodies={AR_URL: PDF_BYTES})
 
 
-def test_refresh_preserves_previously_returned_text():
+def test_refresh_preserves_text_already_returned():
     bodies={CC_URL:b"<p>Original transcript fixture.</p>"}
     def body(call,calls):
         first=call(annual_reports=0)["data"]["documents"][0]

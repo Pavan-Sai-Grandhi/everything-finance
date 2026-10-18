@@ -103,14 +103,6 @@ def test_resolve_writes_to_file_not_inline():
           open(env["data"]["universe_path"]).read().split() == ["RELIANCE", "TCS"])
 
 
-def test_screen_resolver_uses_authority():
-    """The screen compatibility helper uses the universe authority."""
-    for name in ("largecap20", "reliance,tcs", ["INFY", "SBIN"]):
-        check(f"parity for {name!r}",
-              screen.resolve_symbols(name) == universe.resolve_symbols(name)[0],
-              f"{screen.resolve_symbols(name)} vs {universe.resolve_symbols(name)[0]}")
-
-
 def test_stale_fallback_is_not_promoted_to_a_fresh_cache():
     current = universe._cache_path("microcap")
     stale = universe._cache_path("microcap", "2020-01-01")

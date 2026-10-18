@@ -8,7 +8,8 @@ import tempfile
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from finance import publication, paths
+from finance import paths
+from finance.report import hook, publication
 from finance.tests.harness import check, run
 
 
@@ -78,25 +79,24 @@ def test_session_and_projection_identity_cannot_mix():
 
 
 def test_hook_only_publishes_ready_bundles_from_its_session():
-    from finance import report_hook
     with tempfile.TemporaryDirectory(prefix='ef hook " ') as work, mock.patch.dict(os.environ, {'EVERYTHING_FINANCE_ARTIFACTS':work}):
         ours, theirs = stage(), stage('session-b')
         (ours/'ready').touch(); (theirs/'ready').touch()
-        with mock.patch('finance.telegram.transport.request') as network:
-            result, gaps = report_hook.stop({'cwd':work,'session_id':'session-a'})
+        with mock.patch('finance.report.telegram.transport.request') as network:
+            result, gaps = hook.stop({'cwd':work,'session_id':'session-a'})
         check('hook publishes only its own session',len(result)==1 and not ours.exists() and theirs.exists(),gaps)
         check('credentials alone never authorize delivery',not network.called)
-        again, gaps = report_hook.stop({'cwd':work,'session_id':'session-a'})
+        again, gaps = hook.stop({'cwd':work,'session_id':'session-a'})
         check('repeat Stop does not republish or resend',again==[] and gaps==[])
         try:
-            report_hook.stop({'cwd':work})
+            hook.stop({'cwd':work})
             check('missing session cannot scan shared staging',False)
         except ValueError:
             check('missing session cannot scan shared staging',theirs.exists())
 
 
 def test_private_document_upload_does_not_expose_token_or_retry():
-    from finance import report_hook, transport
+    from finance import transport
     import subprocess
     with tempfile.TemporaryDirectory() as work, mock.patch.dict(os.environ, {'EVERYTHING_FINANCE_ARTIFACTS':work,'TELEGRAM_BOT_TOKEN':'fixture-secret','TELEGRAM_CHAT_ID':'fixture-chat'}):
         directory = stage()
@@ -112,7 +112,7 @@ def test_private_document_upload_does_not_expose_token_or_retry():
             Path(cmd[cmd.index('-o')+1]).write_text('{"ok": false, "description": "fixture-secret"}')
             return subprocess.CompletedProcess(cmd,0,stdout='200',stderr='fixture-secret')
         with mock.patch.object(transport.subprocess,'run',side_effect=curl):
-            gap = report_hook.deliver(result)
+            gap = hook.deliver(result)
         check('delivery failure preserves archived evidence',Path(result['report_html']).exists() and bool(gap))
         check('token absent from command and diagnostic',len(seen)==1 and 'fixture-secret' not in str(seen[0][0]) and 'fixture-secret' not in gap)
         check('private URL supplied on stdin without redirects','fixture-secret' in seen[0][1]['input'] and '-L' not in seen[0][0])
@@ -128,20 +128,38 @@ def test_shell_hook_parses_escaped_cwd_and_keeps_stdout_clean():
         plugin = Path(work)/'plugin'
         (plugin/'bin').mkdir(parents=True)
         shutil.copy2(root/'bin/load-env.sh',plugin/'bin/load-env.sh')
-        (plugin/'finance').symlink_to(root/'finance',target_is_directory=True)
+        for name in ('finance', 'agents'):
+            (plugin/name).symlink_to(root/name,target_is_directory=True)
+        shutil.copy2(root/'RULES.md',plugin/'RULES.md')
         (plugin/'.env').write_text('# empty synthetic credentials\n')
         env = {**os.environ,'CLAUDE_PLUGIN_ROOT':str(plugin),'CLAUDE_PLUGIN_DATA':'','PLUGIN_DATA':'','TELEGRAM_BOT_TOKEN':'','TELEGRAM_CHAT_ID':''}
+        launcher = str(root/'hooks/hook.sh')
         payload = json.dumps({'cwd':work,'session_id':'session-a'})
-        result = subprocess.run(['bash',str(root/'hooks/post-deep-analysis.sh')],input=payload,env=env,cwd='/tmp',capture_output=True,text=True,timeout=10)
-        check('shell hook consumes JSON cwd correctly',result.returncode==0 and not directory.exists(),result.stderr)
-        check('hook does not put diagnostics on stdout',result.stdout=='')
-        context = subprocess.run(['bash',str(root/'hooks/session-context.sh')],input=payload,env=env,cwd='/tmp',capture_output=True,text=True,timeout=10)
+        result = subprocess.run(['bash',launcher,'stop'],input=payload,env=env,cwd='/tmp',capture_output=True,text=True,timeout=10)
+        check('Stop consumes JSON cwd correctly',result.returncode==0 and not directory.exists(),result.stderr)
+        check('Stop does not put diagnostics on stdout',result.stdout=='')
+        context = subprocess.run(['bash',launcher,'session'],input=payload,env=env,cwd='/tmp',capture_output=True,text=True,timeout=10)
         check('SessionStart provides exact session identity','"session-a"' in context.stdout and context.returncode==0,context.stderr)
-        explicit = stage()
-        (explicit/'ready').touch()
-        completed = subprocess.run(['bash',str(root/'hooks/post-deep-analysis.sh'),'publish','--session','session-a','--run-id',explicit.name],env=env,cwd=work,capture_output=True,text=True,timeout=10)
-        archived = json.loads(completed.stdout) if completed.returncode==0 else {}
-        check('explicit completion uses the same wrapper without hook input',completed.returncode==0 and Path(archived.get('report_html','missing')).is_file() and not explicit.exists(),completed.stderr)
+        check('SessionStart carries the runtime rules','## Data integrity' in context.stdout,context.stdout[:200])
+        agent = json.dumps({'agent_type':'everything-finance:debate-researcher'})
+        sub = subprocess.run(['bash',launcher,'subagent'],input=agent,env=env,cwd='/tmp',capture_output=True,text=True,timeout=10)
+        extra = json.loads(sub.stdout)['hookSpecificOutput'] if sub.stdout else {}
+        check('SubagentStart hands the rules to a plugin agent',
+              extra.get('hookEventName')=='SubagentStart' and '## How a report reads' in extra.get('additionalContext',''),sub.stderr)
+        other = subprocess.run(['bash',launcher,'subagent'],input=json.dumps({'agent_type':'Explore'}),env=env,cwd='/tmp',capture_output=True,text=True,timeout=10)
+        check('SubagentStart leaves other agents alone',other.returncode==0 and other.stdout=='')
+
+
+def test_publish_report_tool_archives_and_reports_delivery():
+    with tempfile.TemporaryDirectory() as work, mock.patch.dict(os.environ, {'EVERYTHING_FINANCE_ARTIFACTS':work}):
+        env = publication.prepare_report('session-a','TESTCO','2026-01-02','standard')
+        check('prepare_report returns the bundle paths',env['ok'] and env['data']['agents_dir'].endswith('agents'),env)
+        check('prepare_report refuses a mode with no deck',not publication.prepare_report('session-a','TESTCO','2026-01-02','quick')['ok'])
+        directory = stage()
+        (directory/'ready').touch()
+        env = publication.publish_report('session-a',directory.name)
+        check('publish_report archives a ready bundle',env['ok'] and Path(env['data']['report_html']).is_file() and not directory.exists(),env)
+        check('publish_report on a missing bundle is a labelled gap',not publication.publish_report('session-a',directory.name)['ok'])
 
 
 if __name__ == '__main__':

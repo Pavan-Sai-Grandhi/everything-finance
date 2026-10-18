@@ -1,12 +1,9 @@
-#!/usr/bin/env python3
 """Holdings source-resolver + normalizer.
 
-Turns whichever read source is connected into ONE canonical position shape and applies the
-precedence IndMoney -> broker -> portfolio, so consumers never re-implement normalization.
-
-MCP boundary: this module runs in script context and CANNOT call MCP tools. The calling
-skill invokes the MCP tool, writes the raw payload to a temp file, and passes the path here
-— the same file-handoff pattern `trade_check.py` uses. See `finance/contracts.md`.
+Turns whichever personal source is connected into ONE canonical position shape and applies
+the precedence IndMoney -> broker -> portfolio, so consumers never re-implement
+normalization. The caller fetches each broker payload, writes it to a file, and passes the
+paths to `resolve_files`. See `finance/contracts.md`.
 
 Canonical position:
   { ticker, qty, avg, ltp, pnl, xirr, broker, asset_class, invested, value, unsettled_qty, source, as_of }
@@ -17,10 +14,10 @@ when just broker / portfolio data exists.
 A normalize failure on one source falls through to the next in precedence with a labelled
 gap — never an abort. Returns the shared data-spine envelope.
 """
-import argparse
 import json
 import re
 
+from finance import spine
 from finance.spine import envelope as _envelope, f, first as _first
 from finance.deps import load_yaml
 
@@ -323,7 +320,7 @@ def resolve(prefer="indmoney", payloads=None):
     if uncosted:
         n = sum(p.get("cost_basis") == "unreported_by_linked_broker" for p in positions)
         brokers = [k for k in present if _KIND.get(k) == "broker"]
-        hint = (f"; re-resolve with --prefer {brokers[0]} for their cost and P&L" if brokers
+        hint = (f"; re-resolve with prefer={brokers[0]} for their cost and P&L" if brokers
                 else "; connect that broker for cost and P&L")
         gaps.append(f"{winner}: {n} holding(s) via {', '.join(uncosted)} carry no cost basis "
                     f"(the linked broker reports cost as current value){hint}"
@@ -340,41 +337,30 @@ def resolve(prefer="indmoney", payloads=None):
 def _load(path):
     if path.endswith((".yml", ".yaml")):
         return load_yaml(path)
-    with open(path) as f:
-        return json.load(f)
+    return spine.read_json(path)
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Resolve canonical holdings from source payloads.")
-    ap.add_argument("--indmoney", action="append",
-                    help="path to an IndMoney networth_holdings payload (JSON); repeat once per "
-                         "asset_type call (IND_STOCK, MF, US_STOCK, …)")
-    ap.add_argument("--kite", help="path to Kite holdings+positions payload (JSON)")
-    ap.add_argument("--upstox", help="path to Upstox holdings+positions payload (JSON)")
-    ap.add_argument("--broker", help="path to a generic broker payload (JSON)")
-    ap.add_argument("--portfolio", help="path to the hand-maintained positions block (JSON/YAML)")
-    ap.add_argument("--prefer", default="indmoney", help="source to lead precedence")
-    ap.add_argument("--equity-only", action="store_true", help="filter to the equity slice")
-    ap.add_argument("--mf-only", action="store_true", help="filter to the mutual-fund slice")
-    args = ap.parse_args()
+_SLICES = {"all": lambda rows: rows, "equity": lambda rows: equity_only(rows),
+           "mf": lambda rows: mf_only(rows)}
 
+
+@spine.guarded("finance.compute.holdings")
+def resolve_files(indmoney=None, kite=None, upstox=None, broker=None, portfolio=None,
+                  prefer="indmoney", slice="all"):
+    """Resolve canonical positions from payload files. `indmoney` is a list: IndMoney serves
+    one asset type per `networth_holdings` call, and their rows combine. `slice` is
+    all | equity | mf."""
+    if slice not in _SLICES:
+        raise ValueError(f"slice must be one of {sorted(_SLICES)}")
     payloads = {}
-    if args.indmoney:
-        # networth_holdings serves one asset type per call; combine their rows.
-        payloads["indmoney"] = {"holdings": [row for path in args.indmoney
+    if indmoney:
+        paths = [indmoney] if isinstance(indmoney, str) else indmoney
+        payloads["indmoney"] = {"holdings": [row for path in paths
                                              for row in _holdings_list(_load(path))]}
-    for key in ("kite", "upstox", "broker", "portfolio"):
-        path = getattr(args, key)
+    for key, path in (("kite", kite), ("upstox", upstox), ("broker", broker),
+                      ("portfolio", portfolio)):
         if path:
             payloads[key] = _load(path)
-
-    env = resolve(prefer=args.prefer, payloads=payloads)
-    if args.equity_only:
-        env["data"]["positions"] = equity_only(env["data"]["positions"])
-    elif args.mf_only:
-        env["data"]["positions"] = mf_only(env["data"]["positions"])
-    print(json.dumps(env, indent=2))
-
-
-if __name__ == "__main__":
-    main()
+    env = resolve(prefer=prefer, payloads=payloads)
+    env["data"]["positions"] = _SLICES[slice](env["data"]["positions"])
+    return env

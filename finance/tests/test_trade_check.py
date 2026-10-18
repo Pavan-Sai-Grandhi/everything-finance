@@ -30,11 +30,8 @@ _KW = {"--sessions-held": "sessions_held", "--ltp": "ltp",
 
 
 def run(trade, ohlcv=None, extra=None):
-    """Call the checker and derive the old CLI's status code from the verdict.
-
-    The status was only ever `10 if verdict.startswith("EXIT") else 0`, so the
-    verdict assertions below carry over unchanged.
-    """
+    """Call the checker. The code is 10 for an EXIT verdict, 0 for HOLD and 2 when the
+    checker refused the inputs."""
     kw = {}
     extra = list(extra or [])
     for i in range(0, len(extra), 2):

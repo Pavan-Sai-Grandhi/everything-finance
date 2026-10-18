@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """The integrity-gate checks that are arithmetic, not judgement.
 
 `management-analysis` grades seven integrity sub-checks. Two of them are a division
@@ -9,25 +8,18 @@ and unit-tested, rather than eyeballed.
   - **Managerial remuneration vs profit.** Companies Act s.197 caps total directors'
     remuneration at 11% of net profits computed under s.198, and MD/WTD/manager pay at
     5% for one or 10% for more than one; shareholders' general-meeting approval under
-    the provisos may exceed them, and a no/inadequate-profit year falls under Schedule V. Well below the cap, the working norm is ~5% of net profit; above it, the
-    promoter is paying themselves ahead of the shareholder.
+    the provisos may exceed them, and a no/inadequate-profit year falls under Schedule V.
+    Well below the cap, the working norm is ~5% of net profit; above it, the promoter is
+    paying themselves ahead of the shareholder.
   - **Auditor fee trend.** The fee itself means little; the fee accelerating away from
     the business — and especially rising into a profit collapse — is the signal.
 
 Both return a PASS / FLAG / FAIL verdict with the number that decided it, and both
 return `NOT-CHECKED` when an input is missing rather than assuming the benign reading.
 
-Reached through the `run_governance_checks` tool on `finance-company`; the CLI below is
-for a human at a terminal.
-
-CLI:
-  PYTHONPATH=<plugin> python3 -m finance.compute.governance --selftest
+Reached through `run_governance_checks` on `finance-company`.
 """
 from __future__ import annotations
-
-import argparse
-import json
-import sys
 
 from finance import spine
 
@@ -196,47 +188,3 @@ def checks(total_remuneration=None, net_profit=None, managing_directors=None,
     else:
         data["auditor_fee"] = auditor_fee_check(fees, revenues, profits)
     return spine.envelope(bool(data), "finance.compute.governance", data, gaps)
-
-
-def _selftest():
-    ok = remuneration_check(30.0, 1000.0)["verdict"] == "PASS"
-    ok &= remuneration_check(80.0, 1000.0)["verdict"] == "FLAG"
-    ok &= remuneration_check(130.0, 1000.0)["verdict"] == "FAIL"
-    ok &= remuneration_check(60.0, 1000.0, managing_directors=1,
-                             executive_remuneration=55.0)["verdict"] == "FAIL"
-    ok &= remuneration_check(None, 1000.0)["verdict"] == "NOT-CHECKED"
-    ok &= auditor_fee_check([2.0, 2.1], revenues=[100.0, 108.0])["verdict"] == "PASS"
-    ok &= auditor_fee_check([2.0, 2.6], revenues=[100.0, 102.0])["verdict"] == "FLAG"
-    ok &= auditor_fee_check([2.0], revenues=[100.0])["verdict"] == "NOT-CHECKED"
-    print("selftest", "ok" if ok else "FAIL")
-    return 0 if ok else 1
-
-
-def main():
-    ap = argparse.ArgumentParser(description="Integrity-gate arithmetic.")
-    ap.add_argument("--remuneration", type=float, help="total managerial remuneration")
-    ap.add_argument("--net-profit", type=float, help="net profit, same unit")
-    ap.add_argument("--managing-directors", type=int)
-    ap.add_argument("--executive-remuneration", type=float,
-                    help="MD/WTD/manager part of the remuneration, same unit")
-    ap.add_argument("--fees", help="comma-separated audit fees, oldest first")
-    ap.add_argument("--revenues", help="comma-separated revenues, oldest first")
-    ap.add_argument("--profits", help="comma-separated profits, oldest first")
-    ap.add_argument("--selftest", action="store_true")
-    a = ap.parse_args()
-    if a.selftest:
-        sys.exit(_selftest())
-    nums = lambda s: [float(x) for x in s.split(",")] if s else None
-    out = {}
-    if a.remuneration is not None or a.net_profit is not None:
-        out["remuneration"] = remuneration_check(a.remuneration, a.net_profit,
-                                                 a.managing_directors,
-                                                 a.executive_remuneration)
-    if a.fees:
-        out["auditor_fee"] = auditor_fee_check(nums(a.fees), nums(a.revenues),
-                                               nums(a.profits))
-    print(json.dumps(out, indent=2))
-
-
-if __name__ == "__main__":
-    main()

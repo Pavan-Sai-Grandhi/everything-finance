@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Story-driven FCFF DCF valuation engine (everything-finance).
 
 Faithful to Aswath Damodaran's free-cash-flow-to-firm model (The Little Book of
@@ -40,23 +39,13 @@ Value bridge:
     MoS      = per_share / current_price - 1     (margin of safety, if a price is given)
 
 All money inputs/outputs are in the SAME unit (use ₹ Crore consistently); shares in
-the same count unit (Crore) so per_share comes out in ₹. Run with --selftest for a
-worked check, or feed a YAML/JSON input file (see
-skills/valuation-analysis/assets/dcf-inputs.example.yml).
-
-Usage:
-  PYTHONPATH=<plugin> python3 -m finance.compute.dcf --inputs dcf-inputs.yml \
-      --out artifacts/stocks/RELIANCE/2026-06-12/dcf.json
-  PYTHONPATH=<plugin> python3 -m finance.compute.dcf --selftest
-Exit: 0 = valued, 2 = input/usage error, 3 = model-invalid (e.g. wacc<=g).
-
-Reached through: run_dcf, which pairs this with the relative read from `relval.py`.
+the same count unit (Crore) so per_share comes out in ₹. The input file's shape is
+skills/valuation-analysis/assets/dcf-inputs.example.yml. Reached through run_dcf, which
+pairs this with the relative read from `relval.py`.
 """
-import argparse
 import json
 import math
 import os
-import sys
 from datetime import date
 
 from finance import paths, spine
@@ -836,26 +825,6 @@ def load_inputs(path):
     return json.loads(text, object_pairs_hook=_unique_fields)
 
 
-SELFTEST_SPEC = {
-    "currency_unit": "INR Crore",
-    "years": 10,
-    "base_revenue": 1000.0,
-    "growth_glide": {"initial": 0.15, "fade_to": 0.04, "years_high": 3},
-    "margin_glide": {"start": 0.12, "target": 0.18, "year_target": 5},
-    "tax_rate": 0.25,
-    "sales_to_capital": 2.0,
-    "wacc": 0.11,
-    "terminal_growth": 0.04,
-    "terminal_roic": 0.13,
-    "risk_free": 0.07,
-    "net_debt": 500.0,
-    "non_operating_cash": 100.0,
-    "shares_outstanding": 100.0,
-    "current_price": 60.0,
-    "timing": {"base_period_end": "2026-03-31", "valuation_date": "2026-09-30"},
-}
-
-
 def compute(spec, sensitivity_grid=False, story=False, reverse=False,
             reverse_solve="growth", reverse_target=None):
     """The DCF result plus whichever optional grids were asked for."""
@@ -885,19 +854,7 @@ def _grid_range(grid):
 
 def _inr(v):
     """Indian-grouped integer rupees, or an em dash for an unsolved cell."""
-    if v is None:
-        return "—"
-    n = int(round(v))
-    sign, n = ("-", -n) if n < 0 else ("", n)
-    s = str(n)
-    if len(s) > 3:
-        head, tail = s[:-3], s[-3:]
-        parts = []
-        while len(head) > 2:
-            parts.insert(0, head[-2:])
-            head = head[:-2]
-        s = ",".join(([head] if head else []) + parts + [tail])
-    return sign + s
+    return "—" if v is None else spine.inr_group(v)
 
 
 def grid_markdown(grid, row_axis, col_axis, corner, axis_kind="shift"):
@@ -1082,8 +1039,15 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
     The full result JSON is bulk: it is written to `dcf-<hash>.json` in the ticker's run-day
     folder and `data` carries the headline numbers plus `dcf_path`. `relative` is the
     optional figures mapping `relval.relative_read` reads — omit it and only the DCF
-    comes back. Inputs the model rejects are a labelled gap, never an exception.
+    comes back. `inputs` is the mapping or the path to its YAML/JSON file. Inputs the model
+    rejects are a labelled gap, never an exception.
     """
+    if isinstance(inputs, str):
+        try:
+            inputs = load_inputs(inputs)
+        except (OSError, ValueError) as exc:
+            return spine.envelope(False, _SOURCE, {"ticker": ticker},
+                                  [f"dcf inputs file unreadable: {exc}"])
     if not isinstance(inputs, dict) or not inputs:
         return spine.envelope(False, _SOURCE, {"ticker": ticker},
                               ["dcf inputs missing or not a mapping"])
@@ -1114,9 +1078,6 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
         else:
             gaps.append("relative valuation skipped: `relative` is not a mapping")
 
-    # A same-day call from another session is not a revision of this valuation.
-    # Preserve each exact input/result pair; the author cites any intentional revisions.
-    result["revisions"] = []  # compatibility field; never infer lineage by filename
     result["inputs"] = inputs
     result["relative"] = read
     path = None
@@ -1144,7 +1105,6 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
     data["relative"] = read
     data["market_view"] = view
     data["dcf_path"] = path
-    data["revisions"] = result["revisions"]
     if sensitivity:
         g = result.get("sensitivity")
         data["sensitivity_range"] = _grid_range(g)
@@ -1160,103 +1120,3 @@ def run(ticker, inputs, relative=None, sensitivity=False, story=False, reverse=F
     if reverse:
         data["reverse_dcf"] = result.get("reverse_dcf")
     return spine.envelope(True, _SOURCE, data, gaps)
-
-
-def main():
-    ap = argparse.ArgumentParser(description="Story-driven FCFF DCF (Damodaran).")
-    ap.add_argument("--inputs",
-                    help="YAML/JSON input file "
-                         "(see skills/valuation-analysis/assets/dcf-inputs.example.yml)")
-    ap.add_argument("--out", help="write result JSON here")
-    ap.add_argument("--sensitivity", action="store_true",
-                    help="also emit a terminal-WACC x terminal-growth check")
-    ap.add_argument("--story", action="store_true",
-                    help="also emit the story-driver grid (growth x steady-state margin) — the "
-                         "headline range for a growth company; far higher leverage than the terminal check")
-    ap.add_argument("--reverse", action="store_true",
-                    help="also solve the DCF backwards: what assumption does current_price imply?")
-    ap.add_argument("--reverse-solve", choices=["growth", "margin"], default="growth",
-                    help="which lever the reverse DCF solves for (default growth)")
-    ap.add_argument("--reverse-target", type=float,
-                    help="target price/share for the reverse DCF (default: spec current_price)")
-    ap.add_argument("--selftest", action="store_true", help="run the built-in worked example")
-    args = ap.parse_args()
-
-    if args.inputs and args.out:
-        same_path = os.path.realpath(args.inputs) == os.path.realpath(args.out)
-        if os.path.exists(args.inputs) and os.path.exists(args.out):
-            same_path = same_path or os.path.samefile(args.inputs, args.out)
-        if same_path:
-            ap.error("--out must not overwrite the input file")
-    if args.selftest:
-        spec = SELFTEST_SPEC
-    elif args.inputs:
-        try:
-            spec = load_inputs(args.inputs)
-        except (OSError, ValueError) as exc:
-            ap.error(f"could not read inputs: {exc}")
-    else:
-        ap.error("need --inputs <file> or --selftest")
-
-    try:
-        result = compute(spec,
-                         sensitivity_grid=args.sensitivity or args.selftest,
-                         story=args.story or args.selftest,
-                         reverse=args.reverse or args.selftest,
-                         reverse_solve=args.reverse_solve,
-                         reverse_target=args.reverse_target)
-    except (ValueError, KeyError, TypeError, ZeroDivisionError, OverflowError) as e:
-        print(f"MODEL-INVALID: {e}", file=sys.stderr)
-        sys.exit(3)
-
-    try:
-        out = json.dumps(result, indent=2, allow_nan=False)
-        if args.out:
-            spine.atomic_write(args.out, out + "\n", fsync=True)
-            print(f"wrote {args.out}")
-        else:
-            print(out)
-    except (OSError, ValueError, TypeError) as exc:
-        ap.error(f"could not publish result: {exc}")
-
-    ps = result["intrinsic_value_per_share"]
-    for gap in result.get("gaps", []):
-        print(f"Data gap: {gap}", file=sys.stderr)
-    cu = result["currency_unit"].split()[0]
-    print(f"\nIntrinsic value/share: {cu} {ps:,.2f}", file=sys.stderr)
-    if result.get("failure_probability") or result.get("complexity_discount"):
-        gc = result["equity_value_going_concern"] / result["shares_outstanding"]
-        bits = []
-        if result.get("failure_probability"):
-            bits.append(f"{result['failure_probability']:.0%} failure prob")
-        if result.get("complexity_discount"):
-            bits.append(f"{result['complexity_discount']:.0%} complexity/governance discount")
-        print(f"  (going concern {cu} {gc:,.2f}/sh, haircut for {', '.join(bits)})", file=sys.stderr)
-    if result["margin_of_safety"] is not None:
-        print(f"Margin of safety vs price: {result['margin_of_safety']:+.1%}", file=sys.stderr)
-    if result["terminal_value_fraction"] is not None:
-        print(f"Terminal value = {result['terminal_value_fraction']:.0%} of EV", file=sys.stderr)
-    st = result.get("story_sensitivity")
-    if st and st["cells"]:
-        flat = [c for row in st["cells"] for c in row if c is not None]
-        if flat:
-            print(f"Story-driver range (growth×margin): {cu} {min(flat):,.0f} – {cu} {max(flat):,.0f} "
-                  "(the levers that actually move a growth stock)", file=sys.stderr)
-    rev = result.get("reverse_dcf")
-    if rev:
-        if rev.get("solved"):
-            if rev["lever"] == "revenue growth":
-                print(f"Reverse DCF: price ₹{rev['target_per_share']:,.0f} implies "
-                      f"{rev['implied_year1']:.1%} year-1 growth (~{rev['implied_revenue_cagr']:.1%} "
-                      f"{result['explicit_years']}y revenue CAGR) vs your {rev['base_year1']:.1%} "
-                      f"base — a {rev['shift']:+.1%} shift.", file=sys.stderr)
-            else:
-                print(f"Reverse DCF: price ₹{rev['target_per_share']:,.0f} implies a {rev['shift']:+.1%} "
-                      f"shift in operating margin (year-1 {rev['implied_year1']:.1%} vs base "
-                      f"{rev['base_year1']:.1%}).", file=sys.stderr)
-        else:
-            print(f"Reverse DCF: {rev['reason']}", file=sys.stderr)
-
-
-if __name__ == "__main__":
-    main()

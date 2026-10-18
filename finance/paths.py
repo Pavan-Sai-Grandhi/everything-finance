@@ -1,27 +1,17 @@
-#!/usr/bin/env python3
-"""The one place artifact paths are decided.
-
-Every skill script asks this module where to read and write instead of hardcoding
-strings, so the layout (below) can never drift between skills — the same reason
-`ta.py` and `strategy.py` are each a single engine.
+"""The one place artifact paths are decided, so the layout cannot drift between producers.
 
     artifacts/                         root: $EVERYTHING_FINANCE_ARTIFACTS or ./artifacts
-      stocks/<TICKER>/<date>/          entity-first: a stock's whole run-day together
-        deep-analysis.html  deep-analysis.report.json  deep-analysis/agents/*.md
-        fundamental-analysis.html  fundamental-analysis.report.json  fundamental-analysis/agents/*.md
-        dcf.md  dcf.json  dcf-inputs.yml
-        management.md  filings.md
-      funds/<SCHEME>/<date>/           funds are entities too
-        mf-analysis.md  mf-analysis.json
-      <skill>/<date>.<ext>             date/singleton skills: skill-first
-      <skill>/<date>/                  ...with work papers beside the report
+      stocks/<TICKER>/<date>/          a stock's run-day: dcf.md, dcf-inputs.yml,
+                                       management.md, filings.md, the leg reports
+        runs/<run-id>/                 an archived deep-analysis bundle: report.json,
+                                       report.html, run.json, agents/*.md
+      funds/<SCHEME>/<date>/           mf-analysis.md and the deck
+      <skill>/<date>.<ext>             singleton skills
+      <skill>/<date>/                  their work papers
       backtest/<spec>/<date>/
-      state/                           durable, mutable, NOT dated
-        strategies/  trades/  alerts/  sectors/  watchlist.json
-      cache/  tmp/                     disposable, safe to delete anytime
-
-Naming convention everywhere: <owner-dir>/<key>/<date>.<ext>, key = ticker / scheme
-/ spec for entity skills, the date itself for singletons.
+      state/                           durable and mutable: strategies/ trades/ alerts/
+                                       sectors/ watchlist.json
+      cache/  tmp/                     disposable
 """
 import os
 import hashlib
@@ -34,24 +24,15 @@ from finance.spine import envelope as _envelope
 _SOURCE = "finance.paths"
 _RUN_ID = re.compile(r"[0-9]{20}-[a-f0-9]{32}")
 
-# skill -> report filename for the prior-run lookup. Only the entity-centric skills
-# that build on their own history are listed.
-_STOCK_ARTIFACT = {
-    # deep-analysis emits no markdown — the deck (report.html) is the deliverable and the
-    # report.json is its render input and the readable prior-run artifact. The JSON, not the
-    # HTML, is what get_prior_run resolves to: it carries every figure and the prose in a form
-    # a later run can read to build on.
-    "deep-analysis": "deep-analysis.report.json",
-    # deep-analysis's fundamentals mode: its own file, so a fundamentals run and a full
-    # run on the same day cannot overwrite each other and each builds on its own history.
-    "fundamentals": "fundamental-analysis.report.json",
-    "dcf": "dcf.md",
-    "management": "management.md",
-    "filings": "filings.md",
+# skill -> (its file in a stock run-day folder, the bundle modes that carry it, its path in a bundle)
+_STOCK_PRIOR = {
+    "deep-analysis": (None, ("standard", "deep"), "report.json"),
+    "fundamentals": (None, ("fundamentals",), "report.json"),
+    "dcf": ("dcf.md", ("standard", "deep", "fundamentals"), "agents/dcf.md"),
+    "management": ("management.md", ("standard", "deep", "fundamentals"), "agents/management.md"),
+    "filings": ("filings.md", (), None),
 }
-_FUND_ARTIFACT = {
-    "mf-analysis": "mf-analysis.md",
-}
+_FUND_PRIOR = {"mf-analysis": "mf-analysis.md"}
 
 
 def root():
@@ -105,11 +86,6 @@ def scheme_key(scheme):
     return _component(re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", str(scheme).strip().lower())).strip("-"))
 
 
-def sector_key(sector):
-    """Filesystem-safe slug of a sector name: lowercase, non-alnum -> '-'."""
-    return scheme_key(sector)
-
-
 def _mkdir(path):
     _contained(path)
     os.makedirs(path, exist_ok=True)
@@ -147,15 +123,6 @@ def backtest_dir(spec, date=None):
     return _mkdir(os.path.join(root(), "backtest", _component(spec), _day(date)))
 
 
-def insurance_report_path(policy_type, date=None, ext="md"):
-    """insurance/<type>/<date>.<ext> — insurance-advisor's per-type report; parent created.
-
-    ``policy_type`` is one of term / health / vehicle (slugged). Advise mode writes here;
-    Audit and Ask (not per-type) use ``report_path("insurance")``."""
-    slug = re.sub(r"[^a-z0-9]+", "-", str(policy_type).strip().lower()).strip("-")
-    return _mkparent(os.path.join(root(), "insurance", _component(slug), f"{_day(date)}.{_component(ext.lstrip('.'))}"))
-
-
 def state_dir(name=None, *, create=True):
     """state/ or state/<name>; read-only callers use create=False without making dirs."""
     parts = [root(), "state"] + ([_namespace(name)] if name is not None else [])
@@ -168,49 +135,10 @@ def alerts_dir():
     return state_dir("alerts")
 
 
-def watchlist_path():
-    """state/watchlist.json — parent (state/) created."""
-    return _mkparent(os.path.join(state_dir(), "watchlist.json"))
-
-
 def merchant_map_path():
-    """budget/merchant-map.json — budget-tracker's durable merchant→category map.
-
-    Durable state (not dated), but co-located with the dated budget artifacts under
-    budget/ rather than state/ so a month's whole trail — the <YYYY-MM>.html reports
-    and the map they build up — lives in one folder. Loaded at the start of every
-    run and rewritten when the user corrects a categorization."""
+    """budget/merchant-map.json: the durable merchant→category map, kept beside the monthly
+    budget reports it builds up."""
     return _mkparent(os.path.join(root(), "budget", "merchant-map.json"))
-
-
-def sector_cache_path(sector):
-    """state/sectors/<slug>.md — the shared, monthly-refreshed sector read.
-
-    Durable state (not dated): one current body per sector, overwritten on refresh,
-    read by deep-analysis and written by both sector-analysis and deep-analysis. The
-    dated trail still lives under sector-analysis/<date>/."""
-    return _mkparent(os.path.join(state_dir("sectors"), f"{sector_key(sector)}.md"))
-
-
-def sector_cache_age_days(sector, today=None):
-    """Age in days of the cached sector read, or None if missing/unreadable.
-
-    Reads the `generated: YYYY-MM-DD` frontmatter line written by the producer. A
-    missing file or undated cache returns None — the caller treats that as stale and
-    refreshes. Pure date math, no yaml dependency."""
-    p = os.path.join(state_dir("sectors"), f"{sector_key(sector)}.md")
-    if not os.path.isfile(p):
-        return None
-    try:
-        with open(_contained(p)) as fh:
-            match = re.search(r"^\s*generated:\s*(\d{4}-\d{2}-\d{2})", fh.read(), re.M)
-        if not match:
-            return None
-        ref = _date_cls.fromisoformat(_day(today))
-        age = (ref - _date_cls.fromisoformat(match.group(1))).days
-        return age if age >= 0 else None
-    except (OSError, ValueError):
-        return None
 
 
 def cache_dir(name=None):
@@ -248,23 +176,39 @@ def report_archive(ticker, day, run_id):
     return _mkparent(os.path.join(stock_dir(ticker, day), "runs", run_id))
 
 
-def latest_prior(skill, subject, before=None):
-    """Newest earlier artifact for (skill, subject), or None.
+def _bundle_candidates(base, day, ticker, modes, inner):
+    runs = _contained(os.path.join(base, day, "runs"))
+    if not modes or not os.path.isdir(runs):
+        return
+    for run_id in os.listdir(runs):
+        if not _RUN_ID.fullmatch(run_id):
+            continue
+        bundle = _contained(os.path.join(runs, run_id))
+        try:
+            with open(_contained(os.path.join(bundle, "run.json"))) as fh:
+                meta = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if (not isinstance(meta, dict) or meta.get("mode") not in modes
+                or meta.get("ticker") != ticker or meta.get("date") != day
+                or meta.get("run_id") != run_id):
+            continue
+        candidate = _contained(os.path.join(bundle, inner))
+        if os.path.isfile(candidate) and os.path.isfile(_contained(os.path.join(bundle, "report.html"))):
+            yield day, run_id, candidate
 
-    Lists the <date> dirs under the subject's entity folder, keeps those that hold
-    the skill's report file, and returns the path to the newest one strictly before
-    `before` (or before today). This is what powers "refer the earlier run" — no
-    directories are created.
-    """
-    if skill in _STOCK_ARTIFACT:
+
+def latest_prior(skill, subject, before=None):
+    """The newest artifact for (skill, subject) strictly before `before` (default today), or
+    None. Reads run-day files and archived bundles; creates nothing."""
+    if skill in _STOCK_PRIOR:
         base = os.path.join(root(), "stocks", ticker_key(subject))
-        fname = _STOCK_ARTIFACT[skill]
-    elif skill in _FUND_ARTIFACT:
+        fname, modes, inner = _STOCK_PRIOR[skill]
+    elif skill in _FUND_PRIOR:
         base = os.path.join(root(), "funds", scheme_key(subject))
-        fname = _FUND_ARTIFACT[skill]
+        fname, modes, inner = _FUND_PRIOR[skill], (), None
     else:
         raise ValueError(f"no prior-run lookup defined for skill {skill!r}")
-
     _contained(base)
     cutoff = _day(before)
     if not os.path.isdir(base):
@@ -275,56 +219,24 @@ def latest_prior(skill, subject, before=None):
             _day(day)
         except ValueError:
             continue
-        if day >= cutoff:  # strictly earlier than the cutoff day
+        if day >= cutoff:
             continue
-        report = _contained(os.path.join(base, day, fname))
-        if os.path.isfile(report):
-            candidates.append((day, "", report))
-        # New immutable report bundles coexist with the legacy run-day files.
-        if skill in ("deep-analysis", "fundamentals", "dcf", "management"):
-            runs = _contained(os.path.join(base, day, "runs"))
-            if not os.path.isdir(runs):
-                continue
-            for run_id in os.listdir(runs):
-                if not _RUN_ID.fullmatch(run_id):
-                    continue
-                bundle = _contained(os.path.join(runs, run_id))
-                try:
-                    with open(_contained(os.path.join(bundle, "run.json"))) as fh:
-                        meta = json.load(fh)
-                    mode = meta.get("mode") if isinstance(meta, dict) else None
-                    expected_modes = (("fundamentals",) if skill == "fundamentals" else
-                                      ("standard", "deep") if skill == "deep-analysis" else
-                                      ("standard", "deep", "fundamentals"))
-                    if (mode not in expected_modes or meta.get("ticker") != ticker_key(subject)
-                            or meta.get("date") != day or meta.get("run_id") != run_id):
-                        continue
-                    candidate = _contained(os.path.join(bundle, "report.json") if skill in ("deep-analysis", "fundamentals")
-                                           else os.path.join(bundle, "agents", fname))
-                    if os.path.isfile(candidate) and os.path.isfile(_contained(os.path.join(bundle, "report.html"))):
-                        candidates.append((day, run_id, candidate))
-                except (OSError, ValueError, TypeError):
-                    continue
-    if not candidates:
-        return None
-    return max(candidates)[-1]
+        if fname:
+            report = _contained(os.path.join(base, day, fname))
+            if os.path.isfile(report):
+                candidates.append((day, "", report))
+        if skill in _STOCK_PRIOR:
+            candidates.extend(_bundle_candidates(base, day, ticker_key(subject), modes, inner))
+    return max(candidates)[-1] if candidates else None
 
 
 def prior_run(skill, subject, before=None):
-    """`latest_prior` in the shared envelope — the surface `get_prior_run` exposes.
-
-    Exists because the skills that open on their prior run (`valuation-analysis`,
-    `management-analysis`, `filings-watch`) carry no Bash and so cannot call a Python
-    function; a tool is the only way they can ask this module anything.
-
-    `data.path` is None and `ok` is true when there is no earlier run: a first run is the
-    normal case, not a degradation. An unresolvable `skill` is the one gap, and it names
-    the keys that do resolve.
-    """
+    """`latest_prior` in the envelope `get_prior_run` returns. No earlier run is `ok` with a
+    null path: a first run is the normal case, not a gap."""
     data = {"skill": skill, "subject": subject, "before": None,
             "path": None, "date": None}
-    if skill not in _STOCK_ARTIFACT and skill not in _FUND_ARTIFACT:
-        valid = ", ".join(sorted(set(_STOCK_ARTIFACT) | set(_FUND_ARTIFACT)))
+    if skill not in _STOCK_PRIOR and skill not in _FUND_PRIOR:
+        valid = ", ".join(sorted(set(_STOCK_PRIOR) | set(_FUND_PRIOR)))
         return _envelope(False, _SOURCE, data,
                          [f"no prior-run lookup defined for skill {skill!r} — "
                           f"valid keys: {valid}"])

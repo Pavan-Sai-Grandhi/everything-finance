@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """The plugin's single market-of-record — computes market state, emits a compact digest.
 
 The one place the plugin decides what the market is doing: trend, posture, stock-level
@@ -11,7 +10,7 @@ persisted as JSON, but what crosses into a model's context is the digest — ~30
 decision-grade numbers. Indicator values come from `ta.py` and raw data from
 `sources/market.py` / `sources/prices.py`, so this module owns interpretation only.
 
-FROZEN KEY NAMES (do not rename): `strategy-manager/scripts/select_strategy.py` gates on
+FROZEN KEY NAMES (do not rename): `strategy_library.regime_fit` gates on
 exactly four key paths, so renaming one silently breaks every strategy spec's
 `regime_required` — `market_trend`, `trend_detail.above_ema200`, `volatility.vix`,
 `breadth.pct_sectors_above_ema50`. The posture key is `market_posture`, never

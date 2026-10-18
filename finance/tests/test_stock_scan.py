@@ -178,7 +178,7 @@ def test_unapproved_provider_is_rejected_before_fetch():
     spec = dict(_SPEC, screening={'fundamental': {'provider': 'screener_in',
                 'screen_url': 'https://www.screener.in/screens/999/example/'}})
     result = stock_scan.scan(spec, screen_fn=gate)
-    check('saved-screen spec fails before any fetching', not gate.called and not result['shortlist'])
+    check('a non-Tickertape provider fails before any fetching', not gate.called and not result['shortlist'])
     check('source-policy gap is explicit', any('unapproved' in gap for gap in result['gaps']))
 
 

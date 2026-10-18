@@ -2,115 +2,139 @@
 name: strategy-manager
 description: Own the full lifecycle of rule-based trading strategies for Indian markets — (1) GENERATE a complete strategy from a reference article you supply, (2) VALIDATE it by backtesting the spec on historical NSE daily data (the bundled Backtesting.py engine on TA-Lib indicators — win rate, expectancy, profit factor, max drawdown vs buy-and-hold) and mark it active when it passes, (3) PICK the active strategy that fits the current market regime, and (4) OPTIMIZE or retire strategies from live trade outcomes fed back by trade-tracker. Use whenever the user asks to design/build a strategy, to backtest or validate one, "check if this strategy actually works", the historical performance of a setup, "what strategy should I run now / in this market", review or tune a strategy's live performance, activate/deactivate a strategy, or after discover produces signals and the user questions the strategy's edge.
 argument-hint: "[generate <article URL/file> | validate <name> [symbols] [years] | pick | optimize <name|all> | <name to inspect>]"
-allowed-tools: WebFetch, Read, Write, Bash, Skill, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*
+allowed-tools: WebFetch, Read, Write, Skill, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__run_fundamental_screen, mcp__plugin_everything-finance_finance-company__run_fundamental_screen, mcp__finance-workflow__*, mcp__plugin_everything-finance_finance-workflow__*
 ---
 
-# Strategy Manager — generate → validate → pick → optimize
+# Strategy Manager: generate → validate → pick → optimize
 
-This skill owns a strategy's whole life. A strategy lives as a spec at `artifacts/state/strategies/<name>.yml` (schema: `assets/strategy-spec.example.yml`) and moves through a lifecycle:
+A strategy is a spec at `artifacts/state/strategies/<name>.yml` (schema:
+`assets/strategy-spec.example.yml`, contract: `finance/contracts.md` → *Artifact: strategy spec*)
+moving through `draft → active → inactive`. Regime fit is not a status: it is decided fresh at
+pick time against the live tape.
 
-```
- mode: generate            mode: validate              mode: optimize
- (from article)            (backtest passes)           (live edge decays)
-   ┌────────┐  draft   ┌────────┐  active   ┌───────────────┐  inactive
-   │ DRAFT  ├─────────▶│ ACTIVE │◀─────────▶│ OPTIMIZE/RETIRE│
-   └────────┘          └───┬────┘           └───────────────┘
-                           │ mode: pick (runtime regime-fit) → hand to discover
-```
+**Method:** `methods/trading-system.md`, with `methods/technical.md` for the indicator study.
+`references/engine.md` is how `run_backtest` trades a spec.
 
-`status` is the lifecycle state (`draft | active | inactive`); **regime-fit is NOT a status** — it's decided fresh each time in `pick` mode against the live tape. Read `references/reference.md` first for the system framework, the activation thresholds, the selection logic, and the optimization rules this skill enforces; `references/backtesting.md` carries the engine contract, the bias traps, the cost model and how to read the metrics, and must shape how VALIDATE presents results.
+A spec's `purpose` is `trading` (the default: the full lifecycle, validated by backtest),
+`investment` (for `discover stocks --invest`: `universe`, `screening.fundamental`, `ranking` and
+`regime_required` only, validated by a completeness check, never optimized), or `fund` (a seed
+that maps a market regime to `get_fund_scan` arguments for `discover funds`; it lives only in
+`assets/seed-strategies/*-fund.yml` and is not generated or validated here).
 
-**A spec has a `purpose`: `trading` or `investment`.** A **trading** spec (the default) carries the full universe/screening/entry/exit/sizing/regime and is validated by backtest — the whole lifecycle above. An **investment** spec (for `discover stocks --invest`) carries `universe` + `screening.fundamental` + `ranking` + `regime_required` only, omits the trading half, is validated by a **completeness check** (not a backtest), and has **no optimize loop** (there is no live trade to learn from). Each mode below notes where the two diverge.
+The reference article the user supplies is the one source outside the tool table: a URL through
+`WebFetch` or a file through `Read`. Generate requires it, and every trade rule in a spec traces
+to it.
 
-A third value, **`purpose: fund`**, is a thin seed consumed by `discover funds`, not by this skill: it carries `regime_required` + a `scan` block (`category`/`window`/`min_aum`/`top`) that maps a market cycle to `get_fund_scan` arguments — it re-implements no scoring (get_fund_scan owns every gate and weight), is not generated/validated/backtested here, and lives only as a seed (`assets/seed-strategies/*-fund.yml`). Schema note in `flexicap-allweather-fund.yml`.
+## Route
 
-**The reference article the user provides is the one source outside the tool map** — a URL via `WebFetch`, or a local file via `Read`. It is REQUIRED for `generate`, and every trade rule in an emitted spec must be traceable to it.
+- an article, "design a strategy from this" → **generate**;
+- "backtest / validate <name>", "does <name> work", right after generate → **validate**;
+- "what should I trade now", "which strategy fits this market" → **pick**;
+- "review / tune / optimize / retire <name>" → **optimize**;
+- a bare name → inspect it (status, expectancy, live performance, regime fit now) and offer the
+  next mode.
 
-## Route to a mode
+## Generate
 
-- A reference article / "design a strategy from this" → **GENERATE**.
-- "backtest / validate <name>", "does <name> actually work", the historical performance of a setup, or right after generate → **VALIDATE**.
-- "what should I trade now", "pick a strategy", "which strategy fits this market" → **PICK**.
-- "review / tune / optimize <name>", "is <name> still working", "should I retire <name>" → **OPTIMIZE**.
-- A bare strategy name with no verb → inspect it (print status, expectancy, live_performance, regime-fit now) and offer the relevant next mode.
+If the article describes a screening philosophy rather than an entry/exit system ("high-ROCE
+compounders"), emit an **investment** spec: `universe`, `screening.fundamental`, `ranking`
+(`metric`, `top_n`), `regime_required`, `purpose: investment`
+(example: `assets/seed-strategies/quality-momentum-invest.yml`), and skip the trading steps.
 
----
+The seed library in `assets/seed-strategies/` holds drafts to copy into
+`artifacts/state/strategies/`; they still have to pass validate (`assets/seed-strategies/README.md`
+lists what each needs).
 
-## Mode 1 — GENERATE (from a reference article)
+1. **Ingest the article.** With none given, stop and ask for a URL, file or pasted rules. Extract
+   each element in the method's table, quoting the source.
+2. **Read the market as context**: `get_market_context(mode="quick")`, and `sector-analysis` for
+   leadership. This informs `regime_required`, never the trigger.
+3. **Complete the system** from the method: sizing (1% risk default), heat cap, `regime_required`
+   from the article's claimed conditions, and the `screening` block: the `fundamental` cut
+   (provider `tickertape`, a query in Tickertape field names) and the `technical` cut
+   (`tradingview` filter rows, or `compute` predicates for what TradingView cannot express, such
+   as NR bars or Fibonacci zones). Encode the article's real exit: a trailing stop is
+   `trail_atr: <mult>` with `target: trailing`; an indicator exit is `exit_signal: "<expr>"` in
+   `entry.signal`'s grammar. `exit.target` takes a target name, never prose. Both the live screen
+   and the backtest need an `entry.signal`; a prose trigger or `compute_filters` alone is refused.
+4. **Write the draft** (`status: draft`, untradeable) so the study can run it. Double-quote every
+   free-text value that can hold a `:`, `#`, parentheses or a path (`validated_by`, `target`,
+   `deactivated_reason`, log notes), or the YAML silently changes shape.
+5. **Indicator study, numeric, required.** `run_strategy_screen(spec=<path>,
+   symbols="NTPC,TCS,SBIN", years=3)` reports, per symbol, the built signal or the exact
+   expression that failed; confirm the condition that fired is the article's. A parse error here
+   means fix the spec. Then check the first two or three trades in `run_backtest`'s log against
+   their bars (the rule fired, the fill was the next open, the stop is right) and cite symbol,
+   entry date, exit reason and R. When values differ from a chart, check dates, adjustment and
+   warm-up first. Put `https://www.tradingview.com/symbols/NSE-<TICKER>/` in the rationale as a
+   courtesy link. Record the result as `indicator_study`, `PENDING` until done.
+6. **Emit**: `source_references` filled, `lifecycle.generated_at` set, `expectancy_assumptions` and
+   `live_performance` null, and the rationale at `artifacts/strategy-manager/<date>/<name>.md`
+   citing the article for each trade rule and the framework for the risk layer. Offer validate.
 
-**Trading or investment.** If the article describes a *screening philosophy* rather than an entry/exit system ("quality-momentum microcaps", "high-ROCE compounders"), emit an **investment** spec — fill only `universe`, `screening.fundamental`, `ranking` (`metric` + `top_n`) and `regime_required`, set `purpose: investment`, and skip the entry/exit/sizing/indicator-study steps below (there is no trigger to study). Example: `assets/seed-strategies/quality-momentum-invest.yml`. The rest of this mode is the trading path.
+## Validate
 
-This skill invents **no trade logic of its own** — it always comes from the article. It supplies the *system framework* (completeness, expectancy, %-risk sizing, regime gate). A **seed library of pre-generated drafts** (common swing methods distilled from a reference article) lives in `assets/seed-strategies/` — these are starting points the user copies into `artifacts/state/strategies/` and must still VALIDATE; they are `status: draft`, never a shortcut around the backtest gate.
+Validate tests rules, not picks: "does this setup have an edge?", never "will this trade win?".
 
-1. **Ingest the reference(s) — REQUIRED.** URL → `WebFetch`; local file → `Read`. If the user gives none, **stop and ask** for a URL/file/pasted rules. Extract — and quote the source for — the strategy's universe, entry, exit, ranking/rebalance, indicators, and the regime it claims (reference.md extraction table).
-2. **Read the market as context.** `get_market_context(mode="quick")` returns trend, India VIX, breadth, cap-tier valuation, flows and macro in one cached digest, so nothing here recomputes the tape. Call `sector-analysis` for leadership. This informs `regime_required`, not the entry trigger.
-3. **Complete the system.** Fill every component the article omits from the framework — sizing (default 1% risk), risk caps (heat 6%), `regime_required` from the article's claimed conditions (minimum structural gate if it's silent), and the **`screening` block** (how discover cuts the universe): the `fundamental` cut (provider `tickertape` + a query in Tickertape field names) and the `technical` cut (provider `tradingview` with server-side filter rows, or `compute` with local `finance/compute/ta.py` predicates when TradingView can't express the filter — e.g. NR-bars, fib zones). A spec missing universe/screening/entry/exit/sizing/risk/regime is incomplete; don't emit it.
-   - **Map the article's exit to the engine's exit vocabulary — don't approximate it.** The engine expresses more than a fixed target, so encode the source's *actual* exit: a **trailing stop** → `trail_atr: <mult>` with `target: trailing` (a long `time_stop` is not a substitute — it caps winners and the optimizer misreads it); a **moving-average / indicator exit** (a "close back above the 5-SMA" mean-reversion exit, a "close below the 20-EMA" trend break) → `exit_signal: "<expr>"` in `entry.signal`'s grammar. Reserve `measured_move`/`min_rrr` targets for setups whose source names a fixed objective. If the source's exit genuinely can't be expressed, say so in the rationale — but reach for `trail_atr`/`exit_signal` first.
-   - **`exit.target` takes a target name**, never prose. Put the article's own objective and anything the engine cannot express in the rationale. A spec with only trailing or signal exits can be backtested, but the live screen skips it for lack of a fixed target; do not add a made-up target to get past that.
-4. **Indicator study — REQUIRED, numeric not screenshot.** Confirm the article's entry/exit on 2–3 representative symbols against the indicator-of-record (TA-Lib via `finance/compute/ta.py`), and carry a **static TradingView link** for the human to eyeball. No chart rendering and no screenshots: the substance is the numbers, the chart is a courtesy link. Both reads run the spec's own rules, so write the draft file (step 5) first — it is `status: draft` and untradeable until VALIDATE, so nothing is at risk.
-   - **Latest-bar read:** `run_strategy_screen(spec="artifacts/state/strategies/<name>.yml", symbols="NTPC,TCS,SBIN", years=3)`. It materializes exactly the indicator columns the spec's rules reference and reports, per symbol, either the built signal or the precise expression that failed — read the written report and confirm the condition that fired is the article's.
-   - **Historical read:** check the first 2–3 trades in `run_backtest`'s log, winners or losers, against their bars: the rule fired, the fill was at the next open, the stop is right. Cite symbol, entry date, exit reason and R to show the mechanics, not as proof of edge.
-   - When indicator values differ from a chart, check that the candle dates, price adjustment and warm-up history match first.
-   - **Put a human-facing chart link in the rationale:** `https://www.tradingview.com/symbols/NSE-<TICKER>/`.
-   - Record the numeric confirmation as `indicator_study`; leave it `PENDING` until done — never fabricate it.
-Both the live screen and the backtest require an `entry.signal`. A prose trigger or `compute_filters` alone is rejected before any fetch. For an older spec or seed with no signal, write the intended rule out; copying the screen filters does not test the described entry.
+**Investment spec**, a completeness check: `universe.source` resolves through `get_universe`; the
+provider is `tickertape` and a dry `run_fundamental_screen` on the query succeeds or names the
+unsupported field; `ranking.metric` is one of `return_12m | return_6m | rs_vs_nifty`. All pass →
+`status: active` with `lifecycle.validated_at`; otherwise it stays draft with the gap named.
+Active means the screen runs, not that it picks good investments.
 
-5. **Emit the spec as `status: draft`.** Fill `assets/strategy-spec.example.yml` → `artifacts/state/strategies/<name>.yml` with `source_references` populated, `lifecycle.generated_at` set, `expectancy_assumptions`/`live_performance` null. Write the rationale doc → `artifacts/strategy-manager/YYYY-MM-DD/<name>.md` citing the article for each trade rule and the framework for the risk layer. **A draft is not tradeable** — immediately offer VALIDATE.
-   - **Quote every free-text value, then round-trip the file before trusting it.** Any string that can contain a `:`, `#`, parentheses, or a path — `validated_by`, `target`, `deactivated_reason`, `optimization_log` notes — must be double-quoted, or a `key: value` fragment inside it reads as a nested map and the spec silently becomes unloadable (`run_backtest`/discover then crash on it). After writing, verify it parses: `python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" artifacts/state/strategies/<name>.yml`.
+**Trading spec:**
 
-## Mode 2 — VALIDATE (backtest → active)
+1. `run_backtest` against the spec. Never pass market context into a historical run: today's
+   regime fed into the past is look-ahead.
+2. Map `expectancy_R` to a verdict with the method's table, including the sample-size override.
+3. Say the honesty checks out loud: parameters fixed before the run; survivorship (`largecap20` is
+   a 20-stock basket of current large caps, not the Nifty 50: name it so); regime concentration in
+   the yearly breakdown; `open_trades_at_end`; the exit breakdown; buy-and-hold symbol by symbol;
+   and, arriving from discover, what was not tested (`references/engine.md`).
+4. Write `expectancy_assumptions` (`win_rate`, `expectancy_R`, `profit_factor`, `n_trades`,
+   `validated_by` = the summary path).
+5. Apply the activation gate and set `status`, saying which and why; on activation set
+   `validated_at` and `activated_at`. A PENDING indicator study blocks activation.
+6. Save the report to `artifacts/backtest/<spec-name>/<date>/report.md` beside the engine's files,
+   ending: backtests describe the past; live edge degrades; position-sizing discipline is what
+   survives.
 
-Turn a draft into an active strategy *only if it earns it*. This mode validates **rules**, not stock picks — it answers "does this setup have an edge?", never "will this trade win?".
+## Pick
 
-**An investment spec is not backtested** — there is no entry/exit to test. Its validation is a **completeness check**: (1) `universe.source` resolves via `get_universe`; (2) `screening.fundamental.provider` is `tickertape` and every query field resolves against its catalogue (a dry `run_fundamental_screen` succeeds or names the unsupported field); (3) `ranking.metric` is one of `return_12m | return_6m | rs_vs_nifty`. All pass → set `status: active` and `lifecycle.validated_at`; otherwise keep `draft` with the gap named. Active means the screen runs, not that it picks good investments. `screener_in` specs are no longer supported; rewrite them on Tickertape, and say so if a cross-period criterion has to become a point-in-time one. The rest of this mode is the trading/backtest path.
+1. `get_market_context(mode="quick")`, so selection tests the regime every other skill sees.
+2. `select_strategy(purpose=<trading|investment>, out="artifacts/strategy-manager/<date>/selection.json")`.
+3. Present the selection, the ranked runners-up, and the specs rejected for regime fit with their
+   reasons. `none_fit`: stand aside, and suggest generate or optimize if the library is thin.
+   `no_active`: nothing validated to run; point to generate and validate.
+4. Hand off: `/discover stocks --trade --strategy <selected>`.
 
-1. **Run the engine.** `run_backtest` against the spec — arguments and mechanics in `references/backtesting.md`.
-   - **Never pass market context into a historical run.** The market-analysis artifact describes *today*; feeding it in is lookahead — the strategy would "know" a regime that had not happened yet.
-2. **Map `expectancy_R` to a verdict**, then to a status:
+## Optimize (trading specs only)
 
-   | expectancy_R | verdict | status |
-   |---|---|---|
-   | < 0R | no edge | `inactive` |
-   | 0–0.2R | no tradeable edge (fragile) | stays `draft` |
-   | > 0.2R over ≥ ~30 trades | edge | `active` |
+trade-tracker writes a `result` block into each trade idea it closes; those are the input.
 
-   **No activation without an expectancy figure, or with material data gaps. `n_trades` < 30 overrides the whole table: the run is *inconclusive — insufficient sample*, whatever the expectancy.** 0.9R over 12 trades is an anecdote, not an edge; the spec stays `draft`. Widen symbols/years and re-run before concluding anything.
-3. **Run the honesty checks and say them out loud in the report:**
-   - **In-sample?** The spec's parameters were fixed before the run, or the number is curve-fit.
-   - **Survivorship.** `symbols="largecap20"` expands to a built-in **20-stock** liquid large-cap basket of *current* constituents — it is *not* the full Nifty 50; name it as "20-stock large-cap basket" in the report.
-   - **Regime concentration.** Did all the profit come from one bull year? Check the yearly breakdown.
-   - **Open at the end.** Report `open_trades_at_end`. These are in account equity but not in expectancy, so check whether leaving them out changes the picture.
-   - **`exit_breakdown`.** TIME exits > 50% ⇒ the target/time-stop pairing is mis-specified for the universe — report that as the diagnosis, don't tune parameters in-sample.
-   - **Buy-and-hold comparison.** Each symbol is a separate account; report the capital base and each symbol's date range. Compare the worst drawdown with `max_drawdown_symbol`'s own buy-and-hold, using `equity_path`; it is not a portfolio drawdown. Note that the strategy is not always invested and pays costs.
-   - **Arriving from discover:** state what was *not* tested — the backtest tests the technical trigger mechanics, not the fundamental screen or the discretionary S/R read.
-4. **Write the results into the spec's `expectancy_assumptions`** (`win_rate`, `expectancy_R`, `profit_factor`, `n_trades`, `validated_by` = the summary artifact path).
-5. **Apply the activation gate (reference.md) and set `status`** per step 2's mapping — say which and why. On activation set `lifecycle.validated_at` and `activated_at`. If the numeric indicator study never ran (`indicator_study` PENDING) it cannot go active — finish that read first.
-6. **Report.** Save the summary to `paths.backtest_dir(spec, date)` (`artifacts/backtest/<spec-name>/YYYY-MM-DD/report.md`) alongside the engine's CSV outputs. A passed backtest is a hypothesis that survived history, not a guaranteed edge — end with: backtests describe the past; live edge degrades — position sizing discipline is what survives.
-
-## Mode 3 — PICK (select the active strategy that fits now)
-
-Answer "what should I trade in this market" from the **validated library**, not from a fresh opinion.
-
-1. Refresh the market-of-record: `get_market_context(mode="quick")` — the shared daily read, so this selection tests the regime every other skill sees, not a fresh opinion of the tape.
-2. Select: `python3 <skill-dir>/scripts/select_strategy.py [--purpose trading|investment] --out artifacts/strategy-manager/YYYY-MM-DD/selection.json` (`--regime` defaults to today's `artifacts/market-analysis/<date>.json`, the digest `market-analysis` persists; `--strategies` to `artifacts/state/strategies`). It keeps only `status: active` specs (of `--purpose` when given — this is the `pick(purpose, regime)` `discover` calls), tests each `regime_required` against the live market read, and ranks the fitting ones by edge — validated expectancy for trading, recency for investment.
-3. Present the **selected** strategy (and the ranked runners-up), plus the ones rejected for regime-fit and why. If **none fit** (exit 11) say so plainly — the disciplined move is to stand aside, not to force a misfit strategy; suggest GENERATE/OPTIMIZE if the library is thin. If there are **no active specs** (exit 12), there's nothing validated to run — point to GENERATE→VALIDATE.
-4. Hand off: tell the user to run `/discover stocks --trade --strategy <selected>` to screen live candidates against it (or just `/discover`, which calls this pick itself when no strategy is named).
-
-## Mode 4 — OPTIMIZE (learn from live trades; retire what's broken)
-
-Close the loop with reality. `trade-tracker` writes a `result` block (realized R, exit reason) into each trade-idea artifact when it closes; those are the input. **Trading specs only** — an investment spec places no trades, so it has nothing to optimize; retire one manually (`status: inactive`) if its philosophy no longer holds.
-
-1. Aggregate: `python3 <skill-dir>/scripts/aggregate_performance.py [--strategy <name>] --out artifacts/strategy-manager/YYYY-MM-DD/performance.json` (`--trades`/`--strategies` default to `artifacts/state/trades` and `artifacts/state/strategies`). It validates the execution evidence and net-P&L/R arithmetic required by `finance/contracts.md`, groups verified closes by `strategy`, and computes win rate, expectancy_R, R-weighted profit factor, and exit reasons. It recommends **KEEP / OPTIMIZE / DEACTIVATE**, or **REVIEW** when outcomes are excluded or unreadable (rules in reference.md: needs ≥ 10 closed trades to act; negative live expectancy → deactivate; positive but decaying well below backtest → optimize).
-2. Re-run with `--update-spec` to write `live_performance` and its `drift_note`. The script sets `eligible_for_selection` only with at least ten closes backed by broker executions; otherwise PICK uses the backtest. Report every gap, and fix old closes from broker history rather than estimating.
+1. `review_strategy_performance(strategy=<name>, out="artifacts/strategy-manager/<date>/performance.json")`.
+   It accepts only execution-verified closes and recommends KEEP, OPTIMIZE, DEACTIVATE or REVIEW.
+2. Re-run with `update_spec: true` to write `live_performance`; it marks the spec eligible for
+   live-ranked selection only with ten or more verified closes. Report every gap; fix old closes
+   from broker history, never by estimating.
 3. Act on the verdict:
-   - **REVIEW** → fix the excluded or unreadable trades first; do not optimize or deactivate on the rest.
-   - **DEACTIVATE** → set `status: inactive`, `lifecycle.deactivated_at`/`deactivated_reason` (the script does this with `--update-spec`). The strategy can no longer be picked. Say that negative live expectancy triggered it, which does not prove the edge is gone for good.
-   - **OPTIMIZE** → propose a concrete rule change driven by the diagnostic (e.g. TIME exits dominate the losers → tighten `time_stop_sessions`; stops too tight → widen to structure). **Bump `version`, append an `optimization_log` entry, then re-run VALIDATE** — an optimized strategy must re-pass the backtest gate before it's active again. Never tune parameters and call it active without re-validation (that's in-sample curve-fitting).
-   - **KEEP** → record the live numbers, no change.
+   - **REVIEW**: fix the excluded or unreadable trades first; change nothing on the rest.
+   - **DEACTIVATE**: done by the update; say that negative live expectancy triggered it, which
+     does not prove the edge is gone for good.
+   - **OPTIMIZE**: propose one rule change from the exit-reason diagnosis, bump `version`, append
+     an `optimization_log` entry, and re-validate before it can be active again.
+   - **KEEP**: record the live numbers.
 
-## Alerts this skill raises (via `manage_alerts`)
+## Alerts
 
-When a spec goes stale — the live regime has drifted away from an active strategy's `regime_required`, or OPTIMIZE flags decaying live expectancy — raise a **`revalidate_due`** alert (`subject: {type: strategy, id: <name>}`, `created_by: strategy-manager`, `severity: watch`, `action.text` = why it's stale, `action.suggest: "/strategy-manager validate <name>"` or `optimize <name>`, `trigger: {check: strategy-manager}`, `dedup_key: revalidate-<name>`). `daily-brief` lists it among due actions until a re-validation clears it.
+When an active spec's `regime_required` no longer fits the live regime, or optimize flags decaying
+expectancy, a `revalidate_due` alert: `subject_type: strategy`, `subject_id: <name>`,
+`created_by: strategy-manager`, `severity: watch`, `text` = why it is stale,
+`suggest: "/strategy-manager validate <name>"`, `check: strategy-manager`,
+`dedup_key: revalidate-<name>`.
 
-## How other skills consume this
-`discover` runs only an **active, regime-fitting** spec — and when the user names none, it calls this skill's PICK mode to choose one (it has no default of its own); it reads the spec's `screening`/`entry`/`exit`/`sizing`. `deep-analysis` checks a ticker against an active strategy's regime/archetype; `trade-tracker` reads a trade's linked strategy `regime_required` for its regime-exit check and feeds closed trades back here for OPTIMIZE.
+## Who consumes a spec
+
+`discover` runs only an active, regime-fitting spec and asks pick for one when none is named.
+`trade-tracker` reads a trade's linked `regime_required` for its regime-exit check and feeds
+closes back here.

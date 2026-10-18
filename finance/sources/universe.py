@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """The universe authority — resolve a named universe to its NSE symbols.
 
 One place decides what `nifty500`, `microcap`, `fno`, `largecap20`, a `[list]`, a

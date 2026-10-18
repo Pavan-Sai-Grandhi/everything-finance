@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Spec-driven swing backtester for NSE daily data.
 
 Validates any STRATEGY SPEC, not a hardcoded archetype: entry, stop, target, time-stop and
@@ -283,29 +282,3 @@ def run(spec, symbols, years=5, capital=500000, risk_pct=None, out=None):
          "trades": len(all_trades), "summary_path": summary_path,
          "trades_path": trades_path, "equity_path": equity_path},
         gaps)
-
-
-def _synth(kind):
-    """Deterministic OHLCV: a clean uptrend (signals fire) vs a downtrend."""
-    np = ta.np
-    n = 400
-    idx = pd.date_range("2022-01-03", periods=n, freq="B")
-    base = np.linspace(100, 240, n) if kind == "up" else np.linspace(240, 100, n)
-    close = pd.Series(base + np.sin(np.arange(n) / 7) * 4, index=idx)
-    high = close + 2.0
-    low = close - 2.0
-    op = close.shift(1).fillna(close.iloc[0])
-    vol = pd.Series([1000] * n, index=idx)
-    return pd.DataFrame({"Open": op, "High": high, "Low": low,
-                         "Close": close, "Volume": vol}, index=idx)
-
-
-SELFTEST_SPEC = {
-    "name": "selftest-ema-pullback", "archetype": "pullback",
-    "screening": {"technical": {"compute_filters": [
-        "ema50_rising", "Close > ema50"]}},
-    "entry": {"signal": ["ema50_rising", "Close > ema50", "rsi14 between 40 and 80"]},
-    "exit": {"stop": "ema50_minus_2atr", "target": "next_resistance",
-             "min_rrr": 1.5, "time_stop_sessions": 15},
-    "sizing": {"risk_per_trade_pct": 1.0},
-}

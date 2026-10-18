@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Primitives every data-spine fetcher shares — the envelope, coercion, the day cache.
 
 `transport.py` owns the network; this owns the shape of what comes back. Each domain
@@ -6,10 +5,12 @@ fetcher (`prices`, `market`, `funds`, `fundamentals`, `news`, `filings`) imports
 rather than carrying its own copy, so the envelope contract and the cache-freshness rule
 have exactly one definition. See `finance/contracts.md`.
 """
+import functools
 import json
 import math
 import hashlib
 import os
+import re
 import tempfile
 from datetime import date, datetime
 
@@ -27,6 +28,48 @@ def envelope(ok, source, data, gaps):
         "data": data,
         "gaps": gaps,
     }
+
+
+def guarded(source):
+    """Turn a rejected input or a failed read into a labelled `ok:false` envelope."""
+    def wrap(fn):
+        @functools.wraps(fn)
+        def call(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                return envelope(False, source, {}, [f"{fn.__name__} rejected: {exc}"])
+        return call
+    return wrap
+
+
+def _unique_keys(pairs):
+    out = {}
+    for key, value in pairs:
+        if key in out:
+            raise ValueError(f"duplicate JSON key: {key}")
+        out[key] = value
+    return out
+
+
+def _finite(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError("JSON numbers must be finite")
+    return value
+
+
+def read_json(path):
+    """Parse a JSON file strictly: a duplicate key or a non-finite number is an error."""
+    with open(path, encoding="utf-8") as stream:
+        return json.load(stream, object_pairs_hook=_unique_keys,
+                         parse_float=_finite, parse_constant=_finite)
+
+
+def write_json(value, path):
+    """Publish a complete JSON file atomically; a failure leaves the old file."""
+    payload = json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    return atomic_write(path, payload, fsync=True)
 
 
 def f(value):
@@ -76,6 +119,15 @@ def iso_date(value):
             except ValueError:
                 return None
     return None
+
+
+def inr_group(n):
+    """Indian digit grouping on the rounded integer: 123456 -> '1,23,456'."""
+    digits = f"{abs(int(round(n)))}"
+    if len(digits) > 3:
+        head = re.sub(r"(?<=\d)(?=(\d\d)+$)", ",", digits[:-3])
+        digits = head + "," + digits[-3:]
+    return ("-" if n < 0 else "") + digits
 
 
 def pct(numerator, denominator, places=2):

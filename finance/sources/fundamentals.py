@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fundamentals fetch — Tickertape for the numbers, screener.in for the document index.
 
 `fetch(symbol)` resolves the NSE symbol to a Tickertape `sid` and reads the ratio, annual

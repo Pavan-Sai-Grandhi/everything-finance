@@ -225,19 +225,21 @@ def test_targets_and_partial_rebalancing():
     check('moves use exact values instead of rounded percentages', result['classes']['equity']['move_value'] == 1666667)
 
 
-def test_allocation_cli_error():
+def test_allocation_file_entry():
     import json
-    import subprocess
     import tempfile
-    script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                          'skills', 'portfolio-review', 'scripts', 'allocation.py')
     with tempfile.TemporaryDirectory() as tmp:
         book = os.path.join(tmp, 'book.json')
         with open(book, 'w') as stream:
             json.dump({'holdings': BOOK, 'targets': {'equity': 60}}, stream)
-        result = subprocess.run([sys.executable, script, '--book', book], capture_output=True, text=True)
-        check('invalid target CLI fails without partial report', result.returncode == 1 and not result.stdout)
-        check('invalid target CLI emits a structured gap', json.loads(result.stderr)['ok'] is False)
+        env = allocation.review_file(book)
+        check('an invalid target fails as a labelled gap, with no partial report',
+              env['ok'] is False and env['data'] == {} and env['gaps'], env)
+        with open(book, 'w') as stream:
+            json.dump({'holdings': BOOK}, stream)
+        env = allocation.review_file(book)
+        check('a valid book returns the review in the envelope',
+              env['ok'] and 'concentration_flags' in env['data'] and 'gaps' not in env['data'], env)
     partial = allocation.review([{'ticker': 'X', 'value': 100}, {'ticker': 'Y'}])
     check('partial book concentration does not prescribe a trim amount',
           all(f['suggestion'].startswith('REVIEW:') for f in partial['concentration_flags']))

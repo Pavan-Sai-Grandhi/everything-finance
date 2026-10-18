@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Sector screener — the single definition of sector relative strength.
 
 The invest·sectors screener: rank the NSE sectoral indices by the sector spec's metric

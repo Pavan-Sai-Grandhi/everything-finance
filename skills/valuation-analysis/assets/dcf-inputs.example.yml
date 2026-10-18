@@ -8,7 +8,7 @@
 
 currency_unit: "INR Crore"
 years: 10                       # explicit horizon; use 15 for a genuinely YOUNG/high-growth firm
-# Life-cycle stage drives WHICH levers matter (see reference § "Diagnose first") — set it honestly:
+# Life-cycle stage drives WHICH levers matter (methods/valuation.md § "Diagnose first") — set it honestly:
 lifecycle_stage: mature_stable  # start_up | young_growth | high_growth | mature_growth | mature_stable | decline
 
 # --- base (sourced from the latest consolidated financials) ----------------------------
@@ -46,7 +46,7 @@ margin_glide:                   # ramp 18% -> 22% by year 5, hold
   year_target: 5
 
 tax_rate: 0.25                  # effective -> statutory            [src: annual report tax note — NEVER
-                                #   derived from the "Taxes & Other Items" row; see reference § levers]
+                                #   derived from the "Taxes & Other Items" row; see methods/valuation.md § levers]
 sales_to_capital: 2.5           # ₹ sales per ₹ invested (scalar or list)
                                 #   [hist: ΔRev ÷ (capex − depreciation + ΔWC), averaged over several years.
                                 #    capex   src: cash_flow_10y Capital Expenditures
@@ -54,7 +54,7 @@ sales_to_capital: 2.5           # ₹ sales per ₹ invested (scalar or list)
                                 #    ΔWC     DERIVED from balance_sheet_10y (Total Receivables + Total
                                 #            Inventory − Accounts Payable); the cash_flow_10y row named
                                 #            "Changes in Working Capital" is NOT a WC movement — see
-                                #            reference § Sourcing the reinvestment]
+                                #            methods/valuation.md § Sourcing the reinvestment]
 
 # --- discount rate: EITHER a single `wacc` OR a `wacc_buildup` (preferred for India: makes
 #     the country-risk premium explicit instead of buried in one guessed number) ----------
@@ -66,7 +66,7 @@ wacc_buildup:
                                 #   [src: unlevered peer betas, relevered; >1.3 trips a flag — recheck]
   mature_erp: 0.0508            # get_risk_inputs country_risk.mature_erp [Damodaran + as_of]
   country_risk_premium: 0.0219  # get_risk_inputs country_risk.country_risk_premium; add once [same vintage]
-  lambda_country: 1.0           # India OPERATING exposure: ~1 domestic; ~0.1 for an IT exporter (see reference)
+  lambda_country: 1.0           # India OPERATING exposure: ~1 domestic; ~0.1 for an IT exporter (methods/valuation.md § Country risk)
   cost_of_debt_pretax: 0.09     # [src: interest/avg debt or rating spread]
   equity_weight: 0.90           # market-value weights
   tax_rate: 0.25
@@ -90,7 +90,7 @@ terminal_roic: 0.15             # return on new capital in perpetuity. The exces
 # every explicit/terminal tax rate = 0, net_debt = 0, and buildup weights equity=1/debt=0.
 # Merely changing model_shape on this operating-company example is invalid.
 
-# --- post-operating adjustments: apply ONLY when the diagnosis calls for them (see reference) ---
+# --- post-operating adjustments: apply ONLY when the diagnosis calls for them (methods/valuation.md) ---
 # failure_probability: 0.10     # distress haircut — loss-making + heavy debt, or decline-phase; ~0 for mature
 # failure_recovery: 0.0         # fraction of equity recovered in failure (usually 0)
 # complexity_discount: 0.20     # governance/cross-holding/promoter-control haircut; justify explicitly if used

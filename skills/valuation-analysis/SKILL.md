@@ -2,48 +2,91 @@
 name: valuation-analysis
 description: Work out what an Indian stock is actually worth and whether today's price is defensible — a story-driven discounted-cash-flow (FCFF) model in Aswath Damodaran's style for intrinsic value, the multiples read (P/E vs peer median and own band, PEG, EV/EBITDA, P/B·RoE for financials) for relative value, the two reconciled into one Undervalued / Fair / Overvalued stance weighted by a DCF-confidence grade. Projects revenue growth and operating margins from a coherent narrative, funds that growth via the sales-to-capital ratio, discounts free cash flow to the firm at WACC, adds a disciplined terminal value, and reports intrinsic value as a range with a margin of safety, a terminal-WACC×terminal-growth check, and reality-check flags. Reach for this skill whenever the user wants a valuation or intrinsic/fair value of one company — phrasings like "what is X really worth", "is X overvalued or undervalued", "justify this P/E", "should I buy at ₹Y", "build me a DCF", "value this stock", or wanting the numbers behind a buy/sell decision — even if they never say the word "DCF". It is for single-stock equity value specifically (not mutual-fund picks → mf-analysis, not the full multi-agent debate → deep-analysis).
 argument-hint: "TICKER — every model input is sourced from the filings; the engine only computes what it is given"
-allowed-tools: Read, Write, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
+allowed-tools: Read, Write, mcp__finance-market__*, mcp__plugin_everything-finance_finance-market__*, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*, mcp__finance-workflow__get_prior_run, mcp__plugin_everything-finance_finance-workflow__get_prior_run
 ---
 
-# Valuation Analysis — intrinsic (DCF) and relative (multiples), reconciled
+# Valuation Analysis: intrinsic and relative, reconciled
 
-Read `references/reference.md` first — it owns the method: the life-cycle diagnosis, the levers and where to source each, country risk and beta, the terminal excess-return call, the post-operating adjustments, the capitalisation adjustments, every engine flag, the relative-multiples guardrails, the reconciliation rule, and the DCF-confidence grade. This SKILL is the workflow.
+A model, not a price target. A terminal-heavy or fragile DCF is reported with low confidence,
+never hidden. It informs a decision; it never sizes a position.
 
-**Sources for this skill only:** `finance-company` — `get_company_fundamentals` (consolidated financials incl. the ten-year cash flow, and the peer list), `get_documents` (annual report and concall as cached local text), `get_stock_ratios` (a ratio a peer row does not carry), `get_risk_inputs` (the India 10Y yield, default spread, CRP and mature ERP, each dated), `get_analyst_estimates` (Yahoo's analyst consensus EPS and revenue for the next two fiscal years), `run_dcf` (the engine) — and `finance-market` `get_quote` (current price) + `get_prior_run` (step 0).
+**Method:** `methods/valuation.md`; `methods/fundamentals.md` → *Reading the published rows*.
 
 ## Workflow
 
-0. **Check for a prior run.** `get_prior_run(skill="dcf", subject=SYMBOL)` — if `data.path` names an earlier `dcf.md`, read it for context so this valuation stays consistent with the last story, and open the report with a one-line `prior run: <path> (<date>)` link noting what changed (fair value then→now, which assumption moved). **The prior run supplies the story, never the numbers**: every lever is re-sourced from this run's fetch, and one that genuinely cannot be — net cash and minority interest are the usual pair, since no feed row carries them cleanly — is marked `carried from <date>, not re-derived` in the Assumptions table and named in Data gaps. A stale figure inside a fresh valuation is the one error the report cannot show you. No prior run is the normal first-time case.
-1. **Gather the sourced base inputs.** `get_company_fundamentals(SYMBOL)` for the ten-year P&L, balance sheet and cash flow, the ratios and the peer list; `get_documents(SYMBOL)` for the annual report, whose **tax note is the only acceptable source for `tax_rate`** — its `outline.tax_note` gives you the line numbers, so read that range rather than the whole file; `get_quote(SYMBOL)` for CMP. Both fetches are cached at the tool (fundamentals for the day, documents for good) — call each once and read the `text_path` files, never re-fetch what the cache already holds. Use **revenue from operations and operating EBIT**, excluding interest/investment/other non-operating income; add the related cash and investments only in the equity bridge. If the feed exposes only Total Revenue, derive the operating base from the annual report or mark the DCF unverified—never value that income in operations and add its asset again. The reference's § "The valuation levers" names which published row each input comes from and which must be derived by hand.
-2. **Diagnose the life-cycle stage, then build the story.** Set `lifecycle_stage` before any number, then the growth path — built from the story first, then set beside `get_analyst_estimates`' revenue and EPS growth for the next two fiscal years. Check Yahoo's year-ago figures against the annual report before reading its growth; a basis mismatch voids the comparison. A path well away from a consensus of three or more analysts states why in the Assumptions table; the consensus is a check on the story, never pasted in as the base. Then the margin path, sales-to-capital path, WACC, terminal growth and terminal ROIC, each with a one-line justification. Build the rupee risk-free rate as **Indian government-bond yield minus India's sovereign default spread**, then add India CRP once through `lambda_country`; all four market inputs come from **`get_risk_inputs`** — its yield, `default_spread`, `country_risk_premium` and `mature_erp` go into `wacc_buildup` as returned, each cited with its `source` and `as_of`. Only a field it reports as a gap may be an analyst estimate, labelled as such with the reason. For a young/high-growth company set a mature `terminal_wacc`; the engine fades the initial cost of capital toward it as risk normalises. Terminal growth is capped at the resulting **default-free** rupee rate, not the unadjusted G-sec yield. The reference's § "Diagnose first" governs all of it: **terminal growth, country premium, beta and failure probability are conclusions of the diagnosis, never defaults.**
-When dispatched by deep-analysis, honor its explicit report and inputs output paths inside the prepared bundle. Do not also write a dated default copy. Standalone runs use the default paths below.
+0. **Prior run**: `get_prior_run(skill="dcf", subject=SYMBOL)`. If one exists, read it for the
+   story and open the report with `prior run: <path> (<date>)` and what changed (fair value then
+   and now, which assumption moved). The prior run supplies the story, never the numbers: every
+   lever is re-sourced from this run's fetch. One that genuinely cannot be (net cash and minority
+   interest are the usual pair) is marked `carried from <date>, not re-derived` in the
+   Assumptions table and named in Data gaps.
+1. **Base inputs**: `get_company_fundamentals(SYMBOL)` (ten-year statements, ratios, peers),
+   `get_documents(SYMBOL)` (the tax note at `outline.tax_note` is the only acceptable source for
+   `tax_rate`), and `get_quote(SYMBOL)` for the price; each once, reading the cached text after.
+   Value revenue from operations and operating EBIT, excluding interest, investment and other
+   non-operating income, and add the related cash and investments only in the equity bridge. If
+   the feed exposes only `Total Revenue`, derive the operating base from the annual report or mark
+   the DCF unverified; never value that income in operations and add its asset again.
+2. **Diagnose, then build the story.** Set `lifecycle_stage` before any number. Build the growth
+   path from the story, then set it beside `get_analyst_estimates`' revenue and EPS growth for the
+   next two fiscal years; check Yahoo's year-ago figures against the annual report first, since a
+   basis mismatch voids the comparison. A path well away from a consensus of three or more
+   analysts says why in the Assumptions table; the consensus checks the story and is never the
+   base. Then the margin path, sales-to-capital path, WACC, terminal growth and terminal ROIC,
+   each with a one-line reason. The four market inputs come from `get_risk_inputs`: its 10Y yield,
+   `default_spread`, `country_risk_premium` and `mature_erp` go into `wacc_buildup` as returned,
+   each cited with its `source` and `as_of`; only a field it reports as a gap may be an estimate,
+   labelled with its reason. Terminal growth, country premium, beta and failure probability are
+   conclusions of the diagnosis, never defaults.
+3. **Write the inputs file** from `assets/dcf-inputs.example.yml` to the path deep-analysis gave
+   you, or standalone to `artifacts/stocks/<SYMBOL>/<YYYY-MM-DD>/dcf-inputs.yml`, every value with
+   its source and date as a comment. Always include `timing` (`base_period_end` is the last day of the
+   `base_revenue` period, `valuation_date` the date of the price) and `current_ebit_margin`
+   (operating EBIT ÷ revenue from operations, latest FY), which lets the engine catch an EBITDA
+   margin passed as an EBIT margin. For a bank, NBFC or insurer set `model_shape: equity`.
+4. **Run the engine** on that file, so the audit trail and the run are one input:
+   `run_dcf(ticker=SYMBOL, inputs=<the inputs file path>, relative=<step 6>, sensitivity=true,
+   story=true, reverse=true)`. The full result lands at the returned `dcf_path`.
+   `reverse` solves for growth against the price; `reverse_solve="margin"` gives the implied
+   margin and `reverse_target=<price>` tests another price. `ok:false` means the model rejected an
+   input (WACC at or below terminal growth, say): fix the input, never work around the guard.
+5. **Read the flags, both grids, the reverse DCF and the market view.** A gap naming an unsourced
+   discount-rate input means re-source from this run's `get_risk_inputs` and rerun. Copy
+   `market_view`'s margin of safety into `dcf_mos_market` and its
+   `index_value_to_price_at_method_rate` into the inputs table. Answer every flag in the write-up;
+   `MARGIN_BASIS_UNCHECKED`, `MARGIN_BASIS_SUSPECT`, stale risk inputs or an unresolved
+   operating/non-operating split prohibit high confidence. Where a lever genuinely changes, record
+   `was → now` with the reason and cite both `dcf_path` files. Lead with the `story_sensitivity`
+   grid as the range; read `story_sensitivity.duration` as alternative scenarios, judged against
+   business evidence, never extended to close the gap to price. A reverse DCF with
+   `solved: false` establishes nothing about cheap or dear.
+6. **The relative read**: `relative = {pe, pe_basis, peer_pe, peer_pe_basis, own_pe_history,
+   growth}`.
+   - `pe`: the trailing P/E on earnings you have checked. The financials leg runs in the same wave,
+     so scan the last two years of other income and exceptional items yourself for a one-off worth
+     more than ~5% of PAT. Found one: strike the P/E on post-tax clean EPS with
+     `pe_basis: adjusted`. Found none: the published TTM `Stock P/E`, `pe_basis: reported`. Could
+     not look: `pe_basis: reported (unchecked)` and a gap. Carry `eps_adjustments` either way.
+   - `peer_pe`: the `ttm_pe` on each `peers` row (the peer list deep-analysis passed, when it did),
+     `peer_pe_basis: reported`. `get_stock_ratios` is only for a ratio a peer row lacks, and its
+     P/E field is `ttm_pe`, never the annualised `pe`.
+   - `own_pe_history`: the company's own band. `growth`: expected EPS growth for PEG, a labelled
+     estimate with its basis; prefer next-year consensus from three or more analysts whose
+     year-ago EPS matches the published one.
 
-3. **Write the inputs file** from `assets/dcf-inputs.example.yml` → `artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf-inputs.yml` (`paths.stock_dir(symbol, date)`), every value carrying a source comment and date. It is the audit trail for step 4 — the same values go into the tool call. Always include `timing`: `base_period_end` is the last day of the period `base_revenue` covers, `valuation_date` the date of `get_quote`'s price. Always include `current_ebit_margin` (`operating EBIT ÷ revenue from operations`, latest FY): `operating_margin` is an **EBIT** margin, the published `OPM %` is struck at EBITDA, and this is the input that lets the engine catch the substitution. For banks, NBFCs and insurers explicitly set `model_shape: equity`; use net income, regulatory-capital reinvestment and cost of equity—never disguise that stream as FCFF.
-4. **Run the engine.** `run_dcf(ticker=SYMBOL, inputs=<the file's values>, relative=<the figures from step 6>, sensitivity=true, story=true, reverse=true)` — forward valuation, both sensitivity grids, the reverse DCF and the relative read in one envelope. The full JSON lands at `stocks/<SYMBOL>/<date>/dcf-<content-hash>.json`; the response carries the headline numbers plus `dcf_path`. `reverse` solves for **growth** against `current_price` by default; pass `reverse_solve="margin"` for the implied-margin version, or `reverse_target=<price>` to test a different price. An `ok:false` envelope means the model rejected an input (e.g. WACC ≤ terminal growth) — fix the input, never work around the guard.
-5. **Read the flags, BOTH grids, the reverse DCF and the market view.** A gap naming an unsourced discount-rate input means the build-up did not come from this run's `get_risk_inputs` — re-source it and rerun; a prior run's or the example file's rates never stand in. `market_view` is the same company at the Indian market's own implied return; copy its margin of safety into `dcf_mos_market` and its `index_value_to_price_at_method_rate` into the inputs table. Address every flag **in the write-up**. `MARGIN_BASIS_UNCHECKED`, `MARGIN_BASIS_SUSPECT`, stale/unsourced risk inputs, or an unresolved operating/non-operating-income split prohibit a high-confidence DCF; source and rerun them or grade confidence low and name the gap. A flag is answered in prose, never cosmetically removed: where a lever genuinely changes, say so in the Assumptions table as `was → now` with the reason, and cite both immutable `dcf_path` files. Same-day calls do not automatically establish revision lineage. **Lead with the `story_sensitivity` grid (growth-path × explicit-and-terminal margin shifts) as the range** and read `story_sensitivity.duration` as alternative duration scenarios, not proof of a premature fade. The terminal-WACC×terminal-growth grid is only a mechanical terminal-value check: it holds explicit WACC and operating assumptions fixed, so never call it a whole-model risk sensitivity. Treat reverse DCF as a conditional comparison: a solved path is not a unique statement of market expectations, and `solved: false` establishes no cheap/expensive verdict. Report the reason and all envelope gaps. Evaluate duration scenarios against independent business evidence; never extend growth merely to close the gap to price. Revise the base only when that evidence warrants it, citing both versions.
-6. **Build the relative read.** Assemble `relative` = `{pe, pe_basis, peer_pe, peer_pe_basis, own_pe_history, growth}`:
-   - `pe` — the company's trailing P/E, struck on earnings you have checked. The financials leg runs in the same wave and cannot hand you its `eps_adjustments`, so **scan for the distortion yourself before you set the basis**: read the last two years of Other Income / exceptional items in the annual-report sections you already hold, and name any one-off — a stake sale, an asset disposal, a write-back — worth more than ~5% of reported PAT. Found one: strike the P/E on post-tax clean EPS, set `pe_basis: adjusted`, and record the adjustment. Found none, having looked: the published `Stock P/E` (which is TTM) and `pe_basis: reported`. Could not look, because the sections were not available: `pe_basis: reported (unchecked)` and a `gaps` entry — a multiple on unexamined earnings is an unverified number, not a clean one. **Carry `eps_adjustments` in the block either way**, so the synthesis can see what was checked rather than assume it.
-   - `peer_pe` — the `ttm_pe` already on each `peers` row from `get_company_fundamentals`, which is the trailing basis matching the company's; they arrive in that one response, so make no per-peer call for a P/E. `peer_pe_basis` is `reported` — these are published multiples on published earnings. An adjusted company P/E against reported peers is not a comparison; the engine voids the peer half and says so rather than reading a false "in line". `get_stock_ratios(sid)` is for a ratio the peer row does not carry — and if you reach for a P/E there, it is `ttm_pe`, never the sibling annualised `pe`, which skews the peer read ~8% inside a ±10% band.
-   - `own_pe_history` — the company's own historical band, the one comparison immune to a bad peer set.
-   - `growth` — expected EPS growth for PEG, a **labelled estimate with its basis stated**, including which years the basis excludes. Prefer the next-fiscal-year consensus growth from `get_analyst_estimates` when three or more analysts cover the stock and its year-ago EPS matches the published one; say so.
+   Report every `relative.gaps` entry: a void peer half changes what the stance may rest on. Add
+   EV/EBITDA against peers where capital structures differ, and P/B with RoE for a lender or
+   insurer.
+7. **Reconcile, grade and call it** per the method. A cap-tier valuation stance handed in is
+   context for the relative read only.
 
-   Pass it to `run_dcf`; the returned `relative` block carries the peer median, the P/E-vs-median read, the own-band percentile, PEG, a relative-only stance and its own `gaps`. **Report every `gaps` entry** — the engine raises one when the peer half is void, and a voided peer read changes what the stance may rest on. Add EV/EBITDA vs peers where capital structures differ — P/B with RoE instead for banks, NBFCs and insurers. The reference's § "Relative valuation" owns the peer-group floor, the basis rule, the median and the PEG guardrails.
-7. **Reconcile, grade, and call it.** Explain the gap to peers by fundamentals before calling it mis-pricing, grade DCF confidence low/med/high, and weight the two views into one Undervalued / Fair / Overvalued stance — all per the reference's § "Reconcile and grade confidence". Where the run is handed a cap-tier valuation stance, it is context for the relative read only; it never overrides the company's own numbers.
+## Report
 
-## Produce this report
+Fill `assets/dcf-report.example.md` at the path deep-analysis gave you, or standalone at
+`artifacts/stocks/<SYMBOL>/<YYYY-MM-DD>/dcf.md`. Its leading `valuation-block` is machine-read: keep
+every field name exactly as the template has it. Paste the engine's `story_sensitivity_md` and
+`sensitivity_md` verbatim; engine output is never retyped. Label the cash flow exactly: FCFF
+discounted at WACC for an operating company, an equity cash flow discounted at cost of equity for
+a financial.
 
-Use the explicit bundle report path when supplied; otherwise fill `assets/dcf-report.example.md` → `artifacts/stocks/<SYMBOL>/YYYY-MM-DD/dcf.md` (`paths.stock_dir(symbol, date)`). Its leading `valuation-block` is machine-read by `deep-analysis`'s portfolio-manager, which cites those numbers without re-deriving them — **keep every field name exactly as the template has it**.
-
-Both sensitivity grids come back pre-rendered as `story_sensitivity_md` and `sensitivity_md`. **Paste them verbatim.** Engine output is never retyped into the template.
-
-Label the cash flow exactly: an operating-company run is **FCFF discounted at WACC**; an equity-shaped financial-company run is an **equity cash flow discounted at cost of equity**. Never call FCFF “FCFE-equivalent” or mix the two labels.
-
-Persist the full report, then return only the `valuation-block` fields plus `path`. A terminal-heavy or fragile DCF is reported with low confidence, never hidden. You inform a decision; you do not size a position.
-
-## Boundaries
-
-A young, loss-making, cash-burning company is **in scope** — that is exactly what story-driven DCF is *for*. Build revenue from TAM × share × take-rate, set the steady-state margin from where the business model lands at scale, fund growth with the sales-to-capital ratio, discount at a country-risk-inclusive WACC, and apply a `failure_probability`. Never refuse a valuation just because earnings are negative today.
-
-DCF is genuinely **fragile** in two cases, where you lean on the relative read and say which you trust and why: **(1) banks / NBFCs / insurers** (FCFF is ill-defined — value on equity/P/B/RoE instead), and **(2) violently cyclical / commodity firms** where fuel, forex, or commodity swings throw FCFF around so hard that any single forecast is arbitrary (normalise through a cycle and treat the DCF as one weak input). Both force the DCF-confidence grade to **low**. The fix for a *young* firm is a failure probability and a story-driver range, **not** abandoning the DCF.
-
-End on the model's own limit: this is a model, not a price target.
+Return only the `valuation-block` fields plus `path`.

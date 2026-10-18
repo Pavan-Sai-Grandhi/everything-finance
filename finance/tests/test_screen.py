@@ -6,6 +6,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from finance.compute import screen
 from finance.tests.harness import check, run
+from finance.tests import fixtures  # noqa: E402
 
 pd = screen.pd
 
@@ -66,7 +67,7 @@ def _ind_frame(close, ema50, atr14=2.0, ll20=None, hh20=None, vol10=1000, rsi14=
 
 def test_build_signal_min_rrr_target():
     df = _ind_frame(close=100, ema50=95)
-    spec = {"exit": {"stop": "ema50_minus_2atr", "target": "next_resistance", "min_rrr": 1.5},
+    spec = {"exit": {"stop": "ema50_minus_2atr", "target": "min_rrr", "min_rrr": 1.5},
             "sizing": {"risk_per_trade_pct": 1.0}}
     sig = screen.build_signal(df, spec, capital=500000)
     check("stop = ema50-2atr", sig["stop"] == 91.0, str(sig))
@@ -97,7 +98,7 @@ def test_build_signal_rejects_low_rrr():
 def test_build_signal_floors_tight_stop():
     df = _ind_frame(close=100, ema50=95, atr14=3.0)
     df["Low"] = [99.9] * len(df)
-    spec = {"exit": {"stop": "recent_swing_low", "target": "next_resistance", "min_rrr": 1.5},
+    spec = {"exit": {"stop": "recent_swing_low", "target": "min_rrr", "min_rrr": 1.5},
             "sizing": {"risk_per_trade_pct": 1.0}}
     sig = screen.build_signal(df, spec, capital=500000)
     check("tight stop floored to entry-0.5atr", sig["stop"] == 98.5, str(sig))
@@ -121,8 +122,8 @@ def test_build_signal_rejects_wide_stop():
 
 
 def test_screen_compute_discriminates():
-    res = screen.screen_compute(["UPTREND", "DOWNTREND"], screen.SELFTEST_SPEC, 2,
-                                500000, loader=lambda s: screen._synth(s.lower()))
+    res = screen.screen_compute(["UPTREND", "DOWNTREND"], fixtures.SCREEN_SPEC, 2,
+                                500000, loader=lambda s: fixtures.screen_frame(s.lower()))
     names = [c["symbol"] for c in res["candidates"]]
     check("uptrend selected", names == ["UPTREND"], str(names))
     check("downtrend rejected", any(r["symbol"] == "DOWNTREND" for r in res["rejected"]))
@@ -132,51 +133,34 @@ def test_screen_compute_handles_loader_failure():
     def bad(sym):
         if sym == "BAD":
             raise RuntimeError("no data")
-        return screen._synth("uptrend")
-    res = screen.screen_compute(["BAD", "GOOD"], screen.SELFTEST_SPEC, 2, 500000,
+        return fixtures.screen_frame("uptrend")
+    res = screen.screen_compute(["BAD", "GOOD"], fixtures.SCREEN_SPEC, 2, 500000,
                                 loader=bad)
     check("failed symbol -> data gap", any("BAD" in g for g in res["data_gaps"]))
     check("good symbol still screened", any(c["symbol"] == "GOOD" for c in res["candidates"]))
 
 
 def test_live_screen_honors_explicit_entry_signal():
-    spec = {**screen.SELFTEST_SPEC, "entry": {"signal": ["Close < 0"]}}
+    spec = {**fixtures.SCREEN_SPEC, "entry": {"signal": ["Close < 0"]}}
     res = screen.screen_compute(["UP"], spec, 2, 500000,
-                                loader=lambda _: screen._synth("uptrend"))
+                                loader=lambda _: fixtures.screen_frame("uptrend"))
     check("coarse uptrend cannot bypass a false precise entry signal", not res["candidates"])
     check("rejection identifies the entry condition",
           any("Close < 0" in str(r["why"]) for r in res["rejected"]))
 
 
 def test_textual_archetype_does_not_change_entry_price():
-    spec = {**screen.SELFTEST_SPEC, "archetype": "breakout",
+    spec = {**fixtures.SCREEN_SPEC, "archetype": "breakout",
             "entry": {"signal": ["Close > 0"]}}
-    raw = screen._synth("uptrend")
+    raw = fixtures.screen_frame("uptrend")
     res = screen.screen_compute(["UP"], spec, 2, 500000, loader=lambda _: raw)
     check("entry uses the signal close consistently with backtest sizing",
           res["candidates"] and res["candidates"][0]["entry"] == round(raw.Close.iloc[-1], 2))
 
 
-def test_resolve_symbols():
-    check("a list is normalised and upper-cased",
-          screen.resolve_symbols([" reliance ", "tcs"]) == ["RELIANCE", "TCS"])
-    check("a comma string splits", screen.resolve_symbols("reliance, tcs") ==
-          ["RELIANCE", "TCS"])
-    check("blank entries are dropped", screen.resolve_symbols("RELIANCE,,  ") ==
-          ["RELIANCE"])
-    check("None is an empty universe, not a crash", screen.resolve_symbols(None) == [])
-    import tempfile
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
-        fh.write("reliance\n\ntcs\n")
-        path = fh.name
-    check("a file path reads one symbol per line",
-          screen.resolve_symbols(path) == ["RELIANCE", "TCS"], screen.resolve_symbols(path))
-    os.unlink(path)
-
-
 def _run_with(res, out):
     orig_load, orig_compute = screen.load_spec, screen.screen_compute
-    screen.load_spec = lambda path: {**screen.SELFTEST_SPEC, "name": "test-spec"}
+    screen.load_spec = lambda path: {**fixtures.SCREEN_SPEC, "name": "test-spec"}
     screen.screen_compute = lambda *a, **k: res
     try:
         return screen.run("spec.yml", ["RELIANCE", "TCS"], years=2, capital=100000, out=out)
@@ -218,7 +202,7 @@ def test_run_falls_back_to_spec_universe_source():
     import tempfile
     seen = {}
     orig_load, orig_compute = screen.load_spec, screen.screen_compute
-    screen.load_spec = lambda path: {**screen.SELFTEST_SPEC, "name": "s", "universe": {"source": "AAA,BBB"}}
+    screen.load_spec = lambda path: {**fixtures.SCREEN_SPEC, "name": "s", "universe": {"source": "AAA,BBB"}}
 
     def _capture(syms, *a, **k):
         seen["syms"] = syms
@@ -292,19 +276,19 @@ def test_missing_spec_or_conditions_is_a_gap_before_loading_prices():
     called = []
     def load(symbol):
         called.append(symbol)
-        return screen._synth("uptrend")
+        return fixtures.screen_frame("uptrend")
     result = screen.screen_compute(["SYNTH"], {}, 2, 500000, loader=load)
     check("empty trigger cannot fetch or emit a trade", not called and not result["candidates"] and bool(result["data_gaps"]), result)
-    spec = {**screen.SELFTEST_SPEC, "entry": {"signal": "Close > ema21"}}
+    spec = {**fixtures.SCREEN_SPEC, "entry": {"signal": "Close > ema21"}}
     result = screen.screen_compute(["SYNTH"], spec, 2, 500000, loader=load)
     check("string trigger runs through live orchestration", bool(result["candidates"]), result)
 
 
 def test_screen_preserves_price_gaps_and_bar_date():
     import unittest.mock as mock
-    frame = screen._synth("uptrend")
+    frame = fixtures.screen_frame("uptrend")
     with mock.patch.object(screen.prices, "history_df", return_value=(frame, ["fixture partial history"])):
-        result = screen.screen_compute(["SYNTH"], screen.SELFTEST_SPEC, 2, 500000)
+        result = screen.screen_compute(["SYNTH"], fixtures.SCREEN_SPEC, 2, 500000)
     check("screen retains degraded price history", any("fixture partial history" in gap for gap in result["data_gaps"]), result)
     check("candidate identifies its decision bar date", result["candidates"] and result["candidates"][0].get("as_of") == str(frame.index[-1].date()))
 
@@ -312,7 +296,7 @@ def test_screen_preserves_price_gaps_and_bar_date():
 
 def test_live_signal_risk_uses_published_prices():
     from decimal import Decimal
-    spec={"exit":{"stop":"ema50_minus_2atr","target":"next_resistance","min_rrr":1.5}}
+    spec={"exit":{"stop":"ema50_minus_2atr","target":"min_rrr","min_rrr":1.5}}
     for entry,stop,capital in ((50.006,47.004,9910),(50.005,47.001,10000)):
         sig=screen.build_signal(_ind_frame(entry,stop+4),spec,capital)
         check("rounding regression still yields a usable candidate", "skip" not in sig,sig)
@@ -329,7 +313,7 @@ def test_invalid_rrr_rejected_before_loading_data():
     from unittest import mock
     from finance.compute import backtest
     for value in (1.0, True, float("nan"), float("inf"), "invalid"):
-        spec = {**screen.SELFTEST_SPEC, "exit": {"min_rrr": value}}
+        spec = {**fixtures.SCREEN_SPEC, "exit": {"min_rrr": value}}
         with mock.patch.object(screen, "load_spec", return_value=spec), mock.patch("finance.sources.universe.resolve_symbols") as universe:
             result = screen.run("fixture.yml", "nifty500")
         check("invalid RRR screen rejects before universe fetch", not universe.called and not result["ok"], result)
@@ -354,7 +338,7 @@ def test_invalid_exit_rules_rejected_before_data():
                        ("time_stop_sessions", 2.5), ("time_stop_sessions", True),
                        ("trail_atr", -1), ("trail_atr", float("nan")),
                        ("trail_atr", float("inf")), ("trail_atr", True)):
-        spec = {**screen.SELFTEST_SPEC, "exit": {key: value}}
+        spec = {**fixtures.SCREEN_SPEC, "exit": {key: value}}
         loader = mock.Mock()
         result = screen.screen_compute(["SYNTH"], spec, 2, 500000, loader=loader)
         check("bad exit rejects before price fetch", not loader.called and bool(result["data_gaps"]), (key,value,result))
@@ -366,13 +350,13 @@ def test_invalid_exit_rules_rejected_before_data():
 
 
 def test_target_names_are_exact_machine_rules():
-    for target in ("not_measured_move", "next_resistance; for blue-sky use measured_move", "recent swing high", None, 2):
+    for target in ("not_measured_move", "next_resistance", "min_rrr; for blue-sky use measured_move", "recent swing high", None, 2):
         try:
             screen.strategy.validate_exit({"target": target})
             check("ambiguous target rejected", False, target)
         except ValueError:
             check("ambiguous target rejected", True)
-    for target in ("measured_move", "next_resistance", "min_rrr"):
+    for target in ("measured_move", "min_rrr"):
         try:
             screen.strategy.validate_exit({"target": target})
             check("exact fixed target accepted", True)
@@ -399,7 +383,7 @@ def test_dynamic_exit_does_not_invent_live_take_profit():
 def test_coarse_screen_cannot_substitute_for_entry():
     from unittest.mock import patch
     from finance.compute import backtest
-    coarse = dict(screen.SELFTEST_SPEC, entry={'trigger': 'wait for a discretionary retest'})
+    coarse = dict(fixtures.SCREEN_SPEC, entry={'trigger': 'wait for a discretionary retest'})
     for missing in ({'trigger': 'wait for a retest'}, {'signal': []}):
         spec = dict(coarse, entry=missing)
         calls = []

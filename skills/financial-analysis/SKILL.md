@@ -1,34 +1,43 @@
 ---
 name: financial-analysis
 description: >-
-  Score one Indian company's numbers against the Varsity due-diligence checklist and write a standalone Company Overview of what the business actually is — returns (ROE DuPont'd, ROCE vs cost of capital), the five-year operating-margin trend, debt and interest cover, whether cash follows profit, promoter holding and pledge, revenue growth, and whether reported profit is the profit the business earned — with the annual report and latest concall read directly and cited by page. Use whenever the user asks whether a company's numbers stack up: "are the fundamentals good", "is X financially sound", "what's their ROCE / debt like", "is the profit backed by real cash", "is that P/E real", "what does this company actually do", "what did their annual report / last concall say", "any red flags in the accounts". This is the numbers-and-business read on one company — what it's worth is valuation-analysis, whether the people running it can be trusted is management-analysis, and the full bull/bear debate is deep-analysis.
+  Score one Indian company's numbers against the seven-check due-diligence scorecard and write a standalone Company Overview of what the business actually is — returns (ROE DuPont'd, ROCE vs cost of capital), the five-year operating-margin trend, debt and interest cover, whether cash follows profit, promoter holding and pledge, revenue growth, and whether reported profit is the profit the business earned — with the annual report and latest concall read directly and cited by page. Use whenever the user asks whether a company's numbers stack up: "are the fundamentals good", "is X financially sound", "what's their ROCE / debt like", "is the profit backed by real cash", "is that P/E real", "what does this company actually do", "what did their annual report / last concall say", "any red flags in the accounts". This is the numbers-and-business read on one company — what it's worth is valuation-analysis, whether the people running it can be trusted is management-analysis, and the full bull/bear debate is deep-analysis.
 argument-hint: "TICKER [optional: company name; optional: document paths already fetched]"
 allowed-tools: Read, Write, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
-# Financial Analysis — the Varsity checklist and the Company Overview
+# Financial Analysis: the scorecard and the Company Overview
 
-Read `references/reference.md` first — it owns the method: the seven checks with their thresholds and what each is really testing, the published-row vocabulary and the four labels that mean something other than they say, what the primary documents must supply, and how the verdict is graded. This SKILL is the workflow.
+The numbers-and-business leg. It states multiples and does not judge them: the peer set, the
+peer-median multiple, PEG, the own-band percentile and the value stance all belong to
+`valuation-analysis`, which consumes this leg's `clean_eps`. Whether management can be trusted is
+`management-analysis`. Point at those legs rather than answering for them. It informs a decision;
+it does not recommend or size a position.
 
-**Sources for this skill only:** `finance-company` — `get_company_fundamentals(symbol)` (ten fiscal years of balance sheet and cash flow, ten plus a trailing-twelve-month column of P&L, quarters, ratios, six quarters of shareholding) and `get_documents(symbol)` (annual report and latest concall, downloaded and converted to cached local text).
+**Method:** `methods/fundamentals.md`.
 
 ## Workflow
 
-1. **Inputs**: the ticker, the company name where you have it, and — where an orchestrator already called `get_documents` — the document `text_path`s and an output path.
-2. **Pull the figures.** `get_company_fundamentals(SYMBOL)`. It is day-cached at the tool, so call it once and work from what it returned.
-3. **Read the primary documents.** `get_documents(SYMBOL)` unless the paths were handed to you. Each row's `outline` maps the notes to their line numbers in `text_path` — read those line ranges rather than the whole file, which runs to tens of thousands of lines. You need `tax_note` (the effective rate is *required*; nothing on the feed carries it), `segment` and `mdna` for the overview, `contingent_liabilities`, `emphasis_of_matter` and `related_party` for the flags. If a key is missing from `outline`, search the text for other heading wording; if that fails, or the document did not download, record a gap for the affected checks.
-4. **Score the seven checks**, each PASS / FLAG / FAIL with the number that decided it (NOT-APPLICABLE for checks 3–4 on a bank, NBFC or insurer, per the reference), and set `varsity_score` to the count of PASS out of the checks that apply.
-5. **Write the Company Overview** from the segment note and MD&A, with the mix percentages tying to the published revenue.
-6. **Pull the flags out**, red and green, each tied to a figure or a cited page, and call the verdict.
+1. **Inputs**: the ticker, the company name where known, and, from an orchestrator, document
+   paths with their outlines and an output path.
+2. **Figures**: `get_company_fundamentals(SYMBOL)`, once (it is day-cached).
+3. **Documents**: `get_documents(SYMBOL)` unless paths were handed to you. Read the line ranges
+   the `outline` gives for `tax_note` (required: nothing on the feed carries the effective rate),
+   `segment` and `mdna` (the overview), and `contingent_liabilities`, `emphasis_of_matter` and
+   `related_party` (the flags). A missing key means searching the text for other heading wording;
+   if that fails, or the document did not download, the affected checks carry a gap.
+4. **Score the seven checks**, each with the number that decided it (NOT-APPLICABLE for checks 3
+   and 4 on a bank, NBFC or insurer), and set `checklist_score`.
+5. **Write the Company Overview** from the segment note and MD&A.
+6. **Pull out the flags**, red and green, each tied to a figure or a cited page, and call the
+   verdict.
 
-## Produce this report
-
-The leading block is machine-read, so the PM and synthesis cite the scorecard without re-deriving it:
+## Report
 
 ```
 <!-- financials-block
 verdict: investment-grade | watch | avoid   confidence: low | med | high
-varsity_score: <n PASS> of <7 or the applicable count>   roce: <x%>   de: <x or n/a>   cfo_ebitda: <cycle CFO ÷ (EBITDA − tax paid − material other income), or n/a>   rev_cagr_5y: <x%>
+checklist_score: <n PASS> of <7 or the applicable count>   roce: <x%>   de: <x or n/a>   cfo_ebitda: <cycle CFO ÷ (EBITDA − tax paid − material other income), or n/a>   rev_cagr_5y: <x%>
 clean_eps: <₹x, or a bracketed range>   eps_adjustments: <what was stripped, or none>
 flags: <comma-separated top red/green flags>
 axis: growth_durability
@@ -40,20 +49,16 @@ axis: growth_durability
 
 ## Detail
 
-**Company overview**: what it does, segments & revenue (and EBIT where disclosed) mix %, geography split, flagship products/brands, key end-markets, and the moat that protects economics. Self-contained — a reader meeting the company here should be oriented.
+**Company overview**: what it does, segment revenue (and EBIT where disclosed) mix %, geography, flagship products or brands, end-markets, and the moat.
 **Checklist scorecard**: ROE/ROCE (3y trend) | margins | D/E + interest cover | CFO vs EBITDA less tax and other income | promoter holding & pledge | revenue CAGR | earnings quality — each PASS/FLAG/FAIL + the number
-**Annual report findings**: 3–5 specifics with page/section cites (auditor quals, RPTs, contingent liabilities, segment shifts)
-**Concall takeaways**: guidance + 2–3 management quotes/paraphrases with quarter cite
-**Earnings quality**: reported vs clean EPS, what was stripped and its source, and the adjustment as a % of reported PAT
-**Multiples (context, not a call)**: the current P/E and market cap as sourced facts, and P/B **derived** (labelled) as `Current Price ÷ Book Value` — both are in `ratios`, but the P/B ratio itself is not published — stated beside the growth and return numbers above. Where `eps_adjustments` is not `none`, state the P/E **on both bases** and label which is which
+**Annual report findings**: 3–5 specifics with page or section cites
+**Concall takeaways**: guidance and 2–3 management statements with the quarter
+**Earnings quality**: reported vs clean EPS, what was stripped and its source, the adjustment as a % of reported PAT
+**Multiples (context, not a call)**: the current P/E and market cap as sourced facts, and P/B derived (labelled) as Current Price ÷ Book Value. Where `eps_adjustments` is not `none`, the P/E on both bases, labelled
 **Red flags** / **Green flags**: bulleted, evidence-tied
-**Verdict**: investment-grade / watch / avoid, one sentence, confidence low/med/high
+**Verdict**: one sentence, with confidence
 ```
 
-Write it to the output path you were given, or to `artifacts/stocks/<TICKER>/YYYY-MM-DD/financials.md` (`paths.stock_dir(symbol, date)`) when none was. **Keep every field name exactly as the block has it.** Persist the full report, then return only the `financials-block` fields plus `path`.
-
-## Boundaries
-
-This is the numbers leg. **It states multiples; it does not judge them.** The peer set, the peer-median multiple, PEG, the own-history band percentile and the Undervalued / Fair / Overvalued call all belong to `valuation-analysis`, which computes them once — do not build a second peer comparison here. `clean_eps` is the exception it consumes: the earnings base is a *numbers* finding, and the valuation leg strikes its multiples on whichever basis this leg reports. Whether management can be trusted with these numbers is `management-analysis`. Where either is relevant to a flag, point at that leg rather than answering for it.
-
-You inform a decision; you do not recommend or size a position.
+Write it to the output path given, or to `artifacts/stocks/<TICKER>/<YYYY-MM-DD>/financials.md`.
+Keep every field name exactly as the block has it. Return only the `financials-block` fields plus
+`path`.

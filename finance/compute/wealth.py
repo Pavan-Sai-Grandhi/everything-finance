@@ -15,14 +15,13 @@ spoke digests) and this only weighs them. Absent legs or sources degrade to a la
 "not assessed", never a fabricated number.
 
 Spine schema, scorecard shape, and the input envelope are in `finance/contracts.md`.
-
-Reached through: skills/wealth-manager/scripts/wealth.py.
 """
 import json
 import re
 import math
 from datetime import date
 
+from finance import spine
 from finance.spine import first as _first, f
 from finance.compute.holdings import market_value as _position_value
 
@@ -561,3 +560,10 @@ def run(picture, snapshot_mode=False):
     if not snapshot_mode:
         out["scorecard"] = build_scorecard(spine, legs, cross)
     return out
+
+
+@spine.guarded("finance.compute.wealth")
+def report(picture, snapshot=False):
+    """`run` over the picture JSON file the orchestrator assembled."""
+    result = run(spine.read_json(picture), snapshot_mode=snapshot)
+    return spine.envelope(True, "finance.compute.wealth", result, list(result["spine"].get("gaps", [])))

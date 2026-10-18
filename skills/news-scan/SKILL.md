@@ -6,23 +6,31 @@ argument-hint: "TICKER or company name [optional: lookback window, default 60 da
 allowed-tools: Read, Write, mcp__finance-company__*, mcp__plugin_everything-finance_finance-company__*
 ---
 
-# News Scan — sentiment on one company, from dated evidence
+# News Scan: sentiment on one company, from dated evidence
 
-Read `references/reference.md` first — it owns the method: the window rule, the fact-vs-narrative standard, how publisher tier weighs a claim, the four sentiment traps, and the −2…+2 scale with its confidence rubric. This SKILL is the workflow.
+It reads coverage, not the business: whether the numbers hold up is `financial-analysis`, whether
+the price reflects it is `valuation-analysis`, and the governance verdict on an allegation is
+`management-analysis`. Sentiment is an input to a decision, never the decision.
 
-**Sources for this skill only:** `finance-company` — `get_news(company, ticker, days=60)` and `get_filings(symbol, days)`. No article scraping: `get_news` already returns each item **dated, deduped, classified** (`company` | `sector` | `noise`), tagged **reported | narrative** from the headline alone (not verified), and carrying its `source` and `publisher_tier`, with noise filtered from the default view and a blocked feed as a labelled `gap`. `get_filings` returns **no items inline** — its whole list goes to `data.items_path`, so `Read` that file rather than re-calling the tool.
+**Method:** `methods/news.md`.
 
 ## Workflow
 
-1. **Inputs**: the ticker and the company name, and — where an orchestrator has one — an output path.
-2. **Fetch once.** `get_news` over the window, `get_filings` over the same span, then `Read` the filings file. The work here is judgement, not plumbing; widen the window only for the reason the reference gives.
-3. **Sort the items** into verified fact, reported claim/allegation and narrative, weighing each by publisher tier and by whether a filing stands behind it. Where two outlets carry **different numbers for the same reported figure**, the disagreement is usually standalone-vs-consolidated or a restated comparative — resolve it against the filing in `get_filings`, which is the primary source, and report the filed figure with the discrepancy named. Do not leave both numbers in as a gap when the filing settles it.
-4. **Find the storyline** the coverage keeps returning to, and the filing it has *not* picked up.
-5. **Score and grade confidence** on the reference's scale, then check the read against each of the four traps before you commit to it.
+1. **Inputs**: the ticker, the company name and, from an orchestrator, an output path.
+2. **Fetch once**: `get_news(company, ticker, days=60)` and `get_filings(symbol, days=60)`, then
+   read the filings file at `data.items_path`. `get_news` items arrive dated, deduplicated,
+   classified and tagged `reported` or `narrative` from the headline alone (unverified), each with
+   its `publisher_tier`. Widen the window only for the reason the method gives.
+3. **Sort** the items into verified fact, reported claim or allegation, and narrative, weighing
+   each by publisher tier and by whether a filing stands behind it. Where outlets carry different
+   numbers for one reported figure, the difference is usually standalone against consolidated or a
+   restated comparative: resolve it against the filing and report the filed figure with the
+   discrepancy named.
+4. **Find the storyline** the coverage keeps returning to, and the filing it has not picked up.
+5. **Score and grade confidence** on the method's scale, then check the read against each of the
+   four traps.
 
-## Produce this report
-
-The leading block is machine-read, so the PM and synthesis cite the read without re-deriving it:
+## Report
 
 ```
 <!-- news-block
@@ -37,16 +45,13 @@ axis: growth_durability
 
 ## Detail
 
-**Sentiment score**: -2 (strongly negative) … +2 (strongly positive), with one-line justification
-**Material events (last 60d)**: dated list, each tagged FACT (primary-source verified), REPORTED/ALLEGATION, or NARRATIVE + source
-**Recurring theme**: the one storyline the coverage keeps returning to
-**What the news misses**: anything filings show that coverage hasn't picked up (or "none found")
-**Event risk ahead**: scheduled items the announcements name — results date, AGM, regulatory deadlines (the dividend/split calendar is `filings-watch`'s, not yours)
-**Confidence**: low/med/high (driven by source quality and volume)
+**Sentiment score**: −2 … +2, with a one-line justification
+**Material events (last 60d)**: dated list, each tagged FACT (primary-source verified), REPORTED/ALLEGATION or NARRATIVE, with its source
+**Recurring theme**: the storyline the coverage keeps returning to
+**What the news misses**: what the filings show that coverage has not picked up, or "none found"
+**Event risk ahead**: scheduled items the announcements name (results date, AGM, regulatory deadlines)
+**Confidence**: low/med/high, from source quality and volume
 ```
 
-Write it to the output path you were given, or to `artifacts/stocks/<TICKER>/YYYY-MM-DD/news.md` (`paths.stock_dir(symbol, date)`) when none was. **Keep every field name exactly as the block has it.** Persist the full report, then return only the `news-block` fields plus `path`.
-
-## Boundaries
-
-This reads coverage, not the business: it scores what is being said and how well sourced it is. Whether the numbers behind the story hold up is `financial-analysis`, whether the price already reflects it is `valuation-analysis`, and the governance verdict on an allegation is `management-analysis`. Sentiment is an input to a decision, never the decision.
+Write it to the output path given, or to `artifacts/stocks/<TICKER>/<YYYY-MM-DD>/news.md`. Keep
+every field name exactly as the block has it. Return only the `news-block` fields plus `path`.

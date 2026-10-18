@@ -2,11 +2,14 @@
 
 A Claude Code plugin for one person's India-focused money workflow: swing trading the Nifty 500, multi-agent deep-dives on single stocks, designing and backtesting rule-based strategies, tracking live broker positions against the rationale that opened them, sectors, mutual funds, insurance, budgeting, filings and whole-picture net worth.
 
-Most skills carry a `references/reference.md` distilled from [Zerodha Varsity](https://zerodha.com/varsity/). The strategy engine takes Varsity's *system* discipline — completeness, expectancy, risk sizing, regime gating — but its trade logic from reference articles you supply.
+Four layers, each owning one kind of thing:
 
-The rules every skill runs under — data integrity, the personal-vs-decision source boundary, artifact paths, output and trading discipline — live in [CLAUDE.md](CLAUDE.md). This file is the map: what is here, how to install it, how to test it.
+- **`RULES.md`**: the runtime contract every session and agent receives (data integrity, the approved sources, output and trading discipline).
+- **`methods/`**: the knowledge the skills apply, one file per topic, every rule cited to its source (Zerodha Varsity, Damodaran, Money Purse, SOIC, …). `methods/SOURCES.md` is the registry; a new source is merged into the topics it covers.
+- **`skills/` and `agents/`**: workflow only — which tools to call in which order, and the shape of what comes back.
+- **`finance/`**: every fetch and calculation, reached only through the MCP tools.
 
-It ships in two formats from one tree: Claude Code's native layout (`.claude-plugin/`, `.mcp.json`) and the portable [Agent Plugins 1.0.0](https://agent-plugins.org/specification) standard (`plugin.json`, `mcp.json`) that Codex, Cursor, Copilot, VS Code and others read. The skills and MCP servers are shared; only the manifests differ.
+`CLAUDE.md` is the guide for developing the plugin. It ships in two formats from one tree: Claude Code's native layout (`.claude-plugin/`, `.mcp.json`) and the portable [Agent Plugins 1.0.0](https://agent-plugins.org/specification) standard (`plugin.json`, `mcp.json`).
 
 > Personal research tool. Nothing it outputs is investment advice.
 
@@ -19,7 +22,7 @@ claude plugin install <path-to>/everything-finance
 #   /plugin install everything-finance@everything-finance
 ```
 
-Credentials live in a `.env`, never in the repo. Copy [`.env.example`](.env.example) to a `.env` the plugin loads — next to the plugin (`$PLUGIN_ROOT/.env`) or in the client's persistent dir (`$PLUGIN_DATA/.env`); `bin/load-env.sh` takes the first that exists. [CLAUDE.md](CLAUDE.md) → *Secrets* has the full list. Only the Telegram pair is needed for briefs; every other secret is optional and its absence degrades to a labelled gap:
+Credentials live in a `.env`, never in the repo. Copy [`.env.example`](.env.example) to a `.env` the plugin loads — next to the plugin (`$PLUGIN_ROOT/.env`) or in the client's persistent dir (`$PLUGIN_DATA/.env`); `bin/load-env.sh` takes the first that exists. Only the Telegram pair is needed for briefs; every other secret is optional and its absence degrades to a labelled gap:
 
 ```bash
 TELEGRAM_BOT_TOKEN=...
@@ -28,11 +31,11 @@ TELEGRAM_CHAT_ID=...
 
 ## MCP servers
 
-Seven servers ([`.mcp.json`](.mcp.json)) in two classes with deliberately opposite rules.
+Eight servers ([`.mcp.json`](.mcp.json)) in two classes with deliberately opposite rules.
 
-**`finance-market` (17 tools), `finance-company` (12), `finance-funds` (6), `finance-personal` (1)** — local, all four launched by `bin/finance-mcp.sh <market|company|funds|personal>`, together the only door to every number the plugin reasons about. 36 tools over eight verified sources (TradingView, Yahoo, Tickertape, NSE, screener.in, AMFI, Google News RSS, Damodaran's country-risk dataset) plus the compute engines that run on them; no ad-hoc `curl`, no `WebFetch` at a data site, no browser automation anywhere. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
+**`finance-market`, `finance-company`, `finance-funds`, `finance-personal`, `finance-workflow`** — local, launched by `bin/finance-mcp.sh <name>`, together the only door into the library: market and company data from eight approved sources (TradingView, Yahoo, Tickertape, NSE, screener.in, AMFI, Google News RSS, Damodaran's country-risk dataset), the compute engines on them, computations over your own files, and the plugin's own run machinery (alerts, the strategy library, report bundles). `RULES.md` → *The servers* lists what each holds. They need no configuration: the launcher uses your `python3` when it already has the MCP SDK, otherwise bootstraps a venv under the plugin's data directory once.
 
-**`kite`** (Zerodha), **`upstox`**, **`indmoney`** — optional, read-only, personal. They answer only *what you own and what it is worth* and never feed a view (CLAUDE.md rule 3). Connect whichever you use. IndMoney covers every asset class with per-position value and P&L, but has no XIRR, no cost for stocks held through a linked broker, and no order history, so exact entry fills come from a broker MCP. All three run through `bin/mcp-bridge.sh`, an `mcp-remote` wrapper that points every Claude session at one shared OAuth store (`~/.mcp-auth`): **log in once and every session is logged in**, on one client registration and one token per broker. One process at a time refreshes the token, ten minutes before it expires, so sessions never race on a single-use refresh token. A login, when one is needed, opens a single tab that stays valid for 15 minutes even after the session that opened it gives up; proxies themselves never open a browser. Set `MCP_TIMEOUT=120000` in the project's `.claude/settings.local.json` `env` so a login finished within two minutes connects in the same attempt; otherwise reconnect the server (`/mcp`) after logging in. `finance/tests/test_mcp_bridge.py` covers it; `EF_BRIDGE_E2E=1` adds end-to-end scenarios against a stub broker.
+**`kite`** (Zerodha), **`upstox`**, **`indmoney`** — optional, read-only, personal. They answer only *what you own and what it is worth* and never feed a view (`RULES.md` rule 3). Connect whichever you use. IndMoney covers every asset class with per-position value and P&L, but has no XIRR, no cost for stocks held through a linked broker, and no order history, so exact entry fills come from a broker MCP. All three run through `bin/mcp-bridge.sh`, an `mcp-remote` wrapper that points every Claude session at one shared OAuth store (`~/.mcp-auth`): **log in once and every session is logged in**, on one client registration and one token per broker. One process at a time refreshes the token, ten minutes before it expires, so sessions never race on a single-use refresh token. A login, when one is needed, opens a single tab that stays valid for 15 minutes even after the session that opened it gives up; proxies themselves never open a browser. Set `MCP_TIMEOUT=120000` in the project's `.claude/settings.local.json` `env` so a login finished within two minutes connects in the same attempt; otherwise reconnect the server (`/mcp`) after logging in. `finance/tests/test_mcp_bridge.py` covers it; `EF_BRIDGE_E2E=1` adds end-to-end scenarios against a stub broker.
 
 Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so a blocked source is a labelled gap the report names rather than a crash. Bulk results (holdings, NAV series, candles, news) spill to disk and the tool returns a summary plus the path, so a 278-row portfolio never lands in a context window.
 
@@ -56,54 +59,36 @@ Every tool returns the same envelope `{ok, source, fetched_at, data, gaps}`, so 
 | `/trade-tracker` | Match each open broker position to its rationale (a discover idea, deep-analysis, strategy spec, or one you type) and re-validate the thesis — stop / target / time stop / broken setup / regime change → hold, trim or exit |
 | `/valuation-analysis TICKER` | Story-driven FCFF DCF (Damodaran) — project growth and margin, fund it via sales-to-capital, discount at WACC, disciplined terminal value → intrinsic value per share with margin of safety, sensitivity grids and reality-check flags — reconciled with the multiples read (P/E vs peer median and own band, PEG, EV/EBITDA) into one stance weighted by a DCF-confidence grade |
 | `/management-analysis TICKER` | Integrity as a hard gate (remuneration vs profit, related-party transactions, criminal/regulatory record, CFO/auditor churn and fees, pledging, owning mistakes, plans promised vs executed, questions dodged on the call) then a skill grade (experience, mindset, capital allocation, succession) |
-| `/financial-analysis TICKER` | The Varsity due-diligence scorecard plus a standalone Company Overview — ROE DuPont'd, ROCE vs cost of capital, the five-year margin trend, debt and interest cover, whether cash follows profit, promoter holding and pledge — with the annual report and latest concall read directly and cited by page |
+| `/financial-analysis TICKER` | The seven-check due-diligence scorecard plus a standalone Company Overview — ROE DuPont'd, ROCE vs cost of capital, the five-year margin trend, debt and interest cover, whether cash follows profit, promoter holding and pledge — with the annual report and latest concall read directly and cited by page |
 | `/technical-analysis TICKER` | The chart read on one ticker: Dow trend stage, the S/R map with touch-count evidence, the active pattern in its location context, the volume signature, RSI/MACD as confirmation only, and the two levels that invalidate a bull or a bear thesis |
 | `/news-scan TICKER` | ~60 days of press, exchange announcements and analyst commentary scored to a −2…+2 sentiment with dated, sourced evidence — hard fact separated from narrative, the recurring storyline named, and the filing the coverage missed |
 
-## Agents (`agents/`, all `context: fork`)
+## Agents
 
-Eight files, in two kinds.
+**Profile runners** carry no method: each invokes the skill named in its input and returns that skill's digest. They differ only in reach. `terminal-analyst` has the decision-data servers and the personal computations (`financial-analysis`, `valuation-analysis`, `technical-analysis`, `sector-analysis`, `portfolio-review`); `field-analyst` has the web and one company's disclosures (`management-analysis`, `news-scan`); `desk-analyst` has no network, only files on disk and the personal computations (`insurance-advisor`, `budget-tracker`).
 
-**Tool profiles** — a generic runner that carries no method: it invokes the skill named in its input, ensures the report lands at the given path, and returns only that skill's digest. They differ solely in reach. `terminal-analyst` has the three decision-data servers (`financial-analysis`, `valuation-analysis`, `technical-analysis`, `sector-analysis`, `portfolio-review`); `field-analyst` has the open web (`management-analysis`, `news-scan`); `desk-analyst` has no network at all, only what is already on disk plus deterministic math (`insurance-advisor`, `budget-tracker`).
-
-**Named roles** — the debate, where the role itself is the method: `bull-researcher` and `bear-researcher` argue one side per round, `contest-researcher` does both sides in a single pass for `quick`, and `portfolio-manager` reads every full report and issues the verdict with sizing and invalidation.
+**Debate roles**: `debate-researcher` argues one side (`side: bull` or `bear`) per round in `deep`, `contest-researcher` does both sides in one pass in `standard`, `portfolio-manager` issues the verdict, and `report-writer` authors the deck projection.
 
 ## Hooks
 
-- **Stop → `post-deep-analysis.sh`** — publishes any finished report bundle from this session to `artifacts/stocks/<TICKER>/<date>/runs/<run-id>/`, in case the run did not publish it itself. Runs publish explicitly, so clients without hooks work too. Telegram delivery happens only if you asked for it when the run started.
-- **SessionStart → `session-context.sh`** — injects today's India date and the regular NSE session hours (not a live open/closed or holiday check), plus the session id that report publication uses.
+`hooks/hook.sh` is the one launcher:
 
-## Layout
-
-```
-finance/          the one library — transport, spine, paths, deps, caps, plus report
-                  publication (publication, report_hook, telegram)
-  sources/        one module per data domain (prices market funds fundamentals documents news filings universe risk estimates) + the shared tickertape client
-  compute/        ta strategy holdings alerts context rolling relative_strength lookthrough
-                  fund_scan screen stock_scan sector_scan backtest dcf relval governance
-                  trade_check insurance_math wealth allocation
-  mcp/            the four servers: declaration + delegation only
-  tests/          harness.py + standalone test files
-  contracts.md    the artifact handoffs between skills — producer and consumer per field
-skills/<name>/    SKILL.md, plus references/ assets/ scripts/ where the skill needs them
-agents/  bin/  docs/  hooks/
-```
-
-A skill's `scripts/` holds only pure compute over user-supplied files. Everything that fetches — and every compute a skill would otherwise re-implement — is a tool on one of the four servers. See [CLAUDE.md](CLAUDE.md) → *The `finance/` package* for the rules, and [`finance/contracts.md`](finance/contracts.md) for the contracts between skills.
+- **SessionStart** prints today's India date, the session id report publication uses, the plugin root, and `RULES.md`.
+- **SubagentStart** hands `RULES.md` to the plugin's own agents.
+- **Stop** archives any ready report bundle from this session to `artifacts/stocks/<TICKER>/<date>/runs/<run-id>/` and sends it to Telegram only if you asked when the run started.
 
 ## Tests
 
 ```bash
-./bin/test.sh          # every test file, summed; VERBOSE=1 to dump a failing file's output
+./bin/test.sh          # every finance/tests/test_*.py, summed; VERBOSE=1 to dump a failing file
+python3 -m finance.mcp.smoke_test --quick    # the live servers, against their real sources
 ```
 
-Tests are standalone scripts in `finance/tests/` and next to the skill scripts they cover, built on `finance/tests/harness.py`. There is no pytest here. Each file runs as `python3 <file>`, prints `N passed, M failed`, and exits non-zero on failure; the runner sums the counts. The runner points artifact storage at a temporary directory and fails a file that prints no summary. The suite uses fixtures and makes no network requests.
+The suite is offline: standalone scripts over `finance/tests/harness.py`, each ending `N passed, M failed`, with artifacts pointed at a temporary directory. It also checks the plugin's own wiring: every tool a skill calls is granted, every `methods/` pointer resolves, and every source a method cites is registered.
 
 ## Artifacts
 
-Everything a skill produces lands under `./artifacts/` of the directory you run Claude in (or `$EVERYTHING_FINANCE_ARTIFACTS`), addressed only through `finance/paths.py`. Three lifecycle tiers: dated output (`stocks/<TICKER>/<date>/`, `funds/<SCHEME>/<date>/`, and skill-first singletons like `daily-brief/<date>.md`), durable state (`state/strategies/`, `state/trades/`, `state/alerts/`, `state/sectors/`, `state/watchlist.json`), and disposable (`cache/`, `tmp/`).
-
-Report decks (`deep-analysis`, `mf-analysis`, `sector-analysis`, `daily-brief`, `wealth-manager`) render from a `report.json` projection through the shared `skills/_report/` renderer. Other templates ship per skill in `skills/<name>/assets/` — HTML for the signal report and budget dashboard, markdown for text-first outputs.
+Everything lands under `./artifacts/` of the directory you run Claude in (or `$EVERYTHING_FINANCE_ARTIFACTS`), laid out by `finance/paths.py`: dated output (`stocks/<TICKER>/<date>/`, `funds/<SCHEME>/<date>/`, `<skill>/<date>.<ext>`), durable state (`state/strategies/`, `state/trades/`, `state/alerts/`, `state/sectors/`, `state/watchlist.json`) and disposable (`cache/`, `tmp/`). Report decks render from a `report.json` projection through `render_report`, with templates and worked fixtures in `finance/report/`.
 
 ## Deliberately out of scope
 

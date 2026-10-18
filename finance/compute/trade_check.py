@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Re-validate a trade's levels and thesis; never infer or execute a fill.
 
 Decision prices come from prices.history (or a supplied OHLCV CSV). Broker LTP is

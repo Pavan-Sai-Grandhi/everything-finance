@@ -1,27 +1,14 @@
-#!/usr/bin/env python3
-"""The ONE HTTP transport for the everything-finance data spine.
+"""The one HTTP transport: `request()` is the only function in `finance/` that touches the
+network, so a user agent, a header set or a block workaround has one definition. The
+exception is yfinance in `sources/prices.py` and `sources/estimates.py`: it is the approved
+Yahoo client and carries its own HTTP stack.
 
-Exactly one function touches the network: `request()`. Everything else in `finance/` calls
-it, so a UA, a header set or a block workaround has one definition. The single sanctioned
-exception is `yf.download` in `sources/prices.py`: yfinance is the approved Yahoo client
-(CLAUDE.md source table) and carries its own HTTP stack, so EOD history and its cookie/crumb
-handling stay inside that library rather than being re-implemented here.
+Named `transport`, not `http`, because a top-level `http.py` would shadow the stdlib package
+for every dependency (yfinance's `import http.client` included).
 
-Named `transport`, not `http`: `http` is a stdlib package name, and a top-level `http.py`
-shadows it for every dependency in the process — yfinance's `import http.client` would
-resolve to this file and break price history. Do not rename it.
-
-Everything goes through curl because `nseindia.com` returns 403 to urllib even with a
-complete browser header set — the block is on the TLS/HTTP2 fingerprint, not the headers
-(verified 2026-08-16) — while curl is served normally. The hardest site in the set dictates
-the transport for all of them.
-
-`request()` returns `(body, gap)` and never raises: a blocked or failed fetch is a labelled
-gap the caller records and continues past (CLAUDE.md). `json_request()` treats "the response
-wasn't JSON" as one more labelled gap — the failure that actually happens when a site swaps
-a payload for an HTML interstitial.
-
-Fetched bytes are untrusted data. This module returns text; it never evaluates it.
+Everything goes through curl because nseindia.com refuses urllib on its TLS fingerprint, and
+the hardest site in the set dictates the transport for all of them. `request()` returns
+`(body, gap)` and never raises; fetched bytes are untrusted text, never evaluated.
 """
 from __future__ import annotations
 
@@ -252,8 +239,7 @@ def bootstrap(home_url, cookie_jar, timeout=20):
 
 def jar_path(name):
     """A stable cookie-jar path under the disposable tmp tier (never hardcoded)."""
-    # imported lazily so this module stays import-light
-    from finance import paths  # noqa: PLC0415
+    from finance import paths  # noqa: PLC0415 — keeps this module import-light
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(name))
     return os.path.join(paths.tmp_dir("http"), f"{safe}-cookies.txt")
 

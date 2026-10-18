@@ -1,0 +1,333 @@
+{#- Daily Brief — a single-page phone-scroll brief, NOT a Desk slide deck.
+    Rendered through the same render_report pipeline as the family decks (jinja + a report.json
+    projection + a fixture + a render test), but it brings its OWN self-contained styles and needs
+    no deck runtime, so it ignores the deck_css / deck_js / fonts_href the renderer passes. The layout
+    is the validated artifact's; the visual language is the "Desk" design system (deck.css tokens,
+    Newsreader serif for prose, IBM Plex Mono for labels/data, hairlines, colour-means-direction).
+    Only values are parameterised off `r`.
+
+    Rich fields whose names end in `_html` carry skill-authored inline emphasis (<strong>/<em>/<code>)
+    and are emitted through `| rich_text`, which permits emphasis/line breaks and HTTP(S) links while stripping executable markup.
+    Every other value auto-escapes. -#}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ r.meta.title }} · {{ r.meta.date }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Token names are the artifact's; values are remapped to the "Desk" design system
+     (deck.css) — warm paper, Newsreader serif for prose, IBM Plex Mono for labels/data,
+     hairline rules, colour-means-direction. Single paper look, like the sibling decks. */
+  :root {
+    --ground:#FCFAF6; --surface:#FFFFFF; --surface-2:#F5F2EA; --border:#E4DFD4; --border-2:#CFC8B9;
+    --text-1:#1C1F23; --text-2:#4A4F56; --text-3:#837D74;
+    --accent:#2C5B8F; --accent-bg:#E9EEF5;
+    --red:#A63C2C; --red-bg:#F7E9E5; --red-border:#E3C4BB;
+    --amber:#8A6A1F; --amber-bg:#F6EFDF; --amber-border:#E3D3A8;
+    --green:#1B6E4F; --green-bg:#E6EFEA; --neutral-pos:#2C5B8F;
+    --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+    --sans:'Newsreader',Georgia,'Times New Roman',serif;
+  }
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--ground); color:var(--text-1); font-family:var(--sans); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+  a { color:var(--accent); text-decoration:none; }
+  a:focus-visible { outline:2px solid var(--accent); border-radius:2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+  .brief { max-width:680px; margin:0 auto; padding:0 0 48px; }
+
+  .brief-header { padding:24px 20px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-end; gap:12px; }
+  .brief-date { font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-3); }
+  .brief-title { font-family:var(--mono); font-size:18px; font-weight:600; color:var(--text-1); letter-spacing:-0.02em; }
+  .brief-posture { font-family:var(--mono); font-size:11px; font-weight:500; color:var(--text-2); text-align:right; }
+  .posture-tag { display:inline-block; background:var(--surface-2); border:1px solid var(--border); padding:2px 7px; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; }
+
+  .indices-strip { display:flex; gap:0; border-bottom:1px solid var(--border); overflow-x:auto; }
+  .index-cell { flex:1 1 0; min-width:120px; padding:14px 20px; border-right:1px solid var(--border); }
+  .index-cell:last-child { border-right:none; }
+  .index-name { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-3); margin-bottom:4px; }
+  .index-level { font-family:var(--mono); font-size:18px; font-weight:600; color:var(--text-1); font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+  .index-chg { font-family:var(--mono); font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .chg-pos { color:var(--green); } .chg-neg { color:var(--red); } .chg-flat { color:var(--text-3); }
+  .index-note { font-size:11px; color:var(--text-3); margin-top:2px; }
+
+  .flows-strip { display:flex; gap:0; border-bottom:1px solid var(--border); }
+  .flow-cell { flex:1; padding:10px 20px; border-right:1px solid var(--border); }
+  .flow-cell:last-child { border-right:none; }
+  .flow-label { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-3); margin-bottom:3px; }
+  .flow-val { font-family:var(--mono); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+
+  .section { padding:20px 20px 0; }
+  .section-label { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .section-label span { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:0.16em; text-transform:uppercase; color:var(--text-3); white-space:nowrap; }
+  .section-rule { flex:1; height:1px; background:var(--border); }
+
+  .market-bullets { list-style:none; display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .market-bullets li { font-size:13px; color:var(--text-2); padding-left:14px; position:relative; line-height:1.5; }
+  .market-bullets li::before { content:'—'; position:absolute; left:0; color:var(--text-3); font-family:var(--mono); }
+  .market-bullets li strong { color:var(--text-1); font-weight:600; }
+  .net-read { background:var(--surface-2); border-left:3px solid var(--accent); padding:10px 14px; font-size:12px; color:var(--text-2); margin-bottom:4px; }
+  .net-read strong { font-family:var(--mono); font-size:11px; font-weight:600; color:var(--accent); letter-spacing:0.06em; text-transform:uppercase; display:block; margin-bottom:3px; }
+
+  .sector-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .sector-col { background:var(--surface); border:1px solid var(--border); padding:10px 12px; }
+  .sector-col-label { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:6px; }
+  .sector-col.leading .sector-col-label { color:var(--green); }
+  .sector-col.lagging .sector-col-label { color:var(--red); }
+  .sector-item { font-size:12px; color:var(--text-2); padding:2px 0; }
+  .sector-trend { margin-top:8px; font-size:11px; color:var(--text-3); padding-left:2px; }
+
+  .alert-list { display:flex; flex-direction:column; gap:8px; }
+  .alert-card { display:flex; gap:12px; padding:12px 14px; border:1px solid var(--border); }
+  .alert-card.sev-act { background:var(--red-bg); border-color:var(--red-border); }
+  .alert-card.sev-watch { background:var(--amber-bg); border-color:var(--amber-border); }
+  .alert-card.sev-info { background:var(--surface); border-color:var(--border); }
+  .alert-stripe { width:3px; flex-shrink:0; align-self:stretch; }
+  .sev-act .alert-stripe { background:var(--red); }
+  .sev-watch .alert-stripe { background:var(--amber); }
+  .sev-info .alert-stripe { background:var(--text-3); }
+  .alert-body { flex:1; min-width:0; }
+  .alert-header { display:flex; align-items:center; gap:8px; margin-bottom:3px; flex-wrap:wrap; }
+  .alert-ticker { font-family:var(--mono); font-size:12px; font-weight:600; color:var(--text-1); letter-spacing:0.04em; }
+  .alert-sev-badge { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; padding:2px 6px; }
+  .sev-act .alert-sev-badge { color:var(--red); background:transparent; }
+  .sev-watch .alert-sev-badge { color:var(--amber); background:transparent; }
+  .alert-text { font-size:12px; color:var(--text-2); line-height:1.5; }
+  .alert-cmd { display:inline-block; margin-top:5px; font-family:var(--mono); font-size:11px; color:var(--accent); background:var(--accent-bg); border:1px solid var(--accent); padding:2px 8px; letter-spacing:0.02em; }
+  .alert-sublist { margin-top:10px; display:flex; flex-direction:column; gap:4px; }
+  .alert-sub { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-2); flex-wrap:wrap; }
+  .alert-sub .ticker { font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text-1); min-width:72px; }
+  .alert-sub .cmd-small { font-family:var(--mono); font-size:10px; color:var(--accent); opacity:0.8; }
+
+  .opp-box { background:var(--surface); border:1px solid var(--border); padding:12px 14px; font-size:12px; color:var(--text-3); font-style:italic; }
+  .opp-list { display:flex; flex-direction:column; gap:8px; }
+  .opp-item { background:var(--surface); border:1px solid var(--border); padding:10px 14px; font-size:12px; color:var(--text-2); line-height:1.5; }
+  .opp-item .lead { font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text-1); letter-spacing:0.04em; }
+  .opp-item.unvetted { border-left:3px solid var(--amber); }
+  .opp-item .cmd-small { font-family:var(--mono); font-size:10px; color:var(--accent); }
+
+  .filing-list { display:flex; flex-direction:column; gap:6px; }
+  .filing-row { display:flex; gap:10px; align-items:flex-start; padding:8px 12px; background:var(--surface); border:1px solid var(--border); }
+  .filing-row.mat-act { border-left:3px solid var(--red); }
+  .filing-row.mat-mon { border-left:3px solid var(--amber); }
+  .filing-row.mat-nil { opacity:0.6; }
+  .filing-ticker { font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text-1); min-width:80px; padding-top:1px; }
+  .filing-emoji { font-size:13px; flex-shrink:0; line-height:1.6; }
+  .filing-text { font-size:12px; color:var(--text-2); line-height:1.5; flex:1; }
+  .filing-text .source { font-family:var(--mono); font-size:10px; color:var(--text-3); margin-top:2px; display:block; }
+
+  .pos-table-wrap { overflow-x:auto; }
+  table.pos-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:11px; font-variant-numeric:tabular-nums; }
+  .pos-table th { font-size:9px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-3); text-align:left; padding:6px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .pos-table th:not(:first-child) { text-align:right; }
+  .pos-table td { padding:7px 10px; border-bottom:1px solid var(--border); color:var(--text-2); vertical-align:middle; white-space:nowrap; }
+  .pos-table tr:last-child td { border-bottom:none; }
+  .pos-table td:first-child { color:var(--text-1); font-weight:600; }
+  .pos-table td:not(:first-child) { text-align:right; }
+  .pos-table tr.flag-red td { background:color-mix(in srgb, var(--red-bg) 50%, transparent); }
+  .pos-table tr.flag-amber td { background:color-mix(in srgb, var(--amber-bg) 50%, transparent); }
+  .pos-qty { font-weight:400; color:var(--text-3); }
+  .state-pill { display:inline-block; padding:2px 7px; font-size:9px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; }
+  .pill-slhit { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); }
+  .pill-need { background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-border); }
+  .pill-nearsl { background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-border); }
+  .pill-ok { background:var(--surface-2); color:var(--text-3); border:1px solid var(--border); }
+  .pill-pos { color:var(--green); } .pill-neg { color:var(--red); }
+
+  .callout-list { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+  .callout { display:flex; gap:10px; font-size:12px; line-height:1.5; padding:10px 14px; background:var(--surface); border:1px solid var(--border); }
+  .callout.crit { border-left:3px solid var(--red); }
+  .callout.warn { border-left:3px solid var(--amber); }
+  .callout .ico { font-size:14px; flex-shrink:0; }
+  .callout .msg { color:var(--text-2); }
+  .callout .msg strong { color:var(--text-1); font-weight:600; }
+
+  .one-thing { margin:20px; background:var(--surface); border:1px solid var(--border); padding:18px 20px; display:flex; gap:16px; align-items:flex-start; }
+  .one-thing-label { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:0.16em; text-transform:uppercase; color:var(--accent); white-space:nowrap; padding-top:2px; }
+  .one-thing-text { font-size:14px; color:var(--text-1); font-weight:500; line-height:1.55; text-wrap:balance; }
+
+  .brief-footer { padding:16px 20px 0; font-size:11px; color:var(--text-3); line-height:1.6; border-top:1px solid var(--border); }
+  code { font-family:var(--mono); font-size:10px; }
+</style>
+</head>
+<body>
+
+<div class="brief">
+
+  {#- Header -#}
+  <div class="brief-header">
+    <div>
+      <div class="brief-date">{{ r.meta.weekday_date }}</div>
+      <div class="brief-title">{{ r.meta.title }}</div>
+    </div>
+    <div class="brief-posture">
+      <div class="posture-tag">{{ r.posture.tag }}</div>
+      {% if r.posture.vix %}<div style="margin-top:5px; font-size:11px;">{{ r.posture.vix }}</div>{% endif %}
+    </div>
+  </div>
+
+  {#- Indices strip -#}
+  <div class="indices-strip">
+    {% for ix in r.indices %}
+    <div class="index-cell">
+      <div class="index-name">{{ ix.name }}</div>
+      <div class="index-level"{% if ix.muted %} style="font-size:14px; color:var(--text-3);"{% endif %}>{{ ix.level }}</div>
+      {% if ix.chg %}<div class="index-chg chg-{{ ix.chg_tone|default('flat') }}">{{ ix.chg }}</div>{% endif %}
+      {% if ix.note %}<div class="index-note">{{ ix.note }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {#- Flows strip -#}
+  {% if r.flows %}
+  <div class="flows-strip">
+    {% for f in r.flows %}
+    <div class="flow-cell">
+      <div class="flow-label">{{ f.label }}</div>
+      <div class="flow-val{% if f.tone %} chg-{{ f.tone }}{% endif %}">{{ f.value }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {#- Market analysis -#}
+  <div class="section" style="margin-top:16px;">
+    <div class="section-label"><span>Market</span><div class="section-rule"></div></div>
+    <ul class="market-bullets">
+      {% for b in r.market.bullets %}
+      <li>{{ (b.html if b.html else b.text) | rich_text }}</li>
+      {% endfor %}
+    </ul>
+    {% if r.market.net_read %}
+    <div class="net-read">
+      <strong>Net read</strong>
+      {{ (r.market.net_read_html if r.market.net_read_html else r.market.net_read) | rich_text }}
+    </div>
+    {% endif %}
+  </div>
+
+  {#- Sector tone -#}
+  <div class="section" style="margin-top:18px;">
+    <div class="section-label"><span>Sector tone</span><div class="section-rule"></div></div>
+    <div class="sector-grid">
+      <div class="sector-col leading">
+        <div class="sector-col-label">Leading · day</div>
+        {% for s in r.sector.leading %}<div class="sector-item">{{ s }}</div>{% endfor %}
+      </div>
+      <div class="sector-col lagging">
+        <div class="sector-col-label">Lagging · day</div>
+        {% for s in r.sector.lagging %}<div class="sector-item">{{ s }}</div>{% endfor %}
+      </div>
+    </div>
+    {% if r.sector.trend_note %}<div class="sector-trend">{{ r.sector.trend_note | rich_text }}</div>{% endif %}
+  </div>
+
+  {#- Alerts & actions -#}
+  <div class="section" style="margin-top:20px;">
+    <div class="section-label"><span>⏰ Alerts &amp; actions</span><div class="section-rule"></div></div>
+    <div class="alert-list">
+      {% for a in r.alerts %}
+      <div class="alert-card sev-{{ a.sev }}">
+        <div class="alert-stripe"></div>
+        <div class="alert-body">
+          <div class="alert-header">
+            <span class="alert-ticker">{{ a.ticker }}</span>
+            {% if a.badge %}<span class="alert-sev-badge">{{ a.badge }}</span>{% endif %}
+          </div>
+          {% if a.text %}<div class="alert-text"{% if a.sev == 'info' %} style="color:var(--text-3);"{% endif %}>{{ (a.text_html if a.text_html else a.text) | rich_text }}</div>{% endif %}
+          {% if a.cmd %}<span class="alert-cmd">{{ a.cmd }}</span>{% endif %}
+          {% if a.sublist %}
+          <div class="alert-sublist">
+            {% for s in a.sublist %}
+            <div class="alert-sub"><span class="ticker">{{ s.ticker }}</span> <span>{{ s.text }}</span>{% if s.cmd %} <span class="cmd-small">{{ s.cmd }}</span>{% endif %}</div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {#- Opportunities -#}
+  <div class="section" style="margin-top:20px;">
+    <div class="section-label"><span>Opportunities</span><div class="section-rule"></div></div>
+    {% if r.opportunities is string %}
+    <div class="opp-box">{{ r.opportunities }}</div>
+    {% else %}
+    <div class="opp-list">
+      {% for o in r.opportunities %}
+      <div class="opp-item{% if o.unvetted %} unvetted{% endif %}"><span class="lead">{{ o.lead }}</span> — {{ o.text }}{% if o.cmd %} <span class="cmd-small">{{ o.cmd }}</span>{% endif %}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {#- Filings & news · holdings -#}
+  <div class="section" style="margin-top:20px;">
+    <div class="section-label"><span>Filings &amp; news · holdings</span><div class="section-rule"></div></div>
+    <div class="filing-list">
+      {% for f in r.filings %}
+      <div class="filing-row mat-{{ f.mat }}">
+        <span class="filing-ticker">{{ f.ticker }}</span>
+        <span class="filing-emoji"{% if f.mat == 'nil' %} style="font-size:12px; color:var(--text-3)"{% endif %}>{{ f.emoji|default('·') }}</span>
+        <div class="filing-text"{% if f.muted %} style="color:var(--text-3);"{% endif %}>
+          {{ (f.text_html if f.text_html else f.text) | rich_text }}
+          {% if f.source %}<span class="source">{{ f.source }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {#- Positions & attention -#}
+  <div class="section" style="margin-top:20px;">
+    <div class="section-label"><span>Positions &amp; attention</span><div class="section-rule"></div></div>
+    <div class="pos-table-wrap">
+      <table class="pos-table">
+        <thead>
+          <tr><th>Position</th><th>CMP</th><th>vs Avg</th><th>Day</th><th>SL dist</th><th>State</th></tr>
+        </thead>
+        <tbody>
+          {% for p in r.positions.rows %}
+          <tr{% if p.flag %} class="flag-{{ p.flag }}"{% endif %}>
+            <td>{{ p.ticker }} <span class="pos-qty">×{{ p.qty }}</span></td>
+            <td>{{ p.cmp }}</td>
+            <td{% if p.vs_avg_tone %} class="pill-{{ p.vs_avg_tone }}"{% endif %}>{{ p.vs_avg }}</td>
+            <td class="chg-{{ p.day_tone|default('flat') }}">{{ p.day }}</td>
+            <td{% if p.sl_tone %} style="color:var(--{{ p.sl_tone }})"{% endif %}>{{ p.sl_dist|default('—') }}</td>
+            <td><span class="state-pill pill-{{ p.state_pill }}">{{ p.state }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if r.positions.callouts %}
+    <div class="callout-list">
+      {% for c in r.positions.callouts %}
+      <div class="callout {{ c.tone }}">
+        <span class="ico">{{ c.ico }}</span>
+        <div class="msg">{{ (c.html if c.html else c.text) | rich_text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {#- One thing -#}
+  <div class="one-thing" style="margin-top:20px;">
+    <div class="one-thing-label">ONE THING</div>
+    <div class="one-thing-text">{{ r.one_thing }}</div>
+  </div>
+
+  {#- Footer -#}
+  <div class="brief-footer" style="margin-top:20px;">{{ r.footer | rich_text }}</div>
+
+</div>
+
+</body>
+</html>

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Relative-strength-vs-benchmark math — the one definition.
 
 Windowed price returns and the Leading/Improving/Weakening/Lagging classification that

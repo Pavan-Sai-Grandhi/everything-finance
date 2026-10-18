@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Company news from Google News RSS.
 
 Google News RSS is the single source: it indexes the mainstream
@@ -301,7 +300,6 @@ def fetch(company, ticker=None, days=60, fresh=False, include_noise=False, today
     company = company.strip()
     ticker = _norm(ticker or company)
     # Cache the source response, not one caller's classification/noise/window view.
-    # The versioned key skips caches written in the old processed format.
     key = hashlib.sha256(json.dumps([company.casefold(), days]).encode()).hexdigest()
     cache_file, cached, cache_gaps = None, None, []
     try:

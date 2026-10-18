@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Tickertape client — the one door to api.tickertape.in.
 
 Public JSON, no auth, but every path 403s without a `tickertape.in` Referer; that header

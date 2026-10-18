@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Peer-median P/E, own-band percentile and PEG, returned by `run_dcf`.
 
 `pe` and every `peer_pe` must be trailing-twelve-month. Bare numbers arrive here, so a breach

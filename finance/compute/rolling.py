@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
 """Rolling-return math for the past-performance pillar.
 
-Varsity's hierarchy: point-to-point returns lie, because they hang on two endpoints. The
+Point-to-point returns lie, because they hang on two endpoints (`methods/funds.md`). The
 headline is **daily-rolled rolling returns** — roll a window across every NAV observation
 and report mean/median/min over it — plus max drawdown. A window longer than the fund's
 history yields nothing rather than a number computed off a partial series.
 
-Pure math over a NAV series already fetched; nothing here reaches the network.
-Library only: the math behind get_fund_scan.
+Pure math over a NAV series already fetched; the math behind get_fund_scan.
 """
 from __future__ import annotations
 

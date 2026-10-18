@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Spec -> signal engine.
 
 The ONE place a strategy spec becomes trade logic (`ta.py` turns OHLCV into columns; this
@@ -218,8 +217,8 @@ def target_kind(exitb):
     """Exact executable target names; prose belongs in the strategy rationale."""
     kind = exitb.get("target", "trailing" if exitb.get("trail_atr") else
                      "signal" if exitb.get("exit_signal") else "min_rrr")
-    if kind not in ("measured_move", "min_rrr", "next_resistance", "trailing", "signal", "none"):
-        raise ValueError("target must be measured_move, min_rrr, next_resistance, trailing, signal or none; put prose in rationale")
+    if kind not in ("measured_move", "min_rrr", "trailing", "signal", "none"):
+        raise ValueError("target must be measured_move, min_rrr, trailing, signal or none; put prose in rationale")
     if kind == "trailing" and not exitb.get("trail_atr"):
         raise ValueError("target trailing requires a positive trail_atr")
     if kind == "signal" and not _conditions(exitb.get("exit_signal"), "exit_signal"):

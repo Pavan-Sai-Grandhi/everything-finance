@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """finance-funds — Indian mutual funds: identity, universe, holdings, NAV, and the computes.
 
 Every tool delegates to `finance/`: `sources/funds.py` (AMFI identity, Tickertape screens

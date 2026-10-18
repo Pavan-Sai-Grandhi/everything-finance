@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline tests for the path resolver. No network."""
+import json
 import os
 import sys
 import tempfile
@@ -49,11 +50,6 @@ with tempfile.TemporaryDirectory() as tmp:
     rp2 = paths.report_path("discover", "2026-05-01", ".json")
     check("report_path strips leading dot in ext", rp2.endswith("2026-05-01.json"), rp2)
 
-    ip = paths.insurance_report_path("Term", "2026-05-01")
-    check("insurance_report_path per-type path",
-          ip == os.path.join(root, "insurance", "term", "2026-05-01.md"), ip)
-    check("insurance_report_path parent created", os.path.isdir(os.path.dirname(ip)))
-
     rd = paths.report_dir("sector-analysis", "2026-05-01")
     check("report_dir created", os.path.isdir(rd) and rd.endswith(os.path.join(
         "sector-analysis", "2026-05-01")), rd)
@@ -65,8 +61,6 @@ with tempfile.TemporaryDirectory() as tmp:
     check("state_dir(strategies)", paths.state_dir("strategies") ==
           os.path.join(root, "state", "strategies"))
     check("alerts_dir", paths.alerts_dir() == os.path.join(root, "state", "alerts"))
-    check("watchlist_path", paths.watchlist_path() ==
-          os.path.join(root, "state", "watchlist.json"))
     check("cache_dir named", paths.cache_dir("ohlcv") == os.path.join(root, "cache", "ohlcv"))
     check("tmp_dir named", paths.tmp_dir("staging") == os.path.join(root, "tmp", "staging"))
 
@@ -75,29 +69,18 @@ with tempfile.TemporaryDirectory() as tmp:
           mmp == os.path.join(root, "budget", "merchant-map.json"), mmp)
     check("merchant_map_path parent created", os.path.isdir(os.path.dirname(mmp)))
 
-with tempfile.TemporaryDirectory() as tmp:
-    _clean_env()
-    os.chdir(tmp)
-    root = paths.root()
+def bundle(ticker, day, mode, n):
+    """An archived deep-analysis bundle, as publication leaves it."""
+    run_id = f"{n:020d}-{'a' * 32}"
+    run = os.path.join(paths.stock_dir(ticker, day), "runs", run_id)
+    os.makedirs(os.path.join(run, "agents"))
+    with open(os.path.join(run, "run.json"), "w") as f:
+        json.dump({"mode": mode, "ticker": ticker, "date": day, "run_id": run_id}, f)
+    for name in ("report.json", "report.html", "agents/dcf.md"):
+        with open(os.path.join(run, name), "w") as f:
+            f.write("x")
+    return run
 
-    check("sector_key slugifies", paths.sector_key("IT services") == "it-services",
-          paths.sector_key("IT services"))
-    scp = paths.sector_cache_path("Banking / NBFC")
-    check("sector_cache_path under state/sectors",
-          scp == os.path.join(root, "state", "sectors", "banking-nbfc.md"), scp)
-    check("sector_cache_path parent created", os.path.isdir(os.path.dirname(scp)))
-
-    check("sector_cache_age_days None when absent",
-          paths.sector_cache_age_days("pharma") is None)
-    with open(paths.sector_cache_path("pharma"), "w") as f:
-        f.write("---\ngenerated: 2026-05-01\nrs_class: Leading\n---\nbody\n")
-    check("sector_cache_age_days computes from frontmatter",
-          paths.sector_cache_age_days("pharma", today="2026-05-31") == 30,
-          paths.sector_cache_age_days("pharma", today="2026-05-31"))
-    with open(paths.sector_cache_path("auto"), "w") as f:
-        f.write("no frontmatter date here\n")
-    check("sector_cache_age_days None when undated",
-          paths.sector_cache_age_days("auto") is None)
 
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
@@ -105,77 +88,36 @@ with tempfile.TemporaryDirectory() as tmp:
 
     check("latest_prior none when no history",
           paths.latest_prior("deep-analysis", "INFY", before="2026-06-01") is None)
-
-    for day in ("2026-04-01", "2026-05-10", "2026-06-15"):
-        d = paths.stock_dir("INFY", day)
-        with open(os.path.join(d, "deep-analysis.report.json"), "w") as f:
-            f.write("x")
-
+    runs = {day: bundle("INFY", day, "standard", i) for i, day in
+            enumerate(("2026-04-01", "2026-05-10", "2026-06-15"))}
     got = paths.latest_prior("deep-analysis", "infy.NS", before="2026-06-01")
-    check("latest_prior picks newest strictly-earlier",
-          got == os.path.join(paths.stock_dir("INFY", "2026-05-10"), "deep-analysis.report.json"), got)
-
-    got2 = paths.latest_prior("dcf", "INFY", before="2026-06-01")
-    check("latest_prior None when report file absent for that skill", got2 is None, got2)
-
-    dd = paths.stock_dir("INFY", "2026-05-09")
+    check("latest_prior picks the newest strictly-earlier bundle",
+          got == os.path.join(runs["2026-05-10"], "report.json"), got)
+    check("a bundle's valuation paper is the prior dcf run",
+          paths.latest_prior("dcf", "INFY", before="2026-06-01") ==
+          os.path.join(runs["2026-05-10"], "agents", "dcf.md"))
+    dd = paths.stock_dir("INFY", "2026-05-11")
     with open(os.path.join(dd, "dcf.md"), "w") as f:
         f.write("x")
-    check("latest_prior finds dcf.md",
-          paths.latest_prior("dcf", "INFY", before="2026-06-01") ==
-          os.path.join(dd, "dcf.md"))
-
-check("deep-analysis and fundamentals map to different filenames",
-      paths._STOCK_ARTIFACT["deep-analysis"] != paths._STOCK_ARTIFACT["fundamentals"],
-      (paths._STOCK_ARTIFACT["deep-analysis"], paths._STOCK_ARTIFACT["fundamentals"]))
-check("fundamentals filename is fundamental-analysis.report.json",
-      paths._STOCK_ARTIFACT["fundamentals"] == "fundamental-analysis.report.json",
-      paths._STOCK_ARTIFACT["fundamentals"])
-check("the five stock artifact keys map one-to-one onto five files",
-      sorted(paths._STOCK_ARTIFACT.values()) ==
-      ["dcf.md", "deep-analysis.report.json", "filings.md", "fundamental-analysis.report.json", "management.md"],
-      sorted(paths._STOCK_ARTIFACT.values()))
+    check("a standalone dcf.md on a later day wins",
+          paths.latest_prior("dcf", "INFY", before="2026-06-01") == os.path.join(dd, "dcf.md"))
+    check("a run-day file named like a deck is not a prior deep-analysis run",
+          paths.latest_prior("filings", "INFY", before="2026-06-01") is None)
 
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
     os.chdir(tmp)
-
-    same_day = paths.stock_dir("TCS", "2026-05-20")
-    for fname in ("deep-analysis.report.json", "fundamental-analysis.report.json"):
-        with open(os.path.join(same_day, fname), "w") as f:
-            f.write(fname)
-
-    check("both same-day reports survive side by side",
-          sorted(os.listdir(same_day)) == ["deep-analysis.report.json", "fundamental-analysis.report.json"],
-          sorted(os.listdir(same_day)))
-    check("full run's file still holds its own content",
-          open(os.path.join(same_day, "deep-analysis.report.json")).read() == "deep-analysis.report.json")
-
-    got_deep = paths.latest_prior("deep-analysis", "TCS", before="2026-06-01")
-    got_fund = paths.latest_prior("fundamentals", "TCS", before="2026-06-01")
-    check("latest_prior('deep-analysis') resolves to deep-analysis.report.json",
-          got_deep == os.path.join(same_day, "deep-analysis.report.json"), got_deep)
-    check("latest_prior('fundamentals') resolves to fundamental-analysis.report.json",
-          got_fund == os.path.join(same_day, "fundamental-analysis.report.json"), got_fund)
-    check("the two prior-run lookups do not shadow each other", got_deep != got_fund,
-          (got_deep, got_fund))
-
-    fund_only = paths.stock_dir("TCS", "2026-05-25")
-    with open(os.path.join(fund_only, "fundamental-analysis.report.json"), "w") as f:
-        f.write("x")
-    check("a fundamentals-only day is not the prior deep-analysis run",
+    deep = bundle("TCS", "2026-05-20", "deep", 1)
+    fund = bundle("TCS", "2026-05-25", "fundamentals", 2)
+    check("a fundamentals bundle is not the prior deep-analysis run",
           paths.latest_prior("deep-analysis", "TCS", before="2026-06-01") ==
-          os.path.join(same_day, "deep-analysis.report.json"))
-    check("a fundamentals-only day IS the prior fundamentals run",
+          os.path.join(deep, "report.json"))
+    check("a fundamentals bundle IS the prior fundamentals run",
           paths.latest_prior("fundamentals", "TCS", before="2026-06-01") ==
-          os.path.join(fund_only, "fundamental-analysis.report.json"))
-
-    deep_only = paths.stock_dir("TCS", "2026-05-28")
-    with open(os.path.join(deep_only, "deep-analysis.report.json"), "w") as f:
-        f.write("x")
-    check("a full-run-only day is not the prior fundamentals run",
-          paths.latest_prior("fundamentals", "TCS", before="2026-06-01") ==
-          os.path.join(fund_only, "fundamental-analysis.report.json"))
+          os.path.join(fund, "report.json"))
+    os.remove(os.path.join(fund, "report.html"))
+    check("a bundle without its deck is incomplete and skipped",
+          paths.latest_prior("fundamentals", "TCS", before="2026-06-01") is None)
 
 with tempfile.TemporaryDirectory() as tmp:
     _clean_env()
@@ -244,14 +186,6 @@ with tempfile.TemporaryDirectory() as tmp:
           paths.report_path("budget", "2026-05", "html").endswith("2026-05.html"))
     invalid = paths.prior_run("dcf", "../ESCAPE")
     check("invalid prior-run subject degrades in its envelope", not invalid["ok"] and invalid["gaps"])
-    p = paths.sector_cache_path("bad-date")
-    with open(p, "w") as fh:
-        fh.write("generated: 2026-99-99\n")
-    try:
-        age = paths.sector_cache_age_days("bad-date")
-    except ValueError:
-        age = "crashed"
-    check("invalid sector cache date is an unavailable age", age is None)
 
 
 with tempfile.TemporaryDirectory() as tmp:

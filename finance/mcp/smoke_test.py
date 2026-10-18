@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Live end-to-end smoke test for the finance MCP servers.
 
 Speaks the real MCP wire protocol over stdio to a real server process and calls EVERY tool
@@ -9,7 +8,7 @@ unit tests in `finance/tests/test_*.py` rather than replacing them.
 A tool returning `ok:false` with a labelled gap is DEGRADED, not FAILED — that is the
 contract working. Only a protocol error, an exception, or a malformed envelope fails.
 
-Run:  python3 -m finance.mcp.smoke_test [--quick] [--server market|company|funds|personal]
+Run:  python3 -m finance.mcp.smoke_test [--quick] [--server market|company|funds|personal|workflow]
 """
 from __future__ import annotations
 
@@ -27,13 +26,14 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 sys.path.insert(0, ROOT)
-from finance.compute.dcf import SELFTEST_SPEC as SELFTEST_DCF_SPEC  # noqa: E402
+from finance.tests.fixtures import DCF_SPEC  # noqa: E402
 
 # server -> [(tool, args, what a healthy response must contain), ...]
 CASES = {
     "market": [
         ("get_quote", {"symbol": "RELIANCE"}, ["close"]),
         ("get_history", {"symbol": "RELIANCE", "period": "1mo"}, ["candles_total"]),
+        ("get_technicals", {"symbol": "RELIANCE", "period": "1y"}, ["latest", "rows_total"]),
         ("run_technical_screen",
          {"filters": [{"left": "market_cap_basic", "operation": "greater", "right": 5e11}],
           "limit": 5}, ["candidates"]),
@@ -50,9 +50,6 @@ CASES = {
          {"spec": "SPEC", "symbols": ["RELIANCE", "TCS"], "years": 2}, ["candidates"]),
         ("run_backtest",
          {"spec": "SPEC", "symbols": ["RELIANCE"], "years": 2}, ["summary"]),
-        ("check_trade", {"trade": "TRADE"}, ["verdict"]),
-        ("manage_alerts", {"action": "sweep"}, ["expired", "unsnoozed"]),
-        ("get_prior_run", {"skill": "dcf", "subject": "RELIANCE"}, ["path"]),
     ],
     "company": [
         ("get_company_fundamentals",
@@ -62,14 +59,13 @@ CASES = {
         ("run_fundamental_screen",
          {"query": "Market Cap > 100000 AND PE Ratio < 25", "limit": 25},
          ["candidates", "count"]),
-        # Retired endpoint: verifies the labelled compatibility gap, never a fetch.
         ("get_stock_ratios", {"sid": "RELI"}, ["ticker"]),
         ("get_news", {"company": "Reliance Industries", "ticker": "RELIANCE", "days": 30,
                       "limit": 5}, ["items_total"]),
         ("get_filings", {"symbol": "RELIANCE", "days": 30}, ["material_count"]),
         ("get_shareholding", {"symbol": "VEDL", "quarters": 4}, ["quarters"]),
         ("get_corporate_actions", {"symbol": "RELIANCE"}, ["corporate_actions"]),
-        ("run_dcf", {"ticker": "SMOKETEST", "inputs": SELFTEST_DCF_SPEC},
+        ("run_dcf", {"ticker": "SMOKETEST", "inputs": DCF_SPEC},
          ["intrinsic_value_per_share", "dcf_path"]),
         ("get_risk_inputs", {}, ["india_10y", "country_risk"]),
         ("get_analyst_estimates", {"symbol": "RELIANCE"}, ["eps", "revenue"]),
@@ -94,6 +90,31 @@ CASES = {
                      "education_corpus": 0, "annual_expenses": 8_00_000,
                      "years_to_independence": 20, "existing_corpus": 0, "existing_cover": 0}},
          ["result"]),
+        ("resolve_holdings", {"portfolio": "PORTFOLIO"}, ["positions_total"]),
+        ("review_allocation", {"book": "BOOK"}, ["concentration_flags"]),
+        ("run_wealth", {"picture": "PICTURE", "snapshot": True}, ["spine"]),
+        ("categorize_transactions", {"transactions": "TXNS"}, ["by_bucket"]),
+        ("learn_merchant", {"merchant": "UPI/SMOKETEST/ybl", "category": "Shopping"}, ["token"]),
+        ("detect_recurring", {"transactions": "TXNS"}, ["subscriptions"]),
+        ("check_trade", {"trade": "TRADE"}, ["verdict"]),
+    ],
+    "workflow": [
+        ("manage_alerts", {"action": "sweep"}, ["expired", "unsnoozed"]),
+        ("get_prior_run", {"skill": "dcf", "subject": "RELIANCE"}, ["path"]),
+        ("select_strategy", {}, ["outcome"]),
+        ("review_strategy_performance", {}, ["strategies"]),
+        ("resolve_analysis_mode", {"args": "RELIANCE --quick", "symbol": "RELIANCE",
+                                   "holding": "no"}, ["mode"]),
+        ("decide_debate_round",
+         {"bull": {"axis": "valuation", "claim": "cheap", "conceded": False, "new_evidence": True},
+          "bear": {"axis": "valuation", "claim": "dear", "conceded": False, "new_evidence": True}},
+         ["escalate", "directive"]),
+        ("prepare_report", {"session": "smoke-session", "ticker": "SMOKETEST",
+                            "date": "2026-01-02", "mode": "standard"}, ["run_dir"]),
+        ("render_report", {"report_json": "FIXTURE", "template": "deep-analysis",
+                           "out": "DECK"}, ["report_html"]),
+        ("publish_report", {"session": "smoke-session", "run_id": "00000000000000000000-smoke"}, []),
+        ("send_telegram", {"text_file": "/nonexistent/smoke-brief.txt"}, []),
     ],
 }
 
@@ -103,6 +124,15 @@ RUNTIME_ARG = {"get_fund_holdings": "mf_id", "get_fund_lookthrough": "mf_id"}
 # tool -> the argument that must be a real file on disk; skipped when it is missing.
 FILE_ARG = {"run_strategy_screen": ("spec", "SPEC"), "run_backtest": ("spec", "SPEC"),
             "run_stock_scan": ("spec", "SPEC"), "check_trade": ("trade", "TRADE")}
+
+# Synthetic personal inputs written into the server's temporary artifact root.
+SYNTHETIC = {
+    "PORTFOLIO": ("portfolio.json", {"positions": [{"ticker": "SMOKETEST", "qty": 1, "ltp": 100}]}),
+    "BOOK": ("book.json", {"holdings": [{"ticker": "SMOKETEST", "value": 100, "kind": "stock"}]}),
+    "PICTURE": ("picture.json", {}),
+    "TXNS": ("txns.json", [{"date": "2026-01-05", "description": "UPI/NETFLIX/ybl",
+                            "amount": 649, "direction": "debit"}]),
+}
 
 # The slow rungs: valuation sampling, the daily context, the spec engines, and the
 # multi-megabyte annual-report download.
@@ -212,6 +242,21 @@ def close(client):
         client.artifacts.cleanup()
 
 
+def _synthetic(client, value):
+    """A token argument becomes a real file in the server's temporary artifact root."""
+    if value == "FIXTURE":
+        return os.path.join(ROOT, "finance", "report", "fixtures", "deep-analysis.sample.json")
+    if value == "DECK":
+        return os.path.join(client.artifacts.name, "smoke-deck.html")
+    if isinstance(value, str) and value in SYNTHETIC:
+        name, payload = SYNTHETIC[value]
+        path = os.path.join(client.artifacts.name, name)
+        with open(path, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream)
+        return path
+    return value
+
+
 def valid_envelope(env):
     """Degradation is valid only when it carries the complete typed contract."""
     return (isinstance(env, dict) and type(env.get("ok")) is bool
@@ -255,6 +300,7 @@ def run_server(server, python_exe, quick, files):
                     print(f"SKIP     {name:<30} no {arg} resolved upstream")
                     continue
                 call_args[arg] = resolved[arg]
+            call_args = {k: _synthetic(client, v) for k, v in call_args.items()}
             if name in FILE_ARG:
                 key, token = FILE_ARG[name]
                 path = files.get(token)

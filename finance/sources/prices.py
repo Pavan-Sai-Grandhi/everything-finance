@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Price fetch — live truth + EOD history + reconcile.
 
 Two truths, kept separate on purpose: live/screening comes from the TradingView scanner,

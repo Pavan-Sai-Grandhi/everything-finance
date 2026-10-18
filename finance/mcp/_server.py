@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
-"""Shared plumbing for the finance MCP servers (`market`, `company`, `funds`, `personal`).
+"""Shared plumbing for the finance MCP servers (`market`, `company`, `funds`, `personal`, `workflow`).
 
 A server module is declaration and delegation only: it names its tools and hands each one
 straight to `finance/`. The library holds every decision — filtering, ranking, envelope
-assembly — so a skill script and a tool return the same numbers by construction.
+assembly — so a tool and the tests read the same numbers by construction.
 
 `spill` and `safe_name` are the one concern that belongs here rather than in the library:
 a tool answers a model with a finite context window, so bulk rows go to disk and only a

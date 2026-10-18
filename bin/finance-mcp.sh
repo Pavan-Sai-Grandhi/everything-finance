@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for one local finance MCP server: finance-mcp.sh <market|company|funds|personal>
+# Launcher for one local finance MCP server: finance-mcp.sh <market|company|funds|personal|workflow>
 #
 # Resolves an interpreter that can import the MCP SDK: the ambient python3 when it already
 # has `mcp` (no venv, instant start), else a venv under the client's persistent data dir —
@@ -21,9 +21,9 @@ DATA_DIR="${CLAUDE_PLUGIN_DATA:-${PLUGIN_DATA:-$PLUGIN_ROOT/.data}}"
 log() { printf '[finance-mcp:%s] %s\n' "${SERVER_NAME:-?}" "$*" >&2; }
 
 case "$SERVER_NAME" in
-  market|company|funds|personal) ;;
+  market|company|funds|personal|workflow) ;;
   *)
-    log "FATAL: server name must be market, company, funds or personal (got '${SERVER_NAME}')"
+    log "FATAL: server name must be market, company, funds, personal or workflow (got '${SERVER_NAME}')"
     exit 2
     ;;
 esac

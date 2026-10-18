@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
 """Category scanner — turns "which small-cap fund?" into a deterministic shortlist.
 
-Takes the WHOLE SEBI sub-category from `funds.screen()`, applies the Varsity checklist as
-HARD gates, scores the survivors on a fixed published weight table, and emits the top N.
-Same inputs, same answer, every run, and auditable because the weights and the
-per-component scores are in the output. The universe is never printed — only the
-decision-grade rows reach stdout.
+Takes the WHOLE SEBI sub-category from `funds.screen()`, applies the selection checklist in
+`methods/funds.md` as HARD gates, scores the survivors on a fixed published weight table, and
+emits the top N. Same inputs, same answer, every run, and auditable because the weights and
+the per-component scores are in the output.
 
 Rolling returns and max drawdown are computed here from AMFI NAV history rather than read
 off Tickertape: it gates `maxDrawdown` and `avg3yRollingRet` behind a paywall, and a
@@ -13,7 +11,7 @@ NAV-derived figure is reproducible from a primary source where a paywalled field
 Nothing is estimated — a fund missing an input is scored on the rest with the weight
 redistributed, and if too little is left it is gated out rather than guessed at.
 
-The hard gates, applied before any scoring (Varsity ch. 24-26):
+The hard gates, applied before any scoring:
 
 1. Direct-Growth plan only, with the expense ratio under a Direct-plan ceiling. A
    Regular-plan TER served on a Direct-plan page is the most common identity error in fund
@@ -28,7 +26,7 @@ The hard gates, applied before any scoring (Varsity ch. 24-26):
 5. Fund-manager tenure is a pending MANUAL gate: no free API publishes it, so it is checked
    by hand for the shortlist only, never for the whole universe.
 
-Reached through: get_fund_scan.
+Reached through get_fund_scan.
 """
 from __future__ import annotations
 
@@ -45,12 +43,12 @@ from finance.spine import envelope as _envelope, f as _f
 # Weights sum to 1.00. Two thirds sit on risk-adjusted behaviour and downside, one third
 # on the structural drags that persist regardless of what the market does next (cost,
 # size, mandate purity). Trailing point-to-point returns are deliberately NOT scored —
-# Varsity's whole point is that they hang on two endpoints; the rolling equivalents are.
+# Point-to-point returns hang on two endpoints; the rolling equivalents do not.
 WEIGHTS = {
     "roll_mean":   0.20,   # mean rolling return over the credited window (NAV-derived)
     "roll_min":    0.12,   # WORST rolling window — what a badly-timed investor got
     "sharpe":      0.12,   # return per unit of total risk
-    "sortino":     0.10,   # return per unit of DOWNSIDE risk (Varsity's refinement)
+    "sortino":     0.10,   # return per unit of DOWNSIDE risk
     "alpha":       0.10,   # excess over benchmark
     "max_dd":      0.10,   # deepest peak-to-trough (NAV-derived; lower is better)
     "std_dev":     0.06,   # annualised volatility (lower is better)
@@ -181,7 +179,7 @@ def composite(components, weights=None):
 
 
 def gate(row, min_aum_cr, min_age_months, ter_ceiling=DIRECT_TER_CEILING):
-    """-> (passed: bool, reasons: [str]). Every Varsity hard gate, in one pure function.
+    """-> (passed: bool, reasons: [str]). Every hard gate, in one pure function.
 
     Reasons are phrased as what is WRONG so the rejection tally reads as a diagnosis of
     the category, not as a list of names.

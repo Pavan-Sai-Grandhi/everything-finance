@@ -276,8 +276,8 @@ def test_health_uses_explicit_targets_and_deductible():
     check("top-up target starts above the policy deductible", r.get("top_up_target") == 3500000, r)
     check("deductible gaps distinguish existing cover from proposed base",
           r.get("deductible_gap") == 1000000 and r.get("planned_deductible_gap") == 500000, r)
-    legacy = im.run("health_sum_insured", {"adults": 2, "eldest_age": 40, "city_tier": 1})
-    check("legacy demographics alone cannot manufacture a health target", not legacy["ok"], legacy)
+    demographics = im.run("health_sum_insured", {"adults": 2, "eldest_age": 40, "city_tier": 1})
+    check("demographics alone cannot manufacture a health target", not demographics["ok"], demographics)
 
 
 
@@ -288,26 +288,6 @@ def test_term_requires_all_household_and_scenario_inputs():
         env = im.run("term_cover_need", inputs)
         check("missing term input cannot become an implicit assumption",
               not env["ok"] and any(key in gap for gap in env["gaps"]), (key, env))
-
-
-
-def test_insurance_cli_rejects_malformed_or_ambiguous_json():
-    import subprocess
-    from pathlib import Path
-    cli = Path(__file__).resolve().parents[2] / "skills/insurance-advisor/scripts/insurance_math.py"
-    for payload in ('{"claim_free_years":', '[]', 'null',
-                    '{"claim_free_years": 1, "claim_free_years": 5}',
-                    '{"claim_free_years": NaN}', '{"claim_free_years": 1e999}'):
-        result = subprocess.run([sys.executable, str(cli), "expected_ncb", payload],
-                                capture_output=True, text=True, timeout=10)
-        check("bad CLI input reports usage error without traceback or result",
-              result.returncode == 2 and "error:" in result.stderr
-              and "Traceback" not in result.stderr and not result.stdout, result)
-    result = subprocess.run([sys.executable, str(cli), "expected_ncb", '{"claim_free_years": 3}'],
-                            capture_output=True, text=True, timeout=10)
-    import json
-    check("valid CLI input still delegates to the shared calculator",
-          result.returncode == 0 and json.loads(result.stdout)["data"]["result"] == 0.35, result)
 
 
 
