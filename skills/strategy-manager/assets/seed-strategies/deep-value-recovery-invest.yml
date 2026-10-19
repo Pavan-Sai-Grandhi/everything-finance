@@ -36,7 +36,7 @@ screening:
     query: >
       Market Cap > 2000 AND PB Ratio > 0 AND PB Ratio < 2 AND PE Ratio > 0 AND PE Ratio < 15
       AND ROCE > 12 AND Return on Equity > 12
-      AND Debt to Equity < 0.6 AND Promoter Pledge < 10
+      AND Debt to Equity < 0.6 AND Promoter Pledges < 10
     max_survivors: 40
 
 ranking:

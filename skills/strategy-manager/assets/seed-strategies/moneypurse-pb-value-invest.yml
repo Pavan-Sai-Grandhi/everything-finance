@@ -1,0 +1,40 @@
+# Investment discovery spec — feeds `discover stocks --invest`.
+# CYCLE: any — Money Purse's book-value screen. Price below book, on a company big enough to
+# matter, is where the source starts a search for cyclicals and asset-heavy businesses whose
+# earnings swing but whose book holds. The source's own warning: cheap is not good by itself, and
+# blind buying lands in companies that will not grow, so every survivor earns a deep-dive on
+# return ratios, management and growth, never a reflex buy.
+
+name: moneypurse-pb-value-invest
+version: 1
+created: 2026-10-18
+purpose: investment
+archetype: deep-value
+goal: "Profitable companies above ₹1,000 Cr trading below book value — a shortlist to test, not to buy"
+source_references:
+  - "Money Purse, Fundamental Analysis of Stocks, Part 12B (cKf35eocdkw): the screen 'price to book value < 1 AND market capitalization > 1000' [@14:03]; cheap is not automatically good, so check return ratios, management and growth before investing [@15:31]; P/B suits cyclicals and not asset-light businesses [@13:18, @12:39]."
+
+status: draft  # Research template; no activation or performance evidence supplied.
+lifecycle:
+  generated_at: 2026-10-18
+  validated_at: null
+  activated_at: null
+
+regime_required: {}                   # the source names no regime; the screen runs in any tape
+
+universe:
+  source: nifty500                    # the source screens every listed name above ₹1,000 Cr; the
+                                      # Nifty 500 narrows that to names with an exit
+
+# PB < 1 and Market Cap > 1000 are the source's screen verbatim. ROE > 0 is the plugin's guard:
+# a loss-maker's book erodes, so its discount to book is not a margin of safety.
+screening:
+  fundamental:
+    provider: tickertape
+    query: >
+      Market Cap > 1000 AND PB Ratio > 0 AND PB Ratio < 1 AND Return on Equity > 0
+    max_survivors: 40
+
+ranking:
+  metric: return_6m                   # plugin choice: among the cheap names, those already turning
+  top_n: 5

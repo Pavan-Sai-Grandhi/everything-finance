@@ -1,0 +1,49 @@
+# Investment discovery spec — feeds `discover stocks --invest`.
+# CYCLE: any — Money Purse's multibagger checklist, cut to what a screen can test: earnings that
+# compound, returns above the cost of capital, prudent debt, free cash flow, a high asset turn,
+# and a company still small enough to graduate a cap tier. The rest of the checklist (margins
+# above the industry's, the trigger behind the growth and how long it lasts, capital allocation,
+# management) belongs to the deep-dive. The source's warning: a stock already called a multibagger
+# has its upside priced in, so the deep-dive's valuation read decides, not the ranking.
+
+name: moneypurse-multibagger-invest
+version: 1
+created: 2026-10-18
+purpose: investment
+archetype: quality-compounder
+goal: "Small and mid caps compounding earnings on high returns, prudent debt and real cash flow"
+source_references:
+  - "Money Purse, Fundamental Analysis of Stocks, 'How to Find Future Multibagger Stocks' (2bDua8Lmc48): earnings growth [@15:59], high asset turn alongside margin [@18:58], no or prudent debt [@19:43], free cash flow growing with the company [@20:23], dominant small caps that graduate to mid or large cap [@22:23], prudent capital allocation shown by ROIC and FCF [@14:42], do not buy what is already labelled a multibagger [@26:11]."
+  - "Money Purse, Part 9 (5-ZdmTjODVk): ROE and ROCE of at least 14-15% [@12:28]. Part 10 (nMwjjn8kVK8): interest coverage above 3 [@14:47]. '10 point checklist' (5V5QugxC7cs): D/E above 1 is avoided for a non-financial company [@21:04]."
+
+status: draft  # Research template; no activation or performance evidence supplied.
+lifecycle:
+  generated_at: 2026-10-18
+  validated_at: null
+  activated_at: null
+
+regime_required: {}                   # the source names no regime; the screen runs in any tape
+
+universe:
+  source: nifty500                    # liquid names; the Market Cap ceiling keeps the cut to the
+                                      # small and mid caps that can still graduate a tier
+
+# ROCE/RoE > 15, D/E < 1 and coverage > 3 are the source's bars; FCF > 0 is its cash test as a
+# level. The growth cutoffs, the asset-turn floor and the ₹30,000 Cr ceiling are the plugin's,
+# since the source names no number for them. Level clauses cannot test "growing" FCF or a
+# rising margin: verify those in the deep-dive.
+screening:
+  fundamental:
+    provider: tickertape
+    query: >
+      Market Cap > 1000 AND Market Cap < 30000
+      AND ROCE > 15 AND Return on Equity > 15
+      AND Debt to Equity < 1 AND Interest Coverage Ratio > 3
+      AND Free Cash Flow > 0 AND Asset Turnover Ratio > 1
+      AND 5Y Historical EPS Growth > 15 AND 5Y Historical Revenue Growth > 12
+    max_survivors: 40
+
+ranking:
+  metric: rs_vs_nifty                 # orders the deep-dives only; every metric the engine knows is
+                                      # price strength, which the source warns may already be priced
+  top_n: 5

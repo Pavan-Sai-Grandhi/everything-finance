@@ -36,7 +36,7 @@ screening:
     provider: tickertape
     query: >
       Market Cap > 1000 AND ROCE > 20 AND Return on Equity > 18
-      AND Debt to Equity < 0.5 AND Promoter Pledge < 5
+      AND Debt to Equity < 0.5 AND Promoter Pledges < 5
       AND 1Y Historical EPS Growth > 10 AND 5Y Historical Revenue Growth > 12
     max_survivors: 40
 
