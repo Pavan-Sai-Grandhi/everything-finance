@@ -37,3 +37,4 @@ docs/.superpowers/
 
 # Lavish Editor artifacts (local review surfaces)
 .lavish/
+.local
