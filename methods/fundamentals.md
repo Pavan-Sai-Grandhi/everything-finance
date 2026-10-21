@@ -19,7 +19,7 @@ history and its peers.
 **Banks, NBFCs and insurers** lend borrowed money and mix lending into their cash flow, so checks
 3 and 4 are NOT-APPLICABLE, not FAIL. Judge balance-sheet safety on capital adequacy and asset
 quality (GNPA/NNPA trend, provisioning), and returns on ROA and ROE, from the annual report and
-investor presentation; `methods/sectors.md` lists the KPIs.
+investor presentation; `methods/sectors/banking.md` and `methods/sectors/insurance.md` list the KPIs.
 
 ## The seven checks
 

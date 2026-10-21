@@ -16,7 +16,7 @@ debate runs. Each lens's own method lives in its topic file.
 | Management | Can the people running it be trusted with either? | `management.md` |
 | Technical | Where is the price in its own structure, and which level kills a thesis? | `technical.md` |
 | News | What is being said, and does a filing stand behind it? | `news.md` |
-| Sector | Will the industry be bigger and as profitable in five years, and does the stock swim with it? | `sectors.md` |
+| Sector | Will the industry be bigger and as profitable in five years, and does the stock swim with it? | `sectors/framework.md` and the sector file |
 
 A lens that could not run is uncertainty, never neutrality: name it in the gaps and price it as risk.
 
