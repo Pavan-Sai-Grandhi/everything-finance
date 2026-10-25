@@ -1,7 +1,7 @@
 # The market context
 
 **Consumers:** market-analysis, and every skill that reads `get_market_context`. **Sources:**
-`plugin`.
+`plugin`, `soic-mf`, `moneypurse-mf`.
 
 `finance/compute/context.py` computes the context and `finance/contracts.md` (*Artifact:
 market-context*) defines its fields. This file is how to read them.
@@ -27,6 +27,37 @@ Stock breadth is measured over the stocks that could be priced, which may be few
 ## Relative valuation and allocation
 
 Nifty 50, Midcap 150 and Smallcap 250 stand in for the cap tiers; they are not the user's portfolio. A gap between their blended percentiles is worth investigating but does not by itself make one tier the main risk or a good entry. Check coverage, profitability, index composition and the user's exposure before suggesting an allocation change.
+
+## Is now a good time to add?
+
+Starting valuation has decided later returns more than anything else a holder can see. Money
+Purse's Nifty study: entering below a P/E of about 20 gave better odds over the next three to
+ten years, while entering at 24–27 averaged −4.2% a year over the next three
+[moneypurse-mf:qC12_EZvShw@06:26] [moneypurse-mf:qC12_EZvShw@08:05]. Read it through the
+percentile above, not an absolute band. A trailing P/E overstates expense when earnings are
+depressed, which is why P/B sits in the blend [moneypurse-mf:qC12_EZvShw@09:48]. *Variants:*
+forward-P/E bands (16–21× a lump-sum zone, above 25× very expensive)
+[soic-mf:CfRMqIFXfaw@36:32]; the P/E against its own three-year average
+[moneypurse-mf:7KPjxZLcj2w@08:01]. Absolute bands drift as the index's composition changes.
+
+- **A breadth washout is the second signal.** When fewer than 25% of the top 500 stocks are
+  above their 200-day average (`breadth.pct_above_sma200`), lump sums have been well placed,
+  most of all in small caps; above about 95% marked euphoria [soic-mf:KhtCYiZRLo8@46:53]
+  [soic-mf:KhtCYiZRLo8@49:08].
+- **A month the Nifty falls more than 3–4% at an average valuation** is a time to raise a SIP,
+  not stop it [soic-mf:CfRMqIFXfaw@10:26].
+- **Stage a lump sum.** Put about half in when the reading is attractive and the rest in over
+  further falls, because nobody knows how far a fall runs [moneypurse-mf:qC12_EZvShw@11:18].
+- **Small-cap cycles are long.** Two or three strong years have been followed by 12 to 18
+  months of fall or sideways drift, and "time corrections" have lasted up to about two years
+  [soic-mf:CfRMqIFXfaw@14:23] [soic-mf:CfRMqIFXfaw@32:41]. Context for patience, not a timer.
+- **Expected return is arithmetic, not hope**: an index returns roughly nominal GDP growth plus
+  the change in its multiple, so lower inflation means lower nominal returns
+  [soic-mf:On_60FfH32o@22:48]. A planning rate of 10–13% for diversified equity is a labelled
+  estimate with that reason [soic-mf:CfRMqIFXfaw@10:52] [soic-mf:On_60FfH32o@24:16].
+
+None of these is a timing model. They decide whether fresh money goes in now or in tranches;
+they never decide whether to stop a SIP.
 
 ## Flows and macro
 

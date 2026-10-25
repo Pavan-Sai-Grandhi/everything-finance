@@ -111,6 +111,8 @@ check("the worst peak-to-trough is found (120 -> 90 = 25%)",
       abs(m["max_drawdown_pct"] - 25.0) < 0.01, m["max_drawdown_pct"])
 check("the NAV as-of date is the newest bar", m["nav_as_of"] == "2020-01-10", m)
 check("ten days cannot establish confidence in one-year rolling returns", m["confidence"] == "unknown")
+check("the scan carries the drawdown episode and the SIP view",
+      m["drawdown"]["depth_pct"] == 25.0 and m["sip"]["n"] == 0, m)
 empty = S.nav_metrics([], 1)
 check("an empty NAV series degrades to None, never raises",
       empty["max_drawdown_pct"] is None and empty["n_windows"] == 0)
@@ -246,6 +248,7 @@ for category, expected in (("Large Cap Fund","80%"),("Mid Cap Fund","15%"),("Sma
 fixture_row={"name":"Fixture","option":"Growth","expRatio":0.5,"aum":1000,"ageInMon":60,
              "sharpe":1,"sortino":1,"alpha":1,"stdDevAnn":10,"percSmallcap":120}
 fixture_nav={"roll_mean":10,"roll_min":5,"roll_median":8,"n_windows":100,"max_drawdown_pct":20,
+             "drawdown":None,"sip":{"n":0,"pct_negative":None,"median_xirr":None,"min_xirr":None},
              "span_years":5,"confidence":"ok","nav_as_of":"2020-01-01"}
 with mock.patch.object(fund_source,"screen",return_value={"data":{"funds":[fixture_row]},"gaps":[]}), mock.patch.object(fund_source,"amfi_index",return_value={"data":{"schemes":[{"code":"fixture"}]}}), mock.patch.object(S,"_resolve_and_nav",return_value=({"code":"fixture"},fixture_nav,[])):
     result=S.scan()

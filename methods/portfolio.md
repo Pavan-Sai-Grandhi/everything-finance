@@ -1,6 +1,7 @@
 # Portfolio review
 
-**Consumers:** portfolio-review, wealth-manager (the investments leg). **Sources:** `moneypurse`, `plugin`.
+**Consumers:** portfolio-review, wealth-manager (the investments leg). **Sources:** `moneypurse`,
+`soic-mf`, `dtt-mf`, `plugin`.
 
 A rubric for finding holdings that need review. The thresholds are adjustable heuristics, not
 trade instructions.
@@ -13,11 +14,15 @@ Judge an investment by comparing the business today with its recorded thesis and
 
 ## Performance and health
 
-Your XIRR depends on when you put money in. A category return or NAV CAGR does not, so the two are not comparable even over the same dates. A fair comparison runs the benchmark on your dated cash flows; without that, report both and draw no conclusion from the difference.
+Your XIRR depends on when you put money in. A category return or NAV CAGR does not, so the two are not comparable even over the same dates. A fair comparison runs the benchmark on your dated cash flows; without that, report both and draw no conclusion from the difference. XIRR is the measure for any SIP or irregular flows, CAGR only for a single lump sum, and absolute return for neither [soic-mf:pvQ9BwfVHbE@33:39].
+
+Direct stocks earn their place against funds. Every two or three years compare the stock book's XIRR with what the same cash flows earned in the funds held; if the stocks did not win, the case for more capital in them is unmade [soic-mf:CfRMqIFXfaw@04:53].
 
 A sourced decline in returns on capital, margins, debt service, cash conversion or governance is a reason to review. Compare like periods on the same basis and keep allegations apart from established facts. One ratio crossing a cutoff, or one shareholding change, does not decide exit, trim or keep.
 
-Fund quick digests describe; they do not judge. Use performance, fees and changes to pick funds for the deep review, which makes the judgment. Overlap suggests redundancy but does not say which fund to sell; weigh mandate, cost, goals and switching cost first. Owning many funds is not proof of poor diversification.
+Fund quick digests describe; they do not judge. Use performance, fees and changes to pick funds for the deep review, which makes the judgment. A SIP in the red after one to three years is not by itself a review trigger (`methods/funds.md` → *The SIP view*). A held Regular plan or IDCW option is: the switch to Direct Growth is an action, weighed against exit load and tax [dtt-mf:iJ1s0j0qJ0I@06:05].
+
+Overlap suggests redundancy but does not say which fund to sell; weigh mandate, cost, goals and switching cost first. Three or four funds with distinct styles (value, quality, growth, momentum) cover an equity sleeve; more funds of one style add overlap, not diversification [soic-mf:CfRMqIFXfaw@07:57] [soic-mf:On_60FfH32o@25:13]. Owning many funds is not by itself proof of poor diversification: judge the styles and the overlap.
 
 ## Concentration and coverage
 

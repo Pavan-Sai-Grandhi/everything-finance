@@ -1,7 +1,7 @@
 # Valuation
 
 **Consumers:** valuation-analysis, deep-analysis (the portfolio-manager weighs the result).
-**Sources, in priority order:** `damodaran`, `moneypurse`, `plugin`.
+**Sources, in priority order:** `damodaran`, `moneypurse`, `soic-mf`, `plugin`.
 
 The method is Damodaran's story-driven FCFF valuation, reconciled with a relative-multiples read
 [damodaran]. `run_dcf` is the arithmetic; the job here is a coherent story turned into a small set
@@ -134,7 +134,7 @@ The terminal value usually dominates a DCF — and that is **normal for a going 
 Value the operations cleanly first, then — and only if warranted — layer these, each kept **separate** so the operating story is never quietly poisoned to express them:
 - **`failure_probability`** (+ `failure_recovery`): a distress haircut, warranted when distress signals are present — negative earnings + heavy debt + reliance on external capital (early life cycle), or a decline-phase firm. Damodaran used ~10% for loss-making Zomato; he would use ~0 for a profitable mature firm. **It is conditional, not a default.**
 - **`complexity_discount`**: a governance/structure haircut for what a DCF can't see — opaque cross-holdings, family-control wealth-transfer risk, promoter pledging, political dependence. Damodaran's Adani method exactly: value the operations with even *upbeat* assumptions (he got ₹945 vs a ₹3,858 price), then demand "a significant discount on intrinsic value" for the control/complexity. Use this for conglomerates and promoter-dominated groups; leave it 0 for a clean, simple business. Separating it from the operating story is the discipline — don't bake governance into a gloomy growth rate.
-- **Normalisation** (no engine lever — you do it in the inputs): for cyclical/commodity firms (autos, metals, airlines), feed *normalised-through-the-cycle* margins and, where relevant, a normalised commodity price, not the current peak/trough. State the commodity-price call explicitly; it is often the real swing factor.
+- **Normalisation** (no engine lever — you do it in the inputs): for cyclical/commodity firms (autos, metals, airlines), feed *normalised-through-the-cycle* margins and, where relevant, a normalised commodity price, not the current peak/trough. State the commodity-price call explicitly; it is often the real swing factor. Compare the current margin with its own five- to ten-year average before extrapolating it; peak margins and peak order books are what investors extrapolate at the wrong time [soic-mf:mVr1OFOzUsw@17:50] [soic-mf:mVr1OFOzUsw@19:12]. A high return on capital draws new capital: ask how much capacity entrants are bringing against the industry's base, because that, not the incumbent's share, decides where returns go [soic-mf:mVr1OFOzUsw@06:55] [soic-mf:mVr1OFOzUsw@16:54].
 - **Lease / R&D capitalisation**: see the next section — apply where material (retail/QSR leases, pharma/tech R&D), regardless of stage.
 
 Where a large gap to price *survives* a coherent, stage-appropriate valuation — as Damodaran's ₹41 Zomato survived the ₹72 offer, and his ₹945 Adani survived ₹3,858 — that gap is the finding. The goal of all of this is not to push the value up or down, but to make every lever answer to a diagnosis instead of a default.

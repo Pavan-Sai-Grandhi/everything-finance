@@ -71,7 +71,10 @@ number and date:
   `dgtr.gov.in`, `cbic.gov.in`, `sebi.gov.in`, `rbi.org.in`, `irdai.gov.in`, `pfrda.org.in` and
   the ministry's own `*.gov.in`;
 - industry statistics, from statutory and industry bodies: `amfiindia.com`, `siam.in`,
-  `npci.org.in`, `trai.gov.in`, `cea.nic.in`, `dgca.gov.in`, `mnre.gov.in`.
+  `npci.org.in`, `trai.gov.in`, `cea.nic.in`, `dgca.gov.in`, `mnre.gov.in`;
+- a fund's own disclosures, on its AMC's site: the monthly factsheet, the scheme information
+  document, the liquidity stress-test disclosure. They serve what no tool does: turnover, debt
+  YTM, modified duration and rating mix, manager and tenure, insiders' investment.
 
 Industry size and outlook come first from annual-report MD&A sections via `get_documents`. A
 news article about a policy points to the document; it is never the source of its terms.

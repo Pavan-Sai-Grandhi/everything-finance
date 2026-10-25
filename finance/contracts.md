@@ -16,7 +16,7 @@ fetched_at, data, gaps}`. No tool name appears on two servers.
 |---|---|
 | `finance-market` | `get_quote` `get_history` `get_technicals` `run_technical_screen` `get_indices` `get_index_valuation_history` `get_breadth` `get_flows` `get_macro` `get_market_context` `get_universe` `run_strategy_screen` `run_stock_scan` `run_sector_screen` `run_backtest` |
 | `finance-company` | `get_company_fundamentals` `get_documents` `run_fundamental_screen` `get_stock_ratios` `get_news` `get_filings` `get_shareholding` `get_corporate_actions` `get_analyst_estimates` `get_risk_inputs` `run_dcf` `run_governance_checks` |
-| `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` |
+| `finance-funds` | `resolve_fund` `screen_funds` `get_fund_holdings` `get_nav_history` `get_fund_scan` `get_fund_lookthrough` `run_debt_scenarios` |
 | `finance-personal` | `resolve_holdings` `review_allocation` `run_wealth` `categorize_transactions` `learn_merchant` `detect_recurring` `run_insurance_math` `check_trade` |
 | `finance-workflow` | `manage_alerts` `get_prior_run` `select_strategy` `review_strategy_performance` `resolve_analysis_mode` `decide_debate_round` `prepare_report` `render_report` `publish_report` `send_telegram` |
 
@@ -86,7 +86,8 @@ never re-implemented in a skill:
 | `trade_check.py` | `check_trade` | a trade-idea artifact + decision prices → recommendation and unrealized position metrics. It is not proof of an execution |
 | `fund_scan.py` | `get_fund_scan` | a whole SEBI sub-category → gated, scored shortlist (rolling-return math from `rolling.py`) |
 | `lookthrough.py` | `get_fund_lookthrough` | complete holdings + per-stock ratios → weighted portfolio valuation, cap tilt, concentration |
-| `rolling.py` | *(internal to `fund_scan`)* | rolling returns, drawdown, risk-adjusted ratios from a NAV series |
+| `debt_fund.py` | `run_debt_scenarios` | factsheet YTM, modified duration, TER → one-year return at yield −1, 0, +1 points (and any extra shifts) |
+| `rolling.py` | *(internal to `fund_scan`)* | rolling returns, the drawdown episode and monthly-SIP outcomes from a NAV series |
 | `dcf.py` + `relval.py` | `run_dcf` | sourced inputs → intrinsic value/share (+ optional grids) and the relative-multiples read, one answer; full JSON and the supplied inputs written to `stocks/<TICKER>/<date>/dcf-<hash>.json` |
 | `governance.py` | `run_governance_checks` | annual-report figures → `remuneration` (`ratio_pct` vs the 11% total cap; `executive_ratio_pct` vs the 5%/10% MD/WTD cap only when `executive_remuneration` and `managing_directors` are given) and `auditor_fee` (fee YoY vs aligned revenue/profit series); PASS/FLAG/FAIL/NOT-CHECKED. Invalid inputs, or a fee with no revenue/profit series, are NOT-CHECKED. Read by `management-analysis` checks 1 and 5 |
 | `technicals.py` | `get_technicals` | one symbol's indicator columns and latest-bar patterns |
@@ -99,7 +100,7 @@ never re-implemented in a skill:
 | `strategy_library.py` | `select_strategy` `review_strategy_performance` | active spec × market context → the pick; verified closes → KEEP/OPTIMIZE/DEACTIVATE/REVIEW |
 | `debate.py` | `resolve_analysis_mode` `decide_debate_round` | the deep-analysis mode; whether the debate runs another round |
 
-`test_{context,screen,stock_scan,sector_scan,backtest,trade_check,fund_scan,lookthrough,rolling,dcf,relval,governance,insurance_math,alerts,technicals,holdings,allocation,wealth,budget,strategy_library,debate}.py`;
+`test_{context,screen,stock_scan,sector_scan,backtest,trade_check,fund_scan,lookthrough,debt_fund,rolling,dcf,relval,governance,insurance_math,alerts,technicals,holdings,allocation,wealth,budget,strategy_library,debate}.py`;
 `backtest.py` from both sides — spec interpretation via `compute/strategy.py` in `test_screen.py`, and the
 Backtesting.py wiring (fill timing, cost, stop/target precedence, time-stop) in `test_backtest.py`.
 
@@ -289,6 +290,13 @@ nothing.
 Fund-scan reports are written to `paths.fund_dir("<category> scan")/fund-scan-<content-hash>.json` and
 `report_path` returns that path. `out` is only a filename prefix; read the returned path. A failed write
 returns the shortlist with a gap and `report_path: null`.
+
+Each shortlist row's `metrics` carries, beside the vendor fields, the NAV-derived record for the requested
+window: `rolling:{window, mean, median, min, n_windows}`, `max_drawdown_pct`,
+`drawdown:{depth_pct, peak, trough, recovered, days_underwater}` (`recovered: null` while the NAV is still
+below the peak) and `sip:{window, n, pct_negative, median_xirr, min_xirr}` — every monthly SIP of that length
+the history holds, the share that ended below the money put in, and its XIRR spread in %. `drawdown` is null
+below two NAV points; `sip` fields are null with `n: 0` when no window fits. None of these is scored.
 
 `compute/fund_scan.match_amfi_scheme` joins a Tickertape fund to an AMFI scheme only when the name tokens
 match after dropping plan words, the scheme is Direct Growth, and exactly one scheme code fits. More than one
@@ -779,7 +787,7 @@ as_of: <YYYY-MM-DD>
 `book_xirr` is `unavailable` when no IndMoney/broker source connected, `inferred` when only staleness could be
 estimated — never fabricated. `market_cap` splits come from the fund look-through's AMFI `cap_rank`, never a
 personal source's breakdown. `laggard_funds` rows come from `mf-analysis quick` (`{scheme, grade_lite,
-key_numbers, path}`, descriptive only). Holdings-value detail (the KEEP/TRIM/EXIT table) stays in the artifact —
+key_numbers, flags, path}`, descriptive only; `flags` names a Regular plan or IDCW option). Holdings-value detail (the KEEP/TRIM/EXIT table) stays in the artifact —
 values are sensitive; the digest carries verdicts and percentages only.
 
 An investments digest made only of gaps is `not_assessed`, not strong; a severe finding from partial data is

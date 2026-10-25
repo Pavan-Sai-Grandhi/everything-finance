@@ -263,8 +263,9 @@ def match_amfi_scheme(fund_name, schemes):
 def nav_metrics(navs, window_years):
     """[{date, nav}] (ISO, oldest first) -> the metrics Tickertape puts behind a paywall.
 
-    Rolling mean/median/min over the window, max drawdown, span in years and the confidence
-    that span earns. The caller does the fetching.
+    Rolling mean/median/min over the window, max drawdown and its episode, the monthly-SIP
+    outcomes over the same window, span in years and the confidence that span earns. The
+    caller does the fetching.
     """
     dates, values = [], []
     for r in navs or []:
@@ -281,8 +282,9 @@ def nav_metrics(navs, window_years):
     returns = R.rolling_returns(dates, values, window_years)
     if len(values) < 2:
         return {"roll_mean": None, "roll_min": None, "roll_median": None, "n_windows": 0,
-                "max_drawdown_pct": None, "span_years": None, "confidence": "unknown",
-                "nav_as_of": None}
+                "max_drawdown_pct": None, "drawdown": None,
+                "sip": R.sip_outcomes(dates, values, window_years), "span_years": None,
+                "confidence": "unknown", "nav_as_of": None}
     span = (dates[-1] - dates[0]).days / R.YEAR_DAYS
     stats = R.rolling_stats(returns)
     return {
@@ -291,6 +293,8 @@ def nav_metrics(navs, window_years):
         "roll_min": stats["min"],
         "n_windows": stats["n"],
         "max_drawdown_pct": R.max_drawdown(values),
+        "drawdown": R.drawdown_episode(dates, values),
+        "sip": R.sip_outcomes(dates, values, window_years),
         "span_years": round(span, 2),
         "confidence": span_confidence(span) if stats["n"] else "unknown",
         "nav_as_of": dates[-1].isoformat(),
@@ -535,6 +539,8 @@ def _shortlist_row(rank, s, purity_field, years):
                         "median": nav["roll_median"], "min": nav["roll_min"],
                         "n_windows": nav["n_windows"]},
             "max_drawdown_pct": nav["max_drawdown_pct"],
+            "drawdown": nav["drawdown"],
+            "sip": dict(nav["sip"], window=f"{years}y"),
             "span_years": nav["span_years"],
             "history_confidence": nav["confidence"],
             "nav_as_of": nav["nav_as_of"],

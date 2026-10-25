@@ -86,4 +86,40 @@ sparse = nav_metrics([{'date': day.isoformat(), 'nav': value}
                      for day, value in zip(long_dates, [100, 110])], 1)
 check('no eligible rolling windows cannot be high confidence',
       sparse['n_windows'] == 0 and sparse['confidence'] == 'unknown')
+# SIP outcomes: on a series growing at exactly r/yr every instalment earns r, so XIRR = r.
+s5 = R.sip_outcomes(d10, n10, 5)
+check("SIP XIRR on a 10%/yr series is 10%", approx(s5["median_xirr"], 10.0, tol=0.01), s5)
+check("SIP worst window equals the median on a constant-rate series",
+      approx(s5["min_xirr"], 10.0, tol=0.01), s5)
+check("no SIP ends below cost on a rising series", s5["pct_negative"] == 0.0 and s5["n"] > 0, s5)
+df, nf = expo(-0.10, 4)
+s1 = R.sip_outcomes(df, nf, 1)
+check("every SIP ends below cost on a falling series", s1["pct_negative"] == 100.0, s1)
+check("falling-series SIP XIRR is -10%", approx(s1["median_xirr"], -10.0, tol=0.01), s1)
+young = R.sip_outcomes(dy, ny, 1)
+check("young fund: no SIP window, fields None, never 0",
+      young["n"] == 0 and young["pct_negative"] is None and young["median_xirr"] is None, young)
+gap_d = [d for d in d10 if not date(2018, 3, 1) <= d < date(2018, 4, 15)]
+gap_n = [n for d, n in zip(d10, n10) if not date(2018, 3, 1) <= d < date(2018, 4, 15)]
+check("an instalment that would price off a stale NAV drops the window",
+      R.sip_outcomes(gap_d, gap_n, 1)["n"] < R.sip_outcomes(d10, n10, 1)["n"])
+for bad in (0, 1.5, True):
+    try:
+        R.sip_outcomes(d10, n10, bad)
+        check("non-whole-year SIP window rejected", False)
+    except ValueError:
+        check("non-whole-year SIP window rejected", True)
+
+dd_dates = [date(2020, 1, d) for d in range(1, 5)]
+ep = R.drawdown_episode(dd_dates, [100, 120, 90, 130])
+check("drawdown episode depth, peak, trough and recovery",
+      ep["depth_pct"] == 25.0 and ep["peak"] == "2020-01-02" and ep["trough"] == "2020-01-03"
+      and ep["recovered"] == "2020-01-04" and ep["days_underwater"] == 2, ep)
+open_ep = R.drawdown_episode(dd_dates, [100, 120, 90, 100])
+check("an unrecovered drawdown has no recovery date and runs to the last NAV",
+      open_ep["recovered"] is None and open_ep["days_underwater"] == 2, open_ep)
+check("a series that never fell has a zero-depth episode",
+      R.drawdown_episode(d10, n10)["depth_pct"] == 0.0)
+check("a one-point series has no episode", R.drawdown_episode(d10[:1], n10[:1]) is None)
+
 summary()

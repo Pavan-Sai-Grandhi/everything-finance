@@ -81,6 +81,8 @@ CASES = {
         ("get_nav_history", {"scheme_code": "147946"}, ["navs_total"]),
         ("get_fund_scan", {"category": "Small Cap Fund", "top": 3}, ["shortlist"]),
         ("get_fund_lookthrough", {"mf_id": None}, ["metrics"]),
+        ("run_debt_scenarios", {"ytm_pct": 7.2, "modified_duration": 3.5, "ter_pct": 0.3},
+         ["scenarios"]),
     ],
     "personal": [
         ("run_insurance_math",

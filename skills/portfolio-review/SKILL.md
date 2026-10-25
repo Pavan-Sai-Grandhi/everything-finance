@@ -58,7 +58,8 @@ the equity pass with `prefer=<broker>`.
 
 1. `mf-analysis --quick` (via `Skill`) on every held fund.
 2. `mf-analysis --deep` on at most five funds flagged on sourced category returns, expense ratios
-   or AUM changes. Your XIRR on a fund is not comparable with a category's time-weighted return.
+   or AUM changes. A Regular-plan or IDCW flag is an action on its own (`methods/portfolio.md`),
+   not a reason for a deep run. Your XIRR on a fund is not comparable with a category's time-weighted return.
 3. Suggest `/mf-analysis` on serious flags and on any same-category overlap question.
 
 ## 4. Allocation
